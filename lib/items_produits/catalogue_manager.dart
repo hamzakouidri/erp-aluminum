@@ -66,13 +66,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
 
   void _showAddProfileDialog() {
     final nameCtrl = TextEditingController();
+    final defaultBarLengthCtrl = TextEditingController(text: '5.8');
     String selectedType = 'Aluminium';
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setStateDialog) => AlertDialog(
-          title: Text(Localization.translate('إضافة مقطع ألمنيوم جديد', Provider.of<AppSettingsProvider>(context).language),
+          title: Text(Localization.translate('إضافة نظام ألمنيوم جديد', Provider.of<AppSettingsProvider>(context).language),
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           content: Column(
@@ -85,8 +86,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                 ),
               ),
               SizedBox(height: 10),
+              TextField(
+                controller: defaultBarLengthCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: Localization.translate('طول العود الافتراضي (متر)', Provider.of<AppSettingsProvider>(context).language),
+                ),
+              ),
+              SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                initialValue: selectedType,
+                value: selectedType,
                 items: ['Aluminium', 'PVC'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
@@ -111,7 +120,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
-                  await widget.db.insertProfile(nameCtrl.text, selectedType);
+                  double defaultBarLength = double.tryParse(defaultBarLengthCtrl.text) ?? 5.8;
+                  await widget.db.insertProfile(
+                    nameCtrl.text, 
+                    selectedType, 
+                    defaultBarLength: defaultBarLength,
+                  );
                   _loadProfiles();
                   if (context.mounted) Navigator.pop(dialogContext);
                 }
@@ -557,8 +571,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
   // --- دوال التعديل (Edit Dialogs) ---
   // ==========================================
 
-  void _showEditProfileDialog(int id, String currentName, String currentType) {
+  void _showEditProfileDialog(int id, String currentName, String currentType, double currentBarLength) {
     final nameCtrl = TextEditingController(text: currentName);
+    final defaultBarLengthCtrl = TextEditingController(text: currentBarLength.toString());
     String selectedType = (currentType == 'PVC') ? 'PVC' : 'Aluminium';
 
     showDialog(
@@ -578,8 +593,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                 ),
               ),
               SizedBox(height: 10),
+              TextField(
+                controller: defaultBarLengthCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: Localization.translate('طول العود الافتراضي (متر)', Provider.of<AppSettingsProvider>(context).language),
+                ),
+              ),
+              SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                initialValue: selectedType,
+                value: selectedType,
                 items: ['Aluminium', 'PVC'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
@@ -604,7 +627,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
-                  await widget.db.updateProfile(id, nameCtrl.text, selectedType);
+                  double defaultBarLength = double.tryParse(defaultBarLengthCtrl.text) ?? 5.8;
+                  await widget.db.updateProfile(id, nameCtrl.text, selectedType, defaultBarLength: defaultBarLength);
                   _loadProfiles();
                   if (context.mounted) Navigator.pop(dialogContext);
                 }
@@ -773,7 +797,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(),
                                             icon: const Icon(Icons.edit, color: Colors.blue, size: 16),
-                                            onPressed: () => _showEditProfileDialog(p['id'], p['name'], p['type']),
+                                            onPressed: () => _showEditProfileDialog(p['id'], p['name'], p['type'], (p['default_bar_length'] as num?)?.toDouble() ?? 5.8),
                                           ),
                                           const SizedBox(width: 8),
                                           IconButton(

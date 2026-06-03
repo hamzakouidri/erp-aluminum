@@ -43,7 +43,7 @@ class SqlDatabase {
     String path = join(dataPath, dbName);
     Database myDb = await openDatabase(
       path,
-      version: 10,
+      version: 11,
       // تم رفع الإصدار ليتضمن جميع الجداول الجديدة، مع الحفاظ على البيانات القديمة عبر دوال الترقية
       password: "password",
       onCreate: _onCreate,
@@ -89,6 +89,7 @@ class SqlDatabase {
           glass_deduction REAL NOT NULL,
           weight_per_meter REAL NOT NULL,
           couvre_joint_width REAL NOT NULL DEFAULT 0.0,
+          bar_length REAL NOT NULL DEFAULT 5.8,
           FOREIGN KEY (series_id) REFERENCES Series(id) ON DELETE CASCADE
         )
       ''');
@@ -272,6 +273,14 @@ class SqlDatabase {
         print('Achat_items columns already exist or error: $e');
       }
     }
+    if (oldVersion < 11) {
+      try {
+        await db.execute("ALTER TABLE Profile ADD COLUMN default_bar_length REAL NOT NULL DEFAULT 5.8;");
+        await db.execute("ALTER TABLE Sections ADD COLUMN bar_length REAL NOT NULL DEFAULT 5.8;");
+      } catch (e) {
+        print('bar_length columns already exist or error: $e');
+      }
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -309,7 +318,8 @@ class SqlDatabase {
     CREATE TABLE Profile ( 
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      type TEXT NOT NULL
+      type TEXT NOT NULL,
+      default_bar_length REAL NOT NULL DEFAULT 5.8
     )
     ''');
 
@@ -335,6 +345,7 @@ class SqlDatabase {
       glass_deduction REAL NOT NULL DEFAULT 0.0,
       weight_per_meter REAL NOT NULL DEFAULT 0.0,
       couvre_joint_width REAL NOT NULL DEFAULT 0.0,
+      bar_length REAL NOT NULL DEFAULT 5.8,
       FOREIGN KEY (series_id) REFERENCES Series(id) ON DELETE CASCADE
     )
     ''');
@@ -501,21 +512,21 @@ class SqlDatabase {
     return await myDb!.rawQuery('SELECT * FROM Profile');
   }
 
-  Future<int> insertProfile(String name, String type) async {
+  Future<int> insertProfile(String name, String type, {double defaultBarLength = 5.8}) async {
     Database? myDb = await db;
     var res = await myDb!.rawInsert(
-      'INSERT INTO Profile (name, type) VALUES (?, ?)',
-      [name, type],
+      'INSERT INTO Profile (name, type, default_bar_length) VALUES (?, ?, ?)',
+      [name, type, defaultBarLength],
     );
     CloudSyncService().notifyChange();
     return res;
   }
 
-  Future<int> updateProfile(int id, String name, String type) async {
+  Future<int> updateProfile(int id, String name, String type, {double defaultBarLength = 5.8}) async {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Profile',
-      {'name': name, 'type': type},
+      {'name': name, 'type': type, 'default_bar_length': defaultBarLength},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -592,6 +603,21 @@ class SqlDatabase {
     );
   }
 
+  // ── Search Sections across all profiles and series ──────────────────────────
+  Future<List<Map<String, dynamic>>> searchSectionsWithProfile(String query) async {
+    final dbClient = await db;
+    String q = query.toLowerCase();
+    
+    // Join Sections -> Series -> Profile to get the profile_name
+    return await dbClient!.rawQuery('''
+      SELECT s.*, p.name as profile_name 
+      FROM Sections s 
+      JOIN Series ser ON s.series_id = ser.id 
+      JOIN Profile p ON ser.profile_id = p.id 
+      WHERE LOWER(s.name) LIKE ? OR LOWER(s.code) LIKE ? OR LOWER(p.name) LIKE ?
+    ''', ['%$q%', '%$q%', '%$q%']);
+  }
+
   Future<int> insertSection({
     required int seriesId,
     required String code,
@@ -601,6 +627,7 @@ class SqlDatabase {
     required double glassDeduction,
     required double weightPerMeter,
     double couvreJointWidth = 0.0,
+    double barLength = 5.8,
   }) async {
     Database? myDb = await db;
     var res = await myDb!.insert('Sections', {
@@ -612,6 +639,7 @@ class SqlDatabase {
       'glass_deduction': glassDeduction,
       'weight_per_meter': weightPerMeter,
       'couvre_joint_width': couvreJointWidth,
+      'bar_length': barLength,
     });
     CloudSyncService().notifyChange();
     return res;
@@ -793,6 +821,9 @@ class SqlDatabase {
     required int achatId,
     required String itemCode,
     required String itemName,
+    required String itemType,
+    required int itemId,
+    int? colorId,
     required double quantity,
     required double price,
   }) async {
@@ -803,6 +834,9 @@ class SqlDatabase {
         'achat_id': achatId,
         'item_code': itemCode,
         'item_name': itemName,
+        'item_type': itemType,
+        'item_id': itemId,
+        'color_id': colorId,
         'quantity': quantity,
         'price': price,
       },
@@ -1204,6 +1238,15 @@ class SqlDatabase {
       CloudSyncService().notifyChange();
       return res;
     }
+  }
+
+  Future<double> getSectionColorPrice(int sectionId, int colorId) async {
+    Database? myDb = await db;
+    var res = await myDb!.query('SectionColorPrices', where: 'section_id = ? AND color_id = ?', whereArgs: [sectionId, colorId]);
+    if (res.isNotEmpty) {
+      return (res.first['price'] as num).toDouble();
+    }
+    return 0.0;
   }
 
 

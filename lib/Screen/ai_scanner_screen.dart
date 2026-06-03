@@ -1117,11 +1117,13 @@ class _AiScannerScreenState extends State<AiScannerScreen> with SingleTickerProv
         final item = _extractedInvoice!.items[i];
         final mapping = _itemMappings[i];
 
-        if (mapping != 'ignore') {
+        if (mapping != 'ignore' && mapping != null) {
           await widget.db.insertAchatItem(
             achatId: achatId,
             itemCode: item.itemCode,
             itemName: item.itemName,
+            itemType: 'Sections', // AI Scanner specifically handles aluminum sections for now
+            itemId: mapping as int,
             quantity: item.quantity,
             price: item.price,
           );

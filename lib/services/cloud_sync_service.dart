@@ -41,11 +41,14 @@ class CloudSyncService {
     if (user != null) {
       try {
         final doc = await _firestore.collection('users').doc(user.uid).get();
-        if (doc.exists) {
+        if (doc.exists && doc.data()!['workshopId'] != null) {
           _workshopId = doc.data()?['workshopId'];
+        } else {
+          _workshopId = user.uid; // Fallback to user UID if not explicitly set
         }
       } catch (e) {
         print('Error fetching workshopId: $e');
+        _workshopId = user.uid; // Fallback on error
       }
     }
   }

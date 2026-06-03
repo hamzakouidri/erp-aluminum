@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:database_data/sql_database.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'ai_scanner_screen.dart';
 import 'package:database_data/settings/localization.dart';
+import '../sql_database.dart';
+import 'achat_item_picker.dart';
+import 'ai_scanner_screen.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 
@@ -745,23 +746,22 @@ class _AchatScreenState extends State<AchatScreen>
               ),
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
-                  await widget.db.insertAchat(
+                  final newAchatId = await widget.db.insertAchat(
                     invoiceCtrl.text.trim(),
                     supplierCtrl.text.trim(),
                     0.0, // Initial total is 0 until items are added
                   );
                   _refreshList();
                   if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(Localization.translate('تم تسجيل الفاتورة بنجاح', Provider.of<AppSettingsProvider>(context).language),
-                          style: TextStyle(fontFamily: 'Cairo'),
-                        ),
-                        backgroundColor: _green,
-                        behavior: SnackBarBehavior.floating,
-                      ),
+                    Navigator.pop(context); // Close the "Add Invoice" dialog
+                    // Open the item picker automatically so the user can start adding items immediately
+                    bool? added = await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => AchatItemPicker(achatId: newAchatId)),
                     );
+                    if (added == true) {
+                      _refreshList();
+                    }
                   }
                 }
               },
@@ -906,8 +906,7 @@ class _AchatScreenState extends State<AchatScreen>
 
   // ── بناء قائمة عناصر الفاتورة عند توسيع الكارد ────────────────────────────
   Widget _buildAchatItemsList(int achatId) {
-    // هذه الدالة ستعرض تفاصيل إضافية للفاتورة إذا كانت موجودة،
-    // أو يمكنك تخصيصها لجلب العناصر من جدول آخر في قاعدة البيانات
+    final currencyFormat = NumberFormat.currency(locale: 'ar_DZ', symbol: '');
     return Container(
       margin: EdgeInsets.only(top: 12),
       padding: EdgeInsets.all(12),
@@ -917,25 +916,89 @@ class _AchatScreenState extends State<AchatScreen>
         border: Border.all(color: _divider),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(Localization.translate('المواد:', Provider.of<AppSettingsProvider>(context).language),
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  color: _textDim,
-                ),
+              Text(Localization.translate('عناصر الفاتورة:', Provider.of<AppSettingsProvider>(context).language),
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold, color: _textDim),
               ),
-              Text(Localization.translate('لا توجد تفاصيل إضافية', Provider.of<AppSettingsProvider>(context).language),
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  color: _text,
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
+                icon: Icon(Icons.add_shopping_cart, size: 16),
+                label: Text(Localization.translate('إضافة عنصر', Provider.of<AppSettingsProvider>(context).language), style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                onPressed: () async {
+                  bool? added = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => AchatItemPicker(achatId: achatId)),
+                  );
+                  if (added == true) {
+                    _refreshList(); // Reload to update totals and items
+                  }
+                },
               ),
             ],
+          ),
+          SizedBox(height: 8),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: widget.db.readAchatItems(achatId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(Localization.translate('لا توجد عناصر في هذه الفاتورة حتى الآن.', Provider.of<AppSettingsProvider>(context).language),
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: _textDim),
+                  ),
+                );
+              }
+              final items = snapshot.data!;
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                itemCount: items.length,
+                separatorBuilder: (context, index) => Divider(height: 1, color: _divider),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  double qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+                  double price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                  double total = qty * price;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${item['item_name']} (${item['item_code']})', style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold)),
+                              Text('النوع: ${item['item_type']} | الكمية: $qty', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: _textDim)),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('${currencyFormat.format(price)} دج', style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                            Text('الإجمالي: ${currencyFormat.format(total)} دج', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: _blue)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ],
       ),

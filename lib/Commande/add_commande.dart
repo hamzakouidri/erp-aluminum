@@ -412,30 +412,47 @@ class _CommandePageState extends State<CommandePage> {
               ],
             ),
             const Divider(),
-            Center(
-              child: Column(
-                children: [
-                  const Text('شكل النافذة', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 5),
-                  Container(
-                    height: 120,
-                    width: 120,
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)),
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        size: const Size(100, 100),
-                        painter: WindowPainter(model: p),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('اللون: $colorStr', style: const TextStyle(fontSize: 15)),
+                      Text('الزجاج: ${p.zones.isNotEmpty && p.zones.first.glass.structure == GlassStructure.double ? "مزدوج" : "مفرد"}', style: const TextStyle(fontSize: 15)),
+                      if (p.hasShutter) const Text('الستار: موجود (Volet)', style: TextStyle(fontSize: 15)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  children: [
+                    const Text('شكل النافذة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 5),
+                    Container(
+                      height: 80,
+                      width: 80,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IgnorePointer(
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: CustomPaint(
+                            // Draw at actual size so FittedBox scales it down perfectly without overflow
+                            size: Size(p.width.toDouble(), p.height.toDouble()),
+                            painter: WindowPainter(model: p),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 15),
-            Text('اللون: $colorStr', style: const TextStyle(fontSize: 15)),
-            Text('الزجاج: ${p.zones.isNotEmpty && p.zones.first.glass.structure == GlassStructure.double ? "مزدوج" : "مفرد"}', style: const TextStyle(fontSize: 15)),
-            if (p.hasShutter) const Text('الستار: موجود (Volet)', style: TextStyle(fontSize: 15)),
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

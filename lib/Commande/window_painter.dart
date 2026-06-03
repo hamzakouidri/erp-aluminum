@@ -11,7 +11,6 @@ class WindowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 🟢 لا نحتاج updateLayoutMetrics هنا لأن WorkspacePainter سيقوم بذلك
     final w = model.width, h = model.height, t = model.profileThickness;
     double boxSize = 0;
     if (model.hasShutter) {
@@ -70,6 +69,11 @@ class WindowPainter extends CustomPainter {
       _drawOuterFrame(canvas, w, h, t);
       if (model.hasSideCovers) _drawSideCovers(canvas, w, h, boxSize, t);
 
+      // 🟢 تصحيح 1: إخراج الصندوق من القص لكي يظهر ويتلون
+      if (model.hasShutter) {
+        _drawShutterBox(canvas, w, boxSize);
+      }
+
       canvas.save();
       canvas.clipPath(innerPath);
       _drawMullions(canvas, w, h, t);
@@ -83,10 +87,10 @@ class WindowPainter extends CustomPainter {
       canvas.clipPath(innerPath);
       for (final zone in model.zones) {
         _drawZoneContent(canvas, zone, h, t);
-        if (model.hasShutter) {
-          _drawShutterBox(canvas, w, boxSize);
-          _drawShutterSlatsAndTracks(canvas, w, h, model.shutterPosition);
-        }
+      }
+      // 🟢 رسم الشفرات مرة واحدة داخل القص
+      if (model.hasShutter) {
+        _drawShutterSlatsAndTracks(canvas, w, h, model.shutterPosition);
       }
       canvas.restore();
     }
@@ -139,14 +143,12 @@ class WindowPainter extends CustomPainter {
       _drawInnerDimensions(canvas, zone);
     }
 
-    // 🟢 خط الرسم التفاعلي المطور للتقطيع (خط أزرق متقطع مع شلطات هندسية)
     if (model.drawingStart != null && model.drawingCurrent != null) {
       final p1 = model.drawingStart!;
       final p2 = model.drawingCurrent!;
       double dx = (p2.dx - p1.dx).abs();
       double dy = (p2.dy - p1.dy).abs();
 
-      // لا يظهر الخط إلا إذا سحب مسافة كافية لمنع التشويش
       if ((p2 - p1).distance > 30.0) {
         bool isHorizontal = dx > dy;
         Offset endPos = isHorizontal
@@ -221,22 +223,16 @@ class WindowPainter extends CustomPainter {
       final hexCode = (model.selectedDbColor!['hex_code'] as String)
           .toUpperCase();
 
-      // Fallback to original hardcoded gradients if hex matches exactly
       if (hexCode == '#FFFFFF') return FrameColor.white.gradientColors;
-      if (hexCode == '#795548' || hexCode == '#5D4037') {
+      if (hexCode == '#795548' || hexCode == '#5D4037')
         return FrameColor.brown.gradientColors;
-      }
-      if (hexCode == '#9E9E9E' || hexCode == '#B0BEC5' || hexCode == '#E0E0E0') {
+      if (hexCode == '#9E9E9E' || hexCode == '#B0BEC5' || hexCode == '#E0E0E0')
         return FrameColor.gray.gradientColors;
-      }
-      if (hexCode == '#000000' || hexCode == '#212121') {
+      if (hexCode == '#000000' || hexCode == '#212121')
         return FrameColor.black.gradientColors;
-      }
-      if (hexCode == '#F5F5DC' || hexCode == '#DDC8A0') {
+      if (hexCode == '#F5F5DC' || hexCode == '#DDC8A0')
         return FrameColor.beige.gradientColors;
-      }
 
-      // Custom color dynamic gradient
       Color c = Colors.grey;
       try {
         c = Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
@@ -370,7 +366,6 @@ class WindowPainter extends CustomPainter {
         ..addPath(innerPath, Offset.zero)
         ..fillType = PathFillType.evenOdd;
     } else {
-      // Simplified for custom shapes without bottom frame
       path
         ..addPath(outerPath, Offset.zero)
         ..addPath(innerPath, Offset.zero)
@@ -597,7 +592,6 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    // 🟢 الترحيم الداخلي: منع التقسيمات من الصعود فوق زوايا الحلق الخارجي
     canvas.save();
     canvas.clipRect(Rect.fromLTWH(t, t, w - t * 2, h - t * 2));
 
@@ -620,7 +614,7 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    canvas.restore(); // إنهاء القص
+    canvas.restore();
   }
 
   void _drawInnerDimensions(Canvas canvas, WindowZone zone) {
@@ -662,7 +656,6 @@ class WindowPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout();
       canvas.save();
-      // 🟢 تصحيح دوران النص ليكون موازياً للتقسيمات الداخلية
       canvas.translate(
         r.left + 5 + heightText.height,
         r.center.dy + (heightText.width / 2),
@@ -851,8 +844,7 @@ class WindowPainter extends CustomPainter {
             Colors.grey.shade400,
           ];
         case ClosedGlassColor.marberier:
-          // TODO: Handle this case.
-          throw UnimplementedError(); //اللون الرخامي ارزين ماربري
+          throw UnimplementedError();
       }
     }
     Color baseLight = Colors.white,
@@ -1417,13 +1409,16 @@ class WindowPainter extends CustomPainter {
     double position,
   ) {
     const coulisseWidth = 25.0;
+
+    // 🟢 تصحيح 3: استخدام _fc بدلاً من المتغير الثابت
     final coulissePaint = Paint()
-      ..color = model.frameColor.gradientColors[1]
+      ..color = _fc[1]
       ..style = PaintingStyle.fill;
     final coulisseBorder = Paint()
-      ..color = model.frameColor.borderColor
+      ..color = _fb
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
+
     if (!model.removedShutterSides.contains('left')) {
       canvas.drawRect(Rect.fromLTWH(0, 0, coulisseWidth, h), coulissePaint);
       canvas.drawRect(Rect.fromLTWH(0, 0, coulisseWidth, h), coulisseBorder);
@@ -1455,14 +1450,16 @@ class WindowPainter extends CustomPainter {
       canvas.drawRect(
         Rect.fromLTRB(leftClip, y, rightClip, y + 20.0),
         Paint()
-          ..color = model.frameColor.gradientColors[0].withValues(alpha: 0.95)
+          ..color = _fc[0]
+              .withValues(alpha: 0.95) // 🟢 تصحيح استخدام _fc
           ..style = PaintingStyle.fill,
       );
       canvas.drawLine(
         Offset(leftClip, y + 20.0),
         Offset(rightClip, y + 20.0),
         Paint()
-          ..color = model.frameColor.borderColor.withValues(alpha: 0.4)
+          ..color = _fb
+              .withValues(alpha: 0.4) // 🟢 تصحيح استخدام _fb
           ..strokeWidth = 1,
       );
     }
@@ -1474,13 +1471,15 @@ class WindowPainter extends CustomPainter {
     canvas.drawRect(
       boxRect,
       Paint()
-        ..color = model.frameColor.gradientColors[1]
+        ..color =
+            _fc[1] // 🟢 تصحيح 2: استخدام _fc بدلاً من المتغير الثابت
         ..style = PaintingStyle.fill,
     );
     canvas.drawRect(
       boxRect,
       Paint()
-        ..color = model.frameColor.borderColor
+        ..color =
+            _fb // 🟢 تصحيح استخدام _fb
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5,
     );

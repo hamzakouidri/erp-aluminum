@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -283,7 +284,69 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
+            if (FirebaseAuth.instance.currentUser?.email == 'kouidrihamza45@gmail.com')
+              Card(
+                color: Colors.purple.shade50,
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const ListTile(
+                        leading: Icon(Icons.upload_file, color: Colors.purple),
+                        title: Text('تصدير / رفع الكتالوج (للمدير فقط)'),
+                        subtitle: Text('استخدم هذا الزر لرفع الكتالوج الموجود بجهازك حالياً ليصبح هو الكتالوج المركزي في السحابة.'),
+                      ),
+                      Center(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.purple,
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.cloud_upload),
+                          label: const Text('رفع الكتالوج الآن'),
+                          onPressed: () async {
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                            try {
+                              await CloudSyncService().backupGlobalCatalog();
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('تم رفع الكتالوج المركزي بنجاح!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            } catch (e) {
+                              Navigator.pop(context);
+                              showDialog(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: Text('خطأ Firebase'),
+                                  content: Text(e.toString()),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: Text('حسنا'),
+                                    )
+                                  ],
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
           // Cost Calculation Method Setting
           Card(
