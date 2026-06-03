@@ -1,0 +1,850 @@
+' ${formatDate(data[index]['created_at'])}': {
+  AppLanguage.arabic: ' ${formatDate(data[index]['created_at'])}',
+  AppLanguage.french: ' ${formatDate(data[index]['created_at'])}',
+  AppLanguage.english: ' ${formatDate(data[index]['created_at'])}',
+},
+'$e قطع': {
+  AppLanguage.arabic: '$e قطع',
+  AppLanguage.french: '$e قطع',
+  AppLanguage.english: '$e قطع',
+},
+'${_extractedInvoice!.total.toStringAsFixed(2)} دج': {
+  AppLanguage.arabic: '${_extractedInvoice!.total.toStringAsFixed(2)} دج',
+  AppLanguage.french: '${_extractedInvoice!.total.toStringAsFixed(2)} دج',
+  AppLanguage.english: '${_extractedInvoice!.total.toStringAsFixed(2)} دج',
+},
+'${c['firstname']} ${c['lastname']}': {
+  AppLanguage.arabic: '${c['firstname']} ${c['lastname']}',
+  AppLanguage.french: '${c['firstname']} ${c['lastname']}',
+  AppLanguage.english: '${c['firstname']} ${c['lastname']}',
+},
+'${c['phone1']}': {
+  AppLanguage.arabic: '${c['phone1']}',
+  AppLanguage.french: '${c['phone1']}',
+  AppLanguage.english: '${c['phone1']}',
+},
+'${currencyFormat.format(total)} دج': {
+  AppLanguage.arabic: '${currencyFormat.format(total)} دج',
+  AppLanguage.french: '${currencyFormat.format(total)} دج',
+  AppLanguage.english: '${currencyFormat.format(total)} دج',
+},
+'${parentSystem.name} - ${series.name}': {
+  AppLanguage.arabic: '${parentSystem.name} - ${series.name}',
+  AppLanguage.french: '${parentSystem.name} - ${series.name}',
+  AppLanguage.english: '${parentSystem.name} - ${series.name}',
+},
+'${sec[': {
+  AppLanguage.arabic: '${sec[',
+  AppLanguage.french: '${sec[',
+  AppLanguage.english: '${sec[',
+},
+'1. الأنظمة (Profiles)': {
+  AppLanguage.arabic: '1. الأنظمة (Profiles)',
+  AppLanguage.french: '1. الأنظمة (Profiles)',
+  AppLanguage.english: '1. الأنظمة (Profiles)',
+},
+'2. السلاسل (Series)': {
+  AppLanguage.arabic: '2. السلاسل (Series)',
+  AppLanguage.french: '2. السلاسل (Series)',
+  AppLanguage.english: '2. السلاسل (Series)',
+},
+'3. المقاطع الهندسية (Sections)': {
+  AppLanguage.arabic: '3. المقاطع الهندسية (Sections)',
+  AppLanguage.french: '3. المقاطع الهندسية (Sections)',
+  AppLanguage.english: '3. المقاطع الهندسية (Sections)',
+},
+'Actif': {
+  AppLanguage.arabic: 'Actif',
+  AppLanguage.french: 'Actif',
+  AppLanguage.english: 'Actif',
+},
+'Add Product': {
+  AppLanguage.arabic: 'Add Product',
+  AppLanguage.french: 'Add Product',
+  AppLanguage.english: 'Add Product',
+},
+'Add Product Special': {
+  AppLanguage.arabic: 'Add Product Special',
+  AppLanguage.french: 'Add Product Special',
+  AppLanguage.english: 'Add Product Special',
+},
+'Address: ': {
+  AppLanguage.arabic: 'Address: ',
+  AppLanguage.french: 'Address: ',
+  AppLanguage.english: 'Address: ',
+},
+'Alge Eucalyptus': {
+  AppLanguage.arabic: 'Alge Eucalyptus',
+  AppLanguage.french: 'Alge Eucalyptus',
+  AppLanguage.english: 'Alge Eucalyptus',
+},
+'Cancel': {
+  AppLanguage.arabic: 'Cancel',
+  AppLanguage.french: 'Cancel',
+  AppLanguage.english: 'Cancel',
+},
+'Canceld': {
+  AppLanguage.arabic: 'Canceld',
+  AppLanguage.french: 'Canceld',
+  AppLanguage.english: 'Canceld',
+},
+'Client Details': {
+  AppLanguage.arabic: 'Client Details',
+  AppLanguage.french: 'Client Details',
+  AppLanguage.english: 'Client Details',
+},
+'Client Information': {
+  AppLanguage.arabic: 'Client Information',
+  AppLanguage.french: 'Client Information',
+  AppLanguage.english: 'Client Information',
+},
+'Client added': {
+  AppLanguage.arabic: 'Client added',
+  AppLanguage.french: 'Client added',
+  AppLanguage.english: 'Client added',
+},
+'Commande': {
+  AppLanguage.arabic: 'Commande',
+  AppLanguage.french: 'Commande',
+  AppLanguage.english: 'Commande',
+},
+'Confirmed': {
+  AppLanguage.arabic: 'Confirmed',
+  AppLanguage.french: 'Confirmed',
+  AppLanguage.english: 'Confirmed',
+},
+'Customers': {
+  AppLanguage.arabic: 'Customers',
+  AppLanguage.french: 'Customers',
+  AppLanguage.english: 'Customers',
+},
+'Delete': {
+  AppLanguage.arabic: 'Delete',
+  AppLanguage.french: 'Delete',
+  AppLanguage.english: 'Delete',
+},
+'Delete Profile': {
+  AppLanguage.arabic: 'Delete Profile',
+  AppLanguage.french: 'Delete Profile',
+  AppLanguage.english: 'Delete Profile',
+},
+'Delivered': {
+  AppLanguage.arabic: 'Delivered',
+  AppLanguage.french: 'Delivered',
+  AppLanguage.english: 'Delivered',
+},
+'Description': {
+  AppLanguage.arabic: 'Description',
+  AppLanguage.french: 'Description',
+  AppLanguage.english: 'Description',
+},
+'Error: ${asyncSnapshot.error}': {
+  AppLanguage.arabic: 'Error: ${asyncSnapshot.error}',
+  AppLanguage.french: 'Error: ${asyncSnapshot.error}',
+  AppLanguage.english: 'Error: ${asyncSnapshot.error}',
+},
+'Error: ${snapshot.error}': {
+  AppLanguage.arabic: 'Error: ${snapshot.error}',
+  AppLanguage.french: 'Error: ${snapshot.error}',
+  AppLanguage.english: 'Error: ${snapshot.error}',
+},
+'Fermer': {
+  AppLanguage.arabic: 'Fermer',
+  AppLanguage.french: 'Fermer',
+  AppLanguage.english: 'Fermer',
+},
+'Filters Commandes': {
+  AppLanguage.arabic: 'Filters Commandes',
+  AppLanguage.french: 'Filters Commandes',
+  AppLanguage.english: 'Filters Commandes',
+},
+'Finished': {
+  AppLanguage.arabic: 'Finished',
+  AppLanguage.french: 'Finished',
+  AppLanguage.english: 'Finished',
+},
+'Home': {
+  AppLanguage.arabic: 'Home',
+  AppLanguage.french: 'Home',
+  AppLanguage.english: 'Home',
+},
+'In Delivery': {
+  AppLanguage.arabic: 'In Delivery',
+  AppLanguage.french: 'In Delivery',
+  AppLanguage.english: 'In Delivery',
+},
+'In Instalation': {
+  AppLanguage.arabic: 'In Instalation',
+  AppLanguage.french: 'In Instalation',
+  AppLanguage.english: 'In Instalation',
+},
+'In Production': {
+  AppLanguage.arabic: 'In Production',
+  AppLanguage.french: 'In Production',
+  AppLanguage.english: 'In Production',
+},
+'Info': {
+  AppLanguage.arabic: 'Info',
+  AppLanguage.french: 'Info',
+  AppLanguage.english: 'Info',
+},
+'Informations de Conception': {
+  AppLanguage.arabic: 'Informations de Conception',
+  AppLanguage.french: 'Informations de Conception',
+  AppLanguage.english: 'Informations de Conception',
+},
+'Installation Completed': {
+  AppLanguage.arabic: 'Installation Completed',
+  AppLanguage.french: 'Installation Completed',
+  AppLanguage.english: 'Installation Completed',
+},
+'Menuisier Cuts': {
+  AppLanguage.arabic: 'Menuisier Cuts',
+  AppLanguage.french: 'Menuisier Cuts',
+  AppLanguage.english: 'Menuisier Cuts',
+},
+'New': {
+  AppLanguage.arabic: 'New',
+  AppLanguage.french: 'New',
+  AppLanguage.english: 'New',
+},
+'New Quotation': {
+  AppLanguage.arabic: 'New Quotation',
+  AppLanguage.french: 'New Quotation',
+  AppLanguage.english: 'New Quotation',
+},
+'No Clients': {
+  AppLanguage.arabic: 'No Clients',
+  AppLanguage.french: 'No Clients',
+  AppLanguage.english: 'No Clients',
+},
+'No Data': {
+  AppLanguage.arabic: 'No Data',
+  AppLanguage.french: 'No Data',
+  AppLanguage.english: 'No Data',
+},
+'Noralur': {
+  AppLanguage.arabic: 'Noralur',
+  AppLanguage.french: 'Noralur',
+  AppLanguage.english: 'Noralur',
+},
+'Orders By Status': {
+  AppLanguage.arabic: 'Orders By Status',
+  AppLanguage.french: 'Orders By Status',
+  AppLanguage.english: 'Orders By Status',
+},
+'Phone Numbers:': {
+  AppLanguage.arabic: 'Phone Numbers:',
+  AppLanguage.french: 'Phone Numbers:',
+  AppLanguage.english: 'Phone Numbers:',
+},
+'Please select a client': {
+  AppLanguage.arabic: 'Please select a client',
+  AppLanguage.french: 'Please select a client',
+  AppLanguage.english: 'Please select a client',
+},
+'Production Complete': {
+  AppLanguage.arabic: 'Production Complete',
+  AppLanguage.french: 'Production Complete',
+  AppLanguage.english: 'Production Complete',
+},
+'Profile added': {
+  AppLanguage.arabic: 'Profile added',
+  AppLanguage.french: 'Profile added',
+  AppLanguage.english: 'Profile added',
+},
+'Profile updated': {
+  AppLanguage.arabic: 'Profile updated',
+  AppLanguage.french: 'Profile updated',
+  AppLanguage.english: 'Profile updated',
+},
+'Rest of the order': {
+  AppLanguage.arabic: 'Rest of the order',
+  AppLanguage.french: 'Rest of the order',
+  AppLanguage.english: 'Rest of the order',
+},
+'Save': {
+  AppLanguage.arabic: 'Save',
+  AppLanguage.french: 'Save',
+  AppLanguage.english: 'Save',
+},
+'Select Client': {
+  AppLanguage.arabic: 'Select Client',
+  AppLanguage.french: 'Select Client',
+  AppLanguage.english: 'Select Client',
+},
+'System Roling': {
+  AppLanguage.arabic: 'System Roling',
+  AppLanguage.french: 'System Roling',
+  AppLanguage.english: 'System Roling',
+},
+'System Slidinge': {
+  AppLanguage.arabic: 'System Slidinge',
+  AppLanguage.french: 'System Slidinge',
+  AppLanguage.english: 'System Slidinge',
+},
+'Tax (Tva) :': {
+  AppLanguage.arabic: 'Tax (Tva) :',
+  AppLanguage.french: 'Tax (Tva) :',
+  AppLanguage.english: 'Tax (Tva) :',
+},
+'Total Orders': {
+  AppLanguage.arabic: 'Total Orders',
+  AppLanguage.french: 'Total Orders',
+  AppLanguage.english: 'Total Orders',
+},
+'Total Payments': {
+  AppLanguage.arabic: 'Total Payments',
+  AppLanguage.french: 'Total Payments',
+  AppLanguage.english: 'Total Payments',
+},
+'Totale Avec Tva :': {
+  AppLanguage.arabic: 'Totale Avec Tva :',
+  AppLanguage.french: 'Totale Avec Tva :',
+  AppLanguage.english: 'Totale Avec Tva :',
+},
+'Totale Sans Tva :': {
+  AppLanguage.arabic: 'Totale Sans Tva :',
+  AppLanguage.french: 'Totale Sans Tva :',
+  AppLanguage.english: 'Totale Sans Tva :',
+},
+'Your Clients :': {
+  AppLanguage.arabic: 'Your Clients :',
+  AppLanguage.french: 'Your Clients :',
+  AppLanguage.english: 'Your Clients :',
+},
+'إجمالي الفاتورة المستخرج': {
+  AppLanguage.arabic: 'إجمالي الفاتورة المستخرج',
+  AppLanguage.french: 'إجمالي الفاتورة المستخرج',
+  AppLanguage.english: 'إجمالي الفاتورة المستخرج',
+},
+'إدارة المشتريات (Achat)': {
+  AppLanguage.arabic: 'إدارة المشتريات (Achat)',
+  AppLanguage.french: 'إدارة المشتريات (Achat)',
+  AppLanguage.english: 'إدارة المشتريات (Achat)',
+},
+'إدارة كتالوجات الألمنيوم': {
+  AppLanguage.arabic: 'إدارة كتالوجات الألمنيوم',
+  AppLanguage.french: 'إدارة كتالوجات الألمنيوم',
+  AppLanguage.english: 'إدارة كتالوجات الألمنيوم',
+},
+'إضافة المقطع': {
+  AppLanguage.arabic: 'إضافة المقطع',
+  AppLanguage.french: 'إضافة المقطع',
+  AppLanguage.english: 'إضافة المقطع',
+},
+'إضافة سلسلة جديدة': {
+  AppLanguage.arabic: 'إضافة سلسلة جديدة',
+  AppLanguage.french: 'إضافة سلسلة جديدة',
+  AppLanguage.english: 'إضافة سلسلة جديدة',
+},
+'إضافة مقطع جديد': {
+  AppLanguage.arabic: 'إضافة مقطع جديد',
+  AppLanguage.french: 'إضافة مقطع جديد',
+  AppLanguage.english: 'إضافة مقطع جديد',
+},
+'إضافة مقطع جديد للكتالوج المعتمد': {
+  AppLanguage.arabic: 'إضافة مقطع جديد للكتالوج المعتمد',
+  AppLanguage.french: 'إضافة مقطع جديد للكتالوج المعتمد',
+  AppLanguage.english: 'إضافة مقطع جديد للكتالوج المعتمد',
+},
+'إضافة نظام ألمنيوم جديد': {
+  AppLanguage.arabic: 'إضافة نظام ألمنيوم جديد',
+  AppLanguage.french: 'إضافة نظام ألمنيوم جديد',
+  AppLanguage.english: 'إضافة نظام ألمنيوم جديد',
+},
+'إطار سفلي': {
+  AppLanguage.arabic: 'إطار سفلي',
+  AppLanguage.french: 'إطار سفلي',
+  AppLanguage.english: 'إطار سفلي',
+},
+'إلغاء': {
+  AppLanguage.arabic: 'إلغاء',
+  AppLanguage.french: 'إلغاء',
+  AppLanguage.english: 'إلغاء',
+},
+'إلغاء الشراء': {
+  AppLanguage.arabic: 'إلغاء الشراء',
+  AppLanguage.french: 'إلغاء الشراء',
+  AppLanguage.english: 'إلغاء الشراء',
+},
+'إنشاء مقطع جديد': {
+  AppLanguage.arabic: 'إنشاء مقطع جديد',
+  AppLanguage.french: 'إنشاء مقطع جديد',
+  AppLanguage.english: 'إنشاء مقطع جديد',
+},
+'اختر السلسلة': {
+  AppLanguage.arabic: 'اختر السلسلة',
+  AppLanguage.french: 'اختر السلسلة',
+  AppLanguage.english: 'اختر السلسلة',
+},
+'اختر سلسلة لعرض مقاطعها': {
+  AppLanguage.arabic: 'اختر سلسلة لعرض مقاطعها',
+  AppLanguage.french: 'اختر سلسلة لعرض مقاطعها',
+  AppLanguage.english: 'اختر سلسلة لعرض مقاطعها',
+},
+'اختر نظام العمل': {
+  AppLanguage.arabic: 'اختر نظام العمل',
+  AppLanguage.french: 'اختر نظام العمل',
+  AppLanguage.english: 'اختر نظام العمل',
+},
+'اختر نظاماً أولاً': {
+  AppLanguage.arabic: 'اختر نظاماً أولاً',
+  AppLanguage.french: 'اختر نظاماً أولاً',
+  AppLanguage.english: 'اختر نظاماً أولاً',
+},
+'اختيار صورة من المعرض': {
+  AppLanguage.arabic: 'اختيار صورة من المعرض',
+  AppLanguage.french: 'اختيار صورة من المعرض',
+  AppLanguage.english: 'اختيار صورة من المعرض',
+},
+'استيراد الفاتورة بالذكاء الاصطناعي': {
+  AppLanguage.arabic: 'استيراد الفاتورة بالذكاء الاصطناعي',
+  AppLanguage.french: 'استيراد الفاتورة بالذكاء الاصطناعي',
+  AppLanguage.english: 'استيراد الفاتورة بالذكاء الاصطناعي',
+},
+'اضغط هنا للتصوير بالكاميرا أو اختيار الفاتورة': {
+  AppLanguage.arabic: 'اضغط هنا للتصوير بالكاميرا أو اختيار الفاتورة',
+  AppLanguage.french: 'اضغط هنا للتصوير بالكاميرا أو اختيار الفاتورة',
+  AppLanguage.english: 'اضغط هنا للتصوير بالكاميرا أو اختيار الفاتورة',
+},
+'اعتماد وحفظ': {
+  AppLanguage.arabic: 'اعتماد وحفظ',
+  AppLanguage.french: 'اعتماد وحفظ',
+  AppLanguage.english: 'اعتماد وحفظ',
+},
+'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:': {
+  AppLanguage.arabic: 'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:',
+  AppLanguage.french: 'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:',
+  AppLanguage.english: 'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:',
+},
+'التصوير بالكاميرا فوراً': {
+  AppLanguage.arabic: 'التصوير بالكاميرا فوراً',
+  AppLanguage.french: 'التصوير بالكاميرا فوراً',
+  AppLanguage.english: 'التصوير بالكاميرا فوراً',
+},
+'الجوانب:': {
+  AppLanguage.arabic: 'الجوانب:',
+  AppLanguage.french: 'الجوانب:',
+  AppLanguage.english: 'الجوانب:',
+},
+'الحد الأقصى المسموح: ${maxAllowed.toInt()} mm': {
+  AppLanguage.arabic: 'الحد الأقصى المسموح: ${maxAllowed.toInt()} mm',
+  AppLanguage.french: 'الحد الأقصى المسموح: ${maxAllowed.toInt()} mm',
+  AppLanguage.english: 'الحد الأقصى المسموح: ${maxAllowed.toInt()} mm',
+},
+'الذكاء الاصطناعي لم يجد مقطعاً مطابقاً تماماً في الكتالوج الحالي. ماذا تريد أن تفعل؟': {
+  AppLanguage.arabic: 'الذكاء الاصطناعي لم يجد مقطعاً مطابقاً تماماً في الكتالوج الحالي. ماذا تريد أن تفعل؟',
+  AppLanguage.french: 'الذكاء الاصطناعي لم يجد مقطعاً مطابقاً تماماً في الكتالوج الحالي. ماذا تريد أن تفعل؟',
+  AppLanguage.english: 'الذكاء الاصطناعي لم يجد مقطعاً مطابقاً تماماً في الكتالوج الحالي. ماذا تريد أن تفعل؟',
+},
+'الذكاء الاصطناعي متاح مجاناً للمعاينة': {
+  AppLanguage.arabic: 'الذكاء الاصطناعي متاح مجاناً للمعاينة',
+  AppLanguage.french: 'الذكاء الاصطناعي متاح مجاناً للمعاينة',
+  AppLanguage.english: 'الذكاء الاصطناعي متاح مجاناً للمعاينة',
+},
+'الرجاء التأكد من وجود "سلسلة" واحدة على الأقل في الكتالوج لكي تنشئ مقطعاً بداخلها.': {
+  AppLanguage.arabic: 'الرجاء التأكد من وجود "سلسلة" واحدة على الأقل في الكتالوج لكي تنشئ مقطعاً بداخلها.',
+  AppLanguage.french: 'الرجاء التأكد من وجود "سلسلة" واحدة على الأقل في الكتالوج لكي تنشئ مقطعاً بداخلها.',
+  AppLanguage.english: 'الرجاء التأكد من وجود "سلسلة" واحدة على الأقل في الكتالوج لكي تنشئ مقطعاً بداخلها.',
+},
+'القيمة الإجمالية': {
+  AppLanguage.arabic: 'القيمة الإجمالية',
+  AppLanguage.french: 'القيمة الإجمالية',
+  AppLanguage.english: 'القيمة الإجمالية',
+},
+'الكود المستخرج: ${item.itemCode.isEmpty ? "لا يوجد" : item.itemCode} | الكمية: ${item.quantity} | السعر: ${item.price} دج': {
+  AppLanguage.arabic: 'الكود المستخرج: ${item.itemCode.isEmpty ? "لا يوجد" : item.itemCode} | الكمية: ${item.quantity} | السعر: ${item.price} دج',
+  AppLanguage.french: 'الكود المستخرج: ${item.itemCode.isEmpty ? "لا يوجد" : item.itemCode} | الكمية: ${item.quantity} | السعر: ${item.price} دج',
+  AppLanguage.english: 'الكود المستخرج: ${item.itemCode.isEmpty ? "لا يوجد" : item.itemCode} | الكمية: ${item.quantity} | السعر: ${item.price} دج',
+},
+'اللون (لستوب سول):': {
+  AppLanguage.arabic: 'اللون (لستوب سول):',
+  AppLanguage.french: 'اللون (لستوب سول):',
+  AppLanguage.english: 'اللون (لستوب سول):',
+},
+'المعالجة:': {
+  AppLanguage.arabic: 'المعالجة:',
+  AppLanguage.french: 'المعالجة:',
+  AppLanguage.english: 'المعالجة:',
+},
+'المواد:': {
+  AppLanguage.arabic: 'المواد:',
+  AppLanguage.french: 'المواد:',
+  AppLanguage.english: 'المواد:',
+},
+'النظام الفرنسي - System Francer': {
+  AppLanguage.arabic: 'النظام الفرنسي - System Francer',
+  AppLanguage.french: 'النظام الفرنسي - System Francer',
+  AppLanguage.english: 'النظام الفرنسي - System Francer',
+},
+'النوع: ${sec[': {
+  AppLanguage.arabic: 'النوع: ${sec[',
+  AppLanguage.french: 'النوع: ${sec[',
+  AppLanguage.english: 'النوع: ${sec[',
+},
+'انقر على "فاتورة جديدة" لإضافة فاتورة واردة.': {
+  AppLanguage.arabic: 'انقر على "فاتورة جديدة" لإضافة فاتورة واردة.',
+  AppLanguage.french: 'انقر على "فاتورة جديدة" لإضافة فاتورة واردة.',
+  AppLanguage.english: 'انقر على "فاتورة جديدة" لإضافة فاتورة واردة.',
+},
+'باغيت (Parclose)': {
+  AppLanguage.arabic: 'باغيت (Parclose)',
+  AppLanguage.french: 'باغيت (Parclose)',
+  AppLanguage.english: 'باغيت (Parclose)',
+},
+'باغيت زجاج (Parclose)': {
+  AppLanguage.arabic: 'باغيت زجاج (Parclose)',
+  AppLanguage.french: 'باغيت زجاج (Parclose)',
+  AppLanguage.english: 'باغيت زجاج (Parclose)',
+},
+'بانوا': {
+  AppLanguage.arabic: 'بانوا',
+  AppLanguage.french: 'بانوا',
+  AppLanguage.english: 'بانوا',
+},
+'تأكيد إلغاء الشراء': {
+  AppLanguage.arabic: 'تأكيد إلغاء الشراء',
+  AppLanguage.french: 'تأكيد إلغاء الشراء',
+  AppLanguage.english: 'تأكيد إلغاء الشراء',
+},
+'تأكيد الإلغاء': {
+  AppLanguage.arabic: 'تأكيد الإلغاء',
+  AppLanguage.french: 'تأكيد الإلغاء',
+  AppLanguage.english: 'تأكيد الإلغاء',
+},
+'تاريخ التسجيل': {
+  AppLanguage.arabic: 'تاريخ التسجيل',
+  AppLanguage.french: 'تاريخ التسجيل',
+  AppLanguage.english: 'تاريخ التسجيل',
+},
+'تاريخ الفاتورة': {
+  AppLanguage.arabic: 'تاريخ الفاتورة',
+  AppLanguage.french: 'تاريخ الفاتورة',
+  AppLanguage.english: 'تاريخ الفاتورة',
+},
+'تجاهل هذه السلعة': {
+  AppLanguage.arabic: 'تجاهل هذه السلعة',
+  AppLanguage.french: 'تجاهل هذه السلعة',
+  AppLanguage.english: 'تجاهل هذه السلعة',
+},
+'تراجع': {
+  AppLanguage.arabic: 'تراجع',
+  AppLanguage.french: 'تراجع',
+  AppLanguage.english: 'تراجع',
+},
+'تسجيل فاتورة مشتريات جديدة': {
+  AppLanguage.arabic: 'تسجيل فاتورة مشتريات جديدة',
+  AppLanguage.french: 'تسجيل فاتورة مشتريات جديدة',
+  AppLanguage.english: 'تسجيل فاتورة مشتريات جديدة',
+},
+'تصدير ملف الكميات': {
+  AppLanguage.arabic: 'تصدير ملف الكميات',
+  AppLanguage.french: 'تصدير ملف الكميات',
+  AppLanguage.english: 'تصدير ملف الكميات',
+},
+'تصميم النوافذ': {
+  AppLanguage.arabic: 'تصميم النوافذ',
+  AppLanguage.french: 'تصميم النوافذ',
+  AppLanguage.english: 'تصميم النوافذ',
+},
+'تصوير أو رفع فاتورة الشراء': {
+  AppLanguage.arabic: 'تصوير أو رفع فاتورة الشراء',
+  AppLanguage.french: 'تصوير أو رفع فاتورة الشراء',
+  AppLanguage.english: 'تصوير أو رفع فاتورة الشراء',
+},
+'تطبيق': {
+  AppLanguage.arabic: 'تطبيق',
+  AppLanguage.french: 'تطبيق',
+  AppLanguage.english: 'تطبيق',
+},
+'تعديل المطابقة': {
+  AppLanguage.arabic: 'تعديل المطابقة',
+  AppLanguage.french: 'تعديل المطابقة',
+  AppLanguage.english: 'تعديل المطابقة',
+},
+'تعديل بيانات النظام': {
+  AppLanguage.arabic: 'تعديل بيانات النظام',
+  AppLanguage.french: 'تعديل بيانات النظام',
+  AppLanguage.english: 'تعديل بيانات النظام',
+},
+'تفعيل الأغطية الجانبية (المستطيل الكبير):': {
+  AppLanguage.arabic: 'تفعيل الأغطية الجانبية (المستطيل الكبير):',
+  AppLanguage.french: 'تفعيل الأغطية الجانبية (المستطيل الكبير):',
+  AppLanguage.english: 'تفعيل الأغطية الجانبية (المستطيل الكبير):',
+},
+'تقسيم متساوي (عدد القطع)': {
+  AppLanguage.arabic: 'تقسيم متساوي (عدد القطع)',
+  AppLanguage.french: 'تقسيم متساوي (عدد القطع)',
+  AppLanguage.english: 'تقسيم متساوي (عدد القطع)',
+},
+'تقسيم:': {
+  AppLanguage.arabic: 'تقسيم:',
+  AppLanguage.french: 'تقسيم:',
+  AppLanguage.english: 'تقسيم:',
+},
+'تم إلغاء فاتورة الشراء بنجاح': {
+  AppLanguage.arabic: 'تم إلغاء فاتورة الشراء بنجاح',
+  AppLanguage.french: 'تم إلغاء فاتورة الشراء بنجاح',
+  AppLanguage.english: 'تم إلغاء فاتورة الشراء بنجاح',
+},
+'تم استيراد وحفظ فاتورة المشتريات ومطابقة السلع بنجاح تام': {
+  AppLanguage.arabic: 'تم استيراد وحفظ فاتورة المشتريات ومطابقة السلع بنجاح تام',
+  AppLanguage.french: 'تم استيراد وحفظ فاتورة المشتريات ومطابقة السلع بنجاح تام',
+  AppLanguage.english: 'تم استيراد وحفظ فاتورة المشتريات ومطابقة السلع بنجاح تام',
+},
+'تم تسجيل الفاتورة بنجاح': {
+  AppLanguage.arabic: 'تم تسجيل الفاتورة بنجاح',
+  AppLanguage.french: 'تم تسجيل الفاتورة بنجاح',
+  AppLanguage.english: 'تم تسجيل الفاتورة بنجاح',
+},
+'تم حذف الفاتورة نهائياً': {
+  AppLanguage.arabic: 'تم حذف الفاتورة نهائياً',
+  AppLanguage.french: 'تم حذف الفاتورة نهائياً',
+  AppLanguage.english: 'تم حذف الفاتورة نهائياً',
+},
+'تم حفظ تقرير السلع بنجاح': {
+  AppLanguage.arabic: 'تم حفظ تقرير السلع بنجاح',
+  AppLanguage.french: 'تم حفظ تقرير السلع بنجاح',
+  AppLanguage.english: 'تم حفظ تقرير السلع بنجاح',
+},
+'تيار / تقسيم (Mullion)': {
+  AppLanguage.arabic: 'تيار / تقسيم (Mullion)',
+  AppLanguage.french: 'تيار / تقسيم (Mullion)',
+  AppLanguage.english: 'تيار / تقسيم (Mullion)',
+},
+'جاري تحليل الفاتورة بالذكاء الاصطناعي...': {
+  AppLanguage.arabic: 'جاري تحليل الفاتورة بالذكاء الاصطناعي...',
+  AppLanguage.french: 'جاري تحليل الفاتورة بالذكاء الاصطناعي...',
+  AppLanguage.english: 'جاري تحليل الفاتورة بالذكاء الاصطناعي...',
+},
+'حدث خطأ أثناء حفظ الفاتورة: $e': {
+  AppLanguage.arabic: 'حدث خطأ أثناء حفظ الفاتورة: $e',
+  AppLanguage.french: 'حدث خطأ أثناء حفظ الفاتورة: $e',
+  AppLanguage.english: 'حدث خطأ أثناء حفظ الفاتورة: $e',
+},
+'حدث خطأ أثناء معالجة الفاتورة بالـ AI: $e': {
+  AppLanguage.arabic: 'حدث خطأ أثناء معالجة الفاتورة بالـ AI: $e',
+  AppLanguage.french: 'حدث خطأ أثناء معالجة الفاتورة بالـ AI: $e',
+  AppLanguage.english: 'حدث خطأ أثناء معالجة الفاتورة بالـ AI: $e',
+},
+'حدث خطأ: ${snapshot.error}': {
+  AppLanguage.arabic: 'حدث خطأ: ${snapshot.error}',
+  AppLanguage.french: 'حدث خطأ: ${snapshot.error}',
+  AppLanguage.english: 'حدث خطأ: ${snapshot.error}',
+},
+'حدد نوع النافذة للبدء في الحسابات': {
+  AppLanguage.arabic: 'حدد نوع النافذة للبدء في الحسابات',
+  AppLanguage.french: 'حدد نوع النافذة للبدء في الحسابات',
+  AppLanguage.english: 'حدد نوع النافذة للبدء في الحسابات',
+},
+'حذف نهائي': {
+  AppLanguage.arabic: 'حذف نهائي',
+  AppLanguage.french: 'حذف نهائي',
+  AppLanguage.english: 'حذف نهائي',
+},
+'حذف نهائي للفاتورة': {
+  AppLanguage.arabic: 'حذف نهائي للفاتورة',
+  AppLanguage.french: 'حذف نهائي للفاتورة',
+  AppLanguage.english: 'حذف نهائي للفاتورة',
+},
+'حساب التقطيع (Calculate)': {
+  AppLanguage.arabic: 'حساب التقطيع (Calculate)',
+  AppLanguage.french: 'حساب التقطيع (Calculate)',
+  AppLanguage.english: 'حساب التقطيع (Calculate)',
+},
+'حساب الكميات والسلع': {
+  AppLanguage.arabic: 'حساب الكميات والسلع',
+  AppLanguage.french: 'حساب الكميات والسلع',
+  AppLanguage.english: 'حساب الكميات والسلع',
+},
+'حفظ': {
+  AppLanguage.arabic: 'حفظ',
+  AppLanguage.french: 'حفظ',
+  AppLanguage.english: 'حفظ',
+},
+'حفظ التعديل': {
+  AppLanguage.arabic: 'حفظ التعديل',
+  AppLanguage.french: 'حفظ التعديل',
+  AppLanguage.english: 'حفظ التعديل',
+},
+'حفظ وتسجيل': {
+  AppLanguage.arabic: 'حفظ وتسجيل',
+  AppLanguage.french: 'حفظ وتسجيل',
+  AppLanguage.english: 'حفظ وتسجيل',
+},
+'حلق خارجي (Frame)': {
+  AppLanguage.arabic: 'حلق خارجي (Frame)',
+  AppLanguage.french: 'حلق خارجي (Frame)',
+  AppLanguage.english: 'حلق خارجي (Frame)',
+},
+'خصائص الزجاج': {
+  AppLanguage.arabic: 'خصائص الزجاج',
+  AppLanguage.french: 'خصائص الزجاج',
+  AppLanguage.english: 'خصائص الزجاج',
+},
+'ربط السلعة بمقطع موجود': {
+  AppLanguage.arabic: 'ربط السلعة بمقطع موجود',
+  AppLanguage.french: 'ربط السلعة بمقطع موجود',
+  AppLanguage.english: 'ربط السلعة بمقطع موجود',
+},
+'ربط بمقطع موجود': {
+  AppLanguage.arabic: 'ربط بمقطع موجود',
+  AppLanguage.french: 'ربط بمقطع موجود',
+  AppLanguage.english: 'ربط بمقطع موجود',
+},
+'ستار (Volet)': {
+  AppLanguage.arabic: 'ستار (Volet)',
+  AppLanguage.french: 'ستار (Volet)',
+  AppLanguage.english: 'ستار (Volet)',
+},
+'سلسلة جديدة': {
+  AppLanguage.arabic: 'سلسلة جديدة',
+  AppLanguage.french: 'سلسلة جديدة',
+  AppLanguage.english: 'سلسلة جديدة',
+},
+'سماكة: ${sec[': {
+  AppLanguage.arabic: 'سماكة: ${sec[',
+  AppLanguage.french: 'سماكة: ${sec[',
+  AppLanguage.english: 'سماكة: ${sec[',
+},
+'سيتم إنشاؤه كمقطع جديد بكود: ${data[': {
+  AppLanguage.arabic: 'سيتم إنشاؤه كمقطع جديد بكود: ${data[',
+  AppLanguage.french: 'سيتم إنشاؤه كمقطع جديد بكود: ${data[',
+  AppLanguage.english: 'سيتم إنشاؤه كمقطع جديد بكود: ${data[',
+},
+'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.': {
+  AppLanguage.arabic: 'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.',
+  AppLanguage.french: 'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.',
+  AppLanguage.english: 'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.',
+},
+'ضلفة (Sash)': {
+  AppLanguage.arabic: 'ضلفة (Sash)',
+  AppLanguage.french: 'ضلفة (Sash)',
+  AppLanguage.english: 'ضلفة (Sash)',
+},
+'فاتورة جديدة': {
+  AppLanguage.arabic: 'فاتورة جديدة',
+  AppLanguage.french: 'فاتورة جديدة',
+  AppLanguage.english: 'فاتورة جديدة',
+},
+'فاتورة رقم: $invoiceNumber': {
+  AppLanguage.arabic: 'فاتورة رقم: $invoiceNumber',
+  AppLanguage.french: 'فاتورة رقم: $invoiceNumber',
+  AppLanguage.english: 'فاتورة رقم: $invoiceNumber',
+},
+'فاتورة رقم: ${_extractedInvoice!.invoiceNumber}': {
+  AppLanguage.arabic: 'فاتورة رقم: ${_extractedInvoice!.invoiceNumber}',
+  AppLanguage.french: 'فاتورة رقم: ${_extractedInvoice!.invoiceNumber}',
+  AppLanguage.english: 'فاتورة رقم: ${_extractedInvoice!.invoiceNumber}',
+},
+'فحص الفواتير بالذكاء الاصطناعي': {
+  AppLanguage.arabic: 'فحص الفواتير بالذكاء الاصطناعي',
+  AppLanguage.french: 'فحص الفواتير بالذكاء الاصطناعي',
+  AppLanguage.english: 'فحص الفواتير بالذكاء الاصطناعي',
+},
+'فواتير الشراء المستوردة': {
+  AppLanguage.arabic: 'فواتير الشراء المستوردة',
+  AppLanguage.french: 'فواتير الشراء المستوردة',
+  AppLanguage.english: 'فواتير الشراء المستوردة',
+},
+'قياس مخصص (للفراغ)': {
+  AppLanguage.arabic: 'قياس مخصص (للفراغ)',
+  AppLanguage.french: 'قياس مخصص (للفراغ)',
+  AppLanguage.english: 'قياس مخصص (للفراغ)',
+},
+'لا توجد تفاصيل إضافية': {
+  AppLanguage.arabic: 'لا توجد تفاصيل إضافية',
+  AppLanguage.french: 'لا توجد تفاصيل إضافية',
+  AppLanguage.english: 'لا توجد تفاصيل إضافية',
+},
+'لا توجد فواتير مشتريات مسجلة': {
+  AppLanguage.arabic: 'لا توجد فواتير مشتريات مسجلة',
+  AppLanguage.french: 'لا توجد فواتير مشتريات مسجلة',
+  AppLanguage.english: 'لا توجد فواتير مشتريات مسجلة',
+},
+'لا توجد مقاطع بالكتالوج حالياً.': {
+  AppLanguage.arabic: 'لا توجد مقاطع بالكتالوج حالياً.',
+  AppLanguage.french: 'لا توجد مقاطع بالكتالوج حالياً.',
+  AppLanguage.english: 'لا توجد مقاطع بالكتالوج حالياً.',
+},
+'لون الألمنيوم': {
+  AppLanguage.arabic: 'لون الألمنيوم',
+  AppLanguage.french: 'لون الألمنيوم',
+  AppLanguage.english: 'لون الألمنيوم',
+},
+'مرتبط بالمقطع: ${sec[': {
+  AppLanguage.arabic: 'مرتبط بالمقطع: ${sec[',
+  AppLanguage.french: 'مرتبط بالمقطع: ${sec[',
+  AppLanguage.english: 'مرتبط بالمقطع: ${sec[',
+},
+'مزدوج': {
+  AppLanguage.arabic: 'مزدوج',
+  AppLanguage.french: 'مزدوج',
+  AppLanguage.english: 'مزدوج',
+},
+'مطابقة وفحص السلع المستوردة': {
+  AppLanguage.arabic: 'مطابقة وفحص السلع المستوردة',
+  AppLanguage.french: 'مطابقة وفحص السلع المستوردة',
+  AppLanguage.english: 'مطابقة وفحص السلع المستوردة',
+},
+'مفرد': {
+  AppLanguage.arabic: 'مفرد',
+  AppLanguage.french: 'مفرد',
+  AppLanguage.english: 'مفرد',
+},
+'من: ': {
+  AppLanguage.arabic: 'من: ',
+  AppLanguage.french: 'من: ',
+  AppLanguage.english: 'من: ',
+},
+'نافذة ضلفة مزدوجة (Double Ouvante)': {
+  AppLanguage.arabic: 'نافذة ضلفة مزدوجة (Double Ouvante)',
+  AppLanguage.french: 'نافذة ضلفة مزدوجة (Double Ouvante)',
+  AppLanguage.english: 'نافذة ضلفة مزدوجة (Double Ouvante)',
+},
+'نظام الورشة - اختيار النظام': {
+  AppLanguage.arabic: 'نظام الورشة - اختيار النظام',
+  AppLanguage.french: 'نظام الورشة - اختيار النظام',
+  AppLanguage.english: 'نظام الورشة - اختيار النظام',
+},
+'نظام جديد': {
+  AppLanguage.arabic: 'نظام جديد',
+  AppLanguage.french: 'نظام جديد',
+  AppLanguage.english: 'نظام جديد',
+},
+'نوع البانو:': {
+  AppLanguage.arabic: 'نوع البانو:',
+  AppLanguage.french: 'نوع البانو:',
+  AppLanguage.english: 'نوع البانو:',
+},
+'نوع الزجاج:': {
+  AppLanguage.arabic: 'نوع الزجاج:',
+  AppLanguage.french: 'نوع الزجاج:',
+  AppLanguage.english: 'نوع الزجاج:',
+},
+'نوع المنطقة:': {
+  AppLanguage.arabic: 'نوع المنطقة:',
+  AppLanguage.french: 'نوع المنطقة:',
+  AppLanguage.english: 'نوع المنطقة:',
+},
+'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: $invoiceNumber؟ \nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.': {
+  AppLanguage.arabic: 'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: $invoiceNumber؟ \nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.',
+  AppLanguage.french: 'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: $invoiceNumber؟ \nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.',
+  AppLanguage.english: 'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: $invoiceNumber؟ \nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.',
+},
+'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: $invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.': {
+  AppLanguage.arabic: 'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: $invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.',
+  AppLanguage.french: 'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: $invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.',
+  AppLanguage.english: 'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: $invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.',
+},
+'هيكلية الزجاج:': {
+  AppLanguage.arabic: 'هيكلية الزجاج:',
+  AppLanguage.french: 'هيكلية الزجاج:',
+  AppLanguage.english: 'هيكلية الزجاج:',
+},
+'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.': {
+  AppLanguage.arabic: 'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.',
+  AppLanguage.french: 'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.',
+  AppLanguage.english: 'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.',
+},
