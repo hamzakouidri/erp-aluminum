@@ -292,35 +292,46 @@ class _CommandePageState extends State<CommandePage> {
                 if (settings.costMethod == CostMethod.percentage) {
                   total = rawTotal * (1 + settings.profitMargin / 100);
                 }
-                
-                int commandeId = await widget.db.insertCommande(
-                  int.parse(selectedClient!),
-                  "Pending",
-                  controller.text,
-                  0.0,
-                  0.0,
-                  total,
-                  advancePayment: 0.0,
-                );
-                
-                for (var p in addedProducts) {
-                  await widget.db.insertCommandeDetail(
-                    idCommande: commandeId,
-                    largeur: p.width,
-                    hauteur: p.height,
-                    windowType: p.zones.any((z) => z.content == ZoneContent.doubleSash) ? 'Double Sash' : 'Single Sash',
-                    partitionsJson: '{}', // Can be replaced with actual json serialization if needed
-                    price: p.totalCost,
-                    color: p.frameColor.toString().split('.').last,
-                    glass: p.zones.isNotEmpty && p.zones.first.glass.structure == GlassStructure.double ? 'Double' : 'Single',
-                    volet: p.hasShutter ? 'Yes' : 'No',
+
+                try {
+                  int commandeId = await widget.db.insertCommande(
+                    int.parse(selectedClient!),
+                    "Pending",
+                    controller.text,
+                    0.0,
+                    0.0,
+                    total,
+                    advancePayment: 0.0,
+                  );
+
+                  for (var p in addedProducts) {
+                    await widget.db.insertCommandeDetail(
+                      idCommande: commandeId,
+                      largeur: p.width,
+                      hauteur: p.height,
+                      windowType: p.zones.any((z) => z.content == ZoneContent.doubleSash) ? 'Double Sash' : 'Single Sash',
+                      partitionsJson: '{}', // Can be replaced with actual json serialization if needed
+                      price: p.totalCost,
+                      color: p.frameColor.toString().split('.').last,
+                      glass: p.zones.isNotEmpty && p.zones.first.glass.structure == GlassStructure.double ? 'Double' : 'Single',
+                      volet: p.hasShutter ? 'Yes' : 'No',
+                    );
+                  }
+
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(Localization.translate("Saved successfully!", Provider.of<AppSettingsProvider>(context, listen: false).language))),
+                  );
+                  Navigator.pop(context);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: Colors.red,
+                      content: Text('${Localization.translate("Error saving", Provider.of<AppSettingsProvider>(context, listen: false).language)}: $e'),
+                    ),
                   );
                 }
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(Localization.translate("Saved successfully!", Provider.of<AppSettingsProvider>(context, listen: false).language))),
-                );
-                Navigator.pop(context);
               },
               icon: Icon(Icons.save, color: Colors.white),
               label: Text(Localization.translate("Save", Provider.of<AppSettingsProvider>(context).language),

@@ -1305,7 +1305,7 @@ class SqlDatabase {
       'window_type': windowType,
       'partitions_json': partitionsJson,
       'game': game,
-      'qty': qty,
+      'quantity': qty,
       'glass': glass,
       'color': color,
       'volet': volet,
