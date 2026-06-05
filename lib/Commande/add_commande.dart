@@ -21,6 +21,7 @@ class CommandePage extends StatefulWidget {
 
 class _CommandePageState extends State<CommandePage> {
   String? selectedClient;
+  int? selectedClientId;
 
   TextEditingController clientController = TextEditingController();
   TextEditingController quoteDateController = TextEditingController();
@@ -74,15 +75,16 @@ class _CommandePageState extends State<CommandePage> {
               icon: Icons.person,
               suffix: Icons.search,
               onTap: () async {
-                final result = await showDialog<String>(
+                final result = await showDialog<Map<String, dynamic>>(
                   context: context,
                   builder: (context) => ClientDropdownDialog(db: widget.db),
                 );
 
                 if (result != null) {
                   setState(() {
-                    selectedClient = result;
-                    clientController.text = result;
+                    selectedClientId = result['id'] as int;
+                    selectedClient = result['name'] as String;
+                    clientController.text = result['name'] as String;
                   });
                 }
               },
@@ -279,7 +281,7 @@ class _CommandePageState extends State<CommandePage> {
                 ),
               ),
               onPressed: () async {
-                if (selectedClient == null || addedProducts.isEmpty) {
+                if (selectedClientId == null || addedProducts.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(Localization.translate("Please select a client and add products", Provider.of<AppSettingsProvider>(context, listen: false).language))),
                   );
@@ -295,7 +297,7 @@ class _CommandePageState extends State<CommandePage> {
 
                 try {
                   int commandeId = await widget.db.insertCommande(
-                    int.parse(selectedClient!),
+                    selectedClientId!,
                     "Pending",
                     controller.text,
                     0.0,
@@ -764,7 +766,10 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
                           onTap: () {
                             Navigator.pop(
                               context,
-                              "${c['firstname']} ${c['lastname']}",
+                              {
+                                'id': c['id'],
+                                'name': "${c['firstname']} ${c['lastname']}",
+                              },
                             );
                           },
                         );

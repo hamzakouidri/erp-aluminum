@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/cutting_calculator.dart';
-import 'package:database_data/Commande/Systeme/material_consumption_screen.dart';
-import 'package:database_data/Commande/Systeme/cost_summary_screen.dart';
 
 class WindowView extends StatefulWidget {
   final WindowModel model;
@@ -2132,78 +2130,6 @@ class _WindowViewState extends State<WindowView> {
                                 fontSize: 15,
                                 color: Colors.white,
                               ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                            ),
-                            onPressed: () {
-                              final activeSeries = widget.model.activeSeries;
-                              AluminumProfileSystem? activeProfileSystem;
-                              if (activeSeries != null) {
-                                for (var sys in widget.model.availableSystems) {
-                                  if (sys.series.any(
-                                    (s) => s.id == activeSeries.id,
-                                  )) {
-                                    activeProfileSystem = sys;
-                                    break;
-                                  }
-                                }
-                              }
-
-                              String profileName =
-                                  activeProfileSystem?.name.toLowerCase() ?? '';
-                              String seriesName =
-                                  activeSeries?.name.toLowerCase() ?? '';
-
-                              bool isProluxe =
-                                  profileName.contains('proluxe') ||
-                                  profileName.contains('برولوكس') ||
-                                  profileName.contains('بروليكس');
-                              bool is60 = seriesName.contains('60');
-
-                              if (isProluxe && is60) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        MaterialConsumptionScreen(
-                                          model: widget.model,
-                                        ),
-                                  ),
-                                ).then((res) {
-                                  if (res != null) {
-                                    Navigator.pop(context, widget.model);
-                                  }
-                                });
-                              } else {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        CostSummaryScreen(
-                                          model: widget.model,
-                                        ),
-                                  ),
-                                ).then((res) {
-                                  if (res != null) {
-                                    Navigator.pop(context, widget.model);
-                                  }
-                                });
-                              }
-                            },
-                            child: const Text(
-                              'الكمية المستهلكة (التكلفة)',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.white,
-                              ),
-                              textAlign: TextAlign.center,
                             ),
                           ),
                         ),
