@@ -332,7 +332,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         final model = _makeModel(w: 1000, h: 300);
         model.isCaissonTunnel = true;
         model.isReplaced = false;
-        model.manualNameOverride = 'كيسون النفق (Caisson Tunnel)';
+        model.manualNameOverride = 'Caisson Tunnel';
         model.description = 'الكيت: ${caissonResult['kitType']} | بارات كيسون: $cBars (6م) | أغطية سفلية: $bBars (6م) | أغطية جانبية: $pairs زوج';
         model.quantity = 1;
         model.caissonPayload = caissonResult;

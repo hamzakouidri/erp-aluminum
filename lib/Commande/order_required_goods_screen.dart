@@ -662,7 +662,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       case 'shutter':
         return '🎛️ مكونات الستارة';
       case 'caisson_tunnel':
-        return '📦 كيسون النفق (Caisson Tunnel)';
+        return '📦 Caisson Tunnel';
       case 'accessory':
         return '🔩 الإكسسوارات';
       default:

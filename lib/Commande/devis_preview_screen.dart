@@ -1092,7 +1092,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Widget _buildItemImage(DevisLineItem item) {
     final path = item.imagePath;
 
-    if (item.title.contains('Caisson Tunnel') || item.title.contains('كيسون النفق') || (path != null && path.contains('caisson_tunnel'))) {
+    if (item.title.contains('Caisson Tunnel') || item.title.contains('Caisson Tunnel') || (path != null && path.contains('caisson_tunnel'))) {
       return Container(
         decoration: BoxDecoration(
           color: Colors.grey.shade50,

@@ -5076,8 +5076,8 @@ This action cannot be undone!''',
     AppLanguage.french: 'Verrou central',
     AppLanguage.english: 'Central lock',
   },
-  'ارتفاع صندوق النفق (Hauteur Tunnel):': {
-    AppLanguage.arabic: 'ارتفاع صندوق النفق (Hauteur Tunnel):',
+  'ارتفاع Caisson Tunnel (Hauteur Tunnel):': {
+    AppLanguage.arabic: 'ارتفاع Caisson Tunnel (Hauteur Tunnel):',
     AppLanguage.french: 'Hauteur coffre tunnel :',
     AppLanguage.english: 'Tunnel box height:',
   },

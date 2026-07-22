@@ -143,7 +143,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
     if (lang == AppLanguage.french || lang == AppLanguage.english) {
       return 'Caisson Tunnel';
     }
-    return 'صندوق النفق';
+    return 'Caisson Tunnel';
   }
 
   void _openAddDialog({CaissonItem? editItem}) {

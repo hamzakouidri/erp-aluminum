@@ -88,7 +88,7 @@ class PdfInvoiceApi {
         final item = data.items[i];
         final path = item.imagePath;
 
-        if (item.title.contains('Caisson Tunnel') || item.title.contains('كيسون النفق') || (path != null && path.contains('caisson_tunnel'))) {
+        if (item.title.contains('Caisson Tunnel') || item.title.contains('Caisson Tunnel') || (path != null && path.contains('caisson_tunnel'))) {
           try {
             final bytes = (await rootBundle.load('Icon/caisson_tunnel.jpg')).buffer.asUint8List();
             imageWidgets[i] = pw.MemoryImage(bytes);

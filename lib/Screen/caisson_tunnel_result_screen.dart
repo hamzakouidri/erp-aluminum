@@ -65,7 +65,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF3F5F8),
       appBar: AppBar(
         title: Text(
-          Localization.translate('جدول كمية وتكلفة كيسون النفق', lang),
+          Localization.translate('جدول كمية وتكلفة Caisson Tunnel', lang),
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
@@ -94,7 +94,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            Localization.translate('نظام كيسون النفق (Caisson Tunnel)', lang),
+                            Localization.translate('نظام Caisson Tunnel', lang),
                             style: const TextStyle(
                               fontFamily: 'Cairo',
                               fontWeight: FontWeight.bold,
@@ -142,7 +142,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                             const Icon(Icons.grid_on_rounded, color: _primaryBlue, size: 22),
                             const SizedBox(width: 8),
                             Text(
-                              Localization.translate('جدول كميات ومكونات كيسون النفق:', lang),
+                              Localization.translate('جدول كميات ومكونات Caisson Tunnel:', lang),
                               style: const TextStyle(
                                 fontFamily: 'Cairo',
                                 fontWeight: FontWeight.bold,
@@ -245,7 +245,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                 Navigator.of(context).pop(caissonData);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(Localization.translate('تمت إضافة كيسون النفق إلى الطلب بنجاح', lang), style: const TextStyle(fontFamily: 'Cairo')),
+                    content: Text(Localization.translate('تمت إضافة Caisson Tunnel إلى الطلب بنجاح', lang), style: const TextStyle(fontFamily: 'Cairo')),
                     backgroundColor: Colors.green,
                   ),
                 );
@@ -257,7 +257,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
               ),
               icon: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 24),
               label: Text(
-                Localization.translate('إضافة كيسون النفق إلى الطلب', lang),
+                Localization.translate('إضافة Caisson Tunnel إلى الطلب', lang),
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),

@@ -663,7 +663,7 @@ class DevisBuilder {
         details.add(line);
       }
       return DevisLineItem(
-        imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('كيسون النفق'))
+        imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('Caisson Tunnel'))
             ? 'assets/Icon/caisson_tunnel.jpg'
             : item['drawing_image_path']?.toString(),
         title: title,
@@ -1257,7 +1257,7 @@ class DevisBuilder {
     }
 
     return DevisLineItem(
-      imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('كيسون النفق'))
+      imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('Caisson Tunnel'))
           ? 'assets/Icon/caisson_tunnel.jpg'
           : item['drawing_image_path']?.toString(),
       title: title,

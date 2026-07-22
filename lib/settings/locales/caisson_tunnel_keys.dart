@@ -1,13 +1,8 @@
 import '../app_settings.dart';
 
 final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
-  'صندوق النفق': {
-    AppLanguage.arabic: 'صندوق النفق',
-    AppLanguage.french: 'Caisson Tunnel',
-    AppLanguage.english: 'Caisson Tunnel',
-  },
-  'كيسون النفق (Caisson Tunnel)': {
-    AppLanguage.arabic: 'كيسون النفق (Caisson Tunnel)',
+  'Caisson Tunnel': {
+    AppLanguage.arabic: 'Caisson Tunnel',
     AppLanguage.french: 'Caisson Tunnel',
     AppLanguage.english: 'Caisson Tunnel',
   },
@@ -121,18 +116,18 @@ final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
     AppLanguage.french: 'Calculer barres et embouts',
     AppLanguage.english: 'Calculate bars and side covers',
   },
-  'جدول كمية وتكلفة كيسون النفق': {
-    AppLanguage.arabic: 'جدول كمية وتكلفة كيسون النفق',
+  'جدول كمية وتكلفة Caisson Tunnel': {
+    AppLanguage.arabic: 'جدول كمية وتكلفة Caisson Tunnel',
     AppLanguage.french: 'Tableau quantitatif et coût du Caisson Tunnel',
     AppLanguage.english: 'Caisson Tunnel Quantity & Cost Table',
   },
-  'نظام كيسون النفق (Caisson Tunnel)': {
-    AppLanguage.arabic: 'نظام كيسون النفق (Caisson Tunnel)',
+  'نظام Caisson Tunnel': {
+    AppLanguage.arabic: 'نظام Caisson Tunnel',
     AppLanguage.french: 'Système Caisson Tunnel',
     AppLanguage.english: 'Caisson Tunnel System',
   },
-  'جدول كميات ومكونات كيسون النفق:': {
-    AppLanguage.arabic: 'جدول كميات ومكونات كيسون النفق:',
+  'جدول كميات ومكونات Caisson Tunnel:': {
+    AppLanguage.arabic: 'جدول كميات ومكونات Caisson Tunnel:',
     AppLanguage.french: 'Tableau des composants et quantités:',
     AppLanguage.english: 'Components & Quantities Table:',
   },
@@ -196,13 +191,13 @@ final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
     AppLanguage.french: 'Embouts latéraux',
     AppLanguage.english: 'Side covers',
   },
-  'إضافة كيسون النفق إلى الطلب': {
-    AppLanguage.arabic: 'إضافة كيسون النفق إلى الطلب',
+  'إضافة Caisson Tunnel إلى الطلب': {
+    AppLanguage.arabic: 'إضافة Caisson Tunnel إلى الطلب',
     AppLanguage.french: 'Ajouter le Caisson Tunnel à la commande',
     AppLanguage.english: 'Add Caisson Tunnel to Order',
   },
-  'تمت إضافة كيسون النفق إلى الطلب بنجاح': {
-    AppLanguage.arabic: 'تمت إضافة كيسون النفق إلى الطلب بنجاح',
+  'تمت إضافة Caisson Tunnel إلى الطلب بنجاح': {
+    AppLanguage.arabic: 'تمت إضافة Caisson Tunnel إلى الطلب بنجاح',
     AppLanguage.french: 'Caisson Tunnel ajouté à la commande avec succès',
     AppLanguage.english: 'Caisson Tunnel added to order successfully',
   },

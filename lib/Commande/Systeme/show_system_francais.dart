@@ -4968,7 +4968,7 @@ class _WindowViewState extends State<WindowView> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
                   child: Text(
-                    Localization.translate('ارتفاع صندوق النفق (Hauteur Tunnel):', lang),
+                    Localization.translate('ارتفاع Caisson Tunnel (Hauteur Tunnel):', lang),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -7611,7 +7611,7 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  // تبويب شائع: تفعيل/إلغاء الستار + صندوق النفق
+  // تبويب شائع: تفعيل/إلغاء الستار + Caisson Tunnel
   List<Widget> _buildShutterCommonOptions(BuildContext context) {
     final items = <Widget>[];
 

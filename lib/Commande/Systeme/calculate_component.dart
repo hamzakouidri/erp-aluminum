@@ -2341,7 +2341,7 @@ class ComponentCalculator {
           exactQuantity: originalBox.exactQuantity,
         );
         items.add(boxItem);
-        // براغي الصندوق لا تضاف في حالة صندوق النفق
+        // براغي الصندوق لا تضاف في حالة Caisson Tunnel
       } else {
         List<double> caissonPieces = [window.width / 1000.0 - 0.01];
         items.add(

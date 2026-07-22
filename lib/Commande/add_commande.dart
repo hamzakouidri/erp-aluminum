@@ -1691,7 +1691,7 @@ class _CommandePageState extends State<CommandePage> {
 
     final bool isCaisson = p.isCaissonTunnel ||
         (p.manualNameOverride?.contains('Caisson Tunnel') == true) ||
-        (p.manualNameOverride?.contains('كيسون النفق') == true);
+        (p.manualNameOverride?.contains('Caisson Tunnel') == true);
 
     if (isCaisson) {
       p.isCaissonTunnel = true;
@@ -1741,7 +1741,7 @@ class _CommandePageState extends State<CommandePage> {
                                       dimSummary = ' ($lenStr سم - صندوق $sizeCm سم)';
                                     }
                                   }
-                                  return '${p.manualNameOverride ?? "كيسون النفق (Caisson Tunnel)"}$dimSummary';
+                                  return '${p.manualNameOverride ?? "Caisson Tunnel"}$dimSummary';
                                 })()
                               : '${p.manualNameOverride?.trim().isNotEmpty == true 
                                   ? p.manualNameOverride!.trim() 
@@ -1785,7 +1785,6 @@ class _CommandePageState extends State<CommandePage> {
                                   MaterialPageRoute(
                                     builder: (context) => OrderTableEditScreen(
                                       products: [p],
-                                      db: widget.db,
                                     ),
                                   ),
                                 );
@@ -1817,7 +1816,7 @@ class _CommandePageState extends State<CommandePage> {
                                     setState(() {
                                       p.isCaissonTunnel = true;
                                       p.isReplaced = false;
-                                      p.manualNameOverride = 'كيسون النفق (Caisson Tunnel)';
+                                      p.manualNameOverride = 'Caisson Tunnel';
                                       p.description = 'الكيت: ${result['kitType']} | بارات كيسون: $cBars (6م) | أغطية سفلية: $bBars (6م) | أغطية جانبية: $pairs زوج';
                                       p.caissonPayload = result;
                                       _highlightedProduct = p;
