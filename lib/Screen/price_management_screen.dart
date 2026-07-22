@@ -1568,14 +1568,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   Widget _buildAccessoryColorTab(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(12.0),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(12),
+              border: isDark ? Border.all(color: Colors.grey.shade800) : null,
             ),
             child: Row(
               children: [
@@ -1592,7 +1594,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         Localization.translate('أسعار الإكسسوارات', lang),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: _accessoryPricingMode == 0 ? Colors.white : Colors.black,
+                          color: _accessoryPricingMode == 0
+                              ? Colors.white
+                              : (isDark ? Colors.grey.shade300 : Colors.black),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1612,7 +1616,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         Localization.translate('الإكسسوارات المحتسبة في البيع', lang),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: _accessoryPricingMode == 1 ? Colors.white : Colors.black,
+                          color: _accessoryPricingMode == 1
+                              ? Colors.white
+                              : (isDark ? Colors.grey.shade300 : Colors.black),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1634,10 +1640,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   Widget _buildAccessoryListStandard(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (accessoryList.isEmpty) {
       return Center(
         child: Text(
           Localization.translate('لم يتم العثور على أكسسوارات.', lang),
+          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
         ),
       );
     }
@@ -1659,13 +1667,13 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
+            color: isDark ? const Color(0xFF1E1E1E) : Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: Colors.amber.shade700.withValues(alpha: 0.35), width: 1),
+                color: Colors.amber.shade700.withValues(alpha: isDark ? 0.5 : 0.35), width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.08),
+                color: isDark ? Colors.black.withValues(alpha: 0.25) : Colors.grey.withValues(alpha: 0.08),
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 3),
@@ -1698,13 +1706,13 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
                         color: hasColorPrices
-                            ? Colors.deepPurple.withValues(alpha: 0.1)
-                            : Colors.grey.shade100,
+                            ? Colors.deepPurple.withValues(alpha: isDark ? 0.25 : 0.1)
+                            : (isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade100),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: hasColorPrices
-                              ? Colors.deepPurple.shade200
-                              : Colors.grey.shade300,
+                              ? (isDark ? Colors.deepPurple.shade300 : Colors.deepPurple.shade200)
+                              : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                         ),
                       ),
                       child: Text(
@@ -1714,8 +1722,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         style: TextStyle(
                           fontSize: 11,
                           color: hasColorPrices
-                              ? Colors.deepPurple
-                              : Colors.grey.shade600,
+                              ? (isDark ? Colors.purple.shade200 : Colors.deepPurple)
+                              : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1783,16 +1791,17 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   Widget _buildAccessorySellingCalculationList(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     // Filter out OB/Demi/Verrou accessory items
     final filteredAccessories = accessoryList.where((acc) {
       final name = acc['name'].toString().toLowerCase();
       final type = acc['type'].toString().toLowerCase();
-      
+
       if (name.contains('ob') || type.contains('ob')) return false;
       if (name.contains('demi') || type.contains('demi')) return false;
       if (name.contains('verrou') || type.contains('verrou')) return false;
-      
+
       return true;
     }).toList();
 
@@ -1802,6 +1811,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       return Center(
         child: Text(
           Localization.translate('لم يتم العثور على أكسسوارات.', lang),
+          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.black87),
         ),
       );
     }
@@ -1817,16 +1827,30 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           final isCalculated = kit['is_selling_calculated'] != 0;
 
           return Card(
-            color: Colors.deepPurple.shade50,
+            color: isDark ? const Color(0xFF2D1F47) : Colors.deepPurple.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: isDark ? Colors.purple.shade700 : Colors.deepPurple.shade100,
+                width: 1,
+              ),
+            ),
             margin: const EdgeInsets.symmetric(vertical: 4),
             child: SwitchListTile(
               title: Text(
                 kitName,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.deepPurple),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isDark ? Colors.purple.shade200 : Colors.deepPurple,
+                ),
               ),
               subtitle: Text(
                 kit['description']?.toString() ?? 'حزمة إكسسوارات كاملة',
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                style: TextStyle(
+                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                  fontSize: 12,
+                ),
               ),
               value: isCalculated,
               activeColor: Colors.deepPurple,
@@ -1844,15 +1868,30 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           final isCalculated = acc['is_selling_calculated'] == 1;
 
           return Card(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                width: 1,
+              ),
+            ),
             margin: const EdgeInsets.symmetric(vertical: 4),
             child: SwitchListTile(
               title: Text(
                 accName,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
               subtitle: Text(
                 '${acc['type']} (${acc['material_type']})',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                style: TextStyle(
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  fontSize: 12,
+                ),
               ),
               value: isCalculated,
               activeColor: Colors.deepPurple,
@@ -1867,6 +1906,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       },
     );
   }
+
 
   Future<void> _updateKitBundleSellingCalculation(int kitId, bool isChecked) async {
     final dbInstance = await db.db;
