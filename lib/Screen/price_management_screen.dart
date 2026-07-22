@@ -2567,6 +2567,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   Widget _buildShutterBoxLimitsTab(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -2584,7 +2585,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   const SizedBox(height: 16),
                   Text(
                     Localization.translate('لا توجد حدود مسجلة للصناديق.', lang),
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 16, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton.icon(
@@ -2603,19 +2604,18 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 final limit = shutterBoxLimitsList[index];
                 final id = limit['id'] as int;
                 final boxSize = limit['box_size'] as int;
-                final bladeId = limit['blade_id'] as int;
                 final maxHeight = limit['max_height'] as double;
                 final bladeName = limit['blade_name']?.toString() ?? 'شفرة غير معروفة';
 
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.blue.withValues(alpha: 0.25), width: 1),
+                    border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25), width: 1),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withValues(alpha: 0.08),
+                        color: isDark ? Colors.black.withValues(alpha: 0.25) : Colors.grey.withValues(alpha: 0.08),
                         spreadRadius: 1,
                         blurRadius: 6,
                         offset: const Offset(0, 3),
@@ -2630,7 +2630,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     ),
                     title: Text(
                       bladeName,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87),
                     ),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 6.0),
@@ -2641,23 +2641,23 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
+                              color: isDark ? const Color(0xFF1E3A5F) : Colors.blue.shade50,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               '${Localization.translate('الصندوق:', lang)} $boxSize ${Localization.translate('ملم', lang)}',
-                              style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                              style: TextStyle(color: isDark ? Colors.blue.shade200 : Colors.blue.shade900, fontWeight: FontWeight.w600, fontSize: 13),
                             ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
+                              color: isDark ? const Color(0xFF3E2723) : Colors.orange.shade50,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               '${Localization.translate('أقصى ارتفاع:', lang)} ${maxHeight.toStringAsFixed(0)} ${Localization.translate('ملم', lang)}',
-                              style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                              style: TextStyle(color: isDark ? Colors.orange.shade200 : Colors.orange.shade900, fontWeight: FontWeight.w600, fontSize: 13),
                             ),
                           ),
                         ],
@@ -2682,6 +2682,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             ),
     );
   }
+
 
   // ══════════════════════════════════════════════════════════════════════════
   // Caisson Tunnel Pricing Tab
