@@ -88,7 +88,7 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
   },
   'الشرفة': {
     AppLanguage.arabic: 'الشرفة',
-    AppLanguage.french: 'Balcon / Terrasse',
+    AppLanguage.french: 'Balcon',
     AppLanguage.english: 'Balcony',
   },
   'لون البروفيل': {
@@ -370,16 +370,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.arabic: 'بحث في الإكسسوارات...',
     AppLanguage.french: 'Rechercher accessoires...',
     AppLanguage.english: 'Search accessories...',
-  },
-  'دلافينات': {
-    AppLanguage.arabic: 'دلافينات',
-    AppLanguage.french: 'Dauphine',
-    AppLanguage.english: 'Dauphine',
-  },
-  'بالكون': {
-    AppLanguage.arabic: 'بالكون',
-    AppLanguage.french: 'Balcon',
-    AppLanguage.english: 'Balcony',
   },
   'تيراس': {
     AppLanguage.arabic: 'تيراس',

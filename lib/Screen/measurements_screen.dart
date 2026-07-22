@@ -577,10 +577,8 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       Localization.translate('غرفة النوم', lang),
       Localization.translate('الحمام', lang),
       Localization.translate('المرحاض', lang),
-      Localization.translate('دلافينات', lang),
-      Localization.translate('بالكون', lang),
-      Localization.translate('تيراس', lang),
       Localization.translate('الشرفة', lang),
+      Localization.translate('تيراس', lang),
     ];
 
     return Scaffold(
