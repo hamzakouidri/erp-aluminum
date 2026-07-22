@@ -4146,10 +4146,16 @@ class WindowPainter extends CustomPainter {
     }
 
     if (zone?.content == ZoneContent.slidingSash) {
-      isDoorHandle = false;
+      if (model.isPVC) {
+        isDoorHandle = true;
+      } else {
+        isDoorHandle = false;
+      }
     }
     if (zone?.lockType == LockType.none || zone?.useOctoHandle == true || zone?.usePvcHandleOnAlu == true) {
-      isDoorHandle = false;
+      if (zone?.content != ZoneContent.slidingSash || !model.isPVC) {
+        isDoorHandle = false;
+      }
     }
 
     // Cremone transmission rods: not drawn (disabled per design)
@@ -4195,13 +4201,11 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    bool isSlidingHandle =
-        ((zone?.content == ZoneContent.slidingSash) ||
-        _isHandleSashProfile(zone)) && zone?.useClassicHandle != true && !model.isPVC;
+    bool isSlidingHandle = false;
 
     bool isClassicSlidingHandle =
         ((zone?.content == ZoneContent.slidingSash) ||
-        _isHandleSashProfile(zone)) && (zone?.useClassicHandle == true || model.isPVC);
+        _isHandleSashProfile(zone)) && !model.isPVC;
 
     final bool isMarechal = zone?.lockType == LockType.rouleau || zone?.lockType == LockType.rouleau2000;
 
