@@ -787,17 +787,11 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
           // Draggable Floating Action Button
           DraggableFloatingActionButton(
+            onPressed: () => _openAddDialog(),
+            backgroundColor: _accentOrange,
+            icon: Icons.add,
+            label: 'إضافة كيسون',
             initialOffset: const Offset(16, 220),
-            child: FloatingActionButton.extended(
-              onPressed: () => _openAddDialog(),
-              backgroundColor: _accentOrange,
-              elevation: 6,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'إضافة كيسون',
-                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
           ),
         ],
       ),
