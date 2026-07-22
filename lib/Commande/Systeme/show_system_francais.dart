@@ -6089,32 +6089,21 @@ class _WindowViewState extends State<WindowView> {
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
+                  horizontal: 10,
+                  vertical: 6,
                 ),
                 decoration: BoxDecoration(
                   color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: isDark ? Colors.blue.shade800 : Colors.blue.shade200),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.aspect_ratio_rounded,
-                      size: 16,
-                      color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${Localization.translate('القياس', lang)}: ${widget.model.width.toInt()} × ${widget.model.height.toInt()} mm',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  '${widget.model.width.toInt()} * ${widget.model.height.toInt()}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
