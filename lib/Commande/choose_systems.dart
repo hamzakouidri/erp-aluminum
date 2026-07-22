@@ -7,6 +7,7 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/selected_systems_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChooseSysteme extends StatefulWidget {
   final Map<String, dynamic>? initialSettings;
@@ -18,6 +19,38 @@ class ChooseSysteme extends StatefulWidget {
 
 class _ChooseSystemeState extends State<ChooseSysteme> {
   late final SqlDatabase db = SqlDatabase();
+
+  Map<String, bool> _activeModes = {
+    'sliding': true,
+    'french': true,
+    'mixed': true,
+    'rolling': true,
+    'caisson_tunnel': true,
+    'precadre': true,
+    'verre': true,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveModes();
+  }
+
+  Future<void> _loadActiveModes() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _activeModes = {
+        'sliding': prefs.getBool('system_active_sliding') ?? true,
+        'french': prefs.getBool('system_active_french') ?? true,
+        'mixed': prefs.getBool('system_active_mixed') ?? true,
+        'rolling': prefs.getBool('system_active_rolling') ?? true,
+        'caisson_tunnel': prefs.getBool('system_active_caisson_tunnel') ?? true,
+        'precadre': prefs.getBool('system_active_precadre') ?? true,
+        'verre': prefs.getBool('system_active_verre') ?? true,
+      };
+    });
+  }
 
   WindowModel _makeModel({double w = 0, double h = 0, double thickness = 60}) {
     final m = WindowModel(width: w, height: h, profileThickness: thickness, db: db);
@@ -37,13 +70,107 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+
+    final systemItems = <Widget>[];
+
+    if (_activeModes['sliding'] ?? true) {
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'System Sliding (جرار)',
+          iconPath: 'Icon/sli.png',
+          onTap: () => _navigateToSystem(context, 'sliding'),
+        ),
+      );
+    }
+
+    if (_activeModes['french'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 70,
+          height: 70,
+          title: 'System Beating (فرنسي)',
+          iconPath: 'Icon/french.png',
+          onTap: () => _navigateToSystem(context, 'french'),
+        ),
+      );
+    }
+
+    if (_activeModes['mixed'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'System Mixed (مختلط)',
+          iconPath: 'Icon/french.png',
+          onTap: () => _navigateToSystem(context, 'mixed'),
+        ),
+      );
+    }
+
+    if (_activeModes['rolling'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'System Roling',
+          iconPath: 'Icon/roling.png',
+          onTap: () => _navigateToSystem(context, ''),
+        ),
+      );
+    }
+
+    if (_activeModes['caisson_tunnel'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'Caisson Tunnel',
+          iconPath: 'Icon/caisson_tunnel.jpg',
+          onTap: () => _navigateToSystem(context, 'caisson_tunnel'),
+        ),
+      );
+    }
+
+    if (_activeModes['precadre'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'Pre-cadre',
+          iconPath: 'Icon/french.png',
+          onTap: () => _navigateToSystem(context, 'precadre'),
+        ),
+      );
+    }
+
+    if (_activeModes['verre'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'Verre Tremper',
+          iconPath: 'Icon/verre.png',
+          onTap: () => _navigateToSystem(context, 'verre'),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
       appBar: AppBar(
         title: Text(
           Localization.translate(
             "نظام الورشة - اختيار النظام",
-            Provider.of<AppSettingsProvider>(context).language,
+            lang,
           ),
         ),
         centerTitle: true,
@@ -51,13 +178,14 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            tooltip: Localization.translate('تعديل الأنظمة المفعلة', Provider.of<AppSettingsProvider>(context).language),
+            tooltip: Localization.translate('تعديل الأنظمة المفعلة', lang),
             icon: const Icon(Icons.tune_rounded),
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SelectedSystemsScreen()),
               );
+              _loadActiveModes();
             },
           ),
         ],
@@ -66,19 +194,19 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             // قسم العنوان
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.window, color: isDark ? Colors.blue.shade300 : Colors.blue, size: 30),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   Text(
                     Localization.translate(
                       'اختر نظام العمل',
-                      Provider.of<AppSettingsProvider>(context).language,
+                      lang,
                     ),
                     style: TextStyle(
                       fontSize: 22,
@@ -89,7 +217,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                   Text(
                     Localization.translate(
                       'حدد نوع النافذة للبدء في الحسابات',
-                      Provider.of<AppSettingsProvider>(context).language,
+                      lang,
                     ),
                     style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
                   ),
@@ -97,106 +225,92 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
               ),
             ),
 
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-            // قائمة الأنظمة
-            Container(
-              margin: EdgeInsets.symmetric(horizontal: 15),
-              decoration: BoxDecoration(
-                border: Border.all(width: 1, color: isDark ? Colors.grey.shade800 : Colors.grey),
-                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.2),
-                    spreadRadius: 5,
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+            // قائمة الأنظمة المحدثة بناءً على الإعدادات النشطة
+            if (systemItems.isEmpty)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 48, color: Colors.orange.shade400),
+                    const SizedBox(height: 16),
+                    Text(
+                      Localization.translate('جميع أنظمة العمل معطلة حالياً بالورشة.', lang),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      Localization.translate('يمكنك تفعيل الأنظمة التي تستعملها بالضغط على زر الضبط أعلاه.', lang),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        color: isDark ? Colors.white60 : Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      ),
+                      icon: const Icon(Icons.tune_rounded),
+                      label: Text(
+                        Localization.translate('تعديل الأنظمة المفعلة', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const SelectedSystemsScreen()),
+                        );
+                        _loadActiveModes();
+                      },
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 15),
+                decoration: BoxDecoration(
+                  border: Border.all(width: 1, color: isDark ? Colors.grey.shade800 : Colors.grey),
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.2),
+                      spreadRadius: 5,
+                      blurRadius: 15,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: systemItems,
+                ),
               ),
-              child: Column(
-                children: [
-                  // نظام الجرار - Sliding
-                  ItemBuildSystem(
-                    width: 60,
-                    height: 60,
-                    title: 'System Sliding (جرار)',
-                    iconPath: 'Icon/sli.png',
-                    // تم التغيير حسب الصورة السابقة
-                    onTap: () {
-                      _navigateToSystem(context, 'sliding');
-                    },
-                  ),
-                  Divider(height: 1, indent: 10, endIndent: 10),
-
-                  // نظام الفتح (فرنسي) - Beating/Casement
-                  ItemBuildSystem(
-                    width: 70,
-                    height: 70,
-                    title: 'System Beating (فرنسي)',
-                    iconPath: 'Icon/french.png',
-                    onTap: () {
-                      _navigateToSystem(context, 'french');
-                    },
-                  ),
-                  Divider(height: 1, indent: 10, endIndent: 10),
-
-                  // نظام مختلط - Mixed System
-                  ItemBuildSystem(
-                    width: 60,
-                    height: 60,
-                    title: 'System Mixed (مختلط)',
-                    iconPath: 'Icon/french.png',
-                    onTap: () {
-                      _navigateToSystem(context, 'mixed');
-                    },
-                  ),
-                  Divider(height: 1, indent: 10, endIndent: 10),
-
-                  ItemBuildSystem(
-                    width: 60,
-                    height: 60,
-                    title: 'System Roling',
-                    iconPath: 'Icon/roling.png',
-                    onTap: () {
-                      _navigateToSystem(context, '');
-                    },
-                  ),
-                  Divider(height: 1, indent: 10, endIndent: 10),
-                  ItemBuildSystem(
-                    width: 60,
-                    height: 60,
-                    title: 'Caisson Tunnel',
-                    iconPath: 'Icon/caisson_tunnel.jpg',
-                    onTap: () {
-                      _navigateToSystem(context, 'caisson_tunnel');
-                    },
-                  ),
-                  Divider(height: 1, indent: 10, endIndent: 10),
-                  ItemBuildSystem(
-                    width: 60,
-                    height: 60,
-                    title: 'Pre-cadre',
-                    iconPath: 'Icon/french.png',
-                    onTap: () {
-                      _navigateToSystem(context, 'precadre');
-                    },
-                  ),
-                  Divider(height: 1, indent: 10, endIndent: 10),
-                  ItemBuildSystem(
-                    width: 60,
-                    height: 60,
-                    title: 'Verre Tremper',
-                    iconPath: 'Icon/verre.png',
-                    onTap: () {
-                      _navigateToSystem(context, 'verre');
-                    },
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 500),
+            const SizedBox(height: 500),
           ],
         ),
       ),
@@ -279,7 +393,7 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
         borderRadius: BorderRadius.circular(10),
         onTap: widget.onTap,
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 20, horizontal: 15),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 15),
           child: Row(
             children: [
               if (widget.title.toLowerCase().contains('mixed') || widget.title.contains('مختلط'))
@@ -324,7 +438,7 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                   errorBuilder: (context, error, stackTrace) =>
                       const Icon(Icons.image_not_supported, color: Colors.grey),
                 ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Text(
                 widget.title,
                 style: TextStyle(
@@ -333,8 +447,8 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-              Spacer(),
-              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+              const Spacer(),
+              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
             ],
           ),
         ),
