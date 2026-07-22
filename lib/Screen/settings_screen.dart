@@ -173,31 +173,38 @@ class SettingsScreen extends StatelessWidget {
                                     child: CircularProgressIndicator(),
                                   ),
                                 );
+                                bool success = false;
+                                String errorMsg = '';
                                 try {
                                   await CloudSyncService().backupToCloud();
-                                  if (!context.mounted) return;
-                                  Navigator.of(context, rootNavigator: true).pop(); // pop dialog safely
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        Localization.translate('تم الرفع إلى السحابة بنجاح!', lang),
-                                        style: TextStyle(fontFamily: 'Cairo'),
-                                      ),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
+                                  success = true;
                                 } catch (e) {
-                                  if (!context.mounted) return;
-                                  Navigator.of(context, rootNavigator: true).pop(); // pop dialog safely
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'حدث خطأ: $e',
-                                        style: const TextStyle(fontFamily: 'Cairo'),
-                                      ),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
+                                  errorMsg = e.toString().replaceAll('Exception: ', '');
+                                } finally {
+                                  if (context.mounted) {
+                                    Navigator.of(context, rootNavigator: true).pop();
+                                    if (success) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            Localization.translate('تم الرفع إلى السحابة بنجاح!', lang),
+                                            style: const TextStyle(fontFamily: 'Cairo'),
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'حدث خطأ: $errorMsg',
+                                            style: const TextStyle(fontFamily: 'Cairo'),
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
                                 }
                               },
                             ),
@@ -258,32 +265,39 @@ class SettingsScreen extends StatelessWidget {
                                       child: CircularProgressIndicator(),
                                     ),
                                   );
+                                  bool success = false;
+                                  String errorMsg = '';
                                   try {
                                     await CloudSyncService().init();
                                     await CloudSyncService().restoreFromCloud();
-                                    if (!context.mounted) return;
-                                    Navigator.of(context, rootNavigator: true).pop(); // pop dialog safely
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          Localization.translate('تمت الاستعادة بنجاح! يرجى إعادة تشغيل التطبيق.', lang),
-                                          style: TextStyle(fontFamily: 'Cairo'),
-                                        ),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
+                                    success = true;
                                   } catch (e) {
-                                    if (!context.mounted) return;
-                                    Navigator.of(context, rootNavigator: true).pop(); // pop dialog safely
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'حدث خطأ: $e',
-                                          style: const TextStyle(fontFamily: 'Cairo'),
-                                        ),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
+                                    errorMsg = e.toString().replaceAll('Exception: ', '');
+                                  } finally {
+                                    if (context.mounted) {
+                                      Navigator.of(context, rootNavigator: true).pop();
+                                      if (success) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              Localization.translate('تمت الاستعادة بنجاح! يرجى إعادة تشغيل التطبيق.', lang),
+                                              style: const TextStyle(fontFamily: 'Cairo'),
+                                            ),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'حدث خطأ أثناء الاستعادة: $errorMsg',
+                                              style: const TextStyle(fontFamily: 'Cairo'),
+                                            ),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
                                   }
                                 }
                               },

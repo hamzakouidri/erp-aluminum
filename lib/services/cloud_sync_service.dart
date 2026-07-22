@@ -164,23 +164,31 @@ class CloudSyncService {
   }
 
   /// الرفع اليدوي/الأساسي للسحابة بنظام التجزئة لتجاوز حد الـ 1MB
+  /// الرفع اليدوي/الأساسي للسحابة بنظام التجزئة الدقيق والدفعي (WriteBatch)
   Future<void> backupToCloud({bool isSilent = false}) async {
+    await init();
+
     final user = _auth.currentUser;
-    final email = user?.email;
-    final prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString('user_role') ?? 'worker';
-    
-    final bool isManagerOrAdmin = (email == 'kouidrihamza45@gmail.com' || role == 'admin' || role == 'manager');
-    if (!isManagerOrAdmin) {
-      print('CloudSyncService: Aborting backupToCloud because user is a worker.');
+    if (user == null) {
+      if (!isSilent) throw Exception('يجب تسجيل الدخول أولاً لعمل نسخة احتياطية على السحابة');
+      return;
+    }
+    if (_workshopId == null || _workshopId!.isEmpty) {
+      if (!isSilent) throw Exception('لم يتم العثور على معرف الورشة الخاص بك للمزامنة');
       return;
     }
 
-    await init();
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('user_role') ?? '';
 
-    if (user == null) throw Exception('يجب تسجيل الدخول لعمل نسخة احتياطية');
-    if (_workshopId == null)
-      throw Exception('لم يتم العثور على ورشة خاصة بك للمزامنة');
+    // إذا كان الحساب مسجلاً صراحة كـ "عامل" وليس مديراً أو مالكاً
+    final bool isWorker = (role == 'worker');
+    if (isWorker) {
+      if (!isSilent) {
+        throw Exception('حسابك كعامل لا يملك صلاحية الرفع إلى السحابة. يلزم حساب المدير.');
+      }
+      return;
+    }
 
     Map<String, dynamic> allData = await _db.exportAllData();
 
@@ -192,7 +200,6 @@ class CloudSyncService {
       if (!hasAnyData) return;
 
       // فحص ثانوي أكثر أماناً: لا ترفع إذا كانت جداول المعاملات الرئيسية كلها فارغة.
-      // هذا يمنع الرفع الصامت من جهاز جديد/فارغ فيكتب فوق بيانات السحابة الحقيقية.
       final commandesRows = allData['Commandes'];
       final clientRows = allData['Client'];
       final commandesDetailsRows = allData['Commandes_details'];
@@ -215,78 +222,90 @@ class CloudSyncService {
         .collection('backups')
         .doc('latest');
 
-    // 1. تغيير الحالة إلى "جاري الرفع" لتنبيه الأجهزة الأخرى بعدم الاستعادة بعد
-    await latestDocRef.set({
-      'timestamp': FieldValue.serverTimestamp(),
-      'deviceId': _deviceId,
-      'status': 'uploading',
-    });
+    try {
+      // 1. تغيير الحالة إلى "جاري الرفع"
+      await latestDocRef.set({
+        'timestamp': FieldValue.serverTimestamp(),
+        'deviceId': _deviceId,
+        'status': 'uploading',
+      }).timeout(const Duration(seconds: 15));
 
-    // 2. تقسيم الجداول إلى أجزاء (Chunks) ورفعها بشكل متوازي لسرعة فائقة
-    List<Future<void>> uploadTasks = [];
-    final chunkRef = latestDocRef.collection('chunks');
-    // مسح الأجزاء القديمة لتجنب بقاء بيانات وهمية (Ghost Data)
-    final existingChunks = await chunkRef.get();
-    for (var doc in existingChunks.docs) {
-      await doc.reference.delete();
-    }
+      final chunkRef = latestDocRef.collection('chunks');
+      
+      // 2. مسح الأجزاء القديمة دفعة واحدة (WriteBatch)
+      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 15));
+      if (existingChunks.docs.isNotEmpty) {
+        WriteBatch deleteBatch = _firestore.batch();
+        int count = 0;
+        for (var doc in existingChunks.docs) {
+          deleteBatch.delete(doc.reference);
+          count++;
+          if (count >= 400) {
+            await deleteBatch.commit().timeout(const Duration(seconds: 15));
+            deleteBatch = _firestore.batch();
+            count = 0;
+          }
+        }
+        if (count > 0) {
+          await deleteBatch.commit().timeout(const Duration(seconds: 15));
+        }
+      }
 
-    for (String table in allData.keys) {
-      List<dynamic> rows = allData[table] ?? [];
-      final chunks = _partitionRowsIntoChunks(rows);
-      int chunksCount = chunks.length;
+      // 3. رفع الأجزاء الجديدة دفعة واحدة (WriteBatch) لسرعة فائقة بدون تعليق
+      WriteBatch uploadBatch = _firestore.batch();
+      int batchCount = 0;
+      for (String table in allData.keys) {
+        List<dynamic> rows = allData[table] ?? [];
+        final chunks = _partitionRowsIntoChunks(rows);
+        int chunksCount = chunks.length;
 
-      for (int i = 0; i < chunksCount; i++) {
-        uploadTasks.add(
-          chunkRef.doc('${table}_$i').set({
+        for (int i = 0; i < chunksCount; i++) {
+          final docRef = chunkRef.doc('${table}_$i');
+          uploadBatch.set(docRef, {
             'table': table,
             'chunkIndex': i,
             'totalChunks': chunksCount,
             'data': chunks[i],
-          }),
-        );
+          });
+          batchCount++;
+          if (batchCount >= 400) {
+            await uploadBatch.commit().timeout(const Duration(seconds: 20));
+            uploadBatch = _firestore.batch();
+            batchCount = 0;
+          }
+        }
       }
-    }
+      if (batchCount > 0) {
+        await uploadBatch.commit().timeout(const Duration(seconds: 20));
+      }
 
-    // الانتظار حتى يتم رفع كافة الأجزاء
-    await Future.wait(uploadTasks).timeout(
-      const Duration(seconds: 180),
-      onTimeout: () {
-        throw Exception(
-          'انتهى وقت الاتصال بالسيرفر. تأكد من جودة الإنترنت وحاول مجدداً.',
-        );
-      },
-    );
+      // 4. إنهاء الرفع وتغيير الحالة إلى "مكتمل"
+      await latestDocRef.update({'status': 'completed'}).timeout(const Duration(seconds: 10));
 
-    // 3. إنهاء الرفع وتغيير الحالة إلى "مكتمل" ليتمكن الآخرون من تحميله
-    await latestDocRef.update({'status': 'completed'});
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('is_local_dirty', false);
-    } catch (e) {
-      print('Failed to clear local dirty flag: $e');
-    }
 
-    // 4. حفظ نسخة في الـ History (فقط إذا لم يكن رفعاً صامتاً)
-    if (!isSilent) {
-      try {
-        String historyId = DateTime.now().toIso8601String().replaceAll(
-          ':',
-          '-',
-        );
-        await _firestore
-            .collection('workshops')
-            .doc(_workshopId)
-            .collection('backups_history')
-            .doc(historyId)
-            .set({
-              'timestamp': FieldValue.serverTimestamp(),
-              'note': 'Manual Backup',
-            });
-      } catch (e) {
-        print('History backup failed: $e');
+      // 5. حفظ نسخة في الـ History
+      if (!isSilent) {
+        try {
+          String historyId = DateTime.now().toIso8601String().replaceAll(':', '-');
+          await _firestore
+              .collection('workshops')
+              .doc(_workshopId)
+              .collection('backups_history')
+              .doc(historyId)
+              .set({
+                'timestamp': FieldValue.serverTimestamp(),
+                'note': 'Manual Backup',
+              }).timeout(const Duration(seconds: 10));
+        } catch (e) {
+          print('History backup failed: $e');
+        }
       }
+    } catch (e) {
+      try {
+        await latestDocRef.update({'status': 'failed'});
+      } catch (_) {}
+      throw Exception('فشل الرفع إلى السحابة: $e');
     }
   }
 
@@ -499,41 +518,66 @@ class CloudSyncService {
     Map<String, dynamic> globalData = await _db.exportGlobalCatalog();
     final catalogRef = _firestore.collection('global_catalog').doc('latest');
 
-    await catalogRef.set({
-      'timestamp': FieldValue.serverTimestamp(),
-      'deviceId': _deviceId,
-      'status': 'uploading',
-    });
+    try {
+      await catalogRef.set({
+        'timestamp': FieldValue.serverTimestamp(),
+        'deviceId': _deviceId,
+        'status': 'uploading',
+      }).timeout(const Duration(seconds: 15));
 
-    List<Future<void>> uploadTasks = [];
-    final chunkRef = catalogRef.collection('chunks');
+      final chunkRef = catalogRef.collection('chunks');
+      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 15));
+      if (existingChunks.docs.isNotEmpty) {
+        WriteBatch deleteBatch = _firestore.batch();
+        int count = 0;
+        for (var doc in existingChunks.docs) {
+          deleteBatch.delete(doc.reference);
+          count++;
+          if (count >= 400) {
+            await deleteBatch.commit().timeout(const Duration(seconds: 15));
+            deleteBatch = _firestore.batch();
+            count = 0;
+          }
+        }
+        if (count > 0) {
+          await deleteBatch.commit().timeout(const Duration(seconds: 15));
+        }
+      }
 
-    for (String table in globalData.keys) {
-      List<dynamic> rows = globalData[table] ?? [];
-      final chunks = _partitionRowsIntoChunks(rows);
-      int chunksCount = chunks.length;
+      WriteBatch uploadBatch = _firestore.batch();
+      int batchCount = 0;
+      for (String table in globalData.keys) {
+        List<dynamic> rows = globalData[table] ?? [];
+        final chunks = _partitionRowsIntoChunks(rows);
+        int chunksCount = chunks.length;
 
-      for (int i = 0; i < chunksCount; i++) {
-        uploadTasks.add(
-          chunkRef.doc('${table}_$i').set({
+        for (int i = 0; i < chunksCount; i++) {
+          final docRef = chunkRef.doc('${table}_$i');
+          uploadBatch.set(docRef, {
             'table': table,
             'chunkIndex': i,
             'totalChunks': chunksCount,
             'data': chunks[i],
-          }),
-        );
+          });
+          batchCount++;
+          if (batchCount >= 400) {
+            await uploadBatch.commit().timeout(const Duration(seconds: 20));
+            uploadBatch = _firestore.batch();
+            batchCount = 0;
+          }
+        }
       }
-    }
+      if (batchCount > 0) {
+        await uploadBatch.commit().timeout(const Duration(seconds: 20));
+      }
 
-    await Future.wait(uploadTasks).timeout(
-      const Duration(seconds: 180),
-      onTimeout: () {
-        throw Exception(
-          'انتهى وقت الاتصال بالسيرفر. تأكد من جودة الإنترنت وحاول مجدداً.',
-        );
-      },
-    );
-    await catalogRef.update({'status': 'completed'});
+      await catalogRef.update({'status': 'completed'}).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      try {
+        await catalogRef.update({'status': 'failed'});
+      } catch (_) {}
+      throw Exception('فشل رفع الكتالوج العام: $e');
+    }
   }
 
   Future<void> downloadGlobalCatalog() async {
