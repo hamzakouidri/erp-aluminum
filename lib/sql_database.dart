@@ -7934,5 +7934,53 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
     return res;
   }
+
+  // ── Series Table Config ───────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>?> getSeriesTableConfig(int seriesId) async {
+    final myDb = await db;
+    if (myDb == null) return null;
+    try {
+      final res = await myDb.query(
+        'SeriesTableConfig',
+        where: 'series_id = ?',
+        whereArgs: [seriesId],
+      );
+      if (res.isNotEmpty) return res.first;
+    } catch (e) {
+      debugPrint('Error reading SeriesTableConfig: $e');
+    }
+    return null;
+  }
+
+  Future<void> upsertSeriesTableConfig({
+    required int seriesId,
+    required String allowedSectionTypes,
+    required String allowedAccessoryIds,
+    required String allowedAccessoryTypes,
+    required String excludedAccessoryIds,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.execute('''
+      INSERT INTO SeriesTableConfig (
+        series_id, allowed_section_types, allowed_accessory_ids, allowed_accessory_types, excluded_accessory_ids, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(series_id) DO UPDATE SET
+        allowed_section_types = excluded.allowed_section_types,
+        allowed_accessory_ids = excluded.allowed_accessory_ids,
+        allowed_accessory_types = excluded.allowed_accessory_types,
+        excluded_accessory_ids = excluded.excluded_accessory_ids,
+        updated_at = excluded.updated_at
+    ''', [
+      seriesId,
+      allowedSectionTypes,
+      allowedAccessoryIds,
+      allowedAccessoryTypes,
+      excludedAccessoryIds,
+      DateTime.now().toIso8601String(),
+    ]);
+    CloudSyncService().notifyChange();
+  }
 }
 
