@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "538203167181",
+    "project_id": "erp-aluminum-701f9",
+    "storage_bucket": "erp-aluminum-701f9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:538203167181:android:de05ab37dc20ef64ac4c84",
+        "android_client_info": {
+          "package_name": "com.example.database_data"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "538203167181-f9hpgu9ijgs8e9igdgche9pebjslbc4g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.database_data",
+            "certificate_hash": "5165fc9383f0659649a3a4e5b08f6d6faeba71d8"
+          }
+        },
+        {
+          "client_id": "538203167181-18nhgclrpei204tcop0ih09g6pnoc465.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRN_vui8dV56MLaDUY7lJDR-i5DjmSpzU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "538203167181-18nhgclrpei204tcop0ih09g6pnoc465.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "538203167181-oo1ghqjurui1946f3t4kvai5imi713oh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.databaseData"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

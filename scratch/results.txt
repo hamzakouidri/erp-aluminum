@@ -1,0 +1,2264 @@
+commit 23c86f0714c2806be20bceb2cd79756ae5e24aa0
+Author: hamzakouidri <kouidrihamza45@gmail.com>
+Date:   Wed Jun 10 19:27:40 2026 +1200
+
+    الرفعة 6: تحديثات المشروع
+
+diff --git a/lib/Commande/window_painter.dart b/lib/Commande/window_painter.dart
+new file mode 100644
+index 0000000..8ce1117
+--- /dev/null
++++ b/lib/Commande/window_painter.dart
+@@ -0,0 +1,1575 @@
++import 'dart:math' as math;
++import 'dart:ui' as ui;
++
++import 'package:database_data/Commande/texture_cache.dart';
++import 'package:flutter/material.dart';
++
++import 'Systeme/model.dart';
++
++class WindowPainter extends CustomPainter {
++  final WindowModel model;
++  final bool? overrideIsInternalView;
++
++  WindowPainter({required this.model, this.overrideIsInternalView})
++    : super(repaint: model);
++
++  @override
++  void paint(Canvas canvas, Size size) {
++    final w = model.width;
++    final h = model.height;
++    final t = model.profileThickness;
++    final double topOffset = model.hasShutter ? model.shutterBoxHeight : 0.0;
++
++    final innerPath = _buildInnerShapePath(w, h, t, topOffset);
++
++    canvas.save();
++    canvas.clipPath(innerPath);
++    for (final zone in model.zones) {
++      _drawZoneBackground(canvas, zone, h, t);
++    }
++    canvas.restore();
++
++    if ((overrideIsInternalView ?? model.isInternalView)) {
++      if (model.hasShutter) {
++        _drawShutterSlatsAndTracks(
++          canvas,
++          w,
++          h,
++          model.shutterPosition,
++          model.shutterBoxHeight,
++        );
++      }
++
++      if (!model.isShutterOnly) {
++        canvas.save();
++        canvas.clipPath(innerPath);
++        _drawMullions(canvas, w, h, t);
++        canvas.restore();
++
++        _drawOuterFrame(canvas, w, h, t, topOffset);
++        if (model.hasSideCovers) _drawSideCovers(canvas, w, h, topOffset, t);
++
++        canvas.save();
++        canvas.clipPath(innerPath);
++        for (final zone in model.zones) {
++          _drawZoneContent(canvas, zone, h, t);
++          if (zone.content == ZoneContent.singleSash ||
++              zone.content == ZoneContent.doubleSash) {
++            if (zone.content == ZoneContent.singleSash &&
++                zone.openDirection != null) {
++              _drawWindowDrawHandle(
++                canvas,
++                _getEffectiveZoneRect(zone.boundary, h, t),
++                zone.openDirection!,
++                zone.handlePositionRatio ?? 0.5,
++              );
++            }
++          }
++        }
++        canvas.restore();
++      }
++
++      if (model.hasShutter) _drawShutterBox(canvas, w, topOffset);
++    } else {
++      if (!model.isShutterOnly) {
++        _drawOuterFrame(canvas, w, h, t, topOffset);
++        if (model.hasSideCovers) _drawSideCovers(canvas, w, h, topOffset, t);
++      }
++
++      if (!model.isShutterOnly) {
++        canvas.save();
++        canvas.clipPath(innerPath);
++        _drawMullions(canvas, w, h, t);
++        canvas.restore();
++
++        if (model.hasBottomFrame) {
++          _drawWeepHoles(canvas, Rect.fromLTRB(0, topOffset, w, h), t);
++        }
++
++        canvas.save();
++        canvas.clipPath(innerPath);
++        for (final zone in model.zones) {
++          _drawZoneContent(canvas, zone, h, t);
++          if (zone.content == ZoneContent.singleSash ||
++              zone.content == ZoneContent.doubleSash) {
++            if (zone.content == ZoneContent.singleSash &&
++                zone.openDirection != null) {
++              _drawWindowDrawHandle(
++                canvas,
++                _getEffectiveZoneRect(zone.boundary, h, t),
++                zone.openDirection!,
++                zone.handlePositionRatio ?? 0.5,
++              );
++            }
++          }
++        }
++        canvas.restore();
++      }
++
++      if (model.hasShutter) {
++        _drawShutterSlatsAndTracks(
++          canvas,
++          w,
++          h,
++          model.shutterPosition,
++          model.shutterBoxHeight,
++        );
++        _drawShutterBox(canvas, w, topOffset);
++      }
++    }
++
++    for (final zone in model.zones) {
++      if (model.selectedZone != null && model.selectedZone!.id == zone.id) {
++        final r = zone.boundary;
++        bool highlightEntireZone =
++            model.activeSubZone == 'all' ||
++            zone.content != ZoneContent.doubleSash;
++        if (highlightEntireZone) {
++          canvas.drawRect(
++            r,
++            Paint()
++              ..color = Colors.green.shade700.withValues(alpha: 0.35)
++              ..style = PaintingStyle.fill,
++          );
++        } else {
++          final sep = 4.0;
++          final midX = r.left + r.width / 2;
++          Rect sashR;
++          if (model.activeSubZone != null &&
++              model.activeSubZone!.startsWith('left')) {
++            sashR = Rect.fromLTRB(r.left, r.top, midX - sep / 2, r.bottom);
++          } else {
++            sashR = Rect.fromLTRB(midX + sep / 2, r.top, r.right, r.bottom);
++          }
++          final thicknessFactor = zone.isSash105 ? 0.14 : 0.10;
++          final sashT = math.min(sashR.width, sashR.height) * thicknessFactor;
++          final glassR = sashR.deflate(sashT);
++          final Path highlightPath = Path()
++            ..fillType = PathFillType.evenOdd
++            ..addRect(sashR)
++            ..addRect(glassR);
++          canvas.drawPath(
++            highlightPath,
++            Paint()
++              ..color = Colors.green.shade800.withValues(alpha: 0.35)
++              ..style = PaintingStyle.fill,
++          );
++          canvas.drawPath(
++            highlightPath,
++            Paint()
++              ..color = Colors.green.shade900
++              ..style = PaintingStyle.stroke
++              ..strokeWidth = 2.5,
++          );
++        }
++      }
++      _drawInnerDimensions(canvas, zone);
++    }
++
++    if (model.drawingStart != null && model.drawingCurrent != null) {
++      final p1 = model.drawingStart!;
++      final p2 = model.drawingCurrent!;
++      double dx = (p2.dx - p1.dx).abs();
++      double dy = (p2.dy - p1.dy).abs();
++
++      if ((p2 - p1).distance > 30.0) {
++        bool isHorizontal = dx > dy;
++        Offset endPos = isHorizontal
++            ? Offset(p2.dx, p1.dy)
++            : Offset(p1.dx, p2.dy);
++
++        final drawPaint = Paint()
++          ..color = const Color(0xFF0D47A1)
++          ..strokeWidth = 6.0
++          ..style = PaintingStyle.stroke
++          ..strokeCap = StrokeCap.square;
++
++        final slashPaint = Paint()
++          ..color = const Color(0xFFB71C1C)
++          ..strokeWidth = 6.0
++          ..strokeCap = StrokeCap.round;
++
++        double dashWidth = 25.0, dashSpace = 15.0, step = dashWidth + dashSpace;
++
++        if (isHorizontal) {
++          double startX = math.min(p1.dx, endPos.dx),
++              endX = math.max(p1.dx, endPos.dx);
++          for (double x = startX; x < endX; x += step) {
++            canvas.drawLine(
++              Offset(x, p1.dy),
++              Offset(math.min(x + dashWidth, endX), p1.dy),
++              drawPaint,
++            );
++          }
++        } else {
++          double startY = math.min(p1.dy, endPos.dy),
++              endY = math.max(p1.dy, endPos.dy);
++          for (double y = startY; y < endY; y += step) {
++            canvas.drawLine(
++              Offset(p1.dx, y),
++              Offset(p1.dx, math.min(y + dashWidth, endY)),
++              drawPaint,
++            );
++          }
++        }
++
++        double slashSize = 20.0;
++        if (isHorizontal) {
++          canvas.drawLine(
++            Offset(p1.dx, p1.dy - slashSize),
++            Offset(p1.dx, p1.dy + slashSize),
++            slashPaint,
++          );
++          canvas.drawLine(
++            Offset(endPos.dx, endPos.dy - slashSize),
++            Offset(endPos.dx, endPos.dy + slashSize),
++            slashPaint,
++          );
++        } else {
++          canvas.drawLine(
++            Offset(p1.dx - slashSize, p1.dy),
++            Offset(p1.dx + slashSize, p1.dy),
++            slashPaint,
++          );
++          canvas.drawLine(
++            Offset(endPos.dx - slashSize, endPos.dy),
++            Offset(endPos.dx + slashSize, endPos.dy),
++            slashPaint,
++          );
++        }
++      }
++    }
++  }
++
++  List<Color> get _fc =>
++      getEffectiveGradientColors(model.frameColor, model.selectedDbColor);
++
++  Color get _fb =>
++      getEffectiveBorderColor(model.frameColor, model.selectedDbColor);
++
++  Color get _mc => Color.lerp(_fc.last, Colors.black, 0.4)!;
++
++  Shader _fsGlobal(
++    Rect r, {
++    List<Color>? gradientColors,
++    Map<String, dynamic>? dbColor,
++  }) {
++    final effectiveDbColor = dbColor ?? model.selectedDbColor;
++    if (effectiveDbColor != null) {
++      final name = effectiveDbColor['name'].toString().toLowerCase();
++      if ((name.contains('خشب') ||
++              name.contains('wood') ||
++              name.contains('bois') ||
++              name.contains('desert') ||
++              name.contains('ديزر')) &&
++          TextureCache.woodTexture != null) {
++        return ui.ImageShader(
++          TextureCache.woodTexture!,
++          ui.TileMode.repeated,
++          ui.TileMode.repeated,
++          Matrix4.identity().scaled(0.5).storage,
++        );
++      }
++    }
++    return LinearGradient(
++      begin: Alignment.topLeft,
++      end: Alignment.bottomRight,
++      colors: gradientColors ?? _fc,
++    ).createShader(r);
++  }
++
++  Rect _getEffectiveZoneRect(Rect original, double h, double t) {
++    if (!model.hasBottomFrame && (original.bottom - (h - t)).abs() < 1.0) {
++      return Rect.fromLTRB(original.left, original.top, original.right, h);
++    }
++    return original;
++  }
++
++  Path _buildOuterShapePath(double w, double h, double topY) {
++    if (model.archHeight == 0 &&
++        model.topSlantLeftY == 0 &&
++        model.topSlantRightY == 0 &&
++        model.bottomSlantLeftY == 0 &&
++        model.bottomSlantRightY == 0) {
++      return Path()..addRect(Rect.fromLTRB(0, topY, w, h));
++    }
++    Path p = Path();
++    p.moveTo(0, topY + model.topSlantLeftY);
++    if (model.archHeight > 0) {
++      p.quadraticBezierTo(
++        w / 2,
++        topY +
++            math.min(model.topSlantLeftY, model.topSlantRightY) -
++            (model.archHeight * 2),
++        w,
++        topY + model.topSlantRightY,
++      );
++    } else {
++      p.lineTo(w, topY + model.topSlantRightY);
++    }
++    p.lineTo(w, h - model.bottomSlantRightY);
++    p.lineTo(0, h - model.bottomSlantLeftY);
++    p.close();
++    return p;
++  }
++
++  Path _buildInnerShapePath(double w, double h, double t, double topY) {
++    if (model.archHeight == 0 &&
++        model.topSlantLeftY == 0 &&
++        model.topSlantRightY == 0 &&
++        model.bottomSlantLeftY == 0 &&
++        model.bottomSlantRightY == 0) {
++      return Path()..addRect(Rect.fromLTRB(t, topY + t, w - t, h - t));
++    }
++    Path p = Path();
++    p.moveTo(t, topY + model.topSlantLeftY + t);
++    if (model.archHeight > 0) {
++      p.quadraticBezierTo(
++        w / 2,
++        topY +
++            math.min(model.topSlantLeftY, model.topSlantRightY) -
++            (model.archHeight * 2) +
++            t,
++        w - t,
++        topY + model.topSlantRightY + t,
++      );
++    } else {
++      p.lineTo(w - t, topY + model.topSlantRightY + t);
++    }
++    p.lineTo(w - t, h - model.bottomSlantRightY - t);
++    p.lineTo(t, h - model.bottomSlantLeftY - t);
++    p.close();
++    return p;
++  }
++
++  void _drawOuterFrame(
++    Canvas canvas,
++    double w,
++    double h,
++    double t,
++    double topY,
++  ) {
++    final outerPath = _buildOuterShapePath(w, h, topY);
++    final innerPath = _buildInnerShapePath(w, h, t, topY);
++
++    final path = Path()
++      ..addPath(outerPath, Offset.zero)
++      ..addPath(innerPath, Offset.zero)
++      ..fillType = PathFillType.evenOdd;
++
++    final outerRect = Rect.fromLTRB(0, topY, w, h);
++    canvas.drawPath(path, Paint()..shader = _fsGlobal(outerRect));
++
++    final bp = Paint()
++      ..color = _fb
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1.5;
++
++    canvas.drawPath(outerPath, bp);
++    canvas.drawPath(innerPath, bp..strokeWidth = 0.8);
++
++    _drawMiterCorners(
++      canvas,
++      outerRect,
++      Rect.fromLTRB(t, topY + t, w - t, h - t),
++      t,
++    );
++  }
++
++  void _drawMiterCorners(Canvas canvas, Rect outer, Rect inner, double t) {
++    final p = Paint()
++      ..color = _mc
++      ..strokeWidth = 1.8
++      ..style = PaintingStyle.stroke;
++    canvas.drawLine(outer.topLeft, inner.topLeft, p);
++    canvas.drawLine(outer.topRight, inner.topRight, p);
++    if (model.hasBottomFrame) {
++      canvas.drawLine(outer.bottomLeft, inner.bottomLeft, p);
++      canvas.drawLine(outer.bottomRight, inner.bottomRight, p);
++    }
++  }
++
++  void _drawSideCovers(
++    Canvas canvas,
++    double w,
++    double h,
++    double topY,
++    double t,
++  ) {
++    // 🟢 الغطاء الجانبي يبدأ من الأعلى (0.0) ليغطي الصندوق
++    final double startY = 0.0;
++
++    final paint = Paint()..color = _fc[1];
++    final borderPaint = Paint()
++      ..color = _fb
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1.0;
++
++    final hasL = !model.removedShutterSides.contains('left');
++    final hasR = !model.removedShutterSides.contains('right');
++    final hasT = !model.removedShutterSides.contains('top');
++    final hasB =
++        !model.removedShutterSides.contains('bottom') && model.hasBottomFrame;
++
++    if (hasL) {
++      Path path = Path()
++        ..moveTo(0, startY)
++        ..lineTo(-t, hasT ? startY - t : startY)
++        ..lineTo(-t, hasB ? h + t : h)
++        ..lineTo(0, h)
++        ..close();
++      canvas.drawPath(path, paint);
++      canvas.drawPath(path, borderPaint);
++    }
++    if (hasR) {
++      Path path = Path()
++        ..moveTo(w, startY)
++        ..lineTo(w + t, hasT ? startY - t : startY)
++        ..lineTo(w + t, hasB ? h + t : h)
++        ..lineTo(w, h)
++        ..close();
++      canvas.drawPath(path, paint);
++      canvas.drawPath(path, borderPaint);
++    }
++    if (hasT) {
++      Path path = Path()
++        ..moveTo(0, startY)
++        ..lineTo(hasL ? -t : 0.0, startY - t)
++        ..lineTo(hasR ? w + t : w, startY - t)
++        ..lineTo(w, startY)
++        ..close();
++      canvas.drawPath(path, paint);
++      canvas.drawPath(path, borderPaint);
++    }
++    if (hasB) {
++      Path path = Path()
++        ..moveTo(0, h)
++        ..lineTo(hasL ? -t : 0.0, h + t)
++        ..lineTo(hasR ? w + t : w, h + t)
++        ..lineTo(w, h)
++        ..close();
++      canvas.drawPath(path, paint);
++      canvas.drawPath(path, borderPaint);
++    }
++  }
++
++  void _drawMullions(Canvas canvas, double w, double h, double t) {
++    final Paint paint = Paint()
++      ..color = _fc[1]
++      ..style = PaintingStyle.fill;
++    final Paint border = Paint()
++      ..color = _fb
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1.0;
++    Path combinedPath = Path();
++    for (int i = 0; i < model.zones.length; i++) {
++      final z1 = model.zones[i];
++      for (int j = i + 1; j < model.zones.length; j++) {
++        final z2 = model.zones[j];
++        double overlapLeft = math.max(z1.boundary.left, z2.boundary.left);
++        double overlapRight = math.min(z1.boundary.right, z2.boundary.right);
++        if (overlapLeft < overlapRight - 5) {
++          if ((z1.boundary.bottom - z2.boundary.top).abs() <= t + 2) {
++            double yCenter = (z1.boundary.bottom + z2.boundary.top) / 2;
++            combinedPath = Path.combine(
++              PathOperation.union,
++              combinedPath,
++              Path()..addRect(
++                Rect.fromLTRB(
++                  overlapLeft - t / 2,
++                  yCenter - t / 2,
++                  overlapRight + t / 2,
++                  yCenter + t / 2,
++                ),
++              ),
++            );
++          } else if ((z2.boundary.bottom - z1.boundary.top).abs() <= t + 2) {
++            double yCenter = (z2.boundary.bottom + z1.boundary.top) / 2;
++            combinedPath = Path.combine(
++              PathOperation.union,
++              combinedPath,
++              Path()..addRect(
++                Rect.fromLTRB(
++                  overlapLeft - t / 2,
++                  yCenter - t / 2,
++                  overlapRight + t / 2,
++                  yCenter + t / 2,
++                ),
++              ),
++            );
++          }
++        }
++        double overlapTop = math.max(z1.boundary.top, z2.boundary.top);
++        double overlapBottom = math.min(z1.boundary.bottom, z2.boundary.bottom);
++        if (overlapTop < overlapBottom - 5) {
++          if ((z1.boundary.right - z2.boundary.left).abs() <= t + 2) {
++            double xCenter = (z1.boundary.right + z2.boundary.left) / 2;
++            combinedPath = Path.combine(
++              PathOperation.union,
++              combinedPath,
++              Path()..addRect(
++                Rect.fromLTRB(
++                  xCenter - t / 2,
++                  overlapTop - t / 2,
++                  xCenter + t / 2,
++                  overlapBottom + t / 2,
++                ),
++              ),
++            );
++          } else if ((z2.boundary.right - z1.boundary.left).abs() <= t + 2) {
++            double xCenter = (z2.boundary.right + z1.boundary.left) / 2;
++            combinedPath = Path.combine(
++              PathOperation.union,
++              combinedPath,
++              Path()..addRect(
++                Rect.fromLTRB(
++                  xCenter - t / 2,
++                  overlapTop - t / 2,
++                  xCenter + t / 2,
++                  overlapBottom + t / 2,
++                ),
++              ),
++            );
++          }
++        }
++      }
++    }
++
++    canvas.drawPath(combinedPath, paint);
++    canvas.drawPath(combinedPath, border);
++
++    if (model.selection.type == SelectionType.mullion) {
++      bool isH = model.selection.isHorizontalMullion!;
++      double pos = model.selection.mullionPosition!;
++      if (isH) {
++        canvas.drawRect(
++          Rect.fromLTRB(0, pos - t / 2, w, pos + t / 2),
++          Paint()..color = Colors.green.shade600.withValues(alpha: 0.5),
++        );
++      } else {
++        canvas.drawRect(
++          Rect.fromLTRB(pos - t / 2, 0, pos + t / 2, h),
++          Paint()..color = Colors.green.shade600.withValues(alpha: 0.5),
++        );
++      }
++    }
++  }
++
++  void _drawInnerDimensions(Canvas canvas, WindowZone zone) {
++    final r = zone.boundary;
++    if (r.width < 150 || r.height < 150) return;
++    bool isFullWidth =
++        (r.width >= model.width - model.profileThickness * 2 - 2);
++    bool isFullHeight =
++        (r.height >= model.height - model.profileThickness * 2 - 2);
++    final textStyle = const TextStyle(
++      color: Color(0xFF1565C0),
++      fontSize: 60,
++      fontWeight: FontWeight.bold,
++    );
++
++    if (!isFullWidth) {
++      final widthText = TextPainter(
++        text: TextSpan(text: "${r.width.toInt()}", style: textStyle),
++        textDirection: TextDirection.ltr,
++      )..layout();
++      final wOffset = Offset(r.center.dx - (widthText.width / 2), r.top + 5);
++      canvas.drawRRect(
++        RRect.fromRectAndRadius(
++          Rect.fromLTWH(
++            wOffset.dx - 6,
++            wOffset.dy - 2,
++            widthText.width + 12,
++            widthText.height + 4,
++          ),
++          const Radius.circular(6),
++        ),
++        Paint()..color = Colors.white.withValues(alpha: 0.85),
++      );
++      widthText.paint(canvas, wOffset);
++    }
++    if (!isFullHeight) {
++      final heightText = TextPainter(
++        text: TextSpan(text: "${r.height.toInt()}", style: textStyle),
++        textDirection: TextDirection.ltr,
++      )..layout();
++      canvas.save();
++      canvas.translate(
++        r.left + 5 + heightText.height,
++        r.center.dy + (heightText.width / 2),
++      );
++      canvas.rotate(-3.1415926535897932 / 2);
++      canvas.drawRRect(
++        RRect.fromRectAndRadius(
++          Rect.fromLTWH(
++            -6,
++            -heightText.height - 2,
++            heightText.width + 12,
++            heightText.height + 4,
++          ),
++          const Radius.circular(6),
++        ),
++        Paint()..color = Colors.white.withValues(alpha: 0.85),
++      );
++      heightText.paint(canvas, Offset(0, -heightText.height));
++      canvas.restore();
++    }
++  }
++
++  void _drawZoneBackground(Canvas canvas, WindowZone zone, double h, double t) {
++    canvas.drawRect(
++      _getEffectiveZoneRect(zone.boundary, h, t),
++      Paint()..color = const Color(0xFFF5F8FA),
++    );
++  }
++
++  void _drawZoneContent(Canvas canvas, WindowZone zone, double h, double t) {
++    final r = _getEffectiveZoneRect(zone.boundary, h, t);
++    switch (zone.content) {
++      case ZoneContent.empty:
++      case ZoneContent.fixedGlass:
++        if (zone.glass.structure == GlassStructure.closed) {
++          _drawPanelTexture(canvas, r, model.frameColor);
++        } else if (zone.content == ZoneContent.fixedGlass) {
++          _drawFixedGlass(canvas, r, zone.glass);
++        }
++        _drawRealisticParclose(canvas, r, model.frameColor);
++        break;
++      case ZoneContent.singleSash:
++        _drawSingleSash(canvas, r, zone);
++        break;
++      case ZoneContent.doubleSash:
++        final sep = 4.0;
++        final midX = r.left + r.width / 2;
++        final leftR = Rect.fromLTRB(r.left, r.top, midX - sep / 2, r.bottom);
++        final rightR = Rect.fromLTRB(midX + sep / 2, r.top, r.right, r.bottom);
++        bool isLeftActive = (zone.openDirection == OpenDirection.left);
++        bool isRightActive = (zone.openDirection == OpenDirection.right);
++        if (!isLeftActive && !isRightActive) isRightActive = true;
++        _renderSash(
++          canvas,
++          leftR,
++          zone.copyWith(openDirection: OpenDirection.right),
++          leftR,
++          forceHandle: isLeftActive,
++          isRightSash: false,
++        );
++        _renderSash(
++          canvas,
++          rightR,
++          zone.copyWith(openDirection: OpenDirection.left),
++          rightR,
++          forceHandle: isRightActive,
++          isRightSash: true,
++        );
++        canvas.drawLine(
++          Offset(midX, r.top),
++          Offset(midX, r.bottom),
++          Paint()
++            ..color = _fb
++            ..strokeWidth = 1.2,
++        );
++        break;
++      case ZoneContent.slidingSash:
++        _drawSlidingSash(canvas, r, zone);
++        break;
++      case ZoneContent.tripleSash:
++        // TODO: Handle this case.
++        throw UnimplementedError();
++      case ZoneContent.quadSash:
++        // TODO: Handle this case.
++        throw UnimplementedError();
++    }
++  }
++
++  void _drawFixedGlass(Canvas canvas, Rect r, GlassSpecification glass) {
++    final isLookingFromInside =
++        (overrideIsInternalView ?? model.isInternalView);
++    _drawGlassLayer(
++      canvas,
++      r,
++      isLookingFromInside ? glass.colorInner : glass.colorOuter,
++      isLookingFromInside ? glass.finishInner : glass.finishOuter,
++      glass.structure,
++      glass.colorP,
++    );
++    _drawGlassLabel(canvas, r, glass.displayName);
++  }
++
++  void _drawGlassLayer(
++    Canvas canvas,
++    Rect r,
++    GlassColor color,
++    GlassFinish finish,
++    GlassStructure structure,
++    ClosedGlassColor colorP,
++  ) {
++    canvas.drawRect(
++      r,
++      Paint()
++        ..shader = LinearGradient(
++          begin: Alignment.topLeft,
++          end: Alignment.bottomRight,
++          colors: _getColorsForLayer(structure, color, finish, colorP),
++        ).createShader(r),
++    );
++    if (structure != GlassStructure.closed &&
++        (finish == GlassFinish.clair || finish == GlassFinish.stopSol)) {
++      canvas.drawLine(
++        Offset(r.left + r.width * 0.08, r.top + r.height * 0.05),
++        Offset(r.left + r.width * 0.38, r.top + r.height * 0.45),
++        Paint()
++          ..color = Colors.white.withValues(alpha: 0.40)
++          ..strokeWidth = r.width * 0.09
++          ..strokeCap = StrokeCap.round,
++      );
++      canvas.drawLine(
++        Offset(r.left + r.width * 0.58, r.top + r.height * 0.05),
++        Offset(r.left + r.width * 0.68, r.top + r.height * 0.22),
++        Paint()
++          ..color = Colors.white.withValues(alpha: 0.25)
++          ..strokeWidth = r.width * 0.035
++          ..strokeCap = StrokeCap.round,
++      );
++    }
++  }
++
++  List<Color> _getColorsForLayer(
++    GlassStructure str,
++    GlassColor c,
++    GlassFinish f,
++    ClosedGlassColor p,
++  ) {
++    if (str == GlassStructure.closed) {
++      switch (p) {
++        case ClosedGlassColor.white:
++          return [Colors.white, Colors.white, Colors.white];
++        case ClosedGlassColor.black:
++          return [
++            const Color(0xFF111111),
++            const Color(0xFF222222),
++            const Color(0xFF333333),
++          ];
++        case ClosedGlassColor.grisClair:
++          return [
++            Colors.grey.shade300,
++            Colors.grey.shade400,
++            Colors.grey.shade500,
++          ];
++        case ClosedGlassColor.fbmClair:
++          return [
++            const Color(0xFFF5F5F5),
++            const Color(0xFFE0E0E0),
++            const Color(0xFFBDBDBD),
++          ];
++        case ClosedGlassColor.fbmfonce:
++          return [
++            const Color(0xFF424242),
++            const Color(0xFF212121),
++            const Color(0xFF000000),
++          ];
++        case ClosedGlassColor.grissoris:
++          return [
++            const Color(0xFF757575),
++            const Color(0xFF616161),
++            const Color(0xFF424242),
++          ];
++        case ClosedGlassColor.beige:
++          return [
++            const Color(0xFFF5E6C8),
++            const Color(0xFFDDC8A0),
++            const Color(0xFFBBA070),
++          ];
++        case ClosedGlassColor.transparent:
++          return [Colors.white, Colors.white, Colors.white];
++        case ClosedGlassColor.opaque:
++          return [
++            Colors.grey.shade200,
++            Colors.grey.shade300,
++            Colors.grey.shade400,
++          ];
++        case ClosedGlassColor.marberier:
++          return [
++            Colors.grey.shade100,
++            Colors.grey.shade200,
++            Colors.grey.shade300,
++          ];
++      }
++    }
++    Color baseLight = Colors.white,
++        baseMid = Colors.white,
++        baseDark = Colors.white;
++    switch (c) {
++      case GlassColor.brown:
++        baseLight = const Color(0xFFD7CCC8);
++        baseMid = const Color(0xFFA1887F);
++        baseDark = const Color(0xFF5D4037);
++        break;
++      case GlassColor.green:
++        baseLight = const Color(0xFFC8E6C9);
++        baseMid = const Color(0xFF81C784);
++        baseDark = const Color(0xFF388E3C);
++        break;
++      case GlassColor.gray:
++      case GlassColor.grayAgc:
++        baseLight = const Color(0xFFE0E0E0);
++        baseMid = const Color(0xFF9E9E9E);
++        baseDark = const Color(0xFF616161);
++        break;
++      case GlassColor.blue:
++      case GlassColor.blueAgc:
++        baseLight = const Color(0xFFBBDEFB);
++        baseMid = const Color(0xFF64B5F6);
++        baseDark = const Color(0xFF1976D2);
++        break;
++      case GlassColor.transparent:
++        baseLight = const Color(0xFFE3F2FD);
++        baseMid = const Color(0xFF90CAF9);
++        baseDark = const Color(0xFF42A5F5);
++        break;
++    }
++    if (f == GlassFinish.stopSol) return [baseLight, baseDark, baseMid];
++    return [
++      baseLight.withValues(alpha: 0.7),
++      baseMid.withValues(alpha: 0.5),
++      baseDark.withValues(alpha: 0.6),
++    ];
++  }
++
++  void _drawGlassLabel(Canvas canvas, Rect r, String text) {
++    if (text.trim().isEmpty || r.width < 100) return;
++    final textPainter = TextPainter(
++      text: TextSpan(
++        text: text,
++        style: const TextStyle(
++          color: Colors.white,
++          fontSize: 16,
++          fontWeight: FontWeight.bold,
++        ),
++      ),
++      textDirection: TextDirection.rtl,
++    )..layout(maxWidth: r.width - 10);
++    final offset = Offset(
++      r.center.dx - (textPainter.width / 2),
++      r.center.dy - (textPainter.height / 2),
++    );
++    canvas.drawRRect(
++      RRect.fromRectAndRadius(
++        Rect.fromLTWH(
++          offset.dx - 6,
++          offset.dy - 4,
++          textPainter.width + 12,
++          textPainter.height + 8,
++        ),
++        const Radius.circular(4),
++      ),
++      Paint()..color = Colors.black.withValues(alpha: 0.5),
++    );
++    textPainter.paint(canvas, offset);
++  }
++
++  void _drawSingleSash(Canvas canvas, Rect r, WindowZone zone) =>
++      _renderSash(canvas, r, zone, r, isRightSash: false);
++
++  // 🟢 رسم الظرفات المنزلقة (بما في ذلك 3 و 4 ظرفات واتجاهات الأسهم)
++  void _drawSlidingSash(Canvas canvas, Rect r, WindowZone zone) {
++    int count = zone.slidingSashesCount; // عدد الظرفات (2، 3، أو 4)
++    if (count < 2) count = 2;
++
++    // حساب عرض كل ضلفة:
++    // (العرض الكلي + (عدد الظرفات - 1) * سمك الإطار) / العدد
++    double frameT = 45.0;
++    double sashWidth = (r.width + (count - 1) * frameT) / count;
++
++    // 🟢 توزيع المسارات (Tracks):
++    // 2 ضلفة: [0, 1]
++    // 3 ضلفات: [0, 1, 0] (اثنتان على مسار واحد، وواحدة في الوسط)
++    // 4 ضلفات: [0, 1, 1, 0] (اثنتان في الوسط، واثنتان على الأطراف)
++    List<int> tracks;
++    if (count == 3) {
++      tracks = [0, 1, 0];
++    } else if (count == 4) {
++      tracks = [0, 1, 1, 0];
++    } else {
++      tracks = List.generate(count, (i) => i % 2);
++    }
++
++    // الرسم على مسارين (تأكد من رسم المسار الخلفي أولاً ثم الأمامي)
++    for (int t = 0; t <= 1; t++) {
++      for (int i = 0; i < count; i++) {
++        if (tracks[i] != t) continue;
++
++        double left = r.left + i * (sashWidth - frameT);
++        Rect sashRect = Rect.fromLTRB(left, r.top, left + sashWidth, r.bottom);
++
++        // رسم إطار الضلفة
++        _drawSashFrameRect(
++          canvas,
++          sashRect,
++          sashRect.deflate(frameT),
++          zone.sashColor,
++          zone.selectedDbColor,
++          dimmed: (t == 0), // الظرفة في المسار الخلفي تظهر باهتة قليلاً
++          isSlidingSash: true,
++        );
++
++        // رسم الزجاج
++        _drawFixedGlass(canvas, sashRect.deflate(frameT), zone.glass);
++
++        // 🟢 رسم المقابض (تظهر فقط في الوجه الداخلي)
++        if (model.isInternalView) {
++          // في الـ 3 و 4 ضلفات، المقابض تظهر على الأطراف
++          if (i == 0 || i == count - 1) {
++            _drawWindowDrawHandle(
++              canvas,
++              sashRect,
++              (i == 0) ? OpenDirection.left : OpenDirection.right,
++              zone.handlePositionRatio ?? 0.5,
++            );
++          }
++        }
++      }
++    }
++  }
++
++  void _drawPanelTexture(Canvas canvas, Rect r, FrameColor color) {
++    canvas.drawRect(
++      r,
++      Paint()
++        ..color = _fc[1]
++        ..style = PaintingStyle.fill,
++    );
++    Paint linePaint = Paint()
++      ..color = _fb.withValues(alpha: 0.3)
++      ..strokeWidth = 1.0;
++    for (double x = r.left + 15; x < r.right; x += 15) {
++      canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), linePaint);
++    }
++  }
++
++  void _drawInternalDivisions(
++    Canvas canvas,
++    Rect glassR,
++    int innerH,
++    int innerV,
++    List<double> innerHPos,
++    List<double> innerVPos,
++    FrameColor color,
++    double sashT,
++    WindowZone zone,
++    bool isRightSash,
++  ) {
++    String sidePrefix = zone.content == ZoneContent.doubleSash
++        ? (isRightSash ? 'right' : 'main')
++        : 'main';
++    if (zone.content == ZoneContent.doubleSash && !isRightSash) {
++      sidePrefix = 'left';
++    }
++
++    if (innerH == 0 && innerV == 0) {
++      if (zone.cellIsPanel['${sidePrefix}_cell_0_0'] == true) {
++        _drawPanelTexture(canvas, glassR, color);
++      }
++      _drawRealisticParclose(canvas, glassR, color);
++      if (model.selectedZone?.id == zone.id &&
++          model.activeSubZone == '${sidePrefix}_cell_0_0') {
++        canvas.drawRect(
++          glassR,
++          Paint()
++            ..color = Colors.green.shade700.withValues(alpha: 0.4)
++            ..style = PaintingStyle.fill,
++        );
++      }
++      return;
++    }
++    final double dividerT = model.getSectionThickness(
++      'mullion',
++      fallback: sashT,
++    );
++    final Paint paint = Paint()
++      ..color = _fc[1]
++      ..style = PaintingStyle.fill;
++    final Paint border = Paint()
++      ..color = _fb
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1.0;
++    Path combinedPath = Path();
++
++    List<double> hPositions = List.from(innerHPos);
++    if (hPositions.isEmpty && innerH > 0) {
++      double stepY = 1.0 / (innerH + 1);
++      for (int i = 1; i <= innerH; i++) {
++        hPositions.add(stepY * i);
++      }
++    }
++    List<double> vPositions = List.from(innerVPos);
++    if (vPositions.isEmpty && innerV > 0) {
++      double stepX = 1.0 / (innerV + 1);
++      for (int i = 1; i <= innerV; i++) {
++        vPositions.add(stepX * i);
++      }
++    }
++
++    if (hPositions.isNotEmpty) {
++      for (double posRatio in hPositions) {
++        double y = glassR.top + (glassR.height * posRatio);
++        combinedPath = Path.combine(
++          PathOperation.union,
++          combinedPath,
++          Path()..addRect(
++            Rect.fromLTRB(
++              glassR.left,
++              y - dividerT / 2,
++              glassR.right,
++              y + dividerT / 2,
++            ),
++          ),
++        );
++      }
++    }
++    if (vPositions.isNotEmpty) {
++      for (double posRatio in vPositions) {
++        double x = glassR.left + (glassR.width * posRatio);
++        combinedPath = Path.combine(
++          PathOperation.union,
++          combinedPath,
++          Path()..addRect(
++            Rect.fromLTRB(
++              x - dividerT / 2,
++              glassR.top,
++              x + dividerT / 2,
++              glassR.bottom,
++            ),
++          ),
++        );
++      }
++    }
++    canvas.drawPath(combinedPath, paint);
++    canvas.drawPath(combinedPath, border);
++
++    int rows = hPositions.length + 1;
++    int cols = vPositions.length + 1;
++
++    for (int row = 0; row < rows; row++) {
++      for (int col = 0; col < cols; col++) {
++        double topRatio = row == 0 ? 0.0 : hPositions[row - 1];
++        double bottomRatio = row == rows - 1 ? 1.0 : hPositions[row];
++        double leftRatio = col == 0 ? 0.0 : vPositions[col - 1];
++        double rightRatio = col == cols - 1 ? 1.0 : vPositions[col];
++
++        double top = glassR.top + (glassR.height * topRatio);
++        if (row > 0) top += dividerT / 2;
++        double bottom = glassR.top + (glassR.height * bottomRatio);
++        if (row < rows - 1) bottom -= dividerT / 2;
++
++        double left = glassR.left + (glassR.width * leftRatio);
++        if (col > 0) left += dividerT / 2;
++        double right = glassR.left + (glassR.width * rightRatio);
++        if (col < cols - 1) right -= dividerT / 2;
++
++        Rect cellRect = Rect.fromLTRB(left, top, right, bottom);
++        if (cellRect.width > 4 && cellRect.height > 4) {
++          String cellKey = '${sidePrefix}_cell_${row}_$col';
++          if (zone.cellIsPanel[cellKey] == true) {
++            _drawPanelTexture(canvas, cellRect, color);
++          }
++          _drawRealisticParclose(canvas, cellRect, color, customThickness: 4.0);
++          if (model.selectedZone?.id == zone.id &&
++              model.activeSubZone == cellKey) {
++            canvas.drawRect(
++              cellRect,
++              Paint()
++                ..color = Colors.green.shade700.withValues(alpha: 0.4)
++                ..style = PaintingStyle.fill,
++            );
++          }
++        }
++      }
++    }
++  }
++
++  void _renderSash(
++    Canvas canvas,
++    Rect zoneR,
++    WindowZone zone,
++    Rect sashR, {
++    bool forceHandle = true,
++    bool isRightSash = false,
++  }) {
++    final double sashT = model.getSectionThickness('sash', fallback: 45.0);
++    final glassR = sashR.deflate(sashT);
++    _drawFixedGlass(canvas, glassR, zone.glass);
++    int currentInnerH = isRightSash ? zone.rightInnerH : zone.innerH;
++    int currentInnerV = isRightSash ? zone.rightInnerV : zone.innerV;
++    List<double> hPos = isRightSash
++        ? zone.rightInnerHPositions
++        : zone.innerHPositions;
++    List<double> vPos = isRightSash
++        ? zone.rightInnerVPositions
++        : zone.innerVPositions;
++    _drawInternalDivisions(
++      canvas,
++      glassR,
++      currentInnerH,
++      currentInnerV,
++      hPos,
++      vPos,
++      zone.sashColor,
++      sashT,
++      zone,
++      isRightSash,
++    );
++    _drawSashFrameRect(
++      canvas,
++      sashR,
++      glassR,
++      zone.sashColor,
++      zone.selectedDbColor,
++      dimmed: false,
++    );
++
++    if ((overrideIsInternalView ?? model.isInternalView) &&
++        zone.openDirection != null) {
++      bool hingesOnRight = (zone.openDirection == OpenDirection.left);
++      bool hingesOnLeft = (zone.openDirection == OpenDirection.right);
++      _drawHinges(
++        canvas,
++        sashR,
++        hingesOnRight,
++        hingesOnLeft,
++        (zone.openDirection == OpenDirection.bottom),
++        (zone.openDirection == OpenDirection.top),
++        zone.glass,
++      );
++      if (forceHandle) {
++        _drawWindowDrawHandle(
++          canvas,
++          sashR,
++          zone.openDirection!,
++          zone.handlePositionRatio ?? 0.5,
++        );
++      }
++    }
++  }
++
++  bool _is90DegreeSystem() {
++    String seriesName =
++        (model.activeSeries?.name ?? model.loadedSeriesName ?? "")
++            .toLowerCase();
++    return seriesName.contains('tpr') ||
++        seriesName.contains('hbs') ||
++        seriesName.contains('h30') ||
++        seriesName.contains('h31') ||
++        seriesName.contains('h36') ||
++        seriesName.contains('67000');
++  }
++
++  void _drawSashFrameRect(
++    Canvas canvas,
++    Rect sashR,
++    Rect glassR,
++    FrameColor color,
++    Map<String, dynamic>? dbColor, {
++    required bool dimmed,
++    bool isSlidingSash = false,
++  }) {
++    final Path framePath = Path()
++      ..addRect(sashR)
++      ..addRect(glassR)
++      ..fillType = PathFillType.evenOdd;
++    canvas.drawPath(
++      framePath,
++      Paint()..shader = _fsGlobal(sashR, gradientColors: _fc),
++    );
++    canvas.drawRect(
++      sashR,
++      Paint()
++        ..color = _fb
++        ..style = PaintingStyle.stroke
++        ..strokeWidth = 1.0,
++    );
++    canvas.drawRect(
++      glassR,
++      Paint()
++        ..color = _fb
++        ..style = PaintingStyle.stroke
++        ..strokeWidth = 0.8,
++    );
++    canvas.drawRect(
++      glassR.inflate(3),
++      Paint()
++        ..color = Colors.black26
++        ..style = PaintingStyle.stroke
++        ..strokeWidth = 1.0,
++    );
++    canvas.drawRect(
++      glassR.inflate(1.5),
++      Paint()
++        ..color = const Color(0xFF1A1A1A)
++        ..style = PaintingStyle.stroke
++        ..strokeWidth = 2.5,
++    );
++    final mp = Paint()
++      ..color = Color.lerp(_fc.last, Colors.black, 0.4)!
++      ..strokeWidth = 1.2;
++
++    if (isSlidingSash && _is90DegreeSystem()) {
++      canvas.drawLine(
++        Offset(glassR.left, sashR.top),
++        Offset(glassR.left, glassR.top),
++        mp,
++      );
++      canvas.drawLine(
++        Offset(glassR.right, sashR.top),
++        Offset(glassR.right, glassR.top),
++        mp,
++      );
++      canvas.drawLine(
++        Offset(glassR.left, glassR.bottom),
++        Offset(glassR.left, sashR.bottom),
++        mp,
++      );
++      canvas.drawLine(
++        Offset(glassR.right, glassR.bottom),
++        Offset(glassR.right, sashR.bottom),
++        mp,
++      );
++    } else {
++      canvas.drawLine(sashR.topLeft, glassR.topLeft, mp);
++      canvas.drawLine(sashR.topRight, glassR.topRight, mp);
++      canvas.drawLine(sashR.bottomLeft, glassR.bottomLeft, mp);
++      canvas.drawLine(sashR.bottomRight, glassR.bottomRight, mp);
++    }
++  }
++
++  void _drawWindowDrawHandle(
++    Canvas canvas,
++    Rect sashRect,
++    OpenDirection handleSide,
++    double ratio,
++  ) {
++    double handleY = sashRect.center.dy;
++    double x = sashRect.center.dx;
++    if (handleSide == OpenDirection.left) {
++      x = sashRect.left + 20;
++      handleY = sashRect.top + (sashRect.height * (1.0 - ratio));
++    } else if (handleSide == OpenDirection.right) {
++      x = sashRect.right - 20;
++      handleY = sashRect.top + (sashRect.height * (1.0 - ratio));
++    } else if (handleSide == OpenDirection.top) {
++      handleY = sashRect.top + 22;
++      x = sashRect.left + (sashRect.width * ratio);
++    } else if (handleSide == OpenDirection.bottom) {
++      handleY = sashRect.bottom - 22;
++      x = sashRect.left + (sashRect.width * ratio);
++    }
++
++    final Paint basePaint = Paint()
++      ..color = const Color(0xFFEEEEEE)
++      ..style = PaintingStyle.fill;
++    final Paint borderPaint = Paint()
++      ..color = const Color(0xFF757575)
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1.2;
++    canvas.save();
++    canvas.translate(x, handleY);
++    if (handleSide == OpenDirection.top || handleSide == OpenDirection.bottom) {
++      canvas.rotate(-math.pi / 2);
++    }
++    final RRect basePlate = RRect.fromRectAndRadius(
++      Rect.fromCenter(center: Offset.zero, width: 18, height: 60),
++      const Radius.circular(9),
++    );
++    canvas.drawRRect(basePlate, basePaint);
++    canvas.drawRRect(basePlate, borderPaint);
++    final RRect lever = RRect.fromRectAndRadius(
++      Rect.fromLTRB(-7, -7, 7, 75),
++      const Radius.circular(7),
++    );
++    canvas.drawRRect(lever, basePaint);
++    canvas.drawRRect(lever, borderPaint);
++    canvas.drawLine(
++      const Offset(-3, 2),
++      const Offset(-3, 70),
++      Paint()
++        ..color = Colors.white
++        ..strokeWidth = 2.0,
++    );
++    canvas.restore();
++
++    final Paint dimPaint = Paint()
++      ..color = Colors.blue.shade700
++      ..strokeWidth = 3.0
++      ..style = PaintingStyle.stroke;
++    final TextStyle textStyle = TextStyle(
++      color: Colors.blue.shade900,
++      fontSize: 80,
++      fontWeight: FontWeight.bold,
++      backgroundColor: Colors.white.withValues(alpha: 0.7),
++    );
++
++    if (handleSide == OpenDirection.left || handleSide == OpenDirection.right) {
++      double dimX = (handleSide == OpenDirection.left) ? x + 25 : x - 25;
++      double distance = sashRect.bottom - handleY;
++      canvas.drawLine(
++        Offset(dimX, sashRect.bottom),
++        Offset(dimX, handleY),
++        dimPaint,
++      );
++      canvas.drawLine(
++        Offset(dimX - 4, sashRect.bottom),
++        Offset(dimX + 4, sashRect.bottom),
++        dimPaint,
++      );
++      canvas.drawLine(
++        Offset(dimX - 4, handleY),
++        Offset(dimX + 4, handleY),
++        dimPaint,
++      );
++      final tp = TextPainter(
++        text: TextSpan(text: '${distance.toInt()}', style: textStyle),
++        textDirection: TextDirection.ltr,
++      )..layout();
++      tp.paint(
++        canvas,
++        Offset(
++          (handleSide == OpenDirection.left) ? dimX + 6 : dimX - tp.width - 6,
++          handleY + (distance / 2) - (tp.height / 2),
++        ),
++      );
++    } else {
++      double dimY = (handleSide == OpenDirection.top)
++          ? handleY + 25
++          : handleY - 25;
++      double distance = x - sashRect.left;
++      canvas.drawLine(Offset(sashRect.left, dimY), Offset(x, dimY), dimPaint);
++      canvas.drawLine(
++        Offset(sashRect.left, dimY - 4),
++        Offset(sashRect.left, dimY + 4),
++        dimPaint,
++      );
++      canvas.drawLine(Offset(x, dimY - 4), Offset(x, dimY + 4), dimPaint);
++      final tp = TextPainter(
++        text: TextSpan(text: '${distance.toInt()}', style: textStyle),
++        textDirection: TextDirection.ltr,
++      )..layout();
++      tp.paint(
++        canvas,
++        Offset(
++          sashRect.left + (distance / 2) - (tp.width / 2),
++          (handleSide == OpenDirection.top) ? dimY + 4 : dimY - tp.height - 4,
++        ),
++      );
++    }
++  }
++
++  void _drawHinges(
++    Canvas canvas,
++    Rect sashR,
++    bool onRight,
++    bool onLeft,
++    bool onTop,
++    bool onBottom,
++    GlassSpecification glassInfo,
++  ) {
++    final frameH = sashR.height, frameW = sashR.width;
++    int hingeCount = (frameH >= 2100 || frameW >= 2100)
++        ? 4
++        : (frameH >= 1000 || frameW >= 1000)
++        ? 3
++        : 2;
++    if (glassInfo.structure == GlassStructure.double) hingeCount += 1;
++    final paint = Paint()..color = const Color(0xFF424242);
++    final shadow = Paint()..color = Colors.black45;
++
++    void drawHinge(Offset center, bool horizontal) {
++      final rect = horizontal
++          ? Rect.fromCenter(center: center, width: 60, height: 12)
++          : Rect.fromCenter(center: center, width: 12, height: 60);
++      canvas.drawRRect(
++        RRect.fromRectAndRadius(rect.translate(1, 1), const Radius.circular(2)),
++        shadow,
++      );
++      canvas.drawRRect(
++        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
++        paint,
++      );
++    }
++
++    if (onLeft || onRight) {
++      double x = onRight ? sashR.right - 2 : sashR.left + 2;
++      double startY = sashR.top + 100,
++          step = (sashR.bottom - 100 - startY) / (hingeCount - 1);
++      for (int i = 0; i < hingeCount; i++) {
++        drawHinge(Offset(x, startY + (step * i)), false);
++      }
++    } else if (onTop || onBottom) {
++      double y = onBottom ? sashR.bottom - 2 : sashR.top + 2;
++      double startX = sashR.left + 100,
++          step = (sashR.right - 100 - startX) / (hingeCount - 1);
++      for (int i = 0; i < hingeCount; i++) {
++        drawHinge(Offset(startX + (step * i), y), true);
++      }
++    }
++  }
++
++  void _drawWeepHoles(Canvas canvas, Rect outer, double t) {
++    final whWidth = 35.0, whHeight = 6.0;
++    final y = outer.bottom - (t / 2) - (whHeight / 2);
++    final holePaint = Paint()
++      ..color = const Color(0xFF111111)
++      ..style = PaintingStyle.fill;
++    canvas.drawRRect(
++      RRect.fromRectXY(
++        Rect.fromLTWH(outer.left + (outer.width * 0.2), y, whWidth, whHeight),
++        3,
++        3,
++      ),
++      holePaint,
++    );
++    canvas.drawRRect(
++      RRect.fromRectXY(
++        Rect.fromLTWH(
++          outer.right - (outer.width * 0.2) - whWidth,
++          y,
++          whWidth,
++          whHeight,
++        ),
++        3,
++        3,
++      ),
++      holePaint,
++    );
++  }
++
++  void _drawShutterSlatsAndTracks(
++    Canvas canvas,
++    double w,
++    double h,
++    double position,
++    double boxSize,
++  ) {
++    const coulisseWidth = 25.0;
++    final double coulisseTop = boxSize;
++    final double coulisseHeight = h - boxSize;
++
++    final coulissePaint = Paint()
++      ..color = _fc[1]
++      ..style = PaintingStyle.fill;
++    final coulisseBorder = Paint()
++      ..color = _fb
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1;
++
++    if (!model.removedShutterSides.contains('left')) {
++      canvas.drawRect(
++        Rect.fromLTWH(0, coulisseTop, coulisseWidth, coulisseHeight),
++        coulissePaint,
++      );
++      canvas.drawRect(
++        Rect.fromLTWH(0, coulisseTop, coulisseWidth, coulisseHeight),
++        coulisseBorder,
++      );
++    }
++    if (!model.removedShutterSides.contains('right')) {
++      canvas.drawRect(
++        Rect.fromLTWH(
++          w - coulisseWidth,
++          coulisseTop,
++          coulisseWidth,
++          coulisseHeight,
++        ),
++        coulissePaint,
++      );
++      canvas.drawRect(
++        Rect.fromLTWH(
++          w - coulisseWidth,
++          coulisseTop,
++          coulisseWidth,
++          coulisseHeight,
++        ),
++        coulisseBorder,
++      );
++    }
++
++    final visibleSlatsHeight = (h - boxSize) * position;
++    canvas.save();
++    final leftClip = model.removedShutterSides.contains('left')
++        ? 0.0
++        : coulisseWidth;
++    final rightClip = model.removedShutterSides.contains('right')
++        ? w
++        : w - coulisseWidth;
++    canvas.clipRect(
++      Rect.fromLTRB(leftClip, boxSize, rightClip, boxSize + visibleSlatsHeight),
++    );
++    for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
++      if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= h) {
++        break;
++      }
++      canvas.drawRect(
++        Rect.fromLTRB(leftClip, y, rightClip, y + 20.0),
++        Paint()
++          ..color = _fc[0].withValues(alpha: 0.95)
++          ..style = PaintingStyle.fill,
++      );
++      canvas.drawLine(
++        Offset(leftClip, y + 20.0),
++        Offset(rightClip, y + 20.0),
++        Paint()
++          ..color = _fb.withValues(alpha: 0.4)
++          ..strokeWidth = 1,
++      );
++    }
++    canvas.restore();
++  }
++
++  void _drawShutterBox(Canvas canvas, double w, double boxSize) {
++    final boxRect = Rect.fromLTWH(0, 0, w, boxSize);
++    canvas.drawRect(
++      boxRect,
++      Paint()
++        ..color = _fc[1]
++        ..style = PaintingStyle.fill,
++    );
++    canvas.drawRect(
++      boxRect,
++      Paint()
++        ..color = _fb
++        ..style = PaintingStyle.stroke
++        ..strokeWidth = 1.5,
++    );
++  }
++
++  void _drawRealisticParclose(
++    Canvas canvas,
++    Rect rect,
++    FrameColor color, {
++    double? customThickness,
++  }) {
++    final double pT = customThickness ?? 8.0;
++    if (rect.width <= pT * 2 || rect.height <= pT * 2) return;
++    final Rect innerRect = rect.deflate(pT);
++    canvas.drawPath(
++      Path()
++        ..fillType = PathFillType.evenOdd
++        ..addRect(rect)
++        ..addRect(innerRect),
++      Paint()
++        ..color = _fc[1]
++        ..style = PaintingStyle.fill,
++    );
++    final Paint linePaint = Paint()
++      ..color = _fb.withValues(alpha: 0.5)
++      ..style = PaintingStyle.stroke
++      ..strokeWidth = 1.0;
++    canvas.drawRect(innerRect, linePaint);
++    canvas.drawLine(rect.topLeft, innerRect.topLeft, linePaint);
++    canvas.drawLine(rect.topRight, innerRect.topRight, linePaint);
++    canvas.drawLine(rect.bottomLeft, innerRect.bottomLeft, linePaint);
++    canvas.drawLine(rect.bottomRight, innerRect.bottomRight, linePaint);
++  }
++
++  @override
++  bool shouldRepaint(covariant WindowPainter oldDelegate) => true;
++}
+diff --git a/scratch/fix_external_view.py b/scratch/fix_external_view.py
+new file mode 100644
+index 0000000..b69b860
+--- /dev/null
++++ b/scratch/fix_external_view.py
+@@ -0,0 +1,164 @@
++import re
++
++file_path = "lib/Commande/window_painter.dart"
++with open(file_path, "r", encoding="utf-8") as f:
++    content = f.read()
++
++# 1. Fix _drawShutterSlatsAndTracks coulisse bounds and slat bounds
++old_slats = """  void _drawShutterSlatsAndTracks(
++    Canvas canvas,
++    double w,
++    double h,
++    double position,
++    double boxSize,
++  ) {
++    const coulisseWidth = 25.0;
++
++    // الكوليس يمتد من أعلى صندوق الستار (-boxSize) حتى أسفل النافذة (h)
++    final double coulisseTop = -boxSize;
++    final double coulisseHeight = h + boxSize;"""
++
++new_slats = """  void _drawShutterSlatsAndTracks(
++    Canvas canvas,
++    double w,
++    double h,
++    double position,
++    double boxSize,
++  ) {
++    const coulisseWidth = 25.0;
++
++    // الكوليس يمتد من أسفل صندوق الستار (boxSize) حتى أسفل النافذة (h)
++    final double coulisseTop = boxSize;
++    final double coulisseHeight = h;"""
++
++if old_slats in content:
++    content = content.replace(old_slats, new_slats)
++else:
++    print("Could not find old_slats!")
++
++old_slat_loop = """    // الشفرات (الداليفات) تظهر من أسفل صندوق الستار (y=0) نزولاً بحسب position
++    final visibleSlatsHeight = h * position;
++    canvas.save();
++    final leftClip = model.removedShutterSides.contains('left')
++        ? 0.0
++        : coulisseWidth;
++    final rightClip = model.removedShutterSides.contains('right')
++        ? w
++        : w - coulisseWidth;
++    canvas.clipRect(Rect.fromLTRB(leftClip, 0, rightClip, visibleSlatsHeight));
++    for (double y = 0; y < visibleSlatsHeight; y += 20.0) {
++      if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= h) {
++        break;
++      }"""
++
++new_slat_loop = """    // الشفرات (الداليفات) تظهر من أسفل صندوق الستار (boxSize) نزولاً بحسب position
++    final visibleSlatsHeight = h * position;
++    canvas.save();
++    final leftClip = model.removedShutterSides.contains('left')
++        ? 0.0
++        : coulisseWidth;
++    final rightClip = model.removedShutterSides.contains('right')
++        ? w
++        : w - coulisseWidth;
++    canvas.clipRect(Rect.fromLTRB(leftClip, boxSize, rightClip, boxSize + visibleSlatsHeight));
++    for (double y = boxSize; y < boxSize + visibleSlatsHeight; y += 20.0) {
++      if (model.removedShutterSides.contains('bottom') && (y + 20.0) >= boxSize + h) {
++        break;
++      }"""
++
++if old_slat_loop in content:
++    content = content.replace(old_slat_loop, new_slat_loop)
++else:
++    print("Could not find old_slat_loop!")
++
++# 2. Fix the order in paint() for External View
++# First, extract the whole paint method body and modify the else block.
++# The else block currently is:
++old_else_block = """    } else {
++      if (!model.isShutterOnly) {
++        _drawOuterFrame(canvas, w, h, t, boxSize);
++        if (model.hasSideCovers) _drawSideCovers(canvas, w, h, boxSize, t, boxSize);
++      }
++
++      // 🟢 تصحيح 1: إخراج الصندوق من القص لكي يظهر ويتلون
++      if (model.hasShutter) {
++        _drawShutterBox(canvas, w, boxSize);
++      }
++
++      if (!model.isShutterOnly) {
++        canvas.save();
++        canvas.clipPath(innerPath);
++        _drawMullions(canvas, w, h, t);
++        canvas.restore();
++
++        if (model.hasBottomFrame) {
++          _drawWeepHoles(canvas, Rect.fromLTWH(0, boxSize, w, h), t);
++        }
++
++        canvas.save();
++        canvas.clipPath(innerPath);
++        for (final zone in model.zones) {
++          _drawZoneContent(canvas, zone, h, t);
++        }
++      } else {
++        canvas.save();
++        canvas.clipPath(innerPath);
++      }
++      
++      // 🟢 رسم الشفرات مرة واحدة داخل القص
++      if (model.hasShutter) {
++        _drawShutterSlatsAndTracks(canvas, w, h, model.shutterPosition, model.shutterBoxHeight);
++      }
++      canvas.restore();
++    }"""
++
++new_else_block = """    } else {
++      if (!model.isShutterOnly) {
++        _drawOuterFrame(canvas, w, h, t, boxSize);
++        if (model.hasSideCovers) _drawSideCovers(canvas, w, h, boxSize, t, boxSize);
++
++        canvas.save();
++        canvas.clipPath(innerPath);
++        _drawMullions(canvas, w, h, t);
++        canvas.restore();
++
++        if (model.hasBottomFrame) {
++          _drawWeepHoles(canvas, Rect.fromLTWH(0, boxSize, w, h), t);
++        }
++
++        canvas.save();
++        canvas.clipPath(innerPath);
++        for (final zone in model.zones) {
++          _drawZoneContent(canvas, zone, h, t);
++        }
++        canvas.restore();
++      }
++      
++      // 🟢 رسم الشفرات والصندوق بدون القص لكي تغطي الإطار
++      if (model.hasShutter) {
++        _drawShutterSlatsAndTracks(canvas, w, h, model.shutterPosition, boxSize);
++        _drawShutterBox(canvas, w, boxSize);
++      }
++    }"""
++
++if old_else_block in content:
++    content = content.replace(old_else_block, new_else_block)
++else:
++    print("Could not find old_else_block!")
++
++# 3. Fix side covers topY
++old_side_covers = """  void _drawSideCovers(Canvas canvas, double w, double h, double boxSize, double t, double offsetY) {
++    final topY = model.hasShutter ? 0.0 : 0.0; // Shutter box sits on top"""
++new_side_covers = """  void _drawSideCovers(Canvas canvas, double w, double h, double boxSize, double t, double offsetY) {
++    final topY = offsetY; // Shutter box sits on top"""
++
++if old_side_covers in content:
++    content = content.replace(old_side_covers, new_side_covers)
++else:
++    print("Could not find old_side_covers!")
++
++# Finally, write the changes back
++with open(file_path, "w", encoding="utf-8") as f:
++    f.write(content)
++
++print("Applied fixes for external view.")
+diff --git a/scratch/fix_external_view_regex.py b/scratch/fix_external_view_regex.py
+new file mode 100644
+index 0000000..f0015df
+--- /dev/null
++++ b/scratch/fix_external_view_regex.py
+@@ -0,0 +1,67 @@
++import re
++
++file_path = "lib/Commande/window_painter.dart"
++with open(file_path, "r", encoding="utf-8") as f:
++    content = f.read()
++
++# Fix side covers
++content = re.sub(
++    r"void _drawSideCovers.*?\{\s*final topY = .*?;",
++    r"void _drawSideCovers(Canvas canvas, double w, double h, double boxSize, double t, double offsetY) {\n    final topY = offsetY;",
++    content,
++    flags=re.DOTALL
++)
++
++# Fix else block in paint
++# The else block is from `} else {` until `canvas.restore();` and `}` for paint
++# I'll just use regex for the whole block from "} else {" to the end of paint.
++old_else_pattern = r"\} else \{\s*if \(\!model\.isShutterOnly\).*?canvas\.restore\(\);\s*\}"
++
++new_else_block = """} else {
++      if (!model.isShutterOnly) {
++        _drawOuterFrame(canvas, w, h, t, boxSize);
++        if (model.hasSideCovers) _drawSideCovers(canvas, w, h, boxSize, t, boxSize);
++      }
++
++      if (!model.isShutterOnly) {
++        canvas.save();
++        canvas.clipPath(innerPath);
++        _drawMullions(canvas, w, h, t);
++        canvas.restore();
++
++        if (model.hasBottomFrame) {
++          _drawWeepHoles(canvas, Rect.fromLTWH(0, boxSize, w, h), t);
++        }
++
++        canvas.save();
++        canvas.clipPath(innerPath);
++        for (final zone in model.zones) {
++          _drawZoneContent(canvas, zone, h, t);
++          if (zone.content == ZoneContent.singleSash ||
++              zone.content == ZoneContent.doubleSash) {
++            if (zone.content == ZoneContent.singleSash &&
++                zone.openDirection != null) {
++              _drawWindowDrawHandle(
++                canvas,
++                _getEffectiveZoneRect(zone.boundary, h, t),
++                zone.openDirection!,
++                zone.handlePositionRatio ?? 0.5,
++              );
++            }
++          }
++        }
++        canvas.restore();
++      }
++
++      // 🟢 رسم الشفرات والصندوق في النهاية لكي تغطي الإطار
++      if (model.hasShutter) {
++        _drawShutterSlatsAndTracks(canvas, w, h, model.shutterPosition, boxSize);
++        _drawShutterBox(canvas, w, boxSize);
++      }
++    }"""
++
++content = re.sub(old_else_pattern, new_else_block, content, flags=re.DOTALL)
++
++with open(file_path, "w", encoding="utf-8") as f:
++    f.write(content)
++print("Regex replace applied.")
+diff --git a/scratch/fix_painter_shutter.dart b/scratch/fix_painter_shutter.dart
+new file mode 100644
+index 0000000..441023b
+--- /dev/null
++++ b/scratch/fix_painter_shutter.dart
+@@ -0,0 +1,213 @@
++import 'dart:io';
++
++void main() {
++  var file = File('lib/Commande/window_painter.dart');
++  var content = file.readAsStringSync();
++
++  // Fix `_buildOuterShapePath`
++  content = content.replaceFirst(
++'''
++  Path _buildOuterShapePath(double w, double h) {
++    if (model.archHeight == 0 &&
++        model.topSlantLeftY == 0 &&
++        model.topSlantRightY == 0 &&
++        model.bottomSlantLeftY == 0 &&
++        model.bottomSlantRightY == 0) {
++      return Path()..addRect(Rect.fromLTWH(0, 0, w, h));
++    }
++    Path p = Path();
++    p.moveTo(0, model.topSlantLeftY);
++''',
++'''
++  Path _buildOuterShapePath(double w, double h) {
++    double topOffset = model.hasShutter ? model.shutterBoxHeight : 0.0;
++    if (model.archHeight == 0 &&
++        model.topSlantLeftY == 0 &&
++        model.topSlantRightY == 0 &&
++        model.bottomSlantLeftY == 0 &&
++        model.bottomSlantRightY == 0) {
++      return Path()..addRect(Rect.fromLTRB(0, topOffset, w, h));
++    }
++    Path p = Path();
++    p.moveTo(0, topOffset + model.topSlantLeftY);
++'''
++  );
++
++  // Still in `_buildOuterShapePath`
++  content = content.replaceFirst(
++'''
++    if (model.archHeight > 0) {
++      p.quadraticBezierTo(
++        w / 2,
++        math.min(model.topSlantLeftY, model.topSlantRightY) -
++            (model.archHeight * 2),
++        w,
++        model.topSlantRightY,
++      );
++    } else {
++      p.lineTo(w, model.topSlantRightY);
++    }
++''',
++'''
++    if (model.archHeight > 0) {
++      p.quadraticBezierTo(
++        w / 2,
++        topOffset + math.min(model.topSlantLeftY, model.topSlantRightY) -
++            (model.archHeight * 2),
++        w,
++        topOffset + model.topSlantRightY,
++      );
++    } else {
++      p.lineTo(w, topOffset + model.topSlantRightY);
++    }
++'''
++  );
++
++  // Fix `_buildInnerShapePath`
++  content = content.replaceFirst(
++'''
++  Path _buildInnerShapePath(double w, double h, double t) {
++    if (model.archHeight == 0 &&
++        model.topSlantLeftY == 0 &&
++        model.topSlantRightY == 0 &&
++        model.bottomSlantLeftY == 0 &&
++        model.bottomSlantRightY == 0) {
++      return Path()..addRect(Rect.fromLTWH(t, t, w - t * 2, h - t * 2));
++    }
++    Path p = Path();
++    p.moveTo(t, model.topSlantLeftY + t);
++''',
++'''
++  Path _buildInnerShapePath(double w, double h, double t) {
++    double topOffset = model.hasShutter ? model.shutterBoxHeight : 0.0;
++    if (model.archHeight == 0 &&
++        model.topSlantLeftY == 0 &&
++        model.topSlantRightY == 0 &&
++        model.bottomSlantLeftY == 0 &&
++        model.bottomSlantRightY == 0) {
++      return Path()..addRect(Rect.fromLTRB(t, topOffset + t, w - t, h - t));
++    }
++    Path p = Path();
++    p.moveTo(t, topOffset + model.topSlantLeftY + t);
++'''
++  );
++
++  // Still in `_buildInnerShapePath`
++  content = content.replaceFirst(
++'''
++    if (model.archHeight > 0) {
++      p.quadraticBezierTo(
++        w / 2,
++        math.min(model.topSlantLeftY, model.topSlantRightY) -
++            (model.archHeight * 2) +
++            t,
++        w - t,
++        model.topSlantRightY + t,
++      );
++    } else {
++      p.lineTo(w - t, model.topSlantRightY + t);
++    }
++''',
++'''
++    if (model.archHeight > 0) {
++      p.quadraticBezierTo(
++        w / 2,
++        topOffset + math.min(model.topSlantLeftY, model.topSlantRightY) -
++            (model.archHeight * 2) +
++            t,
++        w - t,
++        topOffset + model.topSlantRightY + t,
++      );
++    } else {
++      p.lineTo(w - t, topOffset + model.topSlantRightY + t);
++    }
++'''
++  );
++
++  // Fix outerRect in _drawOuterFrame
++  content = content.replaceFirst(
++'''
++    final outerRect = Rect.fromLTWH(0, 0, w, h);
++    canvas.drawPath(path, Paint()..shader = _fsGlobal(outerRect));
++''',
++'''
++    double topOffset = model.hasShutter ? model.shutterBoxHeight : 0.0;
++    final outerRect = Rect.fromLTRB(0, topOffset, w, h);
++    canvas.drawPath(path, Paint()..shader = _fsGlobal(outerRect));
++'''
++  );
++  
++  content = content.replaceFirst(
++'''
++    _drawMiterCorners(
++      canvas,
++      outerRect,
++      Rect.fromLTWH(t, t, w - t * 2, h - t * 2),
++      t,
++    );
++''',
++'''
++    _drawMiterCorners(
++      canvas,
++      outerRect,
++      Rect.fromLTRB(t, topOffset + t, w - t, h - t),
++      t,
++    );
++'''
++  );
++
++  // Fix _drawMullions
++  content = content.replaceFirst(
++'''
++    canvas.save();
++    canvas.clipRect(Rect.fromLTWH(t, t, w - t * 2, h - t * 2));
++
++    canvas.drawPath(combinedPath, paint);
++''',
++'''
++    canvas.save();
++    double topOffset = model.hasShutter ? model.shutterBoxHeight : 0.0;
++    canvas.clipRect(Rect.fromLTRB(t, topOffset + t, w - t, h - t));
++
++    canvas.drawPath(combinedPath, paint);
++'''
++  );
++
++  // Fix _drawSideCovers. Side covers normally start at `topY`
++  // Actually side covers ALREADY do `topY = model.hasShutter ? -boxSize : 0.0;`
++  // Wait, if the outer frame is shifted down to `boxSize`, then the side covers should start from `0` when there's a shutter?
++  // Let's check `_drawSideCovers`:
++  //    final topY = model.hasShutter ? -boxSize : 0.0;
++  // Oh, previously, if there was a shutter, the window was drawn at 0 to h, and the shutter box was drawn from 0 to boxSize OVERLAPPING the window!
++  // And the side covers started at -boxSize (above the window)!
++  // But now the window starts at `boxSize` to `h`.
++  // So the shutter box should be drawn from `0` to `boxSize`.
++  // And the side covers should start at `0` (if hasShutter) or `0` (if no shutter), BUT they should go down to `h`.
++  // Let's modify `_drawSideCovers`.
++  content = content.replaceFirst(
++'''
++  void _drawSideCovers(
++    Canvas canvas,
++    double w,
++    double h,
++    double boxSize,
++    double t,
++  ) {
++    final topY = model.hasShutter ? -boxSize : 0.0;
++''',
++'''
++  void _drawSideCovers(
++    Canvas canvas,
++    double w,
++    double h,
++    double boxSize,
++    double t,
++  ) {
++    // Shutter box is now drawn from 0 to boxSize. Window starts at boxSize.
++    // So side covers should start at 0 if there's a shutter.
++    final topY = 0.0;
++'''
++  );
++
++  file.writeAsStringSync(content);
++}
+diff --git a/scratch/update_painter_offset.py b/scratch/update_painter_offset.py
+new file mode 100644
+index 0000000..c59706b
+--- /dev/null
++++ b/scratch/update_painter_offset.py
+@@ -0,0 +1,209 @@
++import re
++
++file_path = "lib/Commande/window_painter.dart"
++
++with open(file_path, "r", encoding="utf-8") as f:
++    content = f.read()
++
++# 1. Update _buildOuterShapePath
++content = re.sub(
++    r"Path _buildOuterShapePath\(double w, double h\) \{",
++    r"Path _buildOuterShapePath(double w, double h, double offsetY) {",
++    content,
++    count=1
++)
++content = re.sub(
++    r"return Path\(\)\.\.addRect\(Rect\.fromLTWH\(0, 0, w, h\)\);",
++    r"return Path()..addRect(Rect.fromLTWH(0, offsetY, w, h));",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.moveTo\(0, model\.topSlantLeftY\);",
++    r"p.moveTo(0, offsetY + model.topSlantLeftY);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"model\.topSlantLeftY, model\.topSlantRightY\) -\n\s*\(model\.archHeight \* 2\),",
++    r"model.topSlantLeftY, model.topSlantRightY) - (model.archHeight * 2) + offsetY,",
++    content,
++    count=1
++)
++content = re.sub(
++    r"w,\n\s*model\.topSlantRightY,",
++    r"w, offsetY + model.topSlantRightY,",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.lineTo\(w, model\.topSlantRightY\);",
++    r"p.lineTo(w, offsetY + model.topSlantRightY);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.lineTo\(w, h - model\.bottomSlantRightY\);",
++    r"p.lineTo(w, offsetY + h - model.bottomSlantRightY);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.lineTo\(0, h - model\.bottomSlantLeftY\);",
++    r"p.lineTo(0, offsetY + h - model.bottomSlantLeftY);",
++    content,
++    count=1
++)
++
++# 2. Update _buildInnerShapePath
++content = re.sub(
++    r"Path _buildInnerShapePath\(double w, double h, double t\) \{",
++    r"Path _buildInnerShapePath(double w, double h, double t, double offsetY) {",
++    content,
++    count=1
++)
++content = re.sub(
++    r"return Path\(\)\.\.addRect\(Rect\.fromLTWH\(t, t, w - t \* 2, h - t \* 2\)\);",
++    r"return Path()..addRect(Rect.fromLTWH(t, offsetY + t, w - t * 2, h - t * 2));",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.moveTo\(t, model\.topSlantLeftY \+ t\);",
++    r"p.moveTo(t, offsetY + model.topSlantLeftY + t);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"model\.topSlantLeftY, model\.topSlantRightY\) -\n\s*\(model\.archHeight \* 2\) \+\n\s*t,",
++    r"model.topSlantLeftY, model.topSlantRightY) - (model.archHeight * 2) + t + offsetY,",
++    content,
++    count=1
++)
++content = re.sub(
++    r"w - t,\n\s*model\.topSlantRightY \+ t,",
++    r"w - t, offsetY + model.topSlantRightY + t,",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.lineTo\(w - t, model\.topSlantRightY \+ t\);",
++    r"p.lineTo(w - t, offsetY + model.topSlantRightY + t);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.lineTo\(w - t, h - model\.bottomSlantRightY - t\);",
++    r"p.lineTo(w - t, offsetY + h - model.bottomSlantRightY - t);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"p\.lineTo\(t, h - model\.bottomSlantLeftY - t\);",
++    r"p.lineTo(t, offsetY + h - model.bottomSlantLeftY - t);",
++    content,
++    count=1
++)
++
++# 3. Update _drawOuterFrame
++content = re.sub(
++    r"void _drawOuterFrame\(Canvas canvas, double w, double h, double t\) \{",
++    r"void _drawOuterFrame(Canvas canvas, double w, double h, double t, double offsetY) {",
++    content,
++    count=1
++)
++content = re.sub(
++    r"final outerPath = _buildOuterShapePath\(w, h\);",
++    r"final outerPath = _buildOuterShapePath(w, h, offsetY);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"final innerPath = _buildInnerShapePath\(w, h, t\);",
++    r"final innerPath = _buildInnerShapePath(w, h, t, offsetY);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"final outerRect = Rect\.fromLTWH\(0, 0, w, h\);",
++    r"final outerRect = Rect.fromLTWH(0, offsetY, w, h);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"Rect\.fromLTWH\(t, t, w - t \* 2, h - t \* 2\),",
++    r"Rect.fromLTWH(t, offsetY + t, w - t * 2, h - t * 2),",
++    content,
++    count=1
++)
++
++# 4. Update _drawSideCovers
++content = re.sub(
++    r"void _drawSideCovers\(\n\s*Canvas canvas,\n\s*double w,\n\s*double h,\n\s*double boxSize,\n\s*double t,\n\s*\) \{",
++    r"void _drawSideCovers(Canvas canvas, double w, double h, double boxSize, double t, double offsetY) {",
++    content,
++    count=1
++)
++content = re.sub(
++    r"final topY = model\.hasShutter \? -boxSize : 0\.0;",
++    r"final topY = model.hasShutter ? 0.0 : 0.0; // Shutter box sits on top",
++    content,
++    count=1
++)
++content = re.sub(
++    r"hasB \? h \+ t : h\)",
++    r"hasB ? offsetY + h + t : offsetY + h)",
++    content,
++    count=4
++)
++content = re.sub(
++    r"0, h\)",
++    r"0, offsetY + h)",
++    content,
++    count=2
++)
++content = re.sub(
++    r"w, h\)",
++    r"w, offsetY + h)",
++    content,
++    count=2
++)
++
++
++# 5. Update _drawShutterBox
++content = re.sub(
++    r"final boxRect = Rect\.fromLTWH\(0, -boxSize, w, boxSize\);",
++    r"final boxRect = Rect.fromLTWH(0, 0, w, boxSize);",
++    content,
++    count=1
++)
++
++# 6. Update paint()
++content = re.sub(
++    r"final innerPath = _buildInnerShapePath\(w, h, t\);",
++    r"final innerPath = _buildInnerShapePath(w, h, t, boxSize);",
++    content,
++    count=1
++)
++content = re.sub(
++    r"_drawOuterFrame\(canvas, w, h, t\);",
++    r"_drawOuterFrame(canvas, w, h, t, boxSize);",
++    content,
++    count=2
++)
++content = re.sub(
++    r"if \(model\.hasSideCovers\) _drawSideCovers\(canvas, w, h, boxSize, t\);",
++    r"if (model.hasSideCovers) _drawSideCovers(canvas, w, h, boxSize, t, boxSize);",
++    content,
++    count=2
++)
++content = re.sub(
++    r"_drawWeepHoles\(canvas, Rect\.fromLTWH\(0, 0, w, h\), t\);",
++    r"_drawWeepHoles(canvas, Rect.fromLTWH(0, boxSize, w, h), t);",
++    content,
++    count=1
++)
++
++with open(file_path, "w", encoding="utf-8") as f:
++    f.write(content)
++print("Done")

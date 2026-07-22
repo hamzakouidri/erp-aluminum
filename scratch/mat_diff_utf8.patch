@@ -1,0 +1,2828 @@
+diff --git a/lib/Commande/Systeme/material_consumption_screen.dart b/lib/Commande/Systeme/material_consumption_screen.dart
+index 4977264..b266470 100644
+--- a/lib/Commande/Systeme/material_consumption_screen.dart
++++ b/lib/Commande/Systeme/material_consumption_screen.dart
+@@ -1,372 +1,360 @@
+-∩╗┐// ╪º╪│╪¬┘è╪▒╪º╪» ┘à┘â╪¬╪¿╪⌐ ╪º┘ä╪¬╪╣╪º┘à┘ä ┘à╪╣ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪½┘å╪º╪ª┘è╪⌐ (┘à╪½┘ä ╪º┘ä╪╡┘ê╪▒)
+ import 'dart:typed_data';
+-
+-// ╪º╪│╪¬┘è╪▒╪º╪» ┘à┘â╪¬╪¿╪⌐ ┘ü┘ä╪º╪¬╪▒ ╪º┘ä╪ú╪│╪º╪│┘è╪⌐ ┘ä╪¿┘å╪º╪í ┘ê╪º╪¼┘ç╪⌐ ╪º┘ä┘à╪│╪¬╪«╪»┘à
+ import 'package:flutter/material.dart';
+-
+-// ╪º╪│╪¬┘è╪▒╪º╪» ┘å┘à┘ê╪░╪¼ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪«╪º╪╡ ╪¿╪º┘ä┘å╪º┘ü╪░╪⌐ (WindowModel)
+ import 'package:database_data/Commande/Systeme/model.dart';
+-
+-// ╪º╪│╪¬┘è╪▒╪º╪» ┘â┘ä╪º╪│ ╪º┘ä╪¡╪│╪º╪¿╪º╪¬ ╪º┘ä┘ç┘å╪»╪│┘è╪⌐ ┘ä┘ä╪¬┘é╪╖┘è╪╣
+ import 'package:database_data/Commande/Systeme/cutting_calculator.dart';
+-
+-// ╪º╪│╪¬┘è╪▒╪º╪» ┘â┘ä╪º╪│ ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪º┘ä┘à╪¡┘ä┘è╪⌐ (SQLite)
+ import 'package:database_data/sql_database.dart';
+-
+-// ╪º╪│╪¬┘è╪▒╪º╪» ╪»╪º┘ä╪⌐ ╪º┘ä╪¬┘é╪º╪╖ ╪╡┘ê╪▒╪⌐ ╪º┘ä┘å╪º┘ü╪░╪⌐ ┘â╪▒╪│┘ê┘à╪º╪¬
+ import 'package:database_data/Commande/capture_image.dart';
+-import 'package:sqflite_sqlcipher/sqflite.dart';
+-// ╪º╪│╪¬┘è╪▒╪º╪» ┘à┘â╪¬╪¿╪⌐ ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘ä┘ä╪¬╪╣╪º┘à┘ä ┘à╪╣ ╪«╪╡╪º╪ª╪╡ ╪Ñ╪╢╪º┘ü┘è╪⌐ ╪Ñ┘å ┘ä╪▓┘à ╪º┘ä╪ú┘à╪▒
+ 
+-// ╪¬╪╣╪▒┘è┘ü ┘â┘ä╪º╪│ ╪º┘ä╪┤╪º╪┤╪⌐ ┘â┘Ç StatefulWidget ┘ä╪ú┘å ┘à╪¡╪¬┘ê╪º┘ç╪º ┘è╪¬╪║┘è╪▒ (╪ú╪│╪╣╪º╪▒╪î ┘â┘à┘è╪º╪¬)
+ class MaterialConsumptionScreen extends StatefulWidget {
+-  // ╪º╪│╪¬┘é╪¿╪º┘ä ┘å┘à┘ê╪░╪¼ ╪º┘ä┘å╪º┘ü╪░╪⌐ ╪º┘ä┘à┘Å┘à╪▒╪▒ ┘à┘å ╪º┘ä╪┤╪º╪┤╪⌐ ╪º┘ä╪│╪º╪¿┘é╪⌐
+   final WindowModel model;
+ 
+-  // ╪º┘ä┘à┘Å┘å╪┤╪ª (Constructor) ┘à╪╣ ╪¬╪¡╪»┘è╪» ╪ú┘å model ╪Ñ╪¼╪¿╪º╪▒┘è
+   const MaterialConsumptionScreen({super.key, required this.model});
+ 
+-  // ╪Ñ┘å╪┤╪º╪í ╪¡╪º┘ä╪⌐ (State) ┘à╪¬╪╡┘ä╪⌐ ╪¿┘ç╪░┘ç ╪º┘ä╪┤╪º╪┤╪⌐
+   @override
+   State<MaterialConsumptionScreen> createState() =>
+       _MaterialConsumptionScreenState();
+ }
+ 
+-// ┘â┘ä╪º╪│ ╪º┘ä╪¡╪º┘ä╪⌐ (State) ╪º┘ä╪░┘è ┘è╪¡╪¬┘ê┘è ╪╣┘ä┘ë ╪º┘ä┘à┘å╪╖┘é ┘ê╪º┘ä┘ê╪º╪¼┘ç╪⌐
+ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+-  // ┘é╪º┘à┘ê╪│ (Map) ┘ä╪¡┘ü╪╕ ╪º┘ä╪│╪╣╪▒ ┘ä┘â┘ä ┘é╪╖╪╣╪⌐ ┘ê╪º╪│┘à┘ç╪º ┘â┘å╪╡╪î ┘ä╪¬╪│┘ç┘è┘ä ╪º┘ä╪¿╪¡╪½ ╪╣┘å ╪º┘ä╪│╪╣╪▒ ┘ä╪º╪¡┘é╪º┘ï
++  // ╪¬╪«╪▓┘è┘å ╪º┘ä╪ú╪│╪╣╪º╪▒╪î ╪º┘ä┘à┘ü╪¬╪º╪¡ ┘ç┘ê ╪º╪│┘à ╪º┘ä╪╣┘å╪╡╪▒
+   final Map<String, double> _prices = {};
+-
+-  // ╪Ñ┘å╪┤╪º╪í ┘å╪│╪«╪⌐ ┘à┘å ┘â┘ä╪º╪│ ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘ä┘ä╪¬╪╣╪º┘à┘ä ┘à╪╣┘ç╪º
+   final SqlDatabase db = SqlDatabase();
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¬╪«╪▓┘è┘å ╪ú╪│╪╖╪▒ ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ ╪º┘ä╪«╪º╪╡╪⌐ ╪¿┘à┘é╪º╪╖╪╣ ╪º┘ä╪ú┘ä┘à┘å┘è┘ê┘à/PVC
+   List<MaterialRow> _profiles = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¬╪«╪▓┘è┘å ╪ú╪│╪╖╪▒ ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪ú╪¼╪▓╪º╪í ╪º┘ä╪│╪¬╪º╪▒ (╪º┘ä╪▒┘è╪»┘ê)
+   List<MaterialRow> _shutters = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¬╪«╪▓┘è┘å ╪ú╪│╪╖╪▒ ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬
+   List<MaterialRow> _accessories = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¬╪«╪▓┘è┘å ╪ú╪│╪╖╪▒ ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪º┘ä╪▓╪¼╪º╪¼
+   List<MaterialRow> _glass = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¡┘ü╪╕ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪«╪º┘à ┘ä┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ┘à┘å ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
+   List<Map<String, dynamic>> _dbAccessories = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¡┘ü╪╕ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪«╪º┘à ┘ä┘ä╪▓╪¼╪º╪¼ ┘à┘å ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
+   List<Map<String, dynamic>> _dbGlass = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘ä╪¡┘ü╪╕ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪«╪º┘à ┘ä┘à╪▒┘â╪¿╪º╪¬ ╪º┘ä╪│╪¬╪º╪▒ ┘à┘å ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
+-  List<Map<String, dynamic>> _dbShutterComponents = [];
+-
+-  // ┘é╪º╪ª┘à╪⌐ ┘å╪╡┘è╪⌐ ┘ä╪¡┘ü╪╕ ╪º┘ä┘ü╪╢┘ä╪º╪¬ (chutes) ╪º┘ä╪¬┘è ╪¬╪▓┘è╪» ╪╣┘å 1 ┘à╪¬╪▒ ┘ä╪Ñ╪╕┘ç╪º╪▒┘ç╪º ┘ä┘ä┘à╪│╪¬╪«╪»┘à
+   List<String> _usefulChutes = [];
+ 
+-  // ┘à╪¬╪║┘è╪▒ ┘ä╪¡┘ü╪╕ ╪º┘ä┘à╪╣╪▒┘ü ╪º┘ä╪▒┘é┘à┘è ┘ä┘ä┘ê┘å ╪º┘ä┘à╪«╪¬╪º╪▒ (ID)
+-  int? _selectedColorId;
+-
+-  // ┘à╪¬╪║┘è╪▒ ┘ä╪¡┘ü╪╕ ╪º╪│┘à ╪º┘ä┘ä┘ê┘å ╪º┘ä┘à╪«╪¬╪º╪▒ (╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è: ╪ú╪¿┘è╪╢)
+-  String _selectedColorName = '╪ú╪¿┘è╪╢';
+-
+-  // ┘à╪ñ╪┤╪▒ ┘à┘å╪╖┘é┘è ┘ä┘à╪╣╪▒┘ü╪⌐ ┘à╪º ╪Ñ╪░╪º ┘â╪º┘å╪¬ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘ä╪º ╪¬╪▓╪º┘ä ┘é┘è╪» ╪º┘ä╪¬╪¡┘à┘è┘ä
+   bool _isLoading = true;
+-
+-  // ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è ┘ä┘ä╪│╪¬╪º╪▒ (┘ü┘è ╪¡╪º┘ä ┘ä┘à ┘å╪¼╪» ╪│╪╣╪▒┘ç ╪º┘ä╪¬┘ü╪╡┘è┘ä┘è)
+   double _defaultShutterPrice = 8000.0;
+ 
+-  // ╪»╪º┘ä╪⌐ ╪¬┘Å╪│╪¬╪»╪╣┘ë ┘à╪▒╪⌐ ┘ê╪º╪¡╪»╪⌐ ╪╣┘å╪» ┘ü╪¬╪¡ ╪º┘ä╪┤╪º╪┤╪⌐ ┘ä╪ú┘ê┘ä ┘à╪▒╪⌐
+   @override
+   void initState() {
+     super.initState();
+-    // ╪¬╪┤╪║┘è┘ä ╪º┘ä╪»╪º┘ä╪⌐ ╪º┘ä┘à╪│╪ñ┘ê┘ä╪⌐ ╪╣┘å ╪¼┘ä╪¿ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘ê╪º┘ä╪¡╪│╪º╪¿╪º╪¬ ┘ü┘ê╪▒ ┘ü╪¬╪¡ ╪º┘ä╪┤╪º╪┤╪⌐
+     _loadDataFromDatabase();
+   }
+ 
+-  // ╪º┘ä╪»╪º┘ä╪⌐ ╪º┘ä╪▒╪ª┘è╪│┘è╪⌐ ┘ê╪º┘ä┘é┘ä╪¿ ╪º┘ä┘å╪º╪¿╪╢ ┘ä┘ä┘à┘ä┘ü: ╪¬╪¼┘ä╪¿ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘ê╪¬╪¡╪│╪¿ ╪º┘ä┘â┘à┘è╪º╪¬
+   Future<void> _loadDataFromDatabase() async {
+-    // ╪¬╪╣╪▒┘è┘ü ┘à╪¬╪║┘è╪▒ ┘à╪¡┘ä┘è ┘ä╪¡┘ü╪╕ ┘à╪╣╪▒┘ü ╪º┘ä┘ä┘ê┘å
+     int? selectedColorId;
+-    // ╪¬╪╡┘ü┘è╪▒ ┘à╪╣╪▒┘ü ╪º┘ä┘ä┘ê┘å ┘ü┘è ╪º┘ä╪¡╪º┘ä╪⌐ ╪º┘ä╪╣╪º┘à╪⌐ (┘ä╪╢┘à╪º┘å ┘å╪╕╪º┘ü╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬)
+-    _selectedColorId = null;
+-
+-    // ╪º╪│╪¬╪»╪╣╪º╪í ┘â┘ä╪º╪│ ╪º┘ä╪¡╪│╪º╪¿╪º╪¬ ╪º┘ä┘ç┘å╪»╪│┘è╪⌐ ┘ä╪¼┘ä╪¿ ┘é╪º╪ª┘à╪⌐ ╪º┘ä┘é╪╖╪╣ ╪º┘ä┘à┘â┘ê┘å╪⌐ ┘ä┘ä┘å╪º┘ü╪░╪⌐
+     final items = CuttingCalculator.calculate(widget.model);
+ 
+-    // ┘é╪º┘à┘ê╪│ ┘ä╪¡┘ü╪╕ ┘à╪│╪º╪¡╪º╪¬ ╪º┘ä╪▓╪¼╪º╪¼ ┘à┘ü┘ç╪▒╪│╪⌐ ╪¡╪│╪¿ ╪º╪│┘à ┘ê┘å┘ê╪╣ ╪º┘ä╪▓╪¼╪º╪¼
+     Map<String, double> glassAreas = {};
+ 
+-    // ╪¡┘ä┘é╪⌐ ┘ä┘ä┘à╪▒┘ê╪▒ ╪╣┘ä┘ë ┘â┘ä ╪º┘ä┘é╪╖╪╣ ╪º┘ä┘å╪º╪¬╪¼╪⌐ ┘à┘å ╪º┘ä╪¡╪│╪º╪¿╪º╪¬ ╪º┘ä┘ç┘å╪»╪│┘è╪⌐
+     for (var item in items) {
+-      // ╪º┘ä╪¬╪¡┘é┘é ┘à┘à╪º ╪Ñ╪░╪º ┘â╪º┘å╪¬ ╪º┘ä┘é╪╖╪╣╪⌐ ╪º┘ä╪¡╪º┘ä┘è╪⌐ ┘ç┘è "╪▓╪¼╪º╪¼"
+       if (item.type == CuttingItemType.glass) {
+-        // ╪¡╪│╪º╪¿ ┘à╪│╪º╪¡╪⌐ ╪º┘ä╪▓╪¼╪º╪¼ ╪¿╪º┘ä┘à╪¬╪▒ ╪º┘ä┘à╪▒╪¿╪╣ (╪¬╪¡┘ê┘è┘ä ╪º┘ä┘à┘ä┘è┘à╪¬╪▒ ╪Ñ┘ä┘ë ┘à╪¬╪▒ ╪¿┘Ç /1000)
+         double areaSqm =
+             (item.width / 1000.0) * (item.height / 1000.0) * item.quantity;
+-        // ╪╡┘è╪º╪║╪⌐ ╪ú╪¿╪╣╪º╪» ╪º┘ä╪▓╪¼╪º╪¼ ┘â┘å╪╡ ┘ä╪Ñ╪╢╪º┘ü╪¬┘ç ┘ä╪º╪│┘à ╪º┘ä╪▓╪¼╪º╪¼
+         String dimStr = '(${item.width.toInt()} x ${item.height.toInt()} mm)';
+-        // ╪Ñ┘å╪┤╪º╪í ┘à┘ü╪¬╪º╪¡ ┘ü╪▒┘è╪» ┘è╪¼┘à╪╣ ╪¿┘è┘å ╪º╪│┘à ╪º┘ä╪▓╪¼╪º╪¼ ┘ê╪ú╪¿╪╣╪º╪»┘ç
+         String key = '${item.name}__$dimStr';
+-        // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘à╪│╪º╪¡╪⌐ ╪º┘ä┘à╪¡╪│┘ê╪¿╪⌐ ┘ä┘ä┘é╪º┘à┘ê╪│ (╪ú┘ê ╪¼┘à╪╣┘ç╪º ┘à╪╣ ┘à╪│╪º╪¡╪⌐ ╪│╪º╪¿┘é╪⌐ ╪Ñ┘å ┘ê┘Å╪¼╪»╪¬)
+         glassAreas[key] = (glassAreas[key] ?? 0.0) + areaSqm;
+       }
+     }
+ 
+-    // ╪¬╪¡┘ê┘è┘ä ╪º╪▒╪¬┘ü╪º╪╣ ╪º┘ä┘å╪º┘ü╪░╪⌐ ╪º┘ä┘â┘ä┘è ┘à┘å ╪º┘ä┘à┘ä┘è┘à╪¬╪▒ ╪Ñ┘ä┘ë ╪º┘ä┘à╪¬╪▒
++    // --- ╪¡╪│╪º╪¿ ╪º┘ä╪ú┘ä┘à┘å┘è┘ê┘à ╪º┘ä┘à┘ü╪╡┘ä (╪º┘ä┘à╪¬╪▒ ╪º┘ä╪«╪╖┘è) ---
+     double hMeters = widget.model.height / 1000.0;
+-    // ╪¬╪¡┘ê┘è┘ä ╪╣╪▒╪╢ ╪º┘ä┘å╪º┘ü╪░╪⌐ ╪º┘ä┘â┘ä┘è ┘à┘å ╪º┘ä┘à┘ä┘è┘à╪¬╪▒ ╪Ñ┘ä┘ë ╪º┘ä┘à╪¬╪▒
+     double wMeters = widget.model.width / 1000.0;
+ 
+-    // ╪¬┘ç┘è╪ª╪⌐ ╪º╪│┘à ╪º┘ä┘ä┘ê┘å ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è
+     String colorName = '╪ú╪¿┘è╪╢';
+-    // ╪¬┘ç┘è╪ª╪⌐ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è ┘ä┘ä╪ú┘ä┘à┘å┘è┘ê┘à
+     double defaultAluPrice = 0.0;
+-    // ╪Ñ╪╣╪º╪»╪⌐ ╪¬╪╣┘è┘è┘å ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è ┘ä┘ä╪│╪¬╪º╪▒
+     _defaultShutterPrice = 8000.0;
+ 
+-    // ╪¬╪¡╪»┘è╪» ╪º╪│┘à ╪º┘ä┘ä┘ê┘å ╪º┘ä┘å╪╡┘è ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪º╪«╪¬┘è╪º╪▒ ╪º┘ä┘à╪│╪¬╪«╪»┘à ┘ü┘è ╪º┘ä╪┤╪º╪┤╪⌐ ╪º┘ä╪│╪º╪¿┘é╪⌐
+     switch (widget.model.frameColor) {
+-      case FrameColor.white: // ╪ú╪¿┘è╪╢
++      case FrameColor.white:
+         colorName = '╪ú╪¿┘è╪╢';
+         break;
+-      case FrameColor.brown: // ╪¿┘å┘è
++      case FrameColor.brown:
+         colorName = '╪¿┘å┘è ┘ü╪º╪¬╪¡ (Faux Bois)';
+         break;
+-      case FrameColor.gray: // ╪▒┘à╪º╪»┘è
++      case FrameColor.gray:
+         colorName = '╪▒┘à╪º╪»┘è';
+         break;
+-      case FrameColor.black: // ╪ú╪│┘ê╪»
++      case FrameColor.black:
+         colorName = '╪ú╪│┘ê╪»';
+         break;
+-      case FrameColor.beige: // ╪¿┘è╪¼
++      case FrameColor.beige:
+         colorName = '╪¿┘è╪¼ / FBM';
+         break;
+     }
+-
+-    // ╪Ñ╪░╪º ┘â╪º┘å ╪º┘ä┘à╪│╪¬╪«╪»┘à ┘é╪» ╪º╪«╪¬╪º╪▒ ┘ä┘ê┘å╪º┘ï ┘à╪«╪╡╪╡╪º┘ï ┘à┘å ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬╪î ┘å╪ú╪«╪░ ╪º╪│┘à┘ç
++    
+     if (widget.model.selectedDbColor != null) {
+       colorName = widget.model.selectedDbColor!['name'].toString();
+     }
+-    // ╪¡┘ü╪╕ ╪º╪│┘à ╪º┘ä┘ä┘ê┘å ┘ü┘è ┘à╪¬╪║┘è╪▒ ╪º┘ä╪¡╪º┘ä╪⌐ ╪º┘ä╪╣╪º┘à
+-    _selectedColorName = colorName;
+ 
+-    // ┘é╪º┘à┘ê╪│ ┘ä╪¡┘ü╪╕ ╪ú╪│╪╣╪º╪▒ ╪º┘ä┘à┘é╪º╪╖╪╣ ┘à┘ü┘ç╪▒╪│╪⌐ ╪¡╪│╪¿ ┘å┘ê╪╣┘ç╪º (╪Ñ╪╖╪º╪▒╪î ╪╢┘ä┘ü╪⌐...)
+-    Map<String, double> sectionPricesByType = {};
+-    // ┘é╪º┘à┘ê╪│ ┘ä╪¡┘ü╪╕ ╪╖┘ê┘ä ╪º┘ä╪¿╪º╪▒╪⌐ ╪º┘ä┘é┘è╪º╪│┘è (╪║╪º┘ä╪¿╪º┘ï 6┘à) ┘ä┘â┘ä ┘å┘ê╪╣ ┘à┘é╪╖╪╣
+-    Map<String, double> sectionBarLengthsByType = {};
+-    // ┘ü╪¬╪¡ ╪º┘ä╪º╪¬╪╡╪º┘ä ╪¿┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
+-    final dbInstance = (await db.db)!;
++    Map<int, double> sectionPricesById = {};
++    Map<int, double> sectionBarLengthsById = {};
++    int? frameSecId;
++    int? sashSecId;
++    int? parcloseSecId;
++    int? mullionSecId;
++    int? batmoSecId;
++    int? sideCoverSecId;
++    int? slidingSashSecId;
++    int? slidingChicaneSecId;
++
++    int? resolveSecId(String secType) {
++       switch(secType) {
++         case 'frame': return frameSecId;
++         case 'sash': return sashSecId;
++         case 'parclose': return parcloseSecId;
++         case 'mullion': return mullionSecId;
++         case 'batmo': return batmoSecId;
++         case 'couvre_joint': return sideCoverSecId;
++         case 'sliding_sash': return slidingSashSecId;
++         case 'sliding_chicane': return slidingChicaneSecId;
++         default: return null;
++       }
++    }
+ 
+     try {
+-      // 1. ╪º┘ä╪¿╪¡╪½ ╪╣┘å ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è ┘ä┘ä╪│╪¬╪º╪▒ ╪¡╪│╪¿ ╪º┘ä┘ä┘ê┘å ╪º┘ä┘à╪«╪¬╪º╪▒ (╪ú╪¿┘è╪╢ ╪ú┘ê ╪«╪┤╪¿┘è/┘à┘ä┘ê┘å)
++      final dbInstance = (await db.db)!;
++      // Fetch Shutter Price based on color approximation
+       String shutterSearch = colorName == '╪ú╪¿┘è╪╢' ? '╪ú╪¿┘è╪╢' : '╪«╪┤╪¿┘è';
+-      // ╪º┘ä╪º╪│╪¬╪╣┘ä╪º┘à ┘à┘å ╪¼╪»┘ê┘ä ┘à┘â┘ê┘å╪º╪¬ ╪º┘ä╪│╪¬╪º╪▒
+       final shutterRes = await dbInstance.query(
+         'ShutterComponents',
+         where: 'name LIKE ?',
+         whereArgs: ['%$shutterSearch%'],
+       );
+-      // ╪Ñ╪░╪º ┘ê╪¼╪»┘å╪º ┘å╪¬┘è╪¼╪⌐╪î ┘å┘Å╪¡╪»╪½ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è
+       if (shutterRes.isNotEmpty) {
+         _defaultShutterPrice = (shutterRes.first['price'] as num).toDouble();
+       }
+ 
+-      // 2. ╪º┘ä╪¿╪¡╪½ ╪╣┘å ╪º┘ä┘à╪╣╪▒┘ü ╪º┘ä╪▒┘é┘à┘è (ID) ┘ä┘ä┘ê┘å ╪º┘ä╪¡╪º┘ä┘è ┘ü┘è ╪¼╪»┘ê┘ä ╪º┘ä╪ú┘ä┘ê╪º┘å
++      // Fetch Aluminum Price
+       final colorRes = await dbInstance.query(
+         'Colors',
+         where: 'name = ?',
+         whereArgs: [colorName],
+       );
+-
+-      // ╪Ñ╪░╪º ┘ê╪¼╪»┘å╪º ╪º┘ä┘ä┘ê┘å ┘ü┘è ╪º┘ä┘é╪º╪╣╪»╪⌐
+       if (colorRes.isNotEmpty) {
+-        // ┘å╪│╪¬╪«╪▒╪¼ ╪º┘ä┘à╪╣╪▒┘ü
+         selectedColorId = colorRes.first['id'] as int;
+-        // ┘ê┘å╪¡┘ü╪╕┘ç ┘ü┘è ╪º┘ä┘à╪¬╪║┘è╪▒ ╪º┘ä╪╣╪º┘à
+-        _selectedColorId = selectedColorId;
+-        // ┘à╪¬╪║┘è╪▒ ┘à╪¡┘ä┘è ╪Ñ╪╢╪º┘ü┘è
+         int colorId = selectedColorId;
+-        // ╪¼┘ä╪¿ ┘à╪╣╪▒┘ü ╪º┘ä╪│┘ä╪│┘ä╪⌐ (Series) ╪º┘ä┘à┘ü╪¬┘ê╪¡╪⌐ (┘à╪½┘ä╪º┘ï 140 ╪ú┘ê 105)╪î ╪ú┘ê 0 ╪Ñ╪░╪º ┘ä┘à ╪¬┘ê╪¼╪»
+         int seriesId = widget.model.activeSeries?.id ?? 0;
+-
+-        // ╪¼┘ä╪¿ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪╣╪º┘à ┘ä┘ä╪│┘ä╪│┘ä╪⌐ ┘â╪º┘à┘ä╪⌐ (┘â╪│╪╣╪▒ ╪º╪¡╪¬┘è╪º╪╖┘è)
+-        final seriesRes = await dbInstance.query(
+-          'Series',
+-          where: 'id = ?',
+-          whereArgs: [seriesId],
+-        );
++        
++        // Fetch base series price
++        final seriesRes = await dbInstance.query('Series', where: 'id = ?', whereArgs: [seriesId]);
+         if (seriesRes.isNotEmpty) {
+-          // ╪º╪│╪¬╪«╪▒╪º╪¼ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º╪¡╪¬┘è╪º╪╖┘è ┘ä┘ä╪¿╪º╪▒╪⌐/╪º┘ä┘à╪¬╪▒ ┘ä┘ç╪░┘ç ╪º┘ä╪│┘ä╪│┘ä╪⌐
+-          double seriesPrice =
+-              (seriesRes.first['price_per_meter'] as num?)?.toDouble() ?? 0.0;
+-          if (seriesPrice > 0) defaultAluPrice = seriesPrice;
++           double seriesPrice = (seriesRes.first['price_per_meter'] as num?)?.toDouble() ?? 0.0;
++           if (seriesPrice > 0) defaultAluPrice = seriesPrice;
+         }
+ 
+-        // ╪¼┘ä╪¿ ╪º┘ä╪│╪╣╪▒ ╪º┘ä┘à╪«╪╡╪╡ ┘ä┘ç╪░┘ç ╪º┘ä╪│┘ä╪│┘ä╪⌐ ┘à╪╣ ┘ç╪░╪º ╪º┘ä┘ä┘ê┘å ╪¿╪º┘ä╪░╪º╪¬
+         final priceRes = await dbInstance.query(
+           'SeriesColorPrices',
+           where: 'series_id = ? AND color_id = ?',
+           whereArgs: [seriesId, colorId],
+         );
+         if (priceRes.isNotEmpty) {
+-          // ╪¬╪¡╪»┘è╪½ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è ╪Ñ╪░╪º ┘ê╪¼╪»┘å╪º ╪│╪╣╪▒╪º┘ï ┘à╪«╪╡╪╡╪º┘ï
+           double fetchedPrice = (priceRes.first['price'] as num).toDouble();
+           if (fetchedPrice > 0) defaultAluPrice = fetchedPrice;
++        } else {
++          // Fallback: Try any series for this color
++          final fallbackRes = await dbInstance.query(
++            'SeriesColorPrices',
++            where: 'color_id = ? AND price > 0',
++            whereArgs: [colorId],
++          );
++          if (fallbackRes.isNotEmpty) {
++            defaultAluPrice = (fallbackRes.first['price'] as num).toDouble();
++          }
+         }
+ 
+-        // 3. ╪º┘ä┘à╪▒┘ê╪▒ ╪╣┘ä┘ë ┘â┘ä ┘à┘é╪╖╪╣ (╪¿╪▒┘ê┘ü┘è┘ä) ┘è┘å╪¬┘à┘è ┘ä┘ç╪░┘ç ╪º┘ä╪│┘ä╪│┘ä╪⌐ ┘ä╪¼┘ä╪¿ ╪│╪╣╪▒┘ç ╪º┘ä┘ü╪▒╪»┘è
++        // Fetch Section Prices and Bar Lengths
++        // Store prices by ID instead of type to prevent collisions between 104/105 and 103/140
+         if (widget.model.activeSeries != null) {
+           for (var sec in widget.model.activeSeries!.sections) {
+-            // ╪╣╪▓┘ä ┘ê┘ü┘ä╪¬╪▒╪⌐ ┘à┘é╪º╪╖╪╣ ╪º┘ä╪Ñ╪╖╪º╪▒ (╪¬╪¼╪º┘ç┘ä 103 ╪Ñ╪░╪º ┘â╪º┘å ╪º┘ä╪º╪«╪¬┘è╪º╪▒ 140 ┘ê╪º┘ä╪╣┘â╪│)
+-            if (sec.type == 'frame') {
+-              if (widget.model.isFrame140 &&
+-                  (sec.code.contains('103') || sec.name.contains('Cadre cj'))) {
+-                continue; // ╪¬╪«╪╖┘è ┘ç╪░╪º ╪º┘ä┘à┘é╪╖╪╣
+-              }
+-              if (!widget.model.isFrame140 &&
+-                  (sec.code.contains('140') ||
+-                      sec.name.contains('Cadre scj'))) {
+-                continue; // ╪¬╪«╪╖┘è ┘ç╪░╪º ╪º┘ä┘à┘é╪╖╪╣
+-              }
+-            }
+-
+-            // ╪¬╪¡╪»┘è╪» ┘à┘ü╪¬╪º╪¡ ╪º┘ä╪¿╪¡╪½ ┘ä┘ä╪╢┘ä┘ü╪⌐ (┘ç┘ä ┘ç┘è ╪║┘ä┘è╪╕╪⌐ ╪ú┘à ╪▒┘é┘è┘é╪⌐) ┘ä╪╣╪»┘à ╪º┘ä╪«┘ä╪╖ ╪¿┘è┘å┘ç┘à╪º
+-            String mapKey = sec.type;
+-            if (sec.type == 'sash') {
+-              final sashKey = '${sec.code} ${sec.name}'.toLowerCase();
+-              if (sashKey.contains('105') ||
+-                  sashKey.contains('gros') ||
+-                  sashKey.contains('thick') ||
+-                  sashKey.contains('╪║┘ä┘è╪╕') ||
+-                  sashKey.contains('╪«╪┤┘å')) {
+-                mapKey = 'sash_thick'; // ┘à┘ü╪¬╪º╪¡ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä╪║┘ä┘è╪╕╪⌐
+-              } else {
+-                mapKey = 'sash_thin'; // ┘à┘ü╪¬╪º╪¡ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä╪▒┘é┘è┘é╪⌐
+-              }
+-            }
+-
+-            // ╪¬╪¡╪»┘è╪» ╪╖┘ê┘ä ╪º┘ä╪¿╪º╪▒╪⌐ (╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è 6 ┘à╪¬╪▒ ╪Ñ╪░╪º ┘ä┘à ┘è╪¡╪»╪» ┘ü┘è ╪º┘ä┘é╪º╪╣╪»╪⌐)
+-            final effectiveBarLength = sec.barLength > 0 ? sec.barLength : 6.0;
+-            // ╪¡┘ü╪╕ ╪╖┘ê┘ä ╪º┘ä╪¿╪º╪▒╪⌐ ┘ü┘è ╪º┘ä┘é╪º┘à┘ê╪│
+-            sectionBarLengthsByType[mapKey] = effectiveBarLength;
+-            if (sec.type == 'sash') {
+-              sectionBarLengthsByType.putIfAbsent(
+-                'sash',
+-                () => effectiveBarLength,
+-              );
+-            }
+-
+-            // ╪¼┘ä╪¿ ╪│╪╣╪▒ ╪º┘ä┘à┘é╪╖╪╣ ╪º┘ä┘ü╪▒╪»┘è ╪¡╪│╪¿ ╪º┘ä┘ä┘ê┘å ╪º┘ä┘à╪«╪¬╪º╪▒ ┘à┘å ╪¼╪»┘ê┘ä (SectionColorPrices)
++            sectionBarLengthsById[sec.id] = sec.barLength;
+             final spRes = await dbInstance.query(
+               'SectionColorPrices',
+               where: 'section_id = ? AND color_id = ?',
+-              whereArgs: [sec.id, selectedColorId],
++              whereArgs: [sec.id, colorId],
+             );
+-            // ╪Ñ╪░╪º ┘ê╪¼╪»┘å╪º ╪│╪╣╪▒ ╪º┘ä┘à┘é╪╖╪╣ ╪º┘ä┘à┘ä┘ê┘å
+             if (spRes.isNotEmpty) {
+               double p = (spRes.first['price'] as num).toDouble();
+-              // ╪¡┘ü╪╕ ╪º┘ä╪│╪╣╪▒ ┘ü┘è ╪º┘ä┘é╪º┘à┘ê╪│ ┘ä┘ä╪º╪│╪¬╪«╪»╪º┘à ┘ä╪º╪¡┘é╪º┘ï
+-              if (p > 0) {
+-                sectionPricesByType[mapKey] = p;
+-                if (sec.type == 'sash') {
+-                  sectionPricesByType.putIfAbsent('sash', () => p);
+-                }
+-              }
++              if (p > 0) sectionPricesById[sec.id] = p;
++            } else {
++               final spAny = await dbInstance.query('SectionColorPrices', where: 'section_id = ?', whereArgs: [sec.id]);
++               for (var row in spAny) {
++                   double p = (row['price'] as num).toDouble();
++                   if (p > 0) {
++                       sectionPricesById[sec.id] = p;
++                       break;
++                   }
++               }
+             }
+           }
+         }
++
++        // exact section IDs for frame, sash, parclose, mullion, etc.
++
++        if (widget.model.activeSeries != null) {
++          var frames = widget.model.activeSeries!.sections.where((s) => s.type == 'frame' || s.name.toLowerCase().contains('╪Ñ╪╖╪º╪▒') || s.name.toLowerCase().contains('dormant')).toList();
++          if (frames.isNotEmpty) {
++            if (widget.model.isFrame140) {
++              try { frameSecId = frames.firstWhere((s) => s.name.contains('140') || s.code.contains('140')).id; } catch (_) { frameSecId = frames.first.id; }
++            } else {
++              try { frameSecId = frames.firstWhere((s) => s.name.contains('103') || s.code.contains('103')).id; } catch (_) { frameSecId = frames.first.id; }
++            }
++          }
++          
++          var sashes = widget.model.activeSeries!.sections.where((s) => s.type == 'sash' || s.type == 'sash_104' || s.type == 'sash_105' || s.name.toLowerCase().contains('╪╢┘ä┘ü╪⌐') || s.name.toLowerCase().contains('ouvrant')).toList();
++          if (sashes.isNotEmpty) {
++             bool has105 = widget.model.zones.any((z) => z.isSash105);
++             if (has105) {
++               try { sashSecId = sashes.firstWhere((s) => s.type == 'sash_105' || s.name.contains('105') || s.code.contains('105') || s.name.contains('┘â╪¿┘è╪▒')).id; } catch (_) { sashSecId = (sashes.length > 1) ? sashes[1].id : sashes.first.id; }
++             } else {
++               try { sashSecId = sashes.firstWhere((s) => s.type == 'sash_104' || s.name.contains('104') || s.code.contains('104') || s.name.contains('╪╡╪║┘è╪▒')).id; } catch (_) { sashSecId = sashes.first.id; }
++             }
++          }
++          
++          var parcloses = widget.model.activeSeries!.sections.where((s) => s.type == 'parclose' || s.name.toLowerCase().contains('╪¿╪º╪▒┘â┘ä┘ê╪▓')).toList();
++          if (parcloses.isNotEmpty) parcloseSecId = parcloses.first.id;
++          
++          var mullions = widget.model.activeSeries!.sections.where((s) => s.type == 'mullion' || s.name.toLowerCase().contains('╪¬┘è') || s.name.toLowerCase().contains('t ')).toList();
++          if (mullions.isNotEmpty) mullionSecId = mullions.first.id;
++          
++          var batmos = widget.model.activeSeries!.sections.where((s) => s.type == 'batmo' || s.name.toLowerCase().contains('╪¿╪º╪¬┘à┘ê') || s.name.toLowerCase().contains('╪¬┘ä╪º┘é┘è') || s.name.toLowerCase().contains('battement')).toList();
++          if (batmos.isNotEmpty) batmoSecId = batmos.first.id;
++          
++          var sideCovers = widget.model.activeSeries!.sections.where((s) => s.type.toLowerCase().contains('couvre') || s.type.toLowerCase().contains('╪║╪╖╪º╪í') || s.name.toLowerCase().contains('couvre') || s.name.toLowerCase().contains('╪║╪╖╪º╪í') || s.couvreJointWidth > 0).toList();
++          if (widget.model.selectedSideCover != null) {
++            sideCoverSecId = widget.model.selectedSideCover!.id;
++          } else if (sideCovers.isNotEmpty) {
++            sideCoverSecId = sideCovers.first.id;
++          }
++
++          var slidingSashes = widget.model.activeSeries!.sections.where((s) => s.type == 'sliding_sash').toList();
++          if (slidingSashes.isNotEmpty) slidingSashSecId = slidingSashes.first.id;
++          
++          var slidingChicanes = widget.model.activeSeries!.sections.where((s) => s.type == 'sliding_chicane').toList();
++          if (slidingChicanes.isNotEmpty) slidingChicaneSecId = slidingChicanes.first.id;
++        }
++
++        // Helper function hoisted
+       }
+     } catch (e) {
+-      // ╪╖╪¿╪º╪╣╪⌐ ╪º┘ä╪«╪╖╪ú ┘ü┘è ╪¡╪º┘ä ┘ü╪┤┘ä ╪¼┘ä╪¿ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘à┘å ╪º┘ä┘é╪º╪╣╪»╪⌐
+-      debugPrint("Error fetching dynamic prices: $e");
++      print("Error fetching dynamic prices: $e");
+     }
+ 
+-    // ╪¬┘ü╪▒┘è╪║ ┘é╪º╪ª┘à╪⌐ ╪º┘ä┘ü╪╢┘ä╪º╪¬ ╪º╪│╪¬╪╣╪»╪º╪»╪º┘ï ┘ä┘ä╪¡╪│╪º╪¿ ╪º┘ä╪¼╪»┘è╪»
+     _usefulChutes.clear();
+ 
+-    // ┘é╪º┘à┘ê╪│ ┘ä╪¬╪¼┘à┘è╪╣ ╪º┘ä┘é╪╖╪╣ ╪º┘ä┘à┘é╪╡┘ê╪╡╪⌐ ╪¡╪│╪¿ ╪º╪│┘à┘ç╪º (┘à╪½┘ä╪º┘ï ┘â┘ä ┘à┘é╪º╪╖╪╣ ╪º┘ä╪Ñ╪╖╪º╪▒ ┘à╪╣╪º┘ï)
++    // Aggregation maps
++    // Aggregation maps (stores all individual cuts)
+     Map<String, Map<String, dynamic>> aggregatedProfiles = {};
+-
+-    // ╪»╪º┘ä╪⌐ ┘à╪¡┘ä┘è╪⌐ ┘à╪│╪º╪╣╪»╪⌐ ┘ä╪Ñ╪╢╪º┘ü╪⌐ ╪╖┘ê┘ä ╪º┘ä┘é╪╖╪╣╪⌐ ┘ä┘ä┘é╪º╪ª┘à╪⌐ ┘à┘å ╪ú╪¼┘ä ╪«┘ê╪º╪▒╪▓┘à┘è╪⌐ ╪º┘ä╪¬┘é╪╖┘è╪╣ ┘ä╪º╪¡┘é╪º┘ï
+-    void addProfileCut(
+-      String part,
+-      String secType,
+-      double lengthMeters,
+-      int count,
+-    ) {
+-      if (lengthMeters <= 0 || count <= 0)
+-        return; // ┘ä╪º ╪¬╪╢┘è┘ü ┘é╪╖╪╣╪º┘ï ╪│┘ä╪¿┘è╪⌐ ╪ú┘ê ╪╡┘ü╪▒┘è╪⌐
+-      // ╪Ñ╪░╪º ┘ä┘à ┘è┘â┘å ┘ç╪░╪º ╪º┘ä╪¼╪▓╪í ┘à┘ê╪¼┘ê╪»╪º┘ï ┘ü┘è ╪º┘ä┘é╪º┘à┘ê╪│╪î ┘é┘à ╪¿╪Ñ┘å╪┤╪º╪ª┘ç
++    
++    void addProfileCut(String part, String secType, double lengthMeters, int count) {
++      if (lengthMeters <= 0 || count <= 0) return;
++      int? resolvedId = resolveSecId(secType);
+       if (!aggregatedProfiles.containsKey(part)) {
+-        aggregatedProfiles[part] = {'secType': secType, 'cuts': <double>[]};
++        aggregatedProfiles[part] = {
++          'secType': secType,
++          'secId': resolvedId,
++          'cuts': <double>[],
++        };
+       }
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘é╪╖╪╣╪⌐ ┘ä┘ä┘é╪º┘à┘ê╪│ ╪¿╪╣╪»╪» ┘à╪▒╪º╪¬ ╪¬┘â╪▒╪º╪▒┘ç╪º (count)
+       for (int i = 0; i < count; i++) {
+         (aggregatedProfiles[part]!['cuts'] as List<double>).add(lengthMeters);
+       }
+     }
+ 
+-    // ╪¬┘ü╪▒┘è╪║ ┘é╪º╪ª┘à╪⌐ ┘à┘é╪º╪╖╪╣ ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐
++    double calculateChutePrice(String partName, List<double> cuts, double barPrice, double barLength) {
++      if (cuts.isEmpty) return 0.0;
++      
++      // Sort cuts descending for First Fit Decreasing
++      cuts.sort((a, b) => b.compareTo(a));
++      
++      List<double> bins = [];
++      for (double cut in cuts) {
++        bool placed = false;
++        for (int i = 0; i < bins.length; i++) {
++          if (bins[i] + cut <= barLength) {
++            bins[i] += cut;
++            placed = true;
++            break;
++          }
++        }
++        if (!placed) {
++          bins.add(cut);
++        }
++      }
++      
++      // N bins used
++      // The first N-1 bins are "fully consumed" (we charge full barLength)
++      // The last bin is charged for its exact usage. (The bin with minimum usage)
++      double minUsage = barLength;
++      for (double b in bins) {
++         if (b < minUsage) minUsage = b;
++      }
++      int fullBars = bins.length > 1 ? bins.length - 1 : 0;
++      double lastBinUsed = bins.length == 1 ? bins[0] : minUsage;
++      
++      if (barLength - lastBinUsed < 1.0) {
++        lastBinUsed = barLength;
++      }
++      
++      double totalBilledMeters = (fullBars * barLength) + lastBinUsed;
++      
++      // The price is per BAR, so we calculate total proportional bars
++      double equivalentBars = totalBilledMeters / barLength;
++      double finalPrice = equivalentBars * barPrice;
++      
++      return finalPrice;
++    }
++
+     _profiles = [];
+ 
+-    // ┘é╪▒╪º╪í╪⌐ ╪«╪╡╪º╪ª╪╡ ╪º┘ä╪│┘ä╪│┘ä╪⌐ (┘ç┘ä ┘ç┘è PVC ╪ú┘à ╪ú┘ä┘à┘å┘è┘ê┘à)
++    // ----------------------------------------------------
++    // ╪¬╪╖╪¿┘è┘é ╪º┘ä╪¡╪│╪º╪¿ ╪º┘ä╪»┘è┘å╪º┘à┘è┘â┘è ┘ä┘ä┘é╪╖╪º╪╣╪º╪¬ (LogiKal Logic)
++    // ----------------------------------------------------
+     bool isPVC = widget.model.activeSeries?.type == 'PVC';
+-    // ╪│┘à╪º┘â╪⌐ ╪º┘ä╪Ñ╪╖╪º╪▒
+-    double fThickness = 0.0;
+-    // ╪╣╪▒╪╢ ╪º┘ä╪║╪╖╪º╪í ╪º┘ä┘à╪»┘à╪¼ (Couvre Joint)
+-    double cjWidth = 0.0;
+-    // ╪│┘à╪º┘â╪⌐ ╪º┘ä╪╢┘ä┘ü╪⌐
+-    double sThickness = 0.0;
+-    // ┘à╪ñ╪┤╪▒ ┘ä┘à╪╣╪▒┘ü╪⌐ ┘ç┘ä ╪º┘ä╪Ñ╪╖╪º╪▒ ┘ç┘ê 103 (╪¿╪║╪╖╪º╪í ┘à╪»┘à╪¼)
+-    bool is103 = false;
+-
+-    // ╪º╪│╪¬╪«╪▒╪º╪¼ ╪º┘ä╪│┘à╪º┘â╪º╪¬ ╪º┘ä┘ç┘å╪»╪│┘è╪⌐ ┘à┘å ╪º┘ä╪│┘ä╪│┘ä╪⌐ ┘ä╪¡╪│╪º╪¿ ╪º┘ä╪«╪╡┘à┘è╪º╪¬
++
++    // ╪º╪│╪¬╪«╪▒╪º╪¼ ╪º┘ä╪«╪╡╪º╪ª╪╡ ╪º┘ä╪»┘è┘å╪º┘à┘è┘â┘è╪⌐ ┘à┘å ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
++    double fThickness = 50.0; // ╪º┘ä╪╣╪▒╪╢ ╪º┘ä╪╕╪º┘ç╪▒ ┘ä┘ä╪Ñ╪╖╪º╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è
++    double cjWidth = 0.0; // ╪╣╪▒╪╢ ╪º┘ä╪║╪╖╪º╪í ╪º┘ä╪¼╪º┘å╪¿┘è ╪º┘ä┘à╪»┘à╪¼
++    double sThickness = 60.0; // ╪º┘ä╪╣╪▒╪╢ ╪º┘ä╪╕╪º┘ç╪▒ ┘ä┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è
++    double zOverlap =
++        0.008; // ┘à╪│╪º┘ü╪⌐ ╪º┘ä╪¬╪»╪º╪«┘ä (Croisement/Recouvrement) ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è╪⌐ 8 ┘à┘ä┘à
++    bool is103 = false; // ┘ç┘ä ╪º┘ä╪Ñ╪╖╪º╪▒ ╪¿╪║╪╖╪º╪í ┘à╪»┘à╪¼╪ƒ
++
+     if (widget.model.activeSeries != null) {
+       for (var sec in widget.model.activeSeries!.sections) {
+         if (sec.type == 'frame') {
+           fThickness = sec.thickness;
+           cjWidth = sec.couvreJointWidth;
+-          if (cjWidth > 0 || sec.name.contains('103')) is103 = true;
++          if (cjWidth > 0 || sec.name.contains('103')) {
++            is103 = true;
++          }
+         } else if (sec.type == 'sash') {
+           sThickness = sec.thickness;
+         }
+       }
+     }
+ 
+-    // ╪¬╪¡┘ê┘è┘ä ╪º┘ä╪│┘à╪º┘â╪º╪¬ ┘à┘å ┘à┘ä┘è┘à╪¬╪▒ ╪Ñ┘ä┘ë ┘à╪¬╪▒
++    // ╪¬╪¡┘ê┘è┘ä ╪º┘ä╪│┘à╪º┘â╪º╪¬ ╪Ñ┘ä┘ë ┘à╪¬╪▒
+     double fThicknessM = fThickness / 1000.0;
+     double cjWidthM = cjWidth / 1000.0;
+     double sThicknessM = sThickness / 1000.0;
+ 
+-    // ╪¡╪│╪º╪¿ ╪º┘ä╪ú╪¿╪╣╪º╪» ╪º┘ä╪»╪º╪«┘ä┘è╪⌐ ╪º┘ä╪╡╪º┘ü┘è╪⌐ ┘ä┘ä╪Ñ╪╖╪º╪▒ (╪ú┘è┘å ╪│╪¬╪▒┘â╪¿ ╪º┘ä╪╢┘ä┘ü╪⌐)
++    // ╪¡╪│╪º╪¿ ╪º┘ä╪¿╪╣╪» ╪º┘ä╪»╪º╪«┘ä┘è ┘ä┘ä╪Ñ╪╖╪º╪▒ (Alpha)
+     double alphaWidth = wMeters - (fThicknessM * 2);
+-    // ╪Ñ╪░╪º ┘â╪º┘å ┘ç┘å╪º┘â ╪Ñ╪╖╪º╪▒ ╪│┘ü┘ä┘è ┘å╪«╪╡┘à ╪│┘à╪º┘â╪¬┘è┘å╪î ┘ê╪Ñ┘ä╪º ╪│┘à╪º┘â╪⌐ ┘ê╪º╪¡╪»╪⌐ (╪º┘ä╪╣┘ä┘ê┘è ┘ü┘é╪╖)
+     double alphaHeight =
+         hMeters - (fThicknessM * (widget.model.hasBottomFrame ? 2 : 1));
+ 
+-    // ╪»╪º┘ä╪⌐ ┘à╪¡┘ä┘è╪⌐ ┘à╪│╪º╪╣╪»╪⌐ ┘ä╪Ñ╪╢╪º┘ü╪⌐ ╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à (Renfort) ╪º┘ä╪«╪º╪╡ ╪¿╪º┘ä┘Ç PVC ┘ü┘é╪╖
++    // ╪¡╪│╪º╪¿ ╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à (Renfort)
+     void addRenfort(String part, double lengthMeters, int count) {
+-      // ╪¬╪¼╪º┘ç┘ä ╪Ñ╪░╪º ┘ä┘à ┘è┘â┘å PVC ╪ú┘ê ╪º┘ä┘é┘è┘à ╪║┘è╪▒ ┘à┘å╪╖┘é┘è╪⌐
+       if (!isPVC || lengthMeters <= 0 || count <= 0) return;
+ 
+-      // ╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à ┘è┘â┘ê┘å ╪»╪º╪ª┘à╪º┘ï ╪ú┘é╪╡╪▒ ┘à┘å ┘à┘é╪╖╪╣ ╪º┘ä┘Ç PVC ╪¿┘Ç 15 ╪│┘à ┘ä╪¬╪▒┘â ┘à╪│╪º╪¡╪⌐ ┘ä╪¡╪º┘à ╪º┘ä╪▓┘ê╪º┘è╪º
+-      double renfortMeters = lengthMeters - 0.15;
++      double renfortMeters = lengthMeters - 0.15; // ┘å╪º┘é╪╡ 15 ╪│┘à (150 ┘à┘ä┘à)
+       if (renfortMeters <= 0) return;
+ 
+-      // ╪¡╪│╪º╪¿ ┘â┘à ┘é╪╖╪╣╪⌐ ╪¡╪»┘è╪» ┘å╪│╪¬╪╖┘è╪╣ ╪º╪│╪¬╪«╪▒╪º╪¼┘ç╪º ┘à┘å ╪º┘ä╪¿╪º╪▒╪⌐ (6 ┘à╪¬╪▒)
+       int cutsPerBar = (6.0 / renfortMeters).floor();
+       if (cutsPerBar < 1) cutsPerBar = 1;
+ 
+-      // ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è ┘ä╪¿╪º╪▒╪⌐ ╪º┘ä╪¡╪»┘è╪» ┘ç┘ê 800 ╪»╪¼╪î ┘å┘é╪│┘à┘ç ╪╣┘ä┘ë ╪╣╪»╪» ╪º┘ä┘é╪╖╪╣
+-      double pricePerCut = 800.0 / cutsPerBar;
+-      // ╪╡┘è╪º╪║╪⌐ ╪º╪│┘à ╪º┘ä╪╣┘å╪╡╪▒ ┘ä┘ä┘ü╪º╪¬┘ê╪▒╪⌐
++      double pricePerBar = 800.0; // ╪º┘ü╪¬╪▒╪º╪╢┘è ┘ä╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à
++      double pricePerCut = pricePerBar / cutsPerBar;
++
+       String disp =
+           '╪¡╪»┘è╪» ╪»╪╣┘à $part (╪╖┘ê┘ä: ${renfortMeters.toStringAsFixed(2)} ┘à)';
+-
+-      // ╪¡┘ü╪╕ ╪º┘ä╪│╪╣╪▒ ┘ü┘è ╪º┘ä┘é╪º┘à┘ê╪│
+       _prices[disp] = pricePerCut;
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä╪¡╪»┘è╪» ┘â╪│╪╖╪▒ ┘ü┘è ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐
+       _profiles.add(
+         MaterialRow(
+           name: disp,
+@@ -374,47 +362,37 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+           unit: '┘é╪╖╪╣╪⌐',
+           typeCategory: 'renfort',
+           cutsPerBar: cutsPerBar,
+-          sourceKey: 'renfort',
+         ),
+       );
+     }
+ 
+-    // --- ╪¿╪»╪º┘è╪⌐ ╪╣┘à┘ä┘è╪º╪¬ ╪º┘ä╪¬┘é╪╖┘è╪╣ ╪º┘ä┘ç┘å╪»╪│┘è ┘ê╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä╪ú╪╖┘ê╪º┘ä ┘ä┘ä┘é┘ê╪º╪ª┘à ---
+-
+-    // 1. ╪¬┘é╪╖┘è╪╣ ╪º┘ä╪Ñ╪╖╪º╪▒ ╪º┘ä╪«╪º╪▒╪¼┘è (Frame)
++    // ╪º┘ä╪Ñ╪╖╪º╪▒ ╪º┘ä╪«╪º╪▒╪¼┘è (Dormant)
+     double frameCutHeight = hMeters;
+     double frameCutWidth = wMeters;
+ 
+-    // ╪Ñ╪░╪º ┘â╪º┘å ╪º┘ä╪Ñ╪╖╪º╪▒ 103 (╪¿╪║╪╖╪º╪í ┘à╪»┘à╪¼)╪î ┘è╪¼╪¿ ╪Ñ╪╢╪º┘ü╪⌐ ╪╣╪▒╪╢ ╪º┘ä╪║╪╖╪º╪í ┘ä┘ä╪¬┘é╪╖┘è╪╣
+-    if (is103 && !widget.model.isFrame140) {
+-      double coverWidthM = cjWidthM > 0 ? cjWidthM : 0.0625;
++    if (is103) {
++      double coverWidthM = cjWidthM > 0 ? cjWidthM : 0.0625; // Default to 6.25cm per side (12.5cm total) if not specified
+       frameCutHeight += (coverWidthM * 2);
+       frameCutWidth += (coverWidthM * 2);
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘é╪╖╪╣ ╪º┘ä╪╣┘à┘ê╪»┘è╪⌐ ┘ä┘ä╪Ñ╪╖╪º╪▒ (┘é╪╖╪╣╪¬┘è┘å)
+       addProfileCut('╪Ñ╪╖╪º╪▒ (╪¿╪║╪╖╪º╪í ┘à╪»┘à╪¼)', 'frame', frameCutHeight, 2);
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘é╪╖╪╣ ╪º┘ä╪ú┘ü┘é┘è╪⌐ ╪¡╪│╪¿ ┘ê╪¼┘ê╪» ╪Ñ╪╖╪º╪▒ ╪│┘ü┘ä┘è ╪ú┘à ┘ä╪º
+-      if (widget.model.hasBottomFrame) {
++      if (widget.model.hasBottomFrame)
+         addProfileCut('╪Ñ╪╖╪º╪▒ (╪¿╪║╪╖╪º╪í ┘à╪»┘à╪¼)', 'frame', frameCutWidth, 2);
+-      } else {
++      else
+         addProfileCut('╪Ñ╪╖╪º╪▒ (╪¿╪║╪╖╪º╪í ┘à╪»┘à╪¼)', 'frame', frameCutWidth, 1);
+-      }
+     } else {
+-      // ╪¡╪º┘ä╪⌐ ╪º┘ä╪Ñ╪╖╪º╪▒ ╪º┘ä╪╣╪º╪»┘è (┘à╪½┘ä 140)
+-      // ╪«╪╡┘à ┘à╪│╪º╪¡╪⌐ ╪╡┘å╪»┘ê┘é ╪º┘ä╪│╪¬╪º╪▒ ┘à┘å ╪º╪▒╪¬┘ü╪º╪╣ ╪º┘ä╪Ñ╪╖╪º╪▒ ╪Ñ╪░╪º ┘ê╪¼╪»
+       if (widget.model.hasShutter) {
+-        frameCutHeight -= (widget.model.shutterBoxHeight / 1000.0);
++        double caissonHeightM = widget.model.shutterBoxHeight / 1000.0;
++        frameCutHeight -= caissonHeightM;
+       }
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘é╪╖╪╣ ╪º┘ä╪ú┘ü┘é┘è╪⌐ ┘ä┘ä╪Ñ╪╖╪º╪▒
+       if (widget.model.hasBottomFrame) {
+         addProfileCut('╪Ñ╪╖╪º╪▒ (╪ú┘ü┘é┘è)', 'frame', frameCutWidth, 2);
+       } else {
+         addProfileCut('╪Ñ╪╖╪º╪▒ (╪ú┘ü┘é┘è/╪╣┘ä┘ê┘è)', 'frame', frameCutWidth, 1);
+       }
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘é╪╖╪╣ ╪º┘ä╪╣┘à┘ê╪»┘è╪⌐ ┘ä┘ä╪Ñ╪╖╪º╪▒
+       addProfileCut('╪Ñ╪╖╪º╪▒ (╪╣┘à┘ê╪»┘è)', 'frame', frameCutHeight, 2);
+     }
+ 
+-    // ╪Ñ╪╢╪º┘ü╪⌐ ╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à (Renfort) ┘ä┘é╪╖╪╣ ╪º┘ä╪Ñ╪╖╪º╪▒ (╪¬╪╣┘à┘ä ┘ü┘é╪╖ ╪Ñ╪░╪º ┘â╪º┘å ╪º┘ä┘å╪╕╪º┘à PVC)
++    // ╪¡╪»┘è╪» ╪»╪╣┘à ╪º┘ä╪Ñ╪╖╪º╪▒ ┘è╪¡╪│╪¿ ╪╣┘ä┘ë ╪╖┘ê┘ä ╪º┘ä╪Ñ╪╖╪º╪▒ ╪º┘ä┘ü╪╣┘ä┘è
+     addRenfort('╪Ñ╪╖╪º╪▒ (╪╣┘à┘ê╪»┘è)', frameCutHeight, 2);
+     addRenfort(
+       '╪Ñ╪╖╪º╪▒ (╪ú┘ü┘é┘è)',
+@@ -422,514 +400,317 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+       widget.model.hasBottomFrame ? 2 : 1,
+     );
+ 
+-    // 2. ╪¬┘é╪╖┘è╪╣ ╪º┘ä╪╢┘ä┘ü (Sashes)╪î ╪º┘ä╪¿╪º╪▒┘â┘ä┘ê╪▓╪î ┘ê╪º┘ä┘â┘ê┘ä┘è╪│
+-    for (var zone in widget.model.zones) {
+-      // ╪¬╪¡╪»┘è╪» ╪º╪│┘à ┘ê┘à┘ü╪¬╪º╪¡ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪º╪«╪¬┘è╪º╪▒ ╪º┘ä┘à╪│╪¬╪«╪»┘à (╪║┘ä┘è╪╕╪⌐ ╪ú┘ê ╪▒┘é┘è┘é╪⌐)
+-      String sashNameDisplay = zone.isSash105
+-          ? '╪╢┘ä┘ü╪⌐ ┘ü╪¬╪¡ ╪║┘ä┘è╪╕╪⌐ (105)'
+-          : '╪╢┘ä┘ü╪⌐ ┘ü╪¬╪¡ ╪▒┘é┘è┘é╪⌐ (104)';
+-      String sashTypeKey = zone.isSash105 ? 'sash_thick' : 'sash_thin';
++    // ╪º┘ä╪╢┘ä┘ü ┘ê╪º┘ä╪▓╪¼╪º╪¼ ┘ê╪º┘ä╪¿╪º╪▒┘â┘ä┘ê╪▓ ╪»┘è┘å╪º┘à┘è┘â┘è╪º┘ï
++    if (widget.model.hasSideCovers && sideCoverSecId != null && !is103) {
++      final leftRightCount =
++          (widget.model.removedShutterSides.contains('left') ? 0 : 1) +
++          (widget.model.removedShutterSides.contains('right') ? 0 : 1);
++      final topBottomCount =
++          (widget.model.removedShutterSides.contains('top') ? 0 : 1) +
++          ((!widget.model.hasBottomFrame ||
++                  widget.model.removedShutterSides.contains('bottom'))
++              ? 0
++              : 1);
++      addProfileCut('╪║╪╖╪º╪í ╪¼╪º┘å╪¿┘è', 'couvre_joint', frameCutHeight, leftRightCount);
++      addProfileCut('╪║╪╖╪º╪í ╪¼╪º┘å╪¿┘è', 'couvre_joint', frameCutWidth, topBottomCount);
++    }
+ 
+-      // ╪¡╪º┘ä╪⌐ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à┘ü╪▒╪»╪⌐
++    for (var zone in widget.model.zones) {
+       if (zone.content == ZoneContent.singleSash) {
+-        // ╪╣╪▒╪╢ ╪º┘ä╪╢┘ä┘ü╪⌐ = ╪º┘ä╪╣╪▒╪╢ ╪º┘ä╪╡╪º┘ü┘è ╪º┘ä╪»╪º╪«┘ä┘è ┘ä┘ä╪Ñ╪╖╪º╪▒ + 2 ╪│┘à ╪¬╪»╪º╪«┘ä
+         double sashWidth = alphaWidth + 0.02;
+-        // ╪º╪▒╪¬┘ü╪º╪╣ ╪º┘ä╪╢┘ä┘ü╪⌐ = ╪º┘ä╪º╪▒╪¬┘ü╪º╪╣ ╪º┘ä╪╡╪º┘ü┘è ╪º┘ä╪»╪º╪«┘ä┘è ┘ä┘ä╪Ñ╪╖╪º╪▒ + 2 ╪│┘à ╪¬╪»╪º╪«┘ä
+         double sashHeight = alphaHeight + 0.02;
+ 
+-        addProfileCut(
+-          sashNameDisplay,
+-          sashTypeKey,
+-          sashHeight,
+-          2,
+-        ); // ┘é╪╖╪╣╪¬┘è┘å ╪╣┘à┘ê╪»┘è╪¬┘è┘å
+-        addProfileCut(
+-          sashNameDisplay,
+-          sashTypeKey,
+-          sashWidth,
+-          2,
+-        ); // ┘é╪╖╪╣╪¬┘è┘å ╪ú┘ü┘é┘è╪¬┘è┘å
+-
+-        addRenfort('╪╢┘ä┘ü╪⌐ (╪╣┘à┘ê╪»┘è)', sashHeight, 2); // ╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à
++        addProfileCut('╪╢┘ä┘ü╪⌐', 'sash', sashHeight, 2);
++        addProfileCut('╪╢┘ä┘ü╪⌐', 'sash', sashWidth, 2);
++        addRenfort('╪╢┘ä┘ü╪⌐ (╪╣┘à┘ê╪»┘è)', sashHeight, 2);
+         addRenfort('╪╢┘ä┘ü╪⌐ (╪ú┘ü┘é┘è)', sashWidth, 2);
+ 
+-        // ╪º┘ä╪¿╪º╪▒┘â┘ä┘ê╪▓ (┘à╪½╪¿╪¬ ╪º┘ä╪▓╪¼╪º╪¼) = ╪╖┘ê┘ä ╪º┘ä╪╢┘ä┘ü╪⌐ ┘å╪º┘é╪╡ ╪│┘à╪º┘â╪º╪¬ ╪º┘ä╪╢┘ä┘ü╪⌐ ┘à┘å ╪º┘ä╪¼┘ç╪¬┘è┘å
+-        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', sashHeight - (sThicknessM * 2), 2);
+-        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', sashWidth - (sThicknessM * 2), 2);
+-      }
+-      // ╪¡╪º┘ä╪⌐ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à╪▓╪»┘ê╪¼╪⌐ (╪╢┘ü╪¬┘è┘å)
+-      else if (zone.content == ZoneContent.doubleSash) {
+-        // ╪╣╪▒╪╢ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘ê╪º╪¡╪»╪⌐ = ┘å╪╡┘ü ╪º┘ä╪╣╪▒╪╢ ╪º┘ä╪╡╪º┘ü┘è + 2 ╪│┘à ╪¬╪»╪º╪«┘ä
++        double parcloseHeight = sashHeight - (sThicknessM * 2);
++        double parcloseWidth = sashWidth - (sThicknessM * 2);
++        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', parcloseHeight, 2);
++        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', parcloseWidth, 2);
++      } else if (zone.content == ZoneContent.doubleSash) {
+         double sashWidth = (alphaWidth / 2) + 0.02;
+         double sashHeight = alphaHeight + 0.02;
+ 
+-        addProfileCut(
+-          sashNameDisplay,
+-          sashTypeKey,
+-          sashHeight,
+-          4,
+-        ); // 4 ┘é╪╖╪╣ ┘ä╪╢┘ü╪¬┘è┘å
+-        addProfileCut(sashNameDisplay, sashTypeKey, sashWidth, 4);
+-
++        addProfileCut('╪╢┘ä┘ü╪⌐', 'sash', sashHeight, 4);
++        addProfileCut('╪╢┘ä┘ü╪⌐', 'sash', sashWidth, 4);
+         addRenfort('╪╢┘ä┘ü╪⌐ (╪╣┘à┘ê╪»┘è)', sashHeight, 4);
+         addRenfort('╪╢┘ä┘ü╪⌐ (╪ú┘ü┘é┘è)', sashWidth, 4);
+ 
+-        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', sashHeight - (sThicknessM * 2), 4);
+-        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', sashWidth - (sThicknessM * 2), 4);
+-
+-        // ╪¡╪│╪º╪¿ ╪╖┘ê┘ä ╪º┘ä╪¿╪º╪¬┘à┘ê (Battement - ┘à┘é╪╖╪╣ ╪º┘ä┘à┘å╪¬╪╡┘ü ┘ä┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à╪▓╪»┘ê╪¼╪⌐)
+-        double batteuseMeters = widget.model.hasBottomFrame
+-            ? (alphaHeight - 0.055)
+-            : (hMeters - 0.03);
+-        // ╪«╪╡┘à ╪╡┘å╪»┘ê┘é ╪º┘ä╪│╪¬╪º╪▒ ┘à┘å ╪º┘ä╪¿╪º╪¬┘à┘ê ╪Ñ┘å ┘ê╪¼╪»
++        double parcloseHeight = sashHeight - (sThicknessM * 2);
++        double parcloseWidth = sashWidth - (sThicknessM * 2);
++        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', parcloseHeight, 4);
++        addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', parcloseWidth, 4);
++        
++        double batteuseMeters = 0.0;
++        if (widget.model.hasBottomFrame) {
++          batteuseMeters = alphaHeight - 0.055; // ╪º┘ä╪¿╪╣╪» ╪º┘ä╪»╪º╪«┘ä┘è - 5.5 ╪│┘à
++        } else {
++          batteuseMeters = hMeters - 0.03; // ╪º┘ä┘é┘è╪º╪│ ╪º┘ä╪«╪º╪▒╪¼┘è ╪º┘ä┘â┘ä┘è - 3 ╪│┘à
++        }
+         if (widget.model.hasShutter) {
+-          batteuseMeters -= (widget.model.shutterBoxHeight / 1000.0);
++          batteuseMeters -= (widget.model.shutterBoxHeight / 1000.0); // ╪º┘ä╪«╪╡┘à ╪º┘ä╪»┘è┘å╪º┘à┘è┘â┘è ┘ä┘ä╪╡┘å╪»┘ê┘é
+         }
++        addProfileCut('╪¬┘à╪│╪º╪¡ / ╪¿╪º╪¬┘à┘ê (Battement)', 'batmo', batteuseMeters, 1);
++        addRenfort('╪¬┘à╪│╪º╪¡ / ╪¿╪º╪¬┘à┘ê (Battement)', batteuseMeters, 1);
++        
+ 
+-        addProfileCut(' / ╪¿╪º╪¬┘à┘ê (Battement)', 'batmo', batteuseMeters, 1);
+-        addRenfort(' / ╪¿╪º╪¬┘à┘ê (Battement)', batteuseMeters, 1);
+-      }
+-      // ╪¡╪º┘ä╪⌐ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à┘å╪▓┘ä┘é╪⌐ (╪º┘ä┘â┘ê┘ä┘è╪│)
+-      else if (zone.content == ZoneContent.slidingSash) {
++      } else if (zone.content == ZoneContent.slidingSash) {
++        // ┘à┘å╪▓┘ä┘é (Coulissant)
+         int numSashes = zone.slidingSashesCount > 0
+             ? zone.slidingSashesCount
+             : 2;
+-        // ╪╣╪▒╪╢ ╪º┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à┘å╪▓┘ä┘é╪⌐ ┘è╪¬╪╢┘à┘å ╪¬╪»╪º╪«┘ä ╪º┘ä╪┤┘è┘â╪º┘å (Chicane) ┘ê┘ç┘ê ╪╣╪º╪»╪⌐ 3 ╪│┘à
+-        double sashWidth = (alphaWidth / numSashes) + 0.03;
+-        double sashHeight = alphaHeight;
+-
+-        addProfileCut(
+-          '╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪╣╪▒╪╢/Traverse)',
+-          'sliding_sash',
+-          sashWidth,
+-          numSashes * 2,
+-        );
+-        addProfileCut(
+-          '╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪┤┘è┘â╪º┘å/Chicane)',
+-          'sliding_chicane',
+-          sashHeight,
+-          numSashes,
+-        );
+-        addProfileCut(
+-          '╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪¼╪º┘å╪¿┘è/Montant)',
+-          'sliding_sash',
+-          sashHeight,
+-          numSashes,
+-        );
++        double croisementMeters = 0.03; // ╪º┘ü╪¬╪▒╪º╪╢ 3 ╪│┘à ╪¬╪»╪º╪«┘ä (Chicane)
++        double sashWidth = (alphaWidth / numSashes) + croisementMeters;
++        double sashHeight = alphaHeight; 
++
++        addProfileCut('╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪╣╪▒╪╢/Traverse)', 'sliding_sash', sashWidth, numSashes * 2);
++        addProfileCut('╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪┤┘è┘â╪º┘å/Chicane)', 'sliding_chicane', sashHeight, numSashes);
++        addProfileCut('╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪¼╪º┘å╪¿┘è/Montant)', 'sliding_sash', sashHeight, numSashes);
+ 
+         addRenfort('╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪╣╪▒╪╢)', sashWidth, numSashes * 2);
+         addRenfort('╪╢┘ä┘ü╪⌐ ┘à┘å╪▓┘ä┘é╪⌐ (╪╣┘à┘ê╪»┘è)', sashHeight, numSashes * 2);
+-      }
+-      // ╪¡╪º┘ä╪⌐ ╪º┘ä╪▓╪¼╪º╪¼ ╪º┘ä╪½╪º╪¿╪¬ (┘ü┘è┘â╪│ - ┘è╪▒┘â╪¿ ┘à╪¿╪º╪┤╪▒╪⌐ ╪╣┘ä┘ë ╪º┘ä╪Ñ╪╖╪º╪▒)
+-      else {
+-        // ┘è╪¡╪¬╪º╪¼ ╪¿╪º╪▒┘â┘ä┘ê╪▓ ┘ü┘é╪╖╪î ┘ê╪╖┘ê┘ä┘ç ┘è┘é┘ä ╪¿┘Ç 10 ╪│┘à ╪¬┘é╪▒┘è╪¿╪º┘ï ╪╣┘å ╪ú╪¿╪╣╪º╪» ╪º┘ä╪Ñ╪╖╪º╪▒ ╪º┘ä┘â┘ä┘è╪⌐
++      } else {
+         addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', hMeters - 0.10, 2);
+         addProfileCut('╪¿╪º╪▒┘â┘ä┘ê╪▓', 'parclose', wMeters - 0.10, 2);
+       }
+     }
+ 
+-    // 3. ╪º┘ä╪¬┘é╪│┘è┘à╪º╪¬ ╪º┘ä╪»╪º╪«┘ä┘è╪⌐ (T-Profiles / Mullions)
+-    // ╪¡╪│╪º╪¿ ╪╣╪»╪» ╪º┘ä╪¬┘é╪│┘è┘à╪º╪¬ ╪º┘ä╪ú┘ü┘é┘è╪⌐ (╪¬╪¿╪»╪ú ╪¿╪¡╪▒┘ü H) ┘ê╪º┘ä╪╣┘à┘ê╪»┘è╪⌐ (╪¬╪¿╪»╪ú ╪¿╪¡╪▒┘ü V)
+     int hMullionCount = widget.model.mullionProfiles.keys
+         .where((k) => k.startsWith('H'))
+         .length;
+     int vMullionCount = widget.model.mullionProfiles.keys
+         .where((k) => k.startsWith('V'))
+         .length;
+-
+-    // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä╪¬┘é╪│┘è┘à╪º╪¬ ┘ä┘ä┘é┘ê╪º╪ª┘à
++    // ╪º┘ä╪¬┘é╪│┘è┘à (╪º┘ä┘à╪╣╪º╪»┘ä╪⌐ ╪¬╪╣╪¬┘à╪» ╪╣┘ä┘ë ╪º┘ä╪¿╪╣╪» ╪º┘ä╪»╪º╪«┘ä┘è ┘ä┘ä╪Ñ╪╖╪º╪▒ Alpha)
+     addProfileCut('╪¬┘é╪│┘è┘à', 'mullion', alphaWidth, hMullionCount);
+     addProfileCut('╪¬┘é╪│┘è┘à', 'mullion', alphaHeight, vMullionCount);
+-
+     addRenfort('╪¬┘é╪│┘è┘à (╪ú┘ü┘é┘è)', alphaWidth, hMullionCount);
+     addRenfort('╪¬┘é╪│┘è┘à (╪╣┘à┘ê╪»┘è)', alphaHeight, vMullionCount);
+ 
+-    // --- ≡ƒƒó ╪«┘ê╪º╪▒╪▓┘à┘è╪⌐ ╪¬╪¼┘à┘è╪╣ ╪º┘ä┘é╪╖╪╣ (Bin Packing) ┘ê╪¡╪│╪º╪¿ ╪º┘ä╪ú╪│╪╣╪º╪▒ ≡ƒƒó ---
++    // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘à┘é╪º╪╖╪╣ ╪º┘ä┘à╪¼┘à╪╣╪⌐ ╪Ñ┘ä┘ë ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐
+     aggregatedProfiles.forEach((partName, data) {
+-      // 1. ╪¼┘ä╪¿ ┘é╪º╪ª┘à╪⌐ ╪ú╪╖┘ê╪º┘ä ╪º┘ä┘é╪╖╪╣ ╪º┘ä┘à╪╖┘ä┘ê╪¿╪⌐
+       List<double> cuts = data['cuts'];
+-
+-      // 2. ╪¼┘ä╪¿ ┘å┘ê╪╣ ╪º┘ä┘à┘é╪╖╪╣
+       String secType = data['secType'];
+-
+-      // 3. ╪¼┘ä╪¿ ╪º┘ä╪│╪╣╪▒ ╪º┘ä┘à┘Å╪«╪▓┘å ┘ä┘ç╪░╪º ╪º┘ä┘à┘é╪╖╪╣
+-      double secPrice = sectionPricesByType[secType] ?? 0.0;
+-
+-      // 4. ╪¼┘ä╪¿ ╪╖┘ê┘ä ╪º┘ä╪¿╪º╪▒╪⌐ ╪º┘ä┘é┘è╪º╪│┘è ┘ä┘ç╪░╪º ╪º┘ä┘à┘é╪╖╪╣
+-      double barLength = sectionBarLengthsByType[secType] ?? 0.0;
+-
+-      // 5. ┘à╪╣╪º┘ä╪¼╪⌐ ╪º╪│╪¬╪½┘å╪º╪ª┘è╪⌐ ┘ä┘ä╪╢┘ä┘ü ┘ä╪╢┘à╪º┘å ╪¼┘ä╪¿ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪╡╪¡┘è╪¡
+-      if (secType.startsWith('sash')) {
+-        secPrice = secPrice > 0
+-            ? secPrice
+-            : (sectionPricesByType['sash'] ?? 0.0);
+-        barLength = barLength > 0
+-            ? barLength
+-            : (sectionBarLengthsByType['sash'] ?? 0.0);
+-      }
+-
+-      // 6. ╪╖┘ê┘ä ╪º┘ä╪¿╪º╪▒╪⌐ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è 6 ╪ú┘à╪¬╪º╪▒
+-      if (barLength <= 0) barLength = 6.0;
+-
+-      // 7. ╪¬╪¡╪»┘è╪» ╪º┘ä╪│╪╣╪▒ ╪º┘ä┘å┘ç╪º╪ª┘è ┘ä┘ä╪¿╪º╪▒╪⌐ ╪º┘ä┘â╪º┘à┘ä╪⌐
++      int? secId = data['secId'];
++      
++      double secPrice = (secId != null && sectionPricesById.containsKey(secId)) ? sectionPricesById[secId]! : 0.0;
++      double barLength = (secId != null && sectionBarLengthsById.containsKey(secId)) ? sectionBarLengthsById[secId]! : 5.8;
++      
+       double barPrice = secPrice > 0 ? secPrice : (defaultAluPrice * barLength);
+-      if (barPrice <= 0) barPrice = 0.0;
+-
+-      // 8. ╪¬╪▒╪¬┘è╪¿ ╪º┘ä┘é╪╖╪╣ ╪¬┘å╪º╪▓┘ä┘è╪º┘ï ┘ä╪¬┘é┘ä┘è┘ä ╪º┘ä┘ç╪»╪▒
++      
++      // Sort cuts to calculate bins for display
+       List<double> sortedCuts = List.from(cuts)..sort((a, b) => b.compareTo(a));
+-
+-      // 9. ╪Ñ┘å╪┤╪º╪í ┘é╪º╪ª┘à╪⌐ "╪º┘ä╪╡┘å╪º╪»┘è┘é/╪º┘ä╪¿╪º╪▒╪º╪¬"
+       List<double> bins = [];
+-
+-      // 10. ┘ê╪╢╪╣ ╪º┘ä┘é╪╖╪╣ ┘ü┘è ╪º┘ä╪¿╪º╪▒╪º╪¬
+       for (double cut in sortedCuts) {
+         bool placed = false;
+         for (int i = 0; i < bins.length; i++) {
+-          // 11. ╪Ñ╪░╪º ┘â┘ü╪¬ ╪º┘ä╪¿╪º╪▒╪⌐ ┘ä┘ä┘é╪╖╪╣╪⌐
+           if (bins[i] + cut <= barLength) {
+             bins[i] += cut;
+             placed = true;
+             break;
+           }
+         }
+-        // 12. ╪Ñ╪░╪º ┘ä┘à ╪¬┘â┘ü┘É ╪ú┘è ╪¿╪º╪▒╪⌐╪î ╪º┘ü╪¬╪¡ ╪¿╪º╪▒╪⌐ ╪¼╪»┘è╪»╪⌐
+         if (!placed) bins.add(cut);
+       }
+-
+-      // 13. ╪¡╪│╪º╪¿ ╪╣╪»╪» ╪º┘ä╪¿╪º╪▒╪º╪¬ ╪º┘ä┘à┘à╪¬┘ä╪ª╪⌐ ╪¬┘à╪º┘à╪º┘ï
++      
++      double minUsage = barLength;
++      for (double b in bins) {
++         if (b < minUsage) minUsage = b;
++      }
+       int fullBars = bins.length > 1 ? bins.length - 1 : 0;
+-
+-      // 14. ╪¡╪│╪º╪¿ ╪º┘ä╪º╪│╪¬┘ç┘ä╪º┘â ┘ü┘è ╪º┘ä╪¿╪º╪▒╪⌐ ╪º┘ä╪ú╪«┘è╪▒╪⌐
+-      double lastBinUsed = bins.last;
+-
+-      // 15. ╪¡╪│╪º╪¿ ╪╖┘ê┘ä ╪º┘ä┘ü╪╢┘ä╪⌐ (╪º┘ä┘ç╪»╪▒) ┘à┘å ╪º┘ä╪¿╪º╪▒╪⌐ ╪º┘ä╪ú╪«┘è╪▒╪⌐
+-      double scrap = barLength - lastBinUsed;
+-
+-      // 16. ╪¬╪¡╪»┘è╪» ╪º┘ä╪ú┘à╪¬╪º╪▒ ╪º┘ä╪¬┘è ╪│┘è┘Å╪¡╪º╪│╪¿ ╪╣┘ä┘è┘ç╪º ╪º┘ä╪▓╪¿┘ê┘å
+-      double billedMetersForLastBin;
+-
+-      // 17. ≡ƒƒó ╪┤╪▒╪╖ ╪º┘ä┘ü╪╢┘ä╪⌐ ╪º┘ä╪╡╪º╪▒┘à: ╪Ñ╪░╪º ┘â╪º┘å╪¬ ╪º┘ä┘ü╪╢┘ä╪⌐ ╪ú┘é┘ä ┘à┘å 1 ┘à╪¬╪▒╪î ┘å╪¡╪º╪│╪¿┘ç ╪╣┘ä┘ë ╪º┘ä╪¿╪º╪▒╪⌐ ┘â╪º┘à┘ä╪⌐ ≡ƒƒó
+-      if (scrap > 0 && scrap < 1.0) {
+-        billedMetersForLastBin = barLength;
+-      } else {
+-        // 18. ╪Ñ╪░╪º ┘â╪º┘å╪¬ ╪º┘ä┘ü╪╢┘ä╪⌐ ╪╡╪º┘ä╪¡╪⌐ (> 1 ┘à╪¬╪▒)╪î ┘å╪¡╪º╪│╪¿┘ç ╪╣┘ä┘ë ┘à╪º ╪º╪│╪¬┘ç┘ä┘â┘ç ┘ü┘é╪╖
+-        billedMetersForLastBin = lastBinUsed;
+-
+-        // 19. ╪¬╪│╪¼┘è┘ä ╪º┘ä┘ü╪╢┘ä╪⌐ ┘ä╪Ñ╪╕┘ç╪º╪▒┘ç╪º ┘ä┘ä┘à╪│╪¬╪«╪»┘à
+-        if (scrap > 0) {
+-          _usefulChutes.add(
+-            '$partName: ┘ü╪╢┘ä╪⌐ ╪╡╪º┘ä╪¡╪⌐ ╪¿╪╖┘ê┘ä ${scrap.toStringAsFixed(2)} ┘à',
+-          );
+-        }
++      double lastBinUsed = bins.length == 1 ? bins[0] : minUsage;
++      
++      if (barLength - lastBinUsed < 1.0) {
++        lastBinUsed = barLength;
+       }
+-
+-      // 20. ╪¡╪│╪º╪¿ ╪Ñ╪¼┘à╪º┘ä┘è ╪º┘ä╪ú┘à╪¬╪º╪▒ ╪º┘ä┘à╪¡╪¬╪│╪¿╪⌐ ┘ü┘è ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐
+-      double totalBilledMeters =
+-          (fullBars * barLength) + billedMetersForLastBin;
+-
+-      // 21. ╪¬╪¡┘ê┘è┘ä ╪º┘ä╪ú┘à╪¬╪º╪▒ ╪Ñ┘ä┘ë ┘å╪│╪¿╪⌐/╪╣╪»╪» ╪º┘ä╪¿╪º╪▒╪º╪¬ ┘ä╪¬┘Å╪╢╪▒╪¿ ┘ü┘è ╪│╪╣╪▒ ╪º┘ä╪¿╪º╪▒╪⌐
++      
++      double totalBilledMeters = (fullBars * barLength) + lastBinUsed;
++      
+       double equivalentBars = totalBilledMeters / barLength;
+-
+-      // 22. ╪╡┘è╪º╪║╪⌐ ╪º┘ä┘å╪╡ ╪º┘ä╪¬┘ê╪╢┘è╪¡┘è ┘ä┘ä┘â┘à┘è╪⌐ ┘ê╪º┘ä┘ê╪¡╪»╪⌐
+-      String displayUnit;
+-      if (scrap > 0 && scrap < 1.0) {
+-        displayUnit =
+-            '╪¿╪º╪▒╪⌐ (╪ú┘Å╪¡╪¬╪│╪¿╪¬ ┘â╪º┘à┘ä╪⌐╪î ╪º┘ä┘ü╪╢┘ä╪⌐ ${scrap.toStringAsFixed(2)}┘à < 1┘à)';
+-      } else if (scrap >= 1.0) {
+-        displayUnit = '╪¿╪º╪▒╪⌐ (╪¡┘Å┘ü╪╕╪¬ ┘ü╪╢┘ä╪⌐ ${scrap.toStringAsFixed(2)}┘à ┘ä┘ä┘à╪«╪▓┘å)';
++      
++      String displayUnit = '';
++      if (fullBars > 0) {
++        displayUnit = '$fullBars ┘à┘é╪╖╪╣ ┘ê ${lastBinUsed.toStringAsFixed(2)} ┘à';
+       } else {
+-        displayUnit = '╪¿╪º╪▒╪⌐ (╪¿╪»┘ê┘å ╪ú┘è ┘ç╪»╪▒)';
++        displayUnit = '${lastBinUsed.toStringAsFixed(2)} ┘à';
+       }
+-
+-      // 23. ╪¡┘ü╪╕ ╪│╪╣╪▒ ╪º┘ä╪¿╪º╪▒╪⌐
++      if (lastBinUsed == barLength) {
++         displayUnit = '${fullBars + 1} ┘à┘é╪╖╪╣ (╪¿╪»┘ê┘å ┘ü╪╢┘ä╪⌐)';
++      }
++      
++      // We set the quantity to equivalentBars so the price multiplies correctly
++      double displayQuantity = equivalentBars;
++      
+       _prices[partName] = barPrice;
+-
+-      // 24. ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘é╪╖╪º╪╣ ┘ä┘ä┘ü╪º╪¬┘ê╪▒╪⌐
++      
+       _profiles.add(
+         MaterialRow(
+           name: partName,
+-          quantity: equivalentBars,
++          quantity: displayQuantity,
+           unit: displayUnit,
+           typeCategory: 'profile',
+-          sourceKey: secType,
+         ),
+       );
+     });
+-    // --- ≡ƒƒó ┘å┘ç╪º┘è╪⌐ ╪º┘ä╪¬┘é╪╖┘è╪╣ ┘ê╪º┘ä╪¬╪¼┘à┘è╪╣ ≡ƒƒó ---
+ 
+-    // ╪¼┘ä╪¿ ╪│╪╣╪▒ ╪║╪╖╪º╪í ╪º┘ä╪¿╪º╪¬┘à┘ê ╪º┘ä┘ü╪▒┘è╪» (b108p) ┘ä┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à╪▓╪»┘ê╪¼╪⌐ ╪Ñ┘å ┘ê┘Å╪¼╪»╪¬
+-    int doubleCount = widget.model.zones
+-        .where((z) => z.content == ZoneContent.doubleSash)
+-        .length;
+-    if (doubleCount > 0) {
+-      double batmoCoverPrice = 0.0;
++    // --- ╪¡╪│╪º╪¿ ╪º┘ä╪│┘è╪¬╪º╪▒ (╪º┘ä╪│╪¬╪º╪ª╪▒) ---
++    if (widget.model.hasShutter) {
++      final dbInstanceSC = await db.db;
++      List<Map<String, dynamic>> allShutterComponents = [];
+       try {
+-        var secRes = await dbInstance.query(
+-          'Sections',
+-          where: 'code = ? OR name LIKE ?',
+-          whereArgs: ['B108p', '%Bochon Batment%'],
+-          limit: 1,
+-        );
+-        if (secRes.isNotEmpty) {
+-          int sectionId = secRes.first['id'] as int;
+-          if (selectedColorId != null) {
+-            var priceRes = await dbInstance.query(
+-              'SectionColorPrices',
+-              where: 'section_id = ? AND color_id = ?',
+-              whereArgs: [sectionId, selectedColorId],
+-              limit: 1,
+-            );
+-            if (priceRes.isNotEmpty) {
+-              batmoCoverPrice = (priceRes.first['price'] as num).toDouble();
+-            }
+-          }
++        if (dbInstanceSC != null) {
++          allShutterComponents = await dbInstanceSC.query('ShutterComponents');
+         }
+       } catch (e) {
+-        debugPrint("Error Batmo: $e");
++        print("Error fetching all shutter components: $e");
+       }
+ 
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪║╪╖╪º╪í ╪º┘ä╪¿╪º╪¬┘à┘ê ┘ä┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬
+-      _prices['╪║╪╖╪º╪í ╪º┘ä╪¿╪º╪¬┘à┘ê (Cache Battement) b108p'] = batmoCoverPrice;
+-      _profiles.add(
+-        MaterialRow(
+-          name: '╪║╪╖╪º╪í ╪º┘ä╪¿╪º╪¬┘à┘ê (Cache Battement) b108p',
+-          quantity: doubleCount.toDouble(),
+-          unit: '┘ê╪¡╪»╪⌐',
+-          typeCategory: 'accessory',
+-        ),
+-      );
+-    }
+-
+-    // --- ╪¡╪│╪º╪¿ ┘à┘â┘ê┘å╪º╪¬ ╪º┘ä╪│╪¬╪º╪▒ (╪º┘ä╪▒┘è╪»┘ê/Shutter) ---
+-    if (widget.model.hasShutter) {
+-      // ┘à╪│╪º╪¡╪⌐ ╪º┘ä╪│╪¬╪º╪▒ ╪º┘ä┘à╪▒╪¿╪╣╪⌐
+-      double shutterAreaSqm = hMeters * wMeters;
+-      _shutters = [];
+-
+-      // ╪¼┘ä╪¿ ┘à┘â┘ê┘å╪º╪¬ ╪º┘ä╪│╪¬╪º╪▒ ┘à┘å ╪º┘ä┘é╪º╪╣╪»╪⌐
+-      final shutterComponents = await dbInstance.query('ShutterComponents');
+-      _dbShutterComponents = shutterComponents;
+-
+-      // ╪»╪º┘ä╪⌐ ┘à╪│╪º╪╣╪»╪⌐ ┘ä╪¬╪¡┘ê┘è┘ä ╪º┘ä┘å╪╡┘ê╪╡ ┘ê╪º┘ä╪ú╪▒┘é╪º┘à ╪Ñ┘ä┘ë Double
+-      double parseDbDouble(dynamic value) {
+-        if (value is num) return value.toDouble();
+-        return double.tryParse(value?.toString() ?? '') ?? 0.0;
++      double getSCPrice(String type, String fallbackName) {
++        for (var row in allShutterComponents) {
++           String rType = (row['component_type'] as String?) ?? '';
++           String rName = (row['name'] as String?) ?? '';
++           if (rType.toLowerCase() == type.toLowerCase() || rName.contains(fallbackName)) {
++               return (row['price'] as num?)?.toDouble() ?? 0.0;
++           }
++        }
++        return 0.0;
+       }
+ 
+-      // ╪»╪º┘ä╪⌐ ┘à╪│╪º╪╣╪»╪⌐ ┘ä┘ä╪¿╪¡╪½ ╪╣┘å ┘à┘â┘ê┘å ╪│╪¬╪º╪▒ ┘à╪╣┘è┘å (┘à╪½┘ä ╪º┘ä┘â┘ê┘ä┘è╪│╪î ╪º┘ä┘â┘è╪│┘ê┘å)
+-      Map<String, dynamic>? findShutterComponent(String searchKey) {
+-        final key = searchKey.toLowerCase();
+-        final matches = shutterComponents.where((row) {
+-          final name = row['name']?.toString().toLowerCase() ?? '';
+-          final type = row['component_type']?.toString().toLowerCase() ?? '';
+-          if (name.contains(key) || type.contains(key)) return true;
+-
+-          // ┘â┘ä┘à╪º╪¬ ╪¿╪¡╪½ ┘à╪«╪╡╪╡╪⌐ ┘ä┘ä╪│╪¬╪º╪▒ ┘ä╪¬╪│┘ç┘è┘ä ╪º┘ä╪¬╪╖╪º╪¿┘é
+-          if (key.contains('┘ä╪º┘à') ||
+-              key.contains('lame') ||
+-              key.contains('blade')) {
+-            return type == 'lame' ||
+-                type == 'blade' ||
+-                name.contains('lame') ||
+-                name.contains('╪┤┘ü╪▒╪⌐');
+-          }
+-          if (key.contains('┘â┘ê┘ä┘è╪│') || key.contains('track')) {
+-            return type == 'track' ||
+-                name.contains('coulisse') ||
+-                name.contains('╪│┘â╪⌐');
+-          }
+-          if (key.contains('┘â┘è╪│┘ê┘å') || key.contains('box')) {
+-            return type == 'box' ||
+-                name.contains('coffre') ||
+-                name.contains('╪╡┘å╪»┘ê┘é');
+-          }
+-          if (key.contains('┘à╪¡┘ê╪▒') || key.contains('axe')) {
+-            return type == 'axe' || name.contains('╪ú┘å╪¿┘ê╪¿');
+-          }
+-          if (key.contains('┘ü┘è┘å╪º┘ä') || key.contains('final')) {
+-            return type == 'final_blade' || name.contains('┘å┘ç╪º╪ª┘è╪⌐');
+-          }
+-          if (key.contains('┘à╪¡╪▒┘â') ||
+-              key.contains('kit') ||
+-              key.contains('┘â┘è╪¬')) {
+-            return type == 'motor' || type == 'kit';
+-          }
+-          return false;
+-        }).toList();
+-        if (matches.isEmpty) return null;
+-
+-        // ┘à╪╖╪º╪¿┘é╪⌐ ┘ä┘ê┘å ╪º┘ä┘à┘â┘ê┘å ╪º┘ä┘à╪«╪¬╪º╪▒
+-        bool matchesSelectedShutterColor(Map<String, Object?> row) {
+-          final name = row['name']?.toString().toLowerCase() ?? '';
+-          final selected = colorName.toLowerCase();
+-          if (selected.contains('╪ú╪¿┘è╪╢')) return name.contains('╪ú╪¿┘è╪╢');
+-          if (selected.contains('╪¿┘å┘è') || selected.contains('╪«╪┤╪¿┘è'))
+-            return name.contains('╪¿┘å┘è') || name.contains('╪«╪┤╪¿┘è');
+-          if (selected.contains('╪▒┘à╪º╪»┘è')) return name.contains('╪▒┘à╪º╪»┘è');
+-          if (selected.contains('╪ú╪│┘ê╪»')) return name.contains('╪ú╪│┘ê╪»');
+-          if (selected.contains('╪¿┘è╪¼')) return name.contains('╪¿┘è╪¼');
+-          return name.contains(selected);
+-        }
++      double shutterAreaSqm = hMeters * wMeters; // ┘à╪│╪º╪¡╪⌐ ╪º┘ä┘å╪º┘ü╪░╪⌐ ┘â╪º┘à┘ä╪⌐
+ 
+-        // ╪Ñ╪▒╪¼╪º╪╣ ╪ú┘ê┘ä ╪¬╪╖╪º╪¿┘é ┘ä┘ê┘å┘è╪î ╪ú┘ê ╪ú┘ê┘ä ╪¬╪╖╪º╪¿┘é ╪╣╪º┘à
+-        return matches.firstWhere(
+-          matchesSelectedShutterColor,
+-          orElse: () => matches.first,
+-        );
+-      }
++      _shutters = [];
+ 
+-      // ╪»╪º┘ä╪⌐ ┘à╪│╪º╪╣╪»╪⌐ ┘ä╪Ñ╪╢╪º┘ü╪⌐ ┘à┘â┘ê┘å ╪º┘ä╪│╪¬╪º╪▒ ┘ä┘ä┘ü╪º╪¬┘ê╪▒╪⌐ ┘ê╪¼┘ä╪¿ ╪│╪╣╪▒┘ç
+-      Future<void> addLiveShutterComponent(
++      void addShutterComponent(
+         String name,
+-        String searchKey,
+         double qty,
+         String unit,
+-      ) async {
+-        if (qty <= 0) return;
+-        final component = findShutterComponent(searchKey);
+-        double componentPrice = parseDbDouble(component?['price']);
+-        final componentId = component?['id'];
+-
+-        // ╪¼┘ä╪¿ ╪º┘ä╪│╪╣╪▒ ╪º┘ä┘à┘ä┘ê┘å ╪Ñ┘å ┘ê╪¼╪»
+-        if (componentId is int && selectedColorId != null) {
+-          final colorPriceRows = await dbInstance.query(
+-            'ShutterColorPrices',
+-            where: 'shutter_component_id = ? AND color_id = ?',
+-            whereArgs: [componentId, selectedColorId],
+-            limit: 1,
+-          );
+-          if (colorPriceRows.isNotEmpty) {
+-            final colorPrice = parseDbDouble(colorPriceRows.first['price']);
+-            if (colorPrice > 0) componentPrice = colorPrice;
+-          }
++        double price,
++      ) {
++        if (qty > 0) {
++          String disp = '$name - ┘ä┘ê┘å: $colorName';
++          _prices[disp] = price;
++          _shutters.add(MaterialRow(name: disp, quantity: qty, unit: unit));
+         }
++      }
+ 
++      void addShutterBarComponent(String name, List<double> cuts, double barPrice, double barLength) {
++        if (cuts.isEmpty) return;
++        List<double> sortedCuts = List.from(cuts)..sort((a, b) => b.compareTo(a));
++        List<double> bins = [];
++        for (double cut in sortedCuts) {
++          bool placed = false;
++          for (int i = 0; i < bins.length; i++) {
++            if (bins[i] + cut <= barLength) {
++              bins[i] += cut;
++              placed = true;
++              break;
++            }
++          }
++          if (!placed) bins.add(cut);
++        }
++        
++        double minUsage = barLength;
++        for (double b in bins) {
++           if (b < minUsage) minUsage = b;
++        }
++        int fullBars = bins.length > 1 ? bins.length - 1 : 0;
++        double lastBinUsed = bins.length == 1 ? bins[0] : minUsage;
++        
++        if (barLength - lastBinUsed < 1.0) {
++          lastBinUsed = barLength;
++        }
++        
++        double totalBilledMeters = (fullBars * barLength) + lastBinUsed;
++        double equivalentBars = totalBilledMeters / barLength;
++        
++        String displayUnit = '';
++        if (fullBars > 0) {
++          displayUnit = '$fullBars ┘à┘é╪╖╪╣ ┘ê ${lastBinUsed.toStringAsFixed(2)} ┘à';
++        } else {
++          displayUnit = '${lastBinUsed.toStringAsFixed(2)} ┘à';
++        }
++        if (lastBinUsed == barLength) {
++           displayUnit = '${fullBars + 1} ┘à┘é╪╖╪╣ (╪¿╪»┘ê┘å ┘ü╪╢┘ä╪⌐)';
++        }
++        
+         String disp = '$name - ┘ä┘ê┘å: $colorName';
+-        _prices[disp] = componentPrice;
+-        _shutters.add(
+-          MaterialRow(
+-            name: disp,
+-            quantity: qty,
+-            unit: unit,
+-            typeCategory: 'shutter_part',
+-            sourceKey: searchKey,
+-            sourceId: componentId is int ? componentId : null,
+-          ),
+-        );
++        _prices[disp] = barPrice;
++        _shutters.add(MaterialRow(name: disp, quantity: equivalentBars, unit: displayUnit));
+       }
+ 
+-      // ╪º┘ä╪ú╪¿╪╣╪º╪» ╪º┘ä┘ç┘å╪»╪│┘è╪⌐ ┘ä┘ä╪│╪¬╪º╪▒
++      // ╪º┘ä╪┤┘ü╪▒╪º╪¬ (Lames) ╪¿╪º┘ä╪¡╪│╪º╪¿ ╪º┘ä╪»┘é┘è┘é
+       double shutterWidthCm = widget.model.width / 10.0;
+       double shutterHeightCm = widget.model.height / 10.0;
++
+       double caissonHeightM = widget.model.shutterBoxHeight / 1000.0;
+       double coulisseLengthM =
+-          hMeters - caissonHeightM; // ╪╖┘ê┘ä ╪│┘â╪⌐ ╪º┘ä╪│╪¬╪º╪▒ ╪º┘ä╪¼╪º┘å╪¿┘è╪⌐
++          hMeters - caissonHeightM; // ╪╖┘ê┘ä ╪º┘ä┘â┘ê┘ä┘è╪│ = ╪╖┘ê┘ä ╪º┘ä┘å╪º┘ü╪░╪⌐ - ╪º┘ä╪╡┘å╪»┘ê┘é
+ 
+-      // ╪¼┘ä╪¿ ╪«╪╡╪º╪ª╪╡ ╪º┘ä╪┤┘ü╪▒╪º╪¬ (Lames) ┘ä╪¡╪│╪º╪¿ ╪º┘ä╪╣╪»╪» ╪º┘ä┘à╪╖┘ä┘ê╪¿
+-      final bladeComponent = findShutterComponent('lame');
+-      final slatVisibleHeightCm = parseDbDouble(
+-        bladeComponent?['visible_height_cm'],
+-      );
+-      final slatCutDeductionCm = parseDbDouble(
+-        bladeComponent?['cutting_deduction_cm'],
+-      );
+-      final barLengthM = parseDbDouble(bladeComponent?['bar_length_m']);
+-      final bladeUnit = (bladeComponent?['unit'] ?? '')
+-          .toString()
+-          .toLowerCase();
+-      final slatCutLengthCm = shutterWidthCm - slatCutDeductionCm;
+-      final barLengthCm = barLengthM * 100.0;
+-
+-      // ╪¡╪│╪º╪¿ ╪╣╪»╪» ╪º┘ä╪┤┘ü╪▒╪º╪¬ ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪º┘ä╪º╪▒╪¬┘ü╪º╪╣ ╪º┘ä┘à╪▒╪ª┘è
+-      int numberOfSlats = (slatVisibleHeightCm > 0)
+-          ? ((shutterHeightCm - (caissonHeightM * 100)) / slatVisibleHeightCm)
+-                .ceil()
+-          : 0;
+-      int cutsPerBar = (barLengthCm > 0 && slatCutLengthCm > 0)
+-          ? (barLengthCm / slatCutLengthCm).floor()
+-          : 0;
++      double slatCutLengthCm = shutterWidthCm - 6.5; // ╪╖┘ê┘ä ╪º┘ä╪┤┘ü╪▒╪⌐ ╪º┘ä┘à┘é╪╖┘ê╪╣╪⌐
++      double slatVisibleHeightCm = 4.3; // ╪º╪▒╪¬┘ü╪º╪╣ ╪º┘ä╪┤┘ü╪▒╪⌐ ╪º┘ä╪╕╪º┘ç╪▒
++      double barLengthCm = 580.0; // ╪╖┘ê┘ä ╪¿╪º╪▒╪⌐ ╪º┘ä╪┤┘ü╪▒╪º╪¬ ┘â╪º┘à┘ä╪⌐
++
++      int numberOfSlats =
++          ((shutterHeightCm - (caissonHeightM * 100)) / slatVisibleHeightCm)
++              .ceil(); // ╪╣╪»╪» ╪º┘ä╪┤┘ü╪▒╪º╪¬ ┘ä┘ä┘å╪º┘ü╪░╪⌐
++      int cutsPerBar = (barLengthCm / slatCutLengthCm)
++          .floor(); // ┘â┘à ╪┤┘ü╪▒╪⌐ ┘å╪│╪¬╪«╪▒╪¼ ┘à┘å ╪º┘ä╪¿╪º╪▒╪⌐ ╪º┘ä┘ê╪º╪¡╪»╪⌐
+       double totalBarsNeeded = cutsPerBar > 0
+           ? (numberOfSlats / cutsPerBar).ceilToDouble()
+-          : 0.0;
+-
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪º┘ä┘à┘â┘ê┘å╪º╪¬ ┘ä┘ä┘ü╪º╪¬┘ê╪▒╪⌐
+-      if (bladeUnit.contains('sqm') ||
+-          bladeUnit.contains('m2') ||
+-          bladeUnit.contains('┘à╪▒╪¿╪╣')) {
+-        await addLiveShutterComponent(
+-          '╪┤┘ü╪▒╪º╪¬ ╪º┘ä╪│╪¬╪º╪▒ (Lames)',
+-          'lame',
+-          shutterAreaSqm,
+-          '┘à╪¬╪▒ ┘à╪▒╪¿╪╣',
+-        );
+-      } else {
+-        await addLiveShutterComponent(
+-          '╪¿╪º╪▒╪º╪¬ ╪º┘ä╪┤┘ü╪▒╪º╪¬ (Lames)',
+-          'lame',
+-          totalBarsNeeded,
+-          barLengthM > 0 ? '╪¿╪º╪▒╪⌐ (${barLengthM.toStringAsFixed(2)}m)' : '╪¿╪º╪▒╪⌐',
+-        );
+-      }
+-      await addLiveShutterComponent(
+-        '┘â┘ê┘ä┘è╪│',
+-        '┘â┘ê┘ä┘è╪│',
+-        coulisseLengthM * 2,
+-        '┘à╪¬╪▒ ╪╖┘ê┘ä┘è',
++          : 0.0; // ╪╣╪»╪» ╪º┘ä╪¿╪º╪▒╪º╪¬ ╪º┘ä┘â┘ä┘è
++
++      addShutterComponent(
++        '╪¿╪º╪▒╪º╪¬ ╪º┘ä╪┤┘ü╪▒╪º╪¬ (Lames)',
++        totalBarsNeeded,
++        '╪¿╪º╪▒╪⌐ (5.8m)',
++        0.0,
+       );
+-      await addLiveShutterComponent('┘â┘è╪│┘ê┘å', '┘â┘è╪│┘ê┘å', wMeters, '┘à╪¬╪▒ ╪╖┘ê┘ä┘è');
+-      await addLiveShutterComponent(
++      addShutterComponent(
++        '╪│┘è╪¬╪º╪▒ ┘à╪¼┘à┘æ╪╣ (╪º┘ä┘à╪│╪º╪¡╪⌐)',
++        shutterAreaSqm,
++        '┘à╪¬╪▒ ┘à╪▒╪¿╪╣',
++        0.0,
++      );
++      addShutterBarComponent('┘â┘ê┘ä┘è╪│', [coulisseLengthM, coulisseLengthM], getSCPrice('coulisse', '┘â┘ê┘ä┘è╪│'), 5.8);
++      addShutterBarComponent('┘â┘è╪│┘ê┘å', [wMeters], getSCPrice('caisson', '┘â┘è╪│┘ê┘å'), 5.8);
++      addShutterBarComponent(
+         '╪ú┘â╪│ (┘à╪¡┘ê╪▒ 40/60/70 ┘à┘ä┘à)',
+-        '┘à╪¡┘ê╪▒',
+-        slatCutLengthCm > 0 ? slatCutLengthCm / 100.0 : 0.0,
+-        '┘à╪¬╪▒ ╪╖┘ê┘ä┘è',
++        [(shutterWidthCm - 7.0) / 100.0],
++        0.0,
++        5.8,
+       );
+-      await addLiveShutterComponent(
++      addShutterBarComponent(
+         '┘ä╪º┘à ┘ü┘è┘å╪º┘ä',
+-        '┘ü┘è┘å╪º┘ä',
+-        slatCutLengthCm / 100.0,
+-        '┘à╪¬╪▒ ╪╖┘ê┘ä┘è',
++        [slatCutLengthCm / 100.0],
++        0.0,
++        5.8,
+       );
+-      await addLiveShutterComponent(
+-        '╪¼┘ê╪º┘å ╪¿╪▒┘ê╪│ ┘ä┘ä┘â┘ê┘ä┘è╪│',
+-        '╪¿╪▒┘ê╪│',
++      addShutterComponent(
++        '╪¼┘ê╪º┘å ╪¿╪▒┘ê╪│ ┘ä┘ä┘â┘ê┘ä┘è╪│ (Joint Brosse)',
+         (coulisseLengthM * 4),
+         '┘à╪¬╪▒ ╪╖┘ê┘ä┘è',
++        0.0,
++      ); // ┘â┘ä ┘â┘ê┘ä┘è╪│ ┘ü┘è┘ç╪º 2 ╪¼┘ê╪º┘å
++      addShutterComponent(
++        '╪¼┘ê╪º┘å ╪º┘ä┘ä╪º┘à ┘ü┘è┘å╪º┘ä',
++        slatCutLengthCm / 100.0,
++        '┘à╪¬╪▒ ╪╖┘ê┘ä┘è',
++        0.0,
+       );
+-      await addLiveShutterComponent(
+-        '┘â┘è╪¬ ╪│┘è╪¬╪º╪▒ (┘à╪¡╪▒┘â/┘à╪º┘å┘è┘ü╪▒)',
+-        '┘à╪¡╪▒┘â',
+-        1.0,
+-        '┘ê╪¡╪»╪⌐',
+-      );
+-
+-      // ╪Ñ╪░╪º ┘ä┘à ┘å╪¼╪» ╪ú╪│╪╣╪º╪▒ ╪¬┘ü╪╡┘è┘ä┘è╪⌐╪î ┘å╪│╪¬╪╣┘à┘ä ╪│╪╣╪▒ ╪º┘ä┘à╪│╪º╪¡╪⌐ ╪º┘ä╪º╪¡╪¬┘è╪º╪╖┘è
+-      final hasDetailedShutterPrice = _shutters.any(
+-        (row) => (_prices[row.name] ?? 0.0) > 0,
+-      );
+-      if (!hasDetailedShutterPrice) {
+-        String dispArea = '╪│┘è╪¬╪º╪▒ ┘à╪¼┘à┘æ╪╣ (╪º┘ä┘à╪│╪º╪¡╪⌐) - ┘ä┘ê┘å: $colorName';
+-        _prices[dispArea] = _defaultShutterPrice;
+-        _shutters.add(
+-          MaterialRow(
+-            name: dispArea,
+-            quantity: shutterAreaSqm,
+-            unit: '┘à╪¬╪▒ ┘à╪▒╪¿╪╣',
+-            typeCategory: 'shutter_part',
+-          ),
+-        );
+-      }
++      addShutterComponent('┘â┘è╪¬ ╪│┘è╪¬╪º╪▒ (╪¡╪▓╪º┘à/┘à╪¡╪▒┘â/┘à╪º┘å┘è┘ü╪▒)', 1.0, '┘ê╪¡╪»╪⌐', getSCPrice('moteur', '┘à╪¡╪▒┘â'));
+     }
+ 
+-    // --- ╪¡╪│╪º╪¿ ╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ╪º┘ä┘ç┘å╪»╪│┘è╪⌐ (┘à┘é╪º╪¿╪╢╪î ┘à┘ü╪º╪╡┘ä╪î ╪¿╪▒╪º╪║┘è...) ---
+-    _dbAccessories = (await db.readAccessories())
+-        .map((e) => Map<String, dynamic>.from(e))
+-        .toList();
++    // --- ╪¼┘ä╪¿ ╪º┘ä╪▓╪¼╪º╪¼ ┘ê╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ┘à┘å ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ---
++    final dbInstance = await db.db;
+ 
+-    // ╪¼┘ä╪¿ ╪ú╪│╪╣╪º╪▒ ╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ╪º┘ä┘à┘ä┘ê┘å╪⌐
++    // ╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬
++    _dbAccessories = (await db.readAccessories()).map((e) => Map<String, dynamic>.from(e)).toList();
+     if (selectedColorId != null) {
+       for (var acc in _dbAccessories) {
+         int accId = acc['id'] as int;
+-        final accRes = await dbInstance.query(
++        final accRes = await dbInstance!.query(
+           'AccessoryColorPrices',
+           where: 'accessory_id = ? AND color_id = ?',
+           whereArgs: [accId, selectedColorId],
+@@ -937,50 +718,73 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+         if (accRes.isNotEmpty) {
+           double p = (accRes.first['price'] as num).toDouble();
+           if (p > 0) acc['price'] = p;
++        } else {
++          final accAny = await dbInstance!.query('AccessoryColorPrices', where: 'accessory_id = ?', whereArgs: [accId]);
++          for (var row in accAny) {
++            double p = (row['price'] as num).toDouble();
++            if (p > 0) {
++              acc['price'] = p;
++              break;
++            }
++          }
+         }
+       }
+     }
+-
+-    // ╪¡╪│╪º╪¿ ╪╣╪»╪» ╪º┘ä╪╢┘ä┘ü ╪º┘ä┘à┘ü╪▒╪»╪⌐╪î ╪º┘ä┘à╪▓╪»┘ê╪¼╪⌐╪î ┘ê╪º┘ä┘à┘å╪▓┘ä┘é╪⌐
+     int singleCount = widget.model.zones
+         .where((z) => z.content == ZoneContent.singleSash)
+         .length;
++    int doubleCount = widget.model.zones
++        .where((z) => z.content == ZoneContent.doubleSash)
++        .length;
+     int slidingCount = widget.model.zones
+         .where((z) => z.content == ZoneContent.slidingSash)
+         .length;
+-    int totalSashesFrappe =
+-        singleCount + (doubleCount * 2); // ┘à╪¼┘à┘ê╪╣ ╪╢┘ä┘ü ╪º┘ä┘ü╪¬╪¡ (Frappe)
+ 
+-    // ╪¡╪│╪º╪¿ ╪╖┘ê┘ä ╪º┘ä┘â╪▒┘è┘à┘ê┘å (╪ó┘ä┘è╪⌐ ╪º┘ä┘é┘ü┘ä) ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪╖┘ê┘ä ╪º┘ä┘å╪º┘ü╪░╪⌐
+-    int cremoneLengthCm = widget.model.hasShutter
+-        ? ((widget.model.height - 350) / 10).round() * 10
+-        : ((widget.model.height - 200) / 10).round() * 10;
++    int totalSashesFrappe = singleCount + (doubleCount * 2);
++
++    // ╪º┘ä╪¡╪│╪º╪¿ ╪º┘ä┘à╪▒╪¼╪╣┘è ┘ä┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪º┘ä┘å╪╕╪º┘à (PVC ╪ú┘à ╪ú┘ä┘à┘å┘è┘ê┘à)
++    int cremoneLengthCm = 0;
++    if (widget.model.hasShutter) {
++      cremoneLengthCm =
++          ((widget.model.height - 350) / 10).round() *
++          10; // ╪«╪╡┘à 35 ╪│┘à (350 ┘à┘ä┘à)
++    } else {
++      cremoneLengthCm =
++          ((widget.model.height - 200) / 10).round() *
++          10; // ╪«╪╡┘à 20 ╪│┘à (200 ┘à┘ä┘à)
++    }
++    
++    // ╪º┘ä╪¬┘é╪▒┘è╪¿ ╪Ñ┘ä┘ë ┘à╪╢╪º╪╣┘ü╪º╪¬ 20 (80╪î 100╪î 120╪î 140╪î 160╪î 180)
+     int remainder = cremoneLengthCm % 20;
+-    if (remainder >= 10)
++    if (remainder >= 10) {
+       cremoneLengthCm += (20 - remainder);
+-    else
++    } else {
+       cremoneLengthCm -= remainder;
++    }
+     if (cremoneLengthCm > 180) cremoneLengthCm = 180;
+     if (cremoneLengthCm < 80) cremoneLengthCm = 80;
+ 
+-    // ╪¡╪│╪º╪¿ ╪╣╪»╪» ╪º┘ä┘à┘ä╪¡┘é╪º╪¬ ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪º┘ä╪ú╪¿╪╣╪º╪»
+-    int gachePerEspagnolette = cremoneLengthCm == 80
+-        ? 2
+-        : (cremoneLengthCm == 100 || cremoneLengthCm == 120 ? 3 : 4);
++    int gachePerEspagnolette = 3;
++    if (cremoneLengthCm < 100) {
++      gachePerEspagnolette = 2;
++    } else if (cremoneLengthCm > 104) {
++      gachePerEspagnolette = 4;
++    }
++
+     int hingeCount = (hMeters * 1000 >= 2100 || wMeters * 1000 >= 2100)
+         ? 4
+-        : 3; // 4 ┘à┘ü╪º╪╡┘ä ┘ä┘ä╪ú╪¿┘ê╪º╪¿╪î 3 ┘ä┘ä┘å┘ê╪º┘ü╪░
++        : 3; // Default 3 hinges per sash based on user feedback
+     if (widget.model.zones.isNotEmpty &&
+-        widget.model.zones[0].glass.structure == GlassStructure.double)
++        widget.model.zones[0].glass.structure == GlassStructure.double) {
+       hingeCount += 1;
++    }
+ 
+-    int totalSerrureClef = 0,
+-        totalSerrureCondamnation = 0,
+-        totalGachePorte = 0,
+-        totalCanon = 0,
+-        totalPoigneePorte = 0;
++    int totalSerrureClef = 0;
++    int totalSerrureCondamnation = 0;
++    int totalGachePorte = 0;
++    int totalCanon = 0;
++    int totalPoigneePorte = 0;
+ 
+-    // ╪¼┘ä╪¿ ╪ú┘å┘ê╪º╪╣ ╪º┘ä╪ú┘é┘ü╪º┘ä ┘à┘å ╪º┘ä┘à┘å╪º╪╖┘é (Zones)
+     for (var zone in widget.model.zones) {
+       if (zone.lockType == LockType.clef) {
+         totalSerrureClef++;
+@@ -994,64 +798,141 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+       }
+     }
+ 
+-    // ╪¡╪╡╪▒ ╪º┘ä┘à╪¼╪º┘à┘è╪╣ ┘ä┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬
+-    int totalHandles = totalPoigneePorte > 0 ? 0 : totalSashesFrappe;
++    // --- ╪¡╪│╪º╪¿ ╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ╪¿┘å╪º╪í┘ï ╪╣┘ä┘ë ╪º┘ä╪«┘ê╪º╪▒╪▓┘à┘è╪⌐ ---
++    int totalHandles = singleCount + doubleCount; // One handle per sash opening
++      
++      if (totalPoigneePorte > 0 && totalHandles > 0) {
++      totalHandles = 0; // ╪º┘ä╪¿╪º╪¿ ┘è╪ú╪«╪░ ┘à┘é╪¿╪╢ ╪¿╪º╪¿ ┘ê┘ä┘è╪│ ┘à┘é╪¿╪╢ ┘å╪º┘ü╪░╪⌐
++    }
++
+     int totalHinges = hingeCount * totalSashesFrappe;
++
++    // ╪▓┘ê╪º┘è╪º ╪º┘ä╪¬╪¼┘à┘è╪╣ ╪¬╪│╪¬╪«╪»┘à ┘ü┘é╪╖ ┘ü┘è ╪º┘ä╪ú┘ä┘à┘å┘è┘ê┘à ┘ê┘ä╪º ╪¬╪│╪¬╪«╪»┘à ┘ü┘è ╪º┘ä┘Ç PVC ╪¿╪│╪¿╪¿ ╪º┘ä┘ä╪¡╪º┘à ╪º┘ä╪¡╪▒╪º╪▒┘è
+     int totalEquerreAssemblage = isPVC
+         ? 0
+-        : 4 + (4 * totalSashesFrappe); // ╪º┘ä┘Ç PVC ┘ä╪º ┘è╪¡╪¬╪º╪¼ ╪▓┘ê╪º┘è╪º ╪¬╪¼┘à┘è╪╣ (┘è┘ä╪¡┘à)
++        : 4 + (4 * totalSashesFrappe); // 4 ┘ä┘ä╪Ñ╪╖╪º╪▒╪î 4 ┘ä┘â┘ä ╪╢┘ä┘ü╪⌐
+     int totalEquerreAlignement = isPVC ? 0 : 4 + (4 * totalSashesFrappe);
+-    int totalVerrous = doubleCount * 2;
+-    int totalEspagnolettes = doubleCount + singleCount;
++
++    int totalVerrous = doubleCount * 2; // 2 ┘ü┘è╪▒┘ê ┘ä┘â┘ä ╪º┘ä╪¬┘é╪º╪í ╪╢┘ä┘ü╪¬┘è┘å
++    int totalEspagnolettes = doubleCount + singleCount; // ╪Ñ╪│╪¿╪º┘å┘è┘ê┘ä╪º ┘ê╪º╪¡╪»╪⌐ ┘ä┘â┘ä ╪º┘ä╪¬┘é╪º╪í ╪ú┘ê ╪╢┘ä┘ü╪⌐ ┘à┘ü╪▒╪»╪⌐
++    int totalBouchonBattement = doubleCount * 1; // ╪╖┘é┘à ┘ê╪º╪¡╪» ┘ä┘â┘ä ╪º┘ä╪¬┘é╪º╪í ╪╢┘ä┘ü╪¬┘è┘å
++    
+     int totalBouchonEvacuation = isPVC
+         ? (wMeters > 1.40 ? 3 : 2)
+-        : 0; // ╪│╪»╪º╪»╪º╪¬ ╪¬╪╡╪▒┘è┘ü ╪º┘ä┘à┘è╪º┘ç ┘ä┘ä┘Ç PVC
+-    int totalTasseau = hMullionCount > 0 || vMullionCount > 0
+-        ? (hMullionCount * 2) + (vMullionCount * 2)
+-        : 0;
+-    int totalGacheDouble = doubleCount * gachePerEspagnolette;
+-    int totalGacheSimple = singleCount * gachePerEspagnolette;
++        : 0; // ╪│╪»╪º╪»╪º╪¬ ╪¬┘ü╪▒┘è╪║ ╪º┘ä┘à┘è╪º┘ç: 2 ╪Ñ╪░╪º ╪º┘ä╪╣╪▒╪╢ <= 1.40 ┘ê 3 ╪Ñ╪░╪º ┘â╪º┘å ╪ú┘â╪¿╪▒
++
++    int totalTasseau = 0;
++    if (hMullionCount > 0 || vMullionCount > 0) {
++      totalTasseau = (hMullionCount * 2) + (vMullionCount * 2);
++    }
++
++    // ┌»╪º╪┤ (G├óches)
++    int totalGacheDouble = doubleCount * gachePerEspagnolette; // ┘â╪º╪┤ ╪»┘ê╪¿┘ä ┘ü╪▒┘ê╪╣ ┘ä┘ä╪╢┘ä┘ü╪¬┘è┘å ╪º┘ä┘à┘ä╪¬╪╡┘é╪¬┘è┘å
++    int totalGacheSimple = singleCount * gachePerEspagnolette; // ┘â╪º╪┤ ╪│╪º┘à╪¿┘ä ┘ü╪▒┘ê╪╣ ┘ä┘ä╪╢┘ä┘ü╪⌐ ╪º┘ä┘à┘ü╪▒╪»╪⌐
++
++    // ╪¿╪▒╪º╪║┘è ╪º┘ä╪¬╪½╪¿┘è╪¬ ┘ê╪ú╪║╪╖┘è╪¬┘ç╪º
+     int totalFixingScrews = 8;
+     int totalScrewCovers = 8;
+-    int totalScrewsRenfort = isPVC
+-        ? ((hMeters * 2 + wMeters * 2) / 0.4).ceil()
+-        : 0; // ╪¿╪▒╪º╪║┘è ╪¡╪»┘è╪» ╪º┘ä╪»╪╣┘à (┘â┘ä 40 ╪│┘à)
++    int totalScrewsRenfort = isPVC ? ((hMeters*2 + wMeters*2) / 0.4).ceil() : 0;
+     int totalScrewsBatmo = doubleCount > 0 ? 4 : 0;
+-    int totalScrewsAssembly = isPVC ? 0 : 8;
++    int totalScrewsAssembly = isPVC ? 0 : 8; // Welding for PVC, screws for Alu
+     int totalScrewsAccessory = 0;
++
++    // ╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ╪º┘ä┘à┘å╪▓┘ä┘é
+     int totalRoulettes = slidingCount > 0
+         ? slidingCount * 4
+-        : 0; // ╪╣╪¼┘ä╪º╪¬ ╪º┘ä┘â┘ê┘ä┘è╪│
+-    int totalCoquilles = slidingCount > 0
+-        ? slidingCount * 2
+-        : 0; // ┘à┘é╪º╪¿╪╢ ╪║╪╖╪│ ┘ä┘ä┘â┘ê┘ä┘è╪│
+-    int totalBouchonChicane = slidingCount > 0 ? slidingCount : 0;
++        : 0; // 4 ╪╣╪¼┘ä╪º╪¬ ┘ä┘ä┘å╪º┘ü╪░╪⌐ ╪º┘ä┘à╪▓╪»┘ê╪¼╪⌐ ╪º┘ä┘à┘å╪▓┘ä┘é╪⌐ (2 ┘ä┘â┘ä ╪╢┘ä┘ü╪⌐)
++    int totalCoquilles = slidingCount > 0 ? slidingCount * 2 : 0; // 2 ┘é┘ü┘ä ╪║╪╖╪│
++    int totalBouchonChicane = slidingCount > 0 ? slidingCount : 0; // 1 ╪╖┘é┘à
++
++    if (_dbAccessories.isEmpty) {
++      _dbAccessories = [
++        {'name': '┘à┘é╪¿╪╢ (Poign├⌐e)', 'type': 'Global', 'price': 250.0},
++        {'name': '┘à┘ü╪╡┘ä╪⌐ (Paumelle)', 'type': 'Global', 'price': 150.0},
++        {
++          'name': '╪▓╪º┘ê┘è╪⌐ ╪¬╪¼┘à┘è╪╣ (Equerre d\'assemblage)',
++          'type': 'Global',
++          'price': 50.0,
++        },
++        {
++          'name': '╪▓╪º┘ê┘è╪⌐ ┘à╪¡╪º╪░╪º╪⌐ (Equerre d\'alignement)',
++          'type': 'Global',
++          'price': 30.0,
++        },
++        {'name': '┘é┘ü┘ä/┘ü┘è╪▒┘ê (Verrou)', 'type': 'Global', 'price': 400.0},
++        {
++          'name': '┘â╪▒┘è┘à┘ê┘å $cremoneLengthCm ╪│┘à',
++          'type': 'Global',
++          'price': 300.0,
++        },
++        {
++          'name': '╪│╪»╪º╪»╪⌐ ╪¬┘ä╪º┘é┘è (Bouchon Battement)',
++          'type': 'Global',
++          'price': 100.0,
++        },
++        {
++          'name': '╪│╪»╪º╪»╪⌐ ╪¬┘ü╪▒┘è╪║ ╪º┘ä┘à┘è╪º┘ç (Bouchon d\'├⌐vacuation)',
++          'type': 'Global',
++          'price': 50.0,
++        },
++        {
++          'name': '┘â╪º╪┤ ╪│╪º┘à╪¿┘ä ┘ü╪║┘ê┘å (G├óche Simple)',
++          'type': 'Global',
++          'price': 30.0,
++        },
++        {
++          'name': '┘â╪º╪┤ ╪»┘ê╪¿┘ä ┘ü╪║┘ê┘å (G├óche Double)',
++          'type': 'Global',
++          'price': 40.0,
++        },
++        {
++          'name': '╪¿╪▒╪º╪║┘è ╪¬╪½╪¿┘è╪¬ (Vis de fixation)',
++          'type': 'Global',
++          'price': 10.0,
++        },
++        {'name': '╪ú╪║╪╖┘è╪⌐ ╪º┘ä╪¿╪▒╪º╪║┘è (Cache Vis)', 'type': 'Global', 'price': 5.0},
++        {
++          'name': '╪│┘è╪▒┘è╪▒ ╪¿┘à┘ü╪¬╪º╪¡ (Serrure ├á Cl├⌐)',
++          'type': 'Global',
++          'price': 600.0,
++        },
++        {
++          'name': '╪│┘è╪▒┘è╪▒ ┘à╪▒╪¡╪º╪╢ (Serrure Condamnation)',
++          'type': 'Global',
++          'price': 500.0,
++        },
++        {'name': '┘â╪º┘å┘ê┘å (Canon)', 'type': 'Global', 'price': 150.0},
++        {'name': '┘â╪º╪┤ ╪¿┘ê╪▒╪¬ (G├óche Porte)', 'type': 'Global', 'price': 50.0},
++        {'name': '┘à┘é╪¿╪╢ ╪¿╪º╪¿ (Poign├⌐e Porte)', 'type': 'Global', 'price': 350.0},
++        {'name': '╪╖╪º╪│┘ê (Tasseau)', 'type': 'Global', 'price': 20.0},
++        {'name': '┘ü┘è╪│ ┘å┘ê╪º╪▒ (Vis Noir)', 'type': 'Global', 'price': 2.0},
++        {'name': '╪¬┘è╪¬ ┘à┘è╪┤ (T├¬te M├¿che)', 'type': 'Global', 'price': 3.0},
++      ];
++    }
+ 
+     List<MaterialRow> loadedAccessories = [];
+ 
+-    // ┘à╪╖╪º╪¿┘é╪⌐ ╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬ ╪º┘ä┘ç┘å╪»╪│┘è╪⌐ ┘à╪╣ ╪º┘ä┘à┘ê╪¼┘ê╪» ┘ü┘è ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ┘ä╪Ñ╪╢╪º┘ü╪¬┘ç╪º ┘ä┘ä┘ü╪º╪¬┘ê╪▒╪⌐
+     if (totalSashesFrappe > 0 || slidingCount > 0) {
+-      // ┘à╪¬╪║┘è╪▒╪º╪¬ ┘ä╪¬╪¼┘å╪¿ ╪º┘ä╪¬┘â╪▒╪º╪▒
+-      bool handleAdded = false,
+-          hingeAdded = false,
+-          equerreAsmAdded = false,
+-          equerreAlignAdded = false;
+-      bool cremoneAdded = false,
+-          lockAdded = false,
+-          bouchonEvacAdded = false,
+-          rouletteAdded = false;
+-      bool coquilleAdded = false,
+-          bouchonChicaneAdded = false,
+-          gacheSimpleAdded = false,
+-          gacheDoubleAdded = false;
+-      bool screwsAdded = false,
+-          screwCoversAdded = false,
+-          serrureClefAdded = false,
+-          serrureCondAdded = false;
+-      bool canonAdded = false,
+-          gachePorteAdded = false,
+-          poigneePorteAdded = false;
+-
++      bool handleAdded = false;
++      bool hingeAdded = false;
++      bool equerreAsmAdded = false;
++      bool equerreAlignAdded = false;
++      bool cremoneAdded = false;
++      bool lockAdded = false;
++      bool bouchonBatAdded = false;
++      bool bouchonEvacAdded = false;
++      bool rouletteAdded = false;
++      bool coquilleAdded = false;
++      bool bouchonChicaneAdded = false;
++      bool gacheSimpleAdded = false;
++      bool gacheDoubleAdded = false;
++      bool screwsAdded = false;
++      bool screwCoversAdded = false;
++      bool serrureClefAdded = false;
++      bool serrureCondAdded = false;
++      bool canonAdded = false;
++      bool gachePorteAdded = false;
++      bool poigneePorteAdded = false;
+       Map<String, dynamic>? visNoirAcc;
+       Map<String, dynamic>? teteMecheAcc;
+ 
+@@ -1061,44 +942,91 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+         double accPrice = double.tryParse(acc['price'].toString()) ?? 0.0;
+         int quantity = 0;
+         String typeCategory = '';
+-        String overrideName = acc['name'].toString();
+-
+-        // ╪º┘ä╪¬╪╣╪▒┘ü ╪╣┘ä┘ë ┘å┘ê╪╣ ╪º┘ä┘à┘ä╪¡┘é ┘à┘å ╪º╪│┘à┘ç
+-        bool isHandle = accName.contains('┘à┘é╪¿╪╢') || accType.contains('┘à┘é╪¿╪╢');
+-        bool isHinge = accName.contains('┘à┘ü╪╡┘ä╪⌐') || accType.contains('┘à┘ü╪º╪╡┘ä');
++        String overrideName = acc['name']
++            .toString(); // ┘ä╪¬╪║┘è┘è╪▒ ╪º┘ä╪º╪│┘à ┘ä┘è╪╖╪º╪¿┘é ╪º┘ä┘é┘è╪º╪│╪º╪¬
++
++        bool isHandle =
++            accName.contains('┘à┘é╪¿╪╢') ||
++            accName.contains('poign├⌐e') ||
++            accType.contains('┘à┘é╪¿╪╢');
++        bool isHinge =
++            accName.contains('┘à┘ü╪╡┘ä╪⌐') ||
++            accName.contains('paumelle') ||
++            accType.contains('┘à┘ü╪º╪╡┘ä') ||
++            accType.contains('paumelle');
+         bool isEquerreAsm =
+             accName.contains('╪¬╪¼┘à┘è╪╣') ||
+-            (accName.contains('╪▓╪º┘ê┘è╪⌐') && !accName.contains('┘à╪¡╪º╪░╪º╪⌐'));
+-        bool isEquerreAlign = accName.contains('┘à╪¡╪º╪░╪º╪⌐');
++            accName.contains('assemblage') ||
++            (accName.contains('╪▓╪º┘ê┘è╪⌐') && !accName.contains('┘à╪¡╪º╪░╪º╪⌐')) ||
++            accName.contains('equerre');
++        bool isEquerreAlign =
++            accName.contains('┘à╪¡╪º╪░╪º╪⌐') || accName.contains('alignement');
+         bool isCremone =
+-            accName.contains('┘â╪▒┘è┘à┘ê┘å') || accType.contains('┘â╪▒┘è┘à┘ê┘å');
+-        bool isLock = accName.contains('┘é┘ü┘ä') || accName.contains('┘ü┘è╪▒┘ê');
+-        bool isBouchonEvac = accName.contains('╪¬┘ü╪▒┘è╪║');
+-        bool isRoulette = accName.contains('╪╣╪¼┘ä');
++            accName.contains('┘â╪▒┘è┘à┘ê┘å') ||
++            accName.contains('┘à┘è┘â╪º┘å┘è╪▓┘à') ||
++            accType.contains('┘â╪▒┘è┘à┘ê┘å');
++        bool isLock =
++            accName.contains('┘é┘ü┘ä') ||
++            accName.contains('serrure') ||
++            accName.contains('┘ü┘è╪▒┘ê') ||
++            accName.contains('verrou');
++        bool isBouchonBat =
++            accName.contains('bouchon battement') || accName.contains('╪¬┘ä╪º┘é┘è');
++        // ┘à┘ä╪º╪¡╪╕╪⌐: ╪¿╪º╪¬┘à┘ê/batmo ┘ç┘ê ┘à┘é╪╖╪╣ ╪¿╪▒┘ê┘ü┘è┘ä ┘ê┘ä┘è╪│ ╪Ñ┘â╪│╪│┘ê╪º╪▒╪º┘ï - ╪│╪╣╪▒┘ç ┘è┘Å╪¼┘ä╪¿ ┘à┘å ┘é╪│┘à ╪º┘ä╪¿╪▒┘ê┘ü┘è┘ä╪º╪¬
++        bool isBouchonEvac =
++            accName.contains('├⌐vacuation') ||
++            accName.contains('╪¬┘ü╪▒┘è╪║') ||
++            (accName.contains('bouchon') &&
++                !accName.contains('battement') &&
++                !accName.contains('╪┤┘è┘â╪º┘å'));
++        bool isRoulette =
++            accName.contains('╪╣╪¼┘ä') || accName.contains('roulette');
+         bool isCoquille =
+-            accName.contains('╪║╪╖╪│') || accName.contains('coquille');
+-        bool isBouchonChicane = accName.contains('╪┤┘è┘â╪º┘å');
+-        bool isGacheSimple = accName.contains('┘â╪º╪┤ ╪│╪º┘à╪¿┘ä');
+-        bool isGacheDouble = accName.contains('┘â╪º╪┤ ╪»┘ê╪¿┘ä');
+-        bool isFixingScrews = accName.contains('╪¿╪▒╪º╪║┘è');
+-        bool isScrewCovers = accName.contains('╪ú╪║╪╖┘è╪⌐ ╪º┘ä╪¿╪▒╪º╪║┘è');
+-        bool isSerrureClef = accName.contains('╪¿┘à┘ü╪¬╪º╪¡');
+-        bool isSerrureCond = accName.contains('┘à╪▒╪¡╪º╪╢');
+-        bool isCanon = accName.contains('┘â╪º┘å┘ê┘å');
+-        bool isGachePorte = accName.contains('┘â╪º╪┤ ╪¿┘ê╪▒╪¬');
+-        bool isPoigneePorte = accName.contains('┘à┘é╪¿╪╢ ╪¿╪º╪¿');
+-        bool isTasseau = accName.contains('╪╖╪º╪│┘ê');
+-        bool isVisNoir = accName.contains('┘å┘ê╪º╪▒');
+-        bool isTeteMeche = accName.contains('┘à┘è╪┤');
+-
+-        // ┘ü┘ä╪¬╪▒╪⌐ ╪¬┘ê╪º┘ü┘é ╪º┘ä┘à╪º╪»╪⌐ (┘ä╪º ╪¬╪▒┘â╪¿ ╪Ñ┘â╪│╪│┘ê╪º╪▒ PVC ╪╣┘ä┘ë ╪º┘ä┘à┘å┘è┘ê┘à)
++            accName.contains('╪║╪╖╪│') ||
++            accName.contains('coquille') ||
++            accName.contains('fermeture encastr├⌐e');
++        bool isBouchonChicane =
++            accName.contains('╪┤┘è┘â╪º┘å') ||
++            accName.contains('d├⌐gondage') ||
++            accName.contains('chicane');
++        bool isGacheSimple =
++            accName.contains('┘â╪º╪┤ ╪│╪º┘à╪¿┘ä') || accName.contains('g├óche simple');
++        bool isGacheDouble = accName.contains('gache double') || accName.contains('g├óche double') || accName.contains('┘é╪º╪┤ ╪»┘ê╪¿┘ä') || accName.contains('gache') && accName.contains('double');
++        bool isFixingScrews =
++            accName.contains('╪¿╪▒╪º╪║┘è') || accName.contains('vis de fixation');
++        bool isScrewCovers =
++            accName.contains('╪ú╪║╪╖┘è╪⌐ ╪º┘ä╪¿╪▒╪º╪║┘è') || accName.contains('cache vis');
++        bool isSerrureClef =
++            accName.contains('╪│┘è╪▒┘è╪▒ ╪¿┘à┘ü╪¬╪º╪¡') || accName.contains('├á cl├⌐');
++        bool isSerrureCond =
++            accName.contains('╪│┘è╪▒┘è╪▒ ┘à╪▒╪¡╪º╪╢') || accName.contains('condamnation');
++        bool isCanon =
++            accName.contains('┘â╪º┘å┘ê┘å') ||
++            (accName.contains('canon') && !accName.contains('condamnation'));
++        bool isGachePorte =
++            accName.contains('┘â╪º╪┤ ╪¿┘ê╪▒╪¬') || accName.contains('g├óche porte');
++        bool isPoigneePorte =
++            accName.contains('┘à┘é╪¿╪╢ ╪¿╪º╪¿') || accName.contains('poign├⌐e porte');
++        bool isPOigneeCond =
++            accName.contains('POIGNEE COND') ||
++            accName.contains('POIGNEE CONDAMNATION');
++        bool isTasseau = accName.contains('╪╖╪º╪│┘ê') || accName.contains('tasseau');
++        bool isVisNoir = accName.contains('┘å┘ê╪º╪▒') || accName.contains('noir');
++        bool isTeteMeche = accName.contains('┘à┘è╪┤') || accName.contains('m├¿che');
++
++        // Scope & Material filtering
+         String accMaterial = acc['material_type']?.toString() ?? 'Aluminium';
++        String accScope = acc['scope']?.toString() ?? 'Global';
++        int? accSeriesId = acc['series_id'] as int?;
++
+         String modelMaterial = widget.model.activeSeries?.type ?? 'Aluminium';
+         if (modelMaterial == 'Aluminium' && accMaterial != 'Aluminium')
+           continue;
+         if (modelMaterial == 'PVC' && accMaterial != 'PVC') continue;
++        if (accScope == 'Unique' &&
++            accSeriesId != widget.model.activeSeries?.id)
++          continue;
+ 
+-        // ╪Ñ╪│┘å╪º╪» ╪º┘ä┘â┘à┘è╪º╪¬ ┘ê╪¬╪╡┘å┘è┘ü ╪º┘ä╪ú┘å┘ê╪º╪╣
+         if (isHandle && totalHandles > 0 && !handleAdded) {
+           quantity = totalHandles;
+           typeCategory = 'handle';
+@@ -1118,12 +1046,19 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+         } else if (isCremone && totalEspagnolettes > 0 && !cremoneAdded) {
+           quantity = totalEspagnolettes;
+           typeCategory = 'cremone';
+-          overrideName = '╪º╪│╪¿╪º┘å┘è┘ê┘ä╪º╪¬ $cremoneLengthCm ╪│┘à';
++          overrideName =
++              '╪º╪│╪¿╪º┘å┘è┘ê┘ä╪º╪¬ (Cr├⌐mone) $cremoneLengthCm ╪│┘à'; // ┘ü╪▒╪╢ ╪º┘ä╪¬╪│┘à┘è╪⌐ ┘à╪╣ ╪º┘ä╪╖┘ê┘ä
+           cremoneAdded = true;
+         } else if (isLock && totalVerrous > 0 && !lockAdded) {
+           quantity = totalVerrous;
+           typeCategory = 'lock';
+           lockAdded = true;
++        } else if (isBouchonBat &&
++            totalBouchonBattement > 0 &&
++            !bouchonBatAdded) {
++          quantity = totalBouchonBattement;
++          typeCategory = 'bouchon_bat';
++          bouchonBatAdded = true;
+         } else if (isBouchonEvac && !bouchonEvacAdded) {
+           quantity = totalBouchonEvacuation;
+           typeCategory = 'bouchon_evac';
+@@ -1191,68 +1126,155 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+         } else if (isVisNoir) {
+           visNoirAcc = acc;
+           continue;
++        } else if (!isHandle &&
++            !isHinge &&
++            !isEquerreAsm &&
++            !isEquerreAlign &&
++            !isCremone &&
++            !isLock &&
++            !isBouchonBat &&
++            !isBouchonEvac &&
++            !isRoulette &&
++            !isCoquille &&
++            !isBouchonChicane &&
++            !isGacheSimple &&
++            !isGacheDouble &&
++            !isFixingScrews &&
++            !isScrewCovers &&
++            !isSerrureClef &&
++            !isSerrureCond &&
++            !isCanon &&
++            !isGachePorte &&
++            !isPoigneePorte &&
++            !isTasseau &&
++            !isVisNoir &&
++            !isTeteMeche) {
++          // Fallback for custom user accessories
++          quantity = 0;
++          typeCategory = 'other';
+         }
+ 
+         if (quantity > 0) {
++          int screwCount = int.tryParse(acc['screw_count']?.toString() ?? '0') ?? 0;
++          if (screwCount > 0) {
++             totalScrewsAccessory += screwCount * quantity;
++          } else {
++             if (isHinge) {
++                 totalScrewsAccessory += quantity * (isPVC ? 7 : 4);
++             } else if (isHandle) {
++                 totalScrewsAccessory += quantity * 2;
++             } else if (isCremone) {
++                 int cScrews = 5;
++                 if (cremoneLengthCm >= 180) cScrews = 12;
++                 else if (cremoneLengthCm >= 140) cScrews = 10;
++                 else if (cremoneLengthCm >= 120) cScrews = 7;
++                 else if (cremoneLengthCm >= 100) cScrews = 6;
++                 totalScrewsAccessory += quantity * cScrews;
++             }
++          }
++
+           _prices[overrideName] = accPrice;
+           loadedAccessories.add(
+             MaterialRow(
+               name: overrideName,
+               quantity: quantity.toDouble(),
+-              unit: '┘é╪╖╪╣╪⌐',
++              unit: isBouchonEvac ? '╪╖┘é┘à' : '┘é╪╖╪╣╪⌐',
+               typeCategory: typeCategory,
+             ),
+           );
+         }
+       }
+ 
+-      // ╪Ñ╪╢╪º┘ü╪⌐ ╪¿╪▒╪º╪║┘è ╪º┘ä╪¡╪»┘è╪» ┘ê╪º┘ä╪¬╪¼┘à┘è╪╣
+-      if (teteMecheAcc != null &&
+-          (totalScrewsRenfort + totalScrewsAssembly) > 0) {
+-        String name = teteMecheAcc['name'].toString();
+-        _prices[name] =
+-            double.tryParse(teteMecheAcc['price'].toString()) ?? 0.0;
+-        loadedAccessories.add(
+-          MaterialRow(
+-            name: name,
+-            quantity: (totalScrewsRenfort + totalScrewsAssembly).toDouble(),
+-            unit: '┘é╪╖╪╣╪⌐',
+-            typeCategory: 'vis_tete_meche',
+-          ),
+-        );
++      // Fallback for missing accessories
++      // ╪º┘ä╪ú╪│╪╣╪º╪▒ ╪º┘ä╪º┘ü╪¬╪▒╪º╪╢┘è╪⌐ = 0 (┘ä╪º ┘å╪«╪¬╪▒╪╣ ╪ú╪▒┘é╪º┘à╪º┘ï ┘à┘å ╪╣┘å╪»┘å╪º ╪Ñ╪░╪º ┘ä┘à ┘è┘Å╪»╪«┘ä ╪º┘ä┘à╪│╪¬╪«╪»┘à ╪º┘ä╪│╪╣╪▒)
++      if (!handleAdded && totalHandles > 0) {
++        _prices['┘à┘é╪¿╪╢ (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '┘à┘é╪¿╪╢ (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalHandles.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'handle'));
++      }
++      if (!hingeAdded && totalHinges > 0) {
++        _prices['┘à┘ü╪╡┘ä╪⌐ (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '┘à┘ü╪╡┘ä╪⌐ (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalHinges.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'hinge'));
++      }
++      if (!equerreAsmAdded && totalEquerreAssemblage > 0) {
++        _prices['╪▓╪º┘ê┘è╪⌐ ╪¬╪¼┘à┘è╪╣ (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '╪▓╪º┘ê┘è╪⌐ ╪¬╪¼┘à┘è╪╣ (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalEquerreAssemblage.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'equerre_asm'));
++      }
++      if (!equerreAlignAdded && totalEquerreAlignement > 0) {
++        _prices['╪▓╪º┘ê┘è╪⌐ ┘à╪¡╪º╪░╪º╪⌐ (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '╪▓╪º┘ê┘è╪⌐ ┘à╪¡╪º╪░╪º╪⌐ (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalEquerreAlignement.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'equerre_align'));
++      }
++      if (!cremoneAdded && totalEspagnolettes > 0) {
++        _prices['┘â╪▒┘è┘à┘ê┘å (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '┘â╪▒┘è┘à┘ê┘å (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalEspagnolettes.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'cremone'));
++      }
++      if (!lockAdded && totalVerrous > 0) {
++        _prices['┘ü┘è╪▒┘ê (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '┘ü┘è╪▒┘ê (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalVerrous.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'lock'));
++      }
++      if (!rouletteAdded && totalRoulettes > 0) {
++        _prices['╪╣╪¼┘ä╪º╪¬ (╪º┘ü╪¬╪▒╪º╪╢┘è)'] = 0.0;
++        loadedAccessories.add(MaterialRow(name: '╪╣╪¼┘ä╪º╪¬ (╪º┘ü╪¬╪▒╪º╪╢┘è)', quantity: totalRoulettes.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'roulette'));
++      }
++
++      if (teteMecheAcc != null) {
++          int q = totalScrewsRenfort + totalScrewsAssembly;
++          if (q > 0) {
++              String name = teteMecheAcc['name'].toString();
++              _prices[name] = double.tryParse(teteMecheAcc['price'].toString()) ?? 0.0;
++              loadedAccessories.add(MaterialRow(name: name, quantity: q.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'vis_tete_meche'));
++          }
++      }
++      if (visNoirAcc != null) {
++          int q = totalScrewsAccessory + totalScrewsBatmo;
++          if (q > 0) {
++              String name = visNoirAcc['name'].toString();
++              _prices[name] = double.tryParse(visNoirAcc['price'].toString()) ?? 0.0;
++              loadedAccessories.add(MaterialRow(name: name, quantity: q.toDouble(), unit: '┘é╪╖╪╣╪⌐', typeCategory: 'vis_noir'));
++          }
+       }
+     }
+ 
+-    // --- ╪¡╪│╪º╪¿ ╪º┘ä╪▓╪¼╪º╪¼ ---
++    // ╪º┘ä╪▓╪¼╪º╪¼
+     _dbGlass = [];
+-    try {
+-      _dbGlass = await dbInstance.query('Glass');
+-    } catch (_) {}
++    if (dbInstance != null) {
++      try {
++        _dbGlass = await dbInstance.query('Glass');
++      } catch (_) {}
++    }
+ 
+     List<MaterialRow> loadedGlass = [];
+     for (var entry in glassAreas.entries) {
+-      String glassName = entry.key; // ╪º╪│┘à ╪º┘ä╪▓╪¼╪º╪¼ ┘à╪╣ ╪ú╪¿╪╣╪º╪»┘ç
+-      double area = entry.value; // ╪º┘ä┘à╪│╪º╪¡╪⌐ ╪º┘ä┘à╪¡╪│┘ê╪¿╪⌐
+-      double price = 0.0;
++      String glassName = entry.key;
++      double area = entry.value;
+ 
+-      // ┘à╪╖╪º╪¿┘é╪⌐ ╪º┘ä╪▓╪¼╪º╪¼ ╪º┘ä┘à╪╖┘ä┘ê╪¿ ╪¿╪º┘ä┘à╪│╪¼┘ä ┘ü┘è ╪º┘ä┘é╪º╪╣╪»╪⌐ ┘ä╪º╪│╪¬╪«╪▒╪º╪¼ ╪º┘ä╪│╪╣╪▒
++      double price = 0.0;
+       var match = _dbGlass.where((g) {
+-        String dbName = g['name'].toString().toLowerCase().replaceAll(' ', '');
++        String dbName = g['name'].toString().toLowerCase().trim();
++        // Remove spaces for robust comparison
+         String compareName = glassName.toLowerCase().replaceAll(' ', '');
+-        if (compareName.contains('┘à╪▓╪»┘ê╪¼'))
+-          return dbName.contains('┘à╪▓╪»┘ê╪¼') || dbName.contains('double');
+-        return dbName.contains('┘à┘ü╪▒╪»') || dbName.contains('simple');
++        String compareDb = dbName.replaceAll(' ', '');
++
++        if (compareName.contains('┘à╪▓╪»┘ê╪¼')) {
++          return compareDb.contains('┘à╪▓╪»┘ê╪¼') || compareDb.contains('double');
++        } else {
++          return compareDb.contains('┘à┘ü╪▒╪»') ||
++              compareDb.contains('simple') ||
++              compareDb.contains('single');
++        }
+       }).toList();
+ 
+       String displayGlassName = glassName.split('__')[0];
+       String dims = glassName.split('__')[1];
++
+       if (match.isNotEmpty) {
+         price = double.tryParse(match.first['price_per_sqm'].toString()) ?? 0.0;
+-        displayGlassName = match.first['name'].toString();
++        displayGlassName = match.first['name']
++            .toString(); // Full variant name e.g., Stopsol Bleu
+       }
+ 
+       String finalRowName = '$displayGlassName $dims';
+       _prices[finalRowName] = price;
++
+       loadedGlass.add(
+         MaterialRow(
+           name: finalRowName,
+@@ -1263,9 +1285,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+       );
+     }
+ 
+-    // ╪¬╪¡╪»┘è╪½ ╪º┘ä┘ê╪º╪¼┘ç╪⌐ (╪Ñ╪«┘ü╪º╪í ╪ú┘è┘é┘ê┘å╪⌐ ╪º┘ä╪¬╪¡┘à┘è┘ä ┘ê╪╣╪▒╪╢ ╪º┘ä┘é┘ê╪º╪ª┘à)
+     if (mounted) {
+       setState(() {
++        // ╪¬╪ú┘â╪» ┘à┘å ╪╣╪»┘à ┘à╪│╪¡ _profiles ┘ä╪ú┘å┘å╪º ┘à┘ä╪ú┘å╪º┘ç╪º ┘ü┘è ╪º┘ä╪ú╪╣┘ä┘ë
+         _accessories = loadedAccessories;
+         _glass = loadedGlass;
+         _isLoading = false;
+@@ -1273,79 +1295,187 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+     }
+   }
+ 
+-  // ╪»╪º┘ä╪⌐ ╪º╪¡╪¬╪│╪º╪¿ ╪º┘ä╪Ñ╪¼┘à╪º┘ä┘è ╪º┘ä┘â┘ä┘è ┘ä┘ä┘å╪º┘ü╪░╪⌐
+   double get _totalCost {
+     double total = 0;
+-    for (var p in _profiles) total += p.quantity * (_prices[p.name] ?? 0.0);
+-    for (var s in _shutters) total += s.quantity * (_prices[s.name] ?? 0.0);
+-    for (var a in _accessories) total += a.quantity * (_prices[a.name] ?? 0.0);
+-    for (var g in _glass) total += g.quantity * (_prices[g.name] ?? 0.0);
++    for (var p in _profiles) {
++      total += p.quantity * (_prices[p.name] ?? 0.0);
++    }
++    for (var s in _shutters) {
++      total += s.quantity * (_prices[s.name] ?? 0.0);
++    }
++    for (var a in _accessories) {
++      total += a.quantity * (_prices[a.name] ?? 0.0);
++    }
++    for (var g in _glass) {
++      total += g.quantity * (_prices[g.name] ?? 0.0);
++    }
+     return total;
+   }
+ 
+-  // ╪»╪º┘ä╪⌐ ┘ä╪¡┘ü╪╕ ╪º┘ä╪¬╪╣╪»┘è┘ä ╪º┘ä┘è╪»┘ê┘è ┘ä┘ä╪ú╪│╪╣╪º╪▒ ┘ü┘è ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
+   Future<void> _savePriceToDatabase(String itemName, double newPrice) async {
++    // This is a best-effort save to database based on item name.
+     final dbInstance = await db.db;
+     if (dbInstance == null) return;
++
+     try {
++      // 1. Try to update Glass
+       await dbInstance.update(
+         'Glass',
+         {'price_per_sqm': newPrice},
+         where: 'name = ?',
+         whereArgs: [itemName],
+       );
++
++      // 2. Try to update Accessories
+       await dbInstance.update(
+         'Accessories',
+         {'price': newPrice},
+         where: 'name = ?',
+         whereArgs: [itemName],
+       );
+-    } catch (e) {}
+-  }
+-
+-  // ╪»╪º┘ä╪⌐ ┘à╪│╪º╪╣╪»╪⌐ ┘ä┘ä╪¿╪¡╪½ ┘ê╪º┘ä╪¬╪║┘è┘è╪▒ ╪¿┘è┘å ╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬
+-  bool _matchesSectionSourceKey(AluminumSection sec, String sourceKey) {
+-    final normalized = sourceKey.toLowerCase();
+-    if (normalized == 'sash_thick' || normalized == 'sash_thin')
+-      return sec.type == 'sash';
+-    return sec.type.toLowerCase() == normalized;
+-  }
+ 
+-  // ╪»╪º┘ä╪⌐ ┘ä╪¼┘ä╪¿ ╪º┘ä╪│╪╣╪▒ ╫ö╫₧┘ä┘ê┘å ┘ä┘à┘â┘ê┘å╪º╪¬ ╪º┘ä╪│╪¬╪º╪▒ ╪╣┘å╪» ╪¬╪║┘è┘è╪▒┘ç╪º
+-  Future<double> _resolveShutterComponentPrice(
+-    Map<String, dynamic> component,
+-  ) async {
+-    double price = double.tryParse(component['price']?.toString() ?? '') ?? 0.0;
+-    return price;
+-  }
+-
+-  // ╪»╪º┘ä╪⌐ ┘ä╪¡┘ü╪╕ ╪│╪╣╪▒ ╪ú╪¼╪▓╪º╪í ╪º┘ä╪│╪¬╪º╪▒ ┘ü┘è ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬
+-  Future<void> _saveShutterPartPriceToDatabase(
+-    MaterialRow item,
+-    double price,
+-  ) async {
+-    final componentId = item.sourceId;
+-    if (componentId == null || _selectedColorId == null) return;
+-    final dbInstance = await db.db;
+-    await dbInstance!.insert('ShutterColorPrices', {
+-      'shutter_component_id': componentId,
+-      'color_id': _selectedColorId,
+-      'price': price,
+-    }, conflictAlgorithm: ConflictAlgorithm.replace);
++      // 3. Try to update Shutters (Volet)
++      if (itemName.contains('╪│┘è╪¬╪º╪▒') || itemName.contains('Volet')) {
++        // Find shutter with exact name or update all for the specific type (complex)
++        // Here we can just notify the user
++      }
++    } catch (e) {
++      // Ignore error intentionally or handle it via UI
++    }
+   }
+ 
+-  // ┘ê╪º╪¼┘ç╪⌐ ╪¬╪║┘è┘è╪▒ ╪º┘ä┘à┘ä╪¡┘é╪º╪¬ ┘ê╪º┘ä╪▓╪¼╪º╪¼ (╪¬┘å╪¿╪½┘é ╪╣┘å╪» ╪º┘ä╪╢╪║╪╖ ╪╣┘ä┘ë ╪ú┘è┘é┘ê┘å╪⌐ ╪º┘ä╪¬╪¿╪»┘è┘ä)
+   void _showChangeAccessoryDialog(MaterialRow item) {
+     if (item.typeCategory == null || item.typeCategory!.isEmpty) return;
+-    // ... (┘å┘ü╪│ ┘à┘å╪╖┘é ╪º┘ä╪¬╪¿╪»┘è┘ä ╪º┘ä╪│╪º╪¿┘é ╪¿╪»┘ê┘å ╪¬╪╣╪»┘è┘ä╪î ┘è┘â╪¬┘ü┘è ╪¿╪╣╪▒╪╢ ╪º┘ä┘à╪¬╪º╪¡ ╪¡╪│╪¿ ╪º┘ä┘ü╪ª╪⌐)
+-    Navigator.pop(context); // ┘ä┘ä╪¬╪¿╪│┘è╪╖ ┘ü┘è ┘ç╪░╪º ╪º┘ä╪▒╪» ╪º┘ä┘à╪│╪¬╪╣╪¼┘ä
++
++    List<Map<String, dynamic>> matchingItems = [];
++
++    if (item.typeCategory == 'glass') {
++      matchingItems = _dbGlass; // All glasses
++    } else {
++      for (var acc in _dbAccessories) {
++        String accName = acc['name'].toString().toLowerCase();
++        String accType = acc['type']?.toString().toLowerCase() ?? '';
++
++        bool isHandle =
++            accName.contains('┘à┘é╪¿╪╢') ||
++            accName.contains('poign├⌐e') ||
++            accType.contains('┘à┘é╪¿╪╢');
++        bool isHinge =
++            accName.contains('┘à┘ü╪╡┘ä╪⌐') ||
++            accName.contains('paumelle') ||
++            accType.contains('┘à┘ü╪º╪╡┘ä');
++        bool isEquerre =
++            accName.contains('╪▓╪º┘ê┘è╪⌐') ||
++            accName.contains('equerre') ||
++            accType.contains('╪▓╪º┘ê┘è╪⌐');
++        bool isCremone =
++            accName.contains('┘â╪▒┘è┘à┘ê┘å') ||
++            accName.contains('┘à┘è┘â╪º┘å┘è╪▓┘à') ||
++            accType.contains('┘â╪▒┘è┘à┘ê┘å');
++        bool isLock =
++            accName.contains('┘é┘ü┘ä') ||
++            accName.contains('serrure') ||
++            accName.contains('┘ü┘è╪▒┘ê') ||
++            accType.contains('┘ü┘è╪▒┘ê') ||
++            accType.contains('╪Ñ╪│╪¿╪º┘å┘è┘ê┘ä┘è╪¬') ||
++            accType.contains('┘é╪º╪┤');
++        bool isBouchon =
++            accName.contains('bouchon battement') ||
++            accName.contains('bouchon') ||
++            accName.contains('╪¿╪º╪¬┘à┘ê') ||
++            accName.contains('batmo');
++
++        if (item.typeCategory == 'handle' && isHandle) {
++          matchingItems.add(acc);
++        } else if (item.typeCategory == 'hinge' && isHinge)
++          matchingItems.add(acc);
++        else if (item.typeCategory == 'equerre' && isEquerre)
++          matchingItems.add(acc);
++        else if (item.typeCategory == 'cremone' && isCremone)
++          matchingItems.add(acc);
++        else if (item.typeCategory == 'lock' && isLock)
++          matchingItems.add(acc);
++        else if (item.typeCategory == 'bouchon' && isBouchon)
++          matchingItems.add(acc);
++      }
++    }
++
++    if (matchingItems.isEmpty) return;
++
++    showDialog(
++      context: context,
++      builder: (context) {
++        return AlertDialog(
++          title: const Text(
++            '╪¬╪║┘è┘è╪▒ ╪º┘ä┘å┘ê╪╣ ╪ú┘ê ╪º┘ä╪¼┘ê╪»╪⌐',
++            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
++          ),
++          content: SizedBox(
++            width: double.maxFinite,
++            child: ListView.builder(
++              shrinkWrap: true,
++              itemCount: matchingItems.length,
++              itemBuilder: (context, index) {
++                var itm = matchingItems[index];
++                String name = itm['name'].toString();
++                double price = item.typeCategory == 'glass'
++                    ? (double.tryParse(itm['price_per_sqm'].toString()) ?? 0.0)
++                    : (double.tryParse(itm['price'].toString()) ?? 0.0);
++
++                return ListTile(
++                  title: Text(
++                    name,
++                    style: const TextStyle(fontWeight: FontWeight.bold),
++                  ),
++                  subtitle: Text(
++                    '╪º┘ä╪│╪╣╪▒: $price ╪»╪¼',
++                    style: const TextStyle(color: Colors.green),
++                  ),
++                  onTap: () {
++                    setState(() {
++                      if (item.typeCategory == 'glass') {
++                        String oldName = item.name;
++                        String dims = '';
++                        if (oldName.contains('(')) {
++                          dims = oldName.substring(oldName.indexOf('('));
++                        }
++                        String newName = dims.isNotEmpty ? '$name $dims' : name;
++                        _prices[newName] = price;
++                        item.name = newName;
++                      } else {
++                        _prices[name] = price;
++                        item.name = name;
++                      }
++                    });
++                    Navigator.pop(context);
++                  },
++                );
++              },
++            ),
++          ),
++          actions: [
++            TextButton(
++              onPressed: () => Navigator.pop(context),
++              child: const Text('╪Ñ┘ä╪║╪º╪í'),
++            ),
++          ],
++        );
++      },
++    );
+   }
+ 
+-  // ┘ê╪º╪¼┘ç╪⌐ ╪¬╪╣╪»┘è┘ä ╪º┘ä╪│╪╣╪▒ (╪¬┘å╪¿╪½┘é ╪╣┘å╪» ╪º┘ä╪╢╪║╪╖ ╪╣┘ä┘ë ╪ú┘è┘é┘ê┘å╪⌐ ╪º┘ä┘é┘ä┘à)
+   void _showEditDialog(MaterialRow item) {
+     double currentPrice = _prices[item.name] ?? 0.0;
++
++    double displayPrice = currentPrice;
++    if (item.typeCategory == 'profile' &&
++        item.cutsPerBar != null &&
++        item.cutsPerBar! > 0) {
++      displayPrice = currentPrice * item.cutsPerBar!;
++    }
++
+     TextEditingController ctrl = TextEditingController(
+-      text: currentPrice > 0 ? currentPrice.toString() : '',
++      text: displayPrice > 0 ? displayPrice.toString() : '',
+     );
+     bool saveToDb = false;
+ 
+@@ -1355,43 +1485,111 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+         return StatefulBuilder(
+           builder: (context, setDialogState) {
+             return AlertDialog(
+-              title: Text('╪¬╪¡╪»┘è╪½ ╪º┘ä╪│╪╣╪▒'),
++              shape: RoundedRectangleBorder(
++                borderRadius: BorderRadius.circular(15),
++              ),
++              title: Text(
++                item.typeCategory == 'profile'
++                    ? '╪¬╪╣╪»┘è┘ä ╪│╪╣╪▒ ╪º┘ä╪¿╪º╪▒╪⌐ (6┘à)'
++                    : '╪¬╪¡╪»┘è╪½ ╪º┘ä╪│╪╣╪▒',
++                style: const TextStyle(
++                  fontWeight: FontWeight.bold,
++                  color: Colors.blueGrey,
++                ),
++              ),
+               content: Column(
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
++                  Text(
++                    item.name,
++                    style: const TextStyle(
++                      fontWeight: FontWeight.bold,
++                      fontSize: 16,
++                    ),
++                  ),
++                  const SizedBox(height: 15),
+                   TextField(
+                     controller: ctrl,
+-                    keyboardType: TextInputType.number,
+-                    decoration: InputDecoration(labelText: '╪º┘ä╪│╪╣╪▒ (╪»╪¼)'),
++                    keyboardType: const TextInputType.numberWithOptions(
++                      decimal: true,
++                    ),
++                    decoration: InputDecoration(
++                      labelText: item.typeCategory == 'profile'
++                          ? '╪│╪╣╪▒ ╪º┘ä╪¿╪º╪▒╪⌐ (╪»╪¼)'
++                          : '╪º┘ä╪│╪╣╪▒ ╪º┘ä╪Ñ┘ü╪▒╪º╪»┘è (╪»╪¼)',
++                      border: OutlineInputBorder(
++                        borderRadius: BorderRadius.circular(10),
++                      ),
++                      suffixText: '╪»╪¼',
++                    ),
+                   ),
++                  const SizedBox(height: 10),
+                   CheckboxListTile(
+-                    title: Text("╪¡┘ü╪╕ ┘ü┘è ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬╪ƒ"),
++                    title: const Text(
++                      "╪¡┘ü╪╕ ╪º┘ä╪│╪╣╪▒ ╪º┘ä╪¼╪»┘è╪» ┘ü┘è ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬╪ƒ",
++                      style: TextStyle(fontSize: 13),
++                    ),
+                     value: saveToDb,
+-                    onChanged: (val) =>
+-                        setDialogState(() => saveToDb = val ?? false),
++                    activeColor: Colors.blue,
++                    onChanged: (val) {
++                      setDialogState(() {
++                        saveToDb = val ?? false;
++                      });
++                    },
++                    controlAffinity: ListTileControlAffinity.leading,
++                    contentPadding: EdgeInsets.zero,
+                   ),
+                 ],
+               ),
+               actions: [
+                 TextButton(
+                   onPressed: () => Navigator.pop(context),
+-                  child: Text('╪Ñ┘ä╪║╪º╪í'),
++                  child: const Text(
++                    '╪Ñ┘ä╪║╪º╪í',
++                    style: TextStyle(color: Colors.grey),
++                  ),
+                 ),
+                 ElevatedButton(
++                  style: ElevatedButton.styleFrom(
++                    backgroundColor: Colors.blue,
++                    foregroundColor: Colors.white,
++                    shape: RoundedRectangleBorder(
++                      borderRadius: BorderRadius.circular(8),
++                    ),
++                  ),
+                   onPressed: () async {
+                     double? parsed = double.tryParse(ctrl.text);
+                     if (parsed != null) {
+-                      setState(() => _prices[item.name] = parsed);
++                      setState(() {
++                        _prices[item.name] = parsed;
++                      });
++
+                       if (saveToDb) {
+-                        if (item.typeCategory == 'shutter_part')
+-                          await _saveShutterPartPriceToDatabase(item, parsed);
+-                        else
+-                          await _savePriceToDatabase(item.name, parsed);
++                        await _savePriceToDatabase(item.name, parsed);
++                        if (context.mounted) {
++                          ScaffoldMessenger.of(context).showSnackBar(
++                            const SnackBar(
++                              content: Text(
++                                '╪¬┘à ╪¬╪¡╪»┘è╪½ ╪º┘ä╪│╪╣╪▒ ┘ê╪¡┘ü╪╕┘ç ┘ü┘è ┘é╪º╪╣╪»╪⌐ ╪º┘ä╪¿┘è╪º┘å╪º╪¬ ╪¿┘å╪¼╪º╪¡',
++                              ),
++                              backgroundColor: Colors.green,
++                            ),
++                          );
++                        }
++                      } else {
++                        if (context.mounted) {
++                          ScaffoldMessenger.of(context).showSnackBar(
++                            const SnackBar(
++                              content: Text('╪¬┘à ╪¬╪¡╪»┘è╪½ ╪º┘ä╪│╪╣╪▒ ┘ä┘ç╪░┘ç ╪º┘ä┘å╪º┘ü╪░╪⌐ ┘ü┘é╪╖'),
++                              backgroundColor: Colors.blue,
++                            ),
++                          );
++                        }
+                       }
+                       if (context.mounted) Navigator.pop(context);
+                     }
+                   },
+-                  child: Text('╪¬╪¡╪»┘è╪½'),
++                  child: const Text('╪¬╪¡╪»┘è╪½'),
+                 ),
+               ],
+             );
+@@ -1401,135 +1599,425 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+     );
+   }
+ 
+-  // ┘ê╪º╪¼┘ç╪⌐ ╪▒╪│┘à ╪º┘ä┘å╪º┘ü╪░╪⌐ ┘ü┘è ╪ú╪╣┘ä┘ë ╪º┘ä╪┤╪º╪┤╪⌐
+   Widget _buildDrawingPreview() {
+-    return FutureBuilder<Uint8List>(
+-      future: captureWindowImage(widget.model, maxSide: 800),
+-      builder: (context, snapshot) {
+-        if (snapshot.connectionState == ConnectionState.waiting)
+-          return CircularProgressIndicator();
+-        if (snapshot.hasData)
+-          return Image.memory(snapshot.data!, height: 200, fit: BoxFit.contain);
+-        return Icon(Icons.broken_image, size: 50);
+-      },
++    return Container(
++      margin: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 8),
++      padding: const EdgeInsets.all(16),
++      decoration: BoxDecoration(
++        color: Colors.white,
++        borderRadius: BorderRadius.circular(15),
++        boxShadow: const [
++          BoxShadow(
++            color: Colors.black12,
++            offset: Offset(0, 4),
++            blurRadius: 10,
++          ),
++        ],
++      ),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          const Text(
++            '╪▒╪│┘à ╪º┘ä┘à┘å╪¬╪¼ (Aper├ºu)',
++            style: TextStyle(
++              fontSize: 16,
++              fontWeight: FontWeight.bold,
++              color: Colors.blueGrey,
++            ),
++            textAlign: TextAlign.center,
++          ),
++          const Divider(),
++          const SizedBox(height: 10),
++          FutureBuilder<Uint8List>(
++            future: captureWindowImage(widget.model, maxSide: 800),
++            builder: (context, snapshot) {
++              if (snapshot.connectionState == ConnectionState.waiting) {
++                return const SizedBox(
++                  height: 200,
++                  child: Center(child: CircularProgressIndicator()),
++                );
++              } else if (snapshot.hasError || !snapshot.hasData) {
++                return const SizedBox(
++                  height: 200,
++                  child: Center(
++                    child: Icon(
++                      Icons.broken_image,
++                      size: 50,
++                      color: Colors.grey,
++                    ),
++                  ),
++                );
++              } else {
++                return Image.memory(
++                  snapshot.data!,
++                  height: 250,
++                  fit: BoxFit.contain,
++                );
++              }
++            },
++          ),
++        ],
++      ),
+     );
+   }
+ 
+-  // ╪»╪º┘ä╪⌐ ╪¿┘å╪º╪í ┘é╪│┘à ┘â╪º┘à┘ä ┘à┘å ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ (┘à╪½┘ä╪º: ┘é╪│┘à ╪º┘ä╪¿╪▒┘ê┘ü┘è┘ä╪º╪¬) ┘à╪╣ ╪º┘ä┘à╪¼┘à┘ê╪╣ ╪º┘ä┘ü╪▒╪╣┘è
+   Widget _buildSection(
+     String title,
+     List<MaterialRow> items,
+     Color headerColor,
+   ) {
+-    if (items.isEmpty) return SizedBox();
+-    return Column(
+-      crossAxisAlignment: CrossAxisAlignment.start,
+-      children: [
+-        Container(
+-          color: headerColor,
+-          width: double.infinity,
+-          padding: EdgeInsets.all(8),
+-          child: Text(
+-            title,
+-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+-          ),
+-        ),
+-        ...items.map((item) {
+-          double price = _prices[item.name] ?? 0.0;
+-          double total = price * item.quantity;
+-          return ListTile(
+-            title: Text(item.name),
+-            subtitle: Text(
+-              '╪º┘ä┘â┘à┘è╪⌐: ${item.quantity.toStringAsFixed(2)} ${item.unit} \n╪º┘ä╪│╪╣╪▒: $price ╪»╪¼ => ╪º┘ä┘à╪¼┘à┘ê╪╣: ${total.toStringAsFixed(2)} ╪»╪¼',
++    if (items.isEmpty) return const SizedBox();
++
++    return Container(
++      margin: const EdgeInsets.only(bottom: 16),
++      color: Colors.white,
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          Container(
++            width: double.infinity,
++            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
++            color: headerColor,
++            child: Text(
++              title,
++              style: const TextStyle(
++                fontSize: 16,
++                fontWeight: FontWeight.bold,
++                color: Colors.white,
++              ),
+             ),
+-            trailing: IconButton(
+-              icon: Icon(Icons.edit, color: Colors.blue),
+-              onPressed: () => _showEditDialog(item),
++          ),
++          ...items.map((item) {
++            double price = _prices[item.name] ?? 0.0;
++            double total = price * item.quantity;
++
++            return Column(
++              children: [
++                ListTile(
++                  contentPadding: const EdgeInsets.symmetric(
++                    horizontal: 16,
++                    vertical: 4,
++                  ),
++                  title: Text(
++                    item.name,
++                    style: const TextStyle(
++                      fontWeight: FontWeight.bold,
++                      fontSize: 15,
++                    ),
++                  ),
++                  subtitle: Padding(
++                    padding: const EdgeInsets.only(top: 4.0),
++                    child: Column(
++                      crossAxisAlignment: CrossAxisAlignment.start,
++                      children: [
++                        Text(
++                          '╪º┘ä┘â┘à┘è╪⌐: ${item.quantity.toStringAsFixed(2)} ${item.unit}',
++                        ),
++                        const SizedBox(height: 2),
++                        Row(
++                          children: [
++                            Expanded(
++                              child: Text(
++                                '╪º┘ä╪│╪╣╪▒ ╪º┘ä╪Ñ┘ü╪▒╪º╪»┘è: ${price > 0 ? price.toStringAsFixed(2) : '-'} ╪»╪¼',
++                                style: TextStyle(
++                                  color: Colors.grey.shade700,
++                                  fontSize: 13,
++                                ),
++                                overflow: TextOverflow.ellipsis,
++                              ),
++                            ),
++                            const SizedBox(width: 8),
++                            if (total > 0)
++                              Text(
++                                '╪º┘ä┘à╪¼┘à┘ê╪╣: ${total.toStringAsFixed(2)} ╪»╪¼',
++                                style: const TextStyle(
++                                  color: Colors.green,
++                                  fontWeight: FontWeight.bold,
++                                  fontSize: 14,
++                                ),
++                              ),
++                          ],
++                        ),
++                      ],
++                    ),
++                  ),
++                  trailing: Row(
++                    mainAxisSize: MainAxisSize.min,
++                    children: [
++                      if (item.typeCategory != null &&
++                          item.typeCategory!.isNotEmpty &&
++                          item.typeCategory != 'profile')
++                        IconButton(
++                          icon: const Icon(
++                            Icons.swap_horiz,
++                            color: Colors.orange,
++                            size: 24,
++                          ),
++                          onPressed: () => _showChangeAccessoryDialog(item),
++                          tooltip: '╪¬╪║┘è┘è╪▒ ╪º┘ä┘å┘ê╪╣',
++                        ),
++                      if (item.typeCategory != 'profile')
++                        IconButton(
++                          icon: const Icon(
++                            Icons.edit,
++                            color: Colors.blue,
++                            size: 22,
++                          ),
++                          onPressed: () => _showEditDialog(item),
++                          tooltip: '╪¬╪¡╪»┘è╪½ ╪º┘ä╪│╪╣╪▒',
++                        ),
++                    ],
++                  ),
++                ),
++                const Divider(height: 1, thickness: 1),
++              ],
++            );
++          }),
++
++          if (items.any((item) => (_prices[item.name] ?? 0.0) > 0) ||
++              title == '╪º┘ä╪│╪¬╪º╪ª╪▒')
++            Container(
++              width: double.infinity,
++              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
++              color: Colors.grey.shade100,
++              child: Row(
++                children: [
++                  const Text(
++                    '╪º┘ä┘à╪¼┘à┘ê╪╣ ╪º┘ä┘ü╪▒╪╣┘è ┘ä┘ç╪░╪º ╪º┘ä┘é╪│┘à: ',
++                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
++                  ),
++                  Text(
++                    '${title == '╪º┘ä╪│╪¬╪º╪ª╪▒' ? (widget.model.hasShutter ? _defaultShutterPrice * widget.model.width / 1000.0 * widget.model.height / 1000.0 : 0.0).toStringAsFixed(2) : items.fold(0.0, (sum, item) => sum + ((_prices[item.name] ?? 0.0) * item.quantity)).toStringAsFixed(2)} ╪»╪¼',
++                    style: const TextStyle(
++                      fontWeight: FontWeight.bold,
++                      fontSize: 16,
++                      color: Colors.green,
++                    ),
++                  ),
++                ],
++              ),
+             ),
+-          );
+-        }),
+-      ],
++        ],
++      ),
+     );
+   }
+ 
+-  // ╪»╪º┘ä╪⌐ ╪Ñ╪╕┘ç╪º╪▒ ╪º┘ä┘ü╪╢┘ä╪º╪¬ ╪º┘ä┘é╪º╪¿┘ä╪⌐ ┘ä╪Ñ╪╣╪º╪»╪⌐ ╪º┘ä╪º╪│╪¬╪╣┘à╪º┘ä ┘ä┘ä┘à╪│╪¬╪«╪»┘à
+   Widget _buildUsefulChutesSection() {
+-    if (_usefulChutes.isEmpty) return SizedBox();
+-    return Column(
+-      crossAxisAlignment: CrossAxisAlignment.start,
+-      children: [
+-        Text(
+-          '╪Ñ╪»╪º╪▒╪⌐ ╪º┘ä┘ç╪»╪▒ (┘é╪╖╪╣ ╪╡╪º┘ä╪¡╪⌐):',
+-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+-        ),
+-        ..._usefulChutes.map(
+-          (chute) => ListTile(
+-            leading: Icon(Icons.check, color: Colors.green),
+-            title: Text(chute),
++    if (_usefulChutes.isEmpty) return const SizedBox();
++    return Container(
++      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
++      decoration: BoxDecoration(
++        color: Colors.white,
++        borderRadius: BorderRadius.circular(10),
++        border: Border.all(color: Colors.green.shade700, width: 2),
++      ),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          Container(
++            width: double.infinity,
++            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
++            decoration: BoxDecoration(
++              color: Colors.green.shade700,
++              borderRadius: const BorderRadius.only(
++                topLeft: Radius.circular(8),
++                topRight: Radius.circular(8),
++              ),
++            ),
++            child: const Row(
++              children: [
++                Icon(Icons.inventory_2, color: Colors.white),
++                SizedBox(width: 8),
++                Text(
++                  '╪Ñ╪»╪º╪▒╪⌐ ╪º┘ä┘ç╪»╪▒ (┘é╪╖╪╣ ╪╡╪º┘ä╪¡╪⌐ ┘ä┘ä╪¬╪«╪▓┘è┘å)',
++                  style: TextStyle(
++                    fontSize: 16,
++                    fontWeight: FontWeight.bold,
++                    color: Colors.white,
++                  ),
++                ),
++              ],
++            ),
+           ),
+-        ),
+-      ],
++          ..._usefulChutes.map((chute) => ListTile(
++                leading: const Icon(Icons.check_circle, color: Colors.green),
++                title: Text(
++                  chute,
++                  style: const TextStyle(fontWeight: FontWeight.bold),
++                ),
++              )),
++        ],
++      ),
+     );
+   }
+ 
+-  // ╪º┘ä╪»╪º┘ä╪⌐ ╪º┘ä╪▒╪ª┘è╪│┘è╪⌐ ┘ä╪¿┘å╪º╪í ┘â╪º┘à┘ä ╪º┘ä╪┤╪º╪┤╪⌐ (╪¬╪¼┘à┘è╪╣ ┘ê╪º╪¼┘ç╪⌐ ╪º┘ä┘à╪│╪¬╪«╪»┘à)
+   @override
+   Widget build(BuildContext context) {
+     return Scaffold(
+-      appBar: AppBar(title: Text('╪º┘ä┘â┘à┘è╪⌐ ┘ê╪º┘ä╪¬┘â┘ä┘ü╪⌐')),
++      backgroundColor: Colors.grey.shade100,
++      appBar: AppBar(
++        title: const Text('╪º┘ä┘â┘à┘è╪⌐ ╪º┘ä┘à╪│╪¬┘ç┘ä┘â╪⌐ ┘ê╪º┘ä╪¬┘â┘ä┘ü╪⌐'),
++        centerTitle: true,
++        backgroundColor: Colors.blueGrey,
++        foregroundColor: Colors.white,
++      ),
+       body: _isLoading
+-          ? Center(child: CircularProgressIndicator())
++          ? const Center(child: CircularProgressIndicator())
+           : SingleChildScrollView(
+               child: Column(
+                 children: [
+                   _buildDrawingPreview(),
+-                  _buildSection('╪º┘ä╪¿╪▒┘ê┘ü┘è┘ä╪º╪¬', _profiles, Colors.blueGrey),
+-                  _buildSection('╪º┘ä╪│╪¬╪º╪ª╪▒', _shutters, Colors.brown),
+-                  _buildSection('╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬', _accessories, Colors.deepOrange),
+-                  _buildSection('╪º┘ä╪▓╪¼╪º╪¼', _glass, Colors.teal),
++                  _buildSection(
++                    '╪º┘ä╪¿╪▒┘ê┘ü┘è┘ä╪º╪¬',
++                    _profiles,
++                    Colors.blueGrey.shade700,
++                  ),
++                  _buildSection('╪º┘ä╪│╪¬╪º╪ª╪▒', _shutters, Colors.brown.shade600),
++                  _buildSection(
++                    '╪º┘ä╪Ñ┘â╪│╪│┘ê╪º╪▒╪º╪¬',
++                    _accessories,
++                    Colors.deepOrange.shade600,
++                  ),
++                  _buildSection('╪º┘ä╪▓╪¼╪º╪¼', _glass, Colors.teal.shade700),
+                   _buildUsefulChutesSection(),
+-                  SizedBox(height: 100),
++                  const SizedBox(height: 180), // Padding for bottom bar
+                 ],
+               ),
+             ),
+-      // ╪º┘ä╪┤╪▒┘è╪╖ ╪º┘ä╪│┘ü┘ä┘è ┘ä╪╣╪▒╪╢ ╪º┘ä╪¬┘â┘ä┘ü╪⌐ ╪º┘ä┘â┘ä┘è╪⌐ ┘ê╪▓╪▒ ╪º┘ä╪Ñ╪╢╪º┘ü╪⌐ ┘ä┘ä╪╖┘ä╪¿┘è╪⌐
+       bottomSheet: Container(
+-        padding: EdgeInsets.all(16),
+-        color: Colors.white,
+-        child: Row(
+-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+-          children: [
+-            Text(
+-              '╪º┘ä╪Ñ╪¼┘à╪º┘ä┘è: ${_totalCost.toStringAsFixed(2)} ╪»╪¼',
+-              style: TextStyle(
+-                fontSize: 18,
+-                fontWeight: FontWeight.bold,
+-                color: Colors.green,
+-              ),
+-            ),
+-            ElevatedButton(
+-              onPressed: () {
+-                widget.model.totalCost = _totalCost;
+-                Navigator.pop(context, widget.model);
+-              },
+-              child: Text('╪Ñ╪╢╪º┘ü╪⌐ ┘ä┘ä╪╖┘ä╪¿┘è╪⌐'),
++        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
++        decoration: BoxDecoration(
++          color: Colors.white,
++          boxShadow: [
++            BoxShadow(
++              color: Colors.black.withValues(alpha: 0.05),
++              offset: const Offset(0, -4),
++              blurRadius: 10,
+             ),
+           ],
+         ),
++        child: SafeArea(
++          child: Row(
++            mainAxisAlignment: MainAxisAlignment.spaceBetween,
++            children: [
++              Column(
++                mainAxisSize: MainAxisSize.min,
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  const Text(
++                    '╪º┘ä╪¬┘â┘ä┘ü╪⌐ ┘ä┘ä┘å╪º┘ü╪░╪⌐ ╪º┘ä┘ê╪º╪¡╪»╪⌐:',
++                    style: TextStyle(
++                      fontSize: 12,
++                      fontWeight: FontWeight.bold,
++                      color: Colors.grey,
++                    ),
++                  ),
++                  Text(
++                    '${_totalCost.toStringAsFixed(2)} ╪»╪¼',
++                    style: const TextStyle(
++                      fontSize: 14,
++                      fontWeight: FontWeight.bold,
++                      color: Colors.blueGrey,
++                    ),
++                  ),
++                  const SizedBox(height: 4),
++                  Row(
++                    children: [
++                      const Text(
++                        '╪º┘ä┘â┘à┘è╪⌐:',
++                        style: TextStyle(
++                          fontSize: 14,
++                          fontWeight: FontWeight.bold,
++                        ),
++                      ),
++                      IconButton(
++                        icon: const Icon(
++                          Icons.remove_circle_outline,
++                          color: Colors.red,
++                        ),
++                        onPressed: () {
++                          if (widget.model.quantity > 1) {
++                            setState(() {
++                              widget.model.quantity--;
++                            });
++                          }
++                        },
++                      ),
++                      Text(
++                        '${widget.model.quantity}',
++                        style: const TextStyle(
++                          fontSize: 16,
++                          fontWeight: FontWeight.bold,
++                        ),
++                      ),
++                      IconButton(
++                        icon: const Icon(
++                          Icons.add_circle_outline,
++                          color: Colors.green,
++                        ),
++                        onPressed: () {
++                          setState(() {
++                            widget.model.quantity++;
++                          });
++                        },
++                      ),
++                    ],
++                  ),
++                  const Text(
++                    '╪º┘ä╪Ñ╪¼┘à╪º┘ä┘è ┘ä┘ä┘â┘ä:',
++                    style: TextStyle(
++                      fontSize: 14,
++                      fontWeight: FontWeight.bold,
++                      color: Colors.grey,
++                    ),
++                  ),
++                  Text(
++                    '${(_totalCost * widget.model.quantity).toStringAsFixed(2)} ╪»╪¼',
++                    style: const TextStyle(
++                      fontSize: 22,
++                      fontWeight: FontWeight.bold,
++                      color: Colors.green,
++                    ),
++                  ),
++                ],
++              ),
++              ElevatedButton.icon(
++                style: ElevatedButton.styleFrom(
++                  backgroundColor: Colors.blue.shade700,
++                  foregroundColor: Colors.white,
++                  padding: const EdgeInsets.symmetric(
++                    horizontal: 24,
++                    vertical: 12,
++                  ),
++                  shape: RoundedRectangleBorder(
++                    borderRadius: BorderRadius.circular(10),
++                  ),
++                ),
++                onPressed: () {
++                  // ╪Ñ╪▒╪¼╪º╪╣ ╪º┘ä┘Ç WindowModel ┘à╪╣ ╪º┘ä╪¬┘â┘ä┘ü╪⌐ ╪º┘ä╪Ñ╪¼┘à╪º┘ä┘è╪⌐ ╪Ñ┘ä┘ë ╪º┘ä╪╡┘ü╪¡╪⌐ ╪º┘ä╪▒╪ª┘è╪│┘è╪⌐
++                  widget.model.totalCost = _totalCost;
++                  Navigator.pop(context, widget.model);
++                },
++                icon: const Icon(Icons.add_shopping_cart),
++                label: const Text(
++                  '╪Ñ╪╢╪º┘ü╪⌐ ┘ä┘ä╪╖┘ä╪¿┘è╪⌐',
++                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
++                ),
++              ),
++            ],
++          ),
++        ),
+       ),
+     );
+   }
+ }
+ 
+-// ┘â┘ä╪º╪│ ┘à╪│┘è┘æ╪▒ ┘è┘à╪½┘ä ┘â┘ä ╪│╪╖╪▒ ┘ü┘è ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ (┘è╪¡╪¬┘ü╪╕ ╪¿╪¿┘è╪º┘å╪º╪¬ ╪º┘ä┘à╪º╪»╪⌐ ╪º┘ä┘à╪╖┘ä┘ê╪¿╪⌐)
+ class MaterialRow {
+   String name;
+   final double quantity;
+   final String unit;
+   final String? typeCategory;
+   final int? cutsPerBar;
+-  final String? sourceKey;
+-  int? sourceId;
+ 
+   MaterialRow({
+     required this.name,
+@@ -1537,7 +2025,5 @@ class MaterialRow {
+     required this.unit,
+     this.typeCategory,
+     this.cutsPerBar,
+-    this.sourceKey,
+-    this.sourceId,
+   });
+ }

@@ -1,0 +1,1617 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../sql_database.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
+import 'achat_item_picker.dart';
+
+class AchatDetailsScreen extends StatefulWidget {
+  final int achatId;
+  final String invoiceNumber;
+  final String supplierName;
+
+  const AchatDetailsScreen({
+    super.key,
+    required this.achatId,
+    required this.invoiceNumber,
+    required this.supplierName,
+  });
+
+  @override
+  State<AchatDetailsScreen> createState() => _AchatDetailsScreenState();
+}
+
+class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
+  final SqlDatabase _db = SqlDatabase();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _invoiceController = TextEditingController();
+  final TextEditingController _supplierController = TextEditingController();
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _items = [];
+  double _itemsTotal = 0.0;
+  double _paidAmount = 0.0;
+  double _remainingAmount = 0.0;
+  String _status = 'Active';
+  String? _imagePath;
+  String? _pdfPath;
+
+  // حفظ القيم الأصلية للتراجع عند الإلغاء
+  String _originalInvoice = '';
+  String _originalSupplier = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _originalInvoice = widget.invoiceNumber;
+    _originalSupplier = widget.supplierName;
+    _invoiceController.text = widget.invoiceNumber;
+    _supplierController.text = widget.supplierName;
+    _loadAchatDetails();
+  }
+
+  @override
+  void dispose() {
+    _invoiceController.dispose();
+    _supplierController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _processInventoryUpdate() async {
+    final achat = await _db.readAchatById(widget.achatId);
+    int locationId = achat?['location_id'] as int? ?? 1;
+
+    for (var item in _items) {
+      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      final itemId = item['item_id'] as int? ?? 0;
+      final itemType = item['item_type'] as String? ?? 'Other';
+      final colorId = item['color_id'] as int?;
+
+      if (quantity > 0 && itemId > 0) {
+        await _db.updateInventory(
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+          locationId: locationId,
+          quantityChange: quantity,
+          transactionType: 'Purchase',
+          referenceId: widget.achatId,
+        );
+      }
+    }
+  }
+
+  Future<void> _saveAchatDetails() async {
+    if (!_formKey.currentState!.validate()) return;
+    final newInvoice = _invoiceController.text.trim();
+    final newSupplier = _supplierController.text.trim();
+
+    final paymentChoice = await _showPaymentOptionDialog();
+    if (paymentChoice == null) return;
+
+    await _db.updateAchatInfo(widget.achatId, newInvoice, newSupplier);
+
+    final paidAmount = paymentChoice['paid_amount'] as double;
+    final remainingAmount = paymentChoice['remaining_amount'] as double;
+    final status = paymentChoice['status'] as String;
+
+    final bool wasConfirmed = _status == 'Confirmed';
+
+    await _db.updateAchatPayment(
+      widget.achatId,
+      paidAmount: paidAmount,
+      remainingAmount: remainingAmount,
+      status: status,
+    );
+
+    if (!wasConfirmed && status == 'Confirmed') {
+      await _processInventoryUpdate();
+    }
+
+    if (!mounted) return;
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final achat = await _db.readAchatById(widget.achatId);
+    final supplierId = achat?['supplier_id'] as int?;
+
+    final myDb = await _db.db;
+    final List<Map<String, dynamic>> existingTx = await myDb!.query(
+      'Treasury',
+      where: "reference_id = ? AND entity_type = 'Supplier'",
+      whereArgs: [widget.achatId],
+    );
+
+    if (status == 'Confirmed' && paidAmount > 0) {
+      final desc = 'دفع للمورد: $newSupplier - الفاتورة: $newInvoice';
+      final recordedBy = settings.userDisplayName;
+
+      if (existingTx.isNotEmpty) {
+        final txId = existingTx.first['id'] as int;
+        await _db.updateTreasury(
+          txId,
+          newAmount: paidAmount,
+          newDescription: desc,
+          newCaisse: existingTx.first['caisse_name'] ?? 'الصندوق الرئيسي',
+          newPaymentMethod: existingTx.first['payment_method'] ?? 'نقداً / Espèce',
+          newCreatedAt: existingTx.first['created_at'] ?? DateTime.now().toIso8601String(),
+        );
+      } else {
+        await _db.insertTreasury(
+          'Décaissement',
+          paidAmount,
+          desc,
+          referenceId: widget.achatId,
+          entityType: 'Supplier',
+          entityId: supplierId,
+          recordedBy: recordedBy,
+        );
+      }
+    } else {
+      if (existingTx.isNotEmpty) {
+        final txId = existingTx.first['id'] as int;
+        await _db.deleteTreasury(txId);
+      }
+    }
+
+    await _loadAchatDetails();
+
+    // تحديث القيم الأصلية بعد الحفظ الناجح
+    _originalInvoice = newInvoice;
+    _originalSupplier = newSupplier;
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تم حفظ تفاصيل الفاتورة والحالة',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>?> _showPaymentOptionDialog() async {
+    final amountController = TextEditingController();
+    String selectedOption = 'confirmed_paid';
+    String? errorText;
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('حفظ التعديلات'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'اختر نوع الحفظ:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    RadioListTile<String>(
+                      value: 'confirmed_paid',
+                      groupValue: selectedOption,
+                      onChanged: (value) => setState(
+                        () => selectedOption = value ?? 'confirmed_paid',
+                      ),
+                      title: const Text('مؤكدة ومدفوعة'),
+                    ),
+                    RadioListTile<String>(
+                      value: 'confirmed_only',
+                      groupValue: selectedOption,
+                      onChanged: (value) => setState(
+                        () => selectedOption = value ?? 'confirmed_only',
+                      ),
+                      title: const Text('مؤكدة فقط'),
+                    ),
+                    RadioListTile<String>(
+                      value: 'partial',
+                      groupValue: selectedOption,
+                      onChanged: (value) =>
+                          setState(() => selectedOption = value ?? 'partial'),
+                      title: const Text('دفع مبلغ معين'),
+                    ),
+                    if (selectedOption == 'partial') ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: amountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: false,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'المبلغ المدفوع',
+                          border: const OutlineInputBorder(),
+                          errorText: errorText,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('إلغاء'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    double newPaid = _paidAmount;
+                    double newRemaining = _remainingAmount;
+                    String newStatus = _status;
+
+                    if (selectedOption == 'confirmed_paid') {
+                      newPaid = _itemsTotal;
+                      newRemaining = 0.0;
+                      newStatus = 'Confirmed';
+                    } else if (selectedOption == 'confirmed_only') {
+                      newStatus = 'Confirmed';
+                      newPaid = _paidAmount;
+                      newRemaining = (_itemsTotal - newPaid).clamp(
+                        0.0,
+                        double.infinity,
+                      );
+                    } else {
+                      final enteredAmount =
+                          double.tryParse(
+                            amountController.text.trim().replaceAll(',', '.'),
+                          ) ??
+                          -1.0;
+                      if (enteredAmount <= 0 ||
+                          enteredAmount > (_itemsTotal - _paidAmount)) {
+                        setState(() {
+                          errorText = 'يرجى إدخال مبلغ صالح لا يزيد عن المتبقي';
+                        });
+                        return;
+                      }
+                      newPaid = (_paidAmount + enteredAmount).clamp(
+                        0.0,
+                        _itemsTotal,
+                      );
+                      newRemaining = (_itemsTotal - newPaid).clamp(
+                        0.0,
+                        double.infinity,
+                      );
+                      newStatus = newPaid >= _itemsTotal
+                          ? 'Confirmed'
+                          : 'Partial';
+                    }
+
+                    Navigator.pop(dialogContext, {
+                      'paid_amount': newPaid,
+                      'remaining_amount': newRemaining,
+                      'status': newStatus,
+                    });
+                  },
+                  child: const Text('حفظ'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// التراجع عن التعديلات غير المحفوظة
+  void _discardChanges() {
+    // التحقق من وجود تغييرات قبل التراجع
+    final hasChanges =
+        _invoiceController.text.trim() != _originalInvoice ||
+        _supplierController.text.trim() != _originalSupplier;
+
+    if (!hasChanges) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا توجد تعديلات للتراجع عنها'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.undo, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Text('تجاهل التعديلات'),
+          ],
+        ),
+        content: const Text(
+          'هل تريد التراجع عن جميع التعديلات غير المحفوظة واستعادة القيم الأصلية؟',
+          textAlign: TextAlign.right,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('لا'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                _invoiceController.text = _originalInvoice;
+                _supplierController.text = _originalSupplier;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('تم استعادة القيم الأصلية'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text(
+              'نعم، تراجع',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadAchatDetails() async {
+    final achat = await _db.readAchatById(widget.achatId);
+    final items = await _db.readAchatItems(widget.achatId);
+    final itemsTotal = items.fold<double>(0.0, (total, item) {
+      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+      return total + (quantity * price);
+    });
+
+    if (!mounted) return;
+    setState(() {
+      _items = items;
+      _itemsTotal = itemsTotal;
+      _status = achat?['status'] as String? ?? 'Active';
+      _paidAmount = (achat?['paid_amount'] as num?)?.toDouble() ?? 0.0;
+      _remainingAmount =
+          (achat?['remaining_amount'] as num?)?.toDouble() ??
+          (_itemsTotal - _paidAmount).clamp(0.0, double.infinity);
+      _imagePath = achat?['image_path'] as String?;
+      _pdfPath = achat?['pdf_path'] as String?;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _pickInvoiceImage(ImageSource source) async {
+    final XFile? pickedImage = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 85,
+    );
+    if (pickedImage == null) return;
+
+    await _db.updateAchatFiles(widget.achatId, imagePath: pickedImage.path);
+    if (!mounted) return;
+    setState(() {
+      _imagePath = pickedImage.path;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'تم حفظ صورة الفاتورة',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showImageSourceOptions() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('التقاط صورة بالكاميرا'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('اختيار من المعرض'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source != null) {
+      await _pickInvoiceImage(source);
+    }
+  }
+
+  Future<void> _generateInvoicePdf() async {
+    final pdf = pw.Document();
+
+    final List<pw.Widget> content = [
+      pw.Text(
+        'فاتورة مشتريات',
+        style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+      ),
+      pw.SizedBox(height: 10),
+      pw.Text('رقم الفاتورة: ${_invoiceController.text.trim()}'),
+      pw.Text('المورد: ${_supplierController.text.trim()}'),
+      pw.Text('معرّف المشتريات: ${widget.achatId}'),
+      pw.SizedBox(height: 12),
+    ];
+
+    if (_imagePath != null && File(_imagePath!).existsSync()) {
+      try {
+        final imageBytes = File(_imagePath!).readAsBytesSync();
+        final invoiceImage = pw.MemoryImage(imageBytes);
+        content.addAll([
+          pw.Text('صورة الفاتورة المرفقة:'),
+          pw.SizedBox(height: 8),
+          pw.Center(
+            child: pw.Image(
+              invoiceImage,
+              fit: pw.BoxFit.contain,
+              width: 300,
+              height: 200,
+            ),
+          ),
+          pw.SizedBox(height: 12),
+        ]);
+      } catch (_) {
+        // Ignore image embed failures and continue without image.
+      }
+    }
+
+    if (_items.isNotEmpty) {
+      content.addAll([
+        pw.Text(
+          'عناصر الفاتورة:',
+          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 6),
+        pw.Table.fromTextArray(
+          headers: ['العنصر', 'النوع', 'الكمية', 'السعر', 'الإجمالي'],
+          data: _items.map((item) {
+            final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+            final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+            return [
+              item['item_name'] ?? item['item_code'] ?? '',
+              item['item_type'] ?? '',
+              quantity.toStringAsFixed(2),
+              price.toStringAsFixed(2),
+              (quantity * price).toStringAsFixed(2),
+            ];
+          }).toList(),
+        ),
+        pw.SizedBox(height: 12),
+      ]);
+    }
+
+    content.add(
+      pw.Text(
+        'إجمالي العناصر: ${_formatValue(_itemsTotal)}',
+        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      ),
+    );
+
+    pdf.addPage(
+      pw.MultiPage(pageFormat: PdfPageFormat.a4, build: (context) => content),
+    );
+
+    final directory = await getApplicationDocumentsDirectory();
+    final fileName =
+        'invoice_${widget.achatId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final file = File('${directory.path}/$fileName');
+    await file.writeAsBytes(await pdf.save());
+
+    await _db.updateAchatFiles(widget.achatId, pdfPath: file.path);
+    if (!mounted) return;
+    setState(() {
+      _pdfPath = file.path;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'تم حفظ الفاتورة كملف PDF',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPdfFile() async {
+    if (_pdfPath == null) return;
+    final uri = Uri.file(_pdfPath!);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  String _formatValue(double value) {
+    return NumberFormat('#,##0.00', 'en_US').format(value);
+  }
+
+  Future<void> _confirmAchat() async {
+    if (_status == 'Confirmed') return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'تأكيد الفاتورة',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        content: const Text(
+          'هل تريد تأكيد هذه الفاتورة؟ بعد التأكيد ستصبح الفاتورة في حالة مؤكد.',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('تأكيد', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _db.updateAchatStatus(widget.achatId, 'Confirmed');
+    await _processInventoryUpdate();
+
+    if (!mounted) return;
+    setState(() {
+      _status = 'Confirmed';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'تم تأكيد الفاتورة بنجاح',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAchatItem(int itemId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'حذف عنصر الفاتورة',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        content: const Text(
+          'هل تريد حذف هذا العنصر من الفاتورة؟ سيتم خصم كميته من المخزون.',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'حذف',
+              style: TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // deleteAchatItem already handles inventory deduction
+    await _db.deleteAchatItem(itemId);
+    await _loadAchatDetails();
+    await _db.updateAchatTotal(widget.achatId, _itemsTotal);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'تم حذف العنصر وتحديث المخزون',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Future<void> _openItemPicker() async {
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AchatItemPicker(achatId: widget.achatId),
+      ),
+    );
+    if (added == true) {
+      await _loadAchatDetails();
+    }
+  }
+
+  Future<void> _returnAchatItem(Map<String, dynamic> item) async {
+    final currentQty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+    final returnQtyCtrl = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: const Text(
+            'إرجاع السلعة',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'الكمية الحالية: ${_formatValue(currentQty)}',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: returnQtyCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'كمية الإرجاع',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final returnQty =
+                    double.tryParse(returnQtyCtrl.text.replaceAll(',', '.')) ??
+                    -1.0;
+                if (returnQty <= 0 || returnQty > currentQty) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'الكمية يجب أن تكون بين 0 وكمية العنصر الحالية',
+                        style: TextStyle(fontFamily: 'Cairo'),
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                final updatedQty = currentQty - returnQty;
+                if (updatedQty <= 0) {
+                  await _db.deleteAchatItem(item['id'] as int);
+                } else {
+                  await _db.updateAchatItem(
+                    item['id'] as int,
+                    updatedQty,
+                    (item['price'] as num?)?.toDouble() ?? 0.0,
+                  );
+                }
+
+                if (_status == 'Confirmed' || _status == 'Partial Return') {
+                  final achat = await _db.readAchatById(widget.achatId);
+                  int locationId = achat?['location_id'] as int? ?? 1;
+                  try {
+                    await _db.updateInventory(
+                      itemId: item['item_id'] as int,
+                      itemType: item['item_type'] as String? ?? 'Other',
+                      colorId: item['color_id'] as int?,
+                      locationId: locationId,
+                      quantityChange: -returnQty,
+                      transactionType: 'Return to Supplier',
+                      referenceId: widget.achatId,
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    Navigator.pop(dialogContext);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'لا يمكن إرجاع هذه السلعة: الكمية في المخزون غير كافية أو السلعة غير موجودة.',
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                }
+
+                await _loadAchatDetails();
+                await _db.updateAchatTotal(widget.achatId, _itemsTotal);
+
+                if (_itemsTotal == 0) {
+                  await _db.updateAchatStatus(widget.achatId, 'Returned');
+                } else if (_status == 'Confirmed') {
+                  await _db.updateAchatStatus(
+                    widget.achatId,
+                    'Partial Returned',
+                  );
+                }
+
+                await _loadAchatDetails();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'تم تسجيل إرجاع السلعة بنجاح',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                Navigator.of(context).pop();
+              },
+              child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showSmartReturnDialog() async {
+    List<Map<String, dynamic>> returnItemsList = [];
+    for (var item in _items) {
+      double q = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      if (q > 0) {
+        returnItemsList.add({
+          'id': item['id'],
+          'item_id': item['item_id'],
+          'item_type': item['item_type'],
+          'color_id': item['color_id'],
+          'item_name': item['item_name'] ?? item['item_code'] ?? '',
+          'currentQty': q,
+          'price': (item['price'] as num?)?.toDouble() ?? 0.0,
+          'returnQty': 0.0,
+          'selected': false,
+        });
+      }
+    }
+
+    if (returnItemsList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لا توجد عناصر للإرجاع',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final refundCtrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateSB) {
+            double totalRefundEstimation = 0.0;
+            for (var r in returnItemsList) {
+              if (r['selected']) {
+                totalRefundEstimation += r['returnQty'] * r['price'];
+              }
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: const Text(
+                'إرجاع ذكي לפاتورة (Retour)',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'حدد العناصر والكميات التي تود إرجاعها للمورد:',
+                        style: TextStyle(fontFamily: 'Cairo'),
+                      ),
+                      const SizedBox(height: 10),
+                      ...returnItemsList.map((r) {
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          value: r['selected'],
+                          title: Text(
+                            r['item_name'],
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: r['selected']
+                              ? Row(
+                                  children: [
+                                    if (_status == 'Confirmed' ||
+                                        _status == 'Partial Returned') ...[
+                                      const SizedBox(height: 16),
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.orange,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          minimumSize: const Size.fromHeight(
+                                            48,
+                                          ),
+                                        ),
+                                        onPressed: _showSmartReturnDialog,
+                                        icon: const Icon(
+                                          Icons.keyboard_return,
+                                          color: Colors.white,
+                                        ),
+                                        label: const Text(
+                                          'إرجاع سلع الفاتورة (Retour)',
+                                          style: TextStyle(
+                                            fontFamily: 'Cairo',
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 16),
+                                    Expanded(
+                                      child: TextFormField(
+                                        initialValue: r['returnQty'] == 0
+                                            ? r['currentQty'].toString()
+                                            : r['returnQty'].toString(),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'كمية الإرجاع',
+                                          isDense: true,
+                                        ),
+                                        onChanged: (val) {
+                                          double? v = double.tryParse(
+                                            val.replaceAll(',', '.'),
+                                          );
+                                          if (v != null &&
+                                              v >= 0 &&
+                                              v <= r['currentQty']) {
+                                            setStateSB(() {
+                                              r['returnQty'] = v;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'من أصل ${r['currentQty']}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  'الكمية المتوفرة: ${r['currentQty']} (${r['price']} DZD/الوحدة)',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                          onChanged: (val) {
+                            setStateSB(() {
+                              r['selected'] = val ?? false;
+                              if (r['selected'] && r['returnQty'] == 0) {
+                                r['returnQty'] = r['currentQty'];
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                      const Divider(),
+                      const SizedBox(height: 10),
+                      Text(
+                        'إجمالي قيمة الإرجاع المقدرة: ${_formatValue(totalRefundEstimation)} DZD',
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      TextFormField(
+                        controller: refundCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText:
+                              'المبلغ المسترجع من المورد (نقداً أو كدين)',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          hintText: 'مثال: $totalRefundEstimation',
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      const Text(
+                        'سيتم تسجيل هذا المبلغ في الخزينة كمداخيل.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'إلغاء',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                  ),
+                  onPressed: () async {
+                    List<Map<String, dynamic>> itemsToReturn = returnItemsList
+                        .where((e) => e['selected'] && e['returnQty'] > 0)
+                        .toList();
+                    if (itemsToReturn.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'الرجاء تحديد عنصر واحد على الأقل وتحديد كمية أكبر من صفر',
+                            style: TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    double refunded =
+                        double.tryParse(
+                          refundCtrl.text.trim().replaceAll(',', '.'),
+                        ) ??
+                        0.0;
+
+                    Navigator.pop(ctx);
+
+                    await _db.returnAchatInvoice(
+                      widget.achatId,
+                      itemsToReturn,
+                      refunded,
+                    );
+
+                    if (_status == 'Confirmed' || _status == 'Partial Return') {
+                      final achat = await _db.readAchatById(widget.achatId);
+                      int locationId = achat?['location_id'] as int? ?? 1;
+                      for (var rItem in itemsToReturn) {
+                        await _db.updateInventory(
+                          itemId: rItem['item_id'] as int? ?? 0,
+                          itemType: rItem['item_type'] as String? ?? 'Other',
+                          colorId: rItem['color_id'] as int?,
+                          locationId: locationId,
+                          quantityChange: -(rItem['returnQty'] as num)
+                              .toDouble(),
+                          transactionType: 'Return to Supplier',
+                          referenceId: widget.achatId,
+                        );
+                      }
+                    }
+
+                    await _loadAchatDetails();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'تم إرجاع العناصر وتحديث الفاتورة بنجاح',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'تأكيد الإرجاع',
+                    style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _editAchatItem(Map<String, dynamic> item) async {
+    final qtyCtrl = TextEditingController(
+      text: (item['quantity'] as num?)?.toString() ?? '0',
+    );
+    final priceCtrl = TextEditingController(
+      text: (item['price'] as num?)?.toString() ?? '0',
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: Text(
+            'تعديل: ${item['item_name'] ?? item['item_code'] ?? 'عنصر'}',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: qtyCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'الكمية',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: priceCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'سعر الوحدة',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newQty =
+                    double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0.0;
+                final newPrice =
+                    double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
+                if (newQty <= 0 || newPrice < 0) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'الكمية يجب أن تكون أكبر من 0 والسعر لا يمكن أن يكون سالباً',
+                        style: TextStyle(fontFamily: 'Cairo'),
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                // حساب فارق الكمية وتحديث المخزون
+                final oldQty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+                final qtyDiff = newQty - oldQty;
+                if (qtyDiff != 0) {
+                  final achat = await _db.readAchatById(widget.achatId);
+                  final locationId = achat?['location_id'] as int? ?? 1;
+                  await _db.updateInventory(
+                    itemId: item['item_id'] as int,
+                    itemType: item['item_type'] as String,
+                    colorId: item['color_id'] as int?,
+                    locationId: locationId,
+                    quantityChange: qtyDiff,
+                    transactionType: 'Purchase Edit',
+                    referenceId: widget.achatId,
+                  );
+                }
+
+                await _db.updateAchatItem(item['id'] as int, newQty, newPrice);
+                await _loadAchatDetails();
+                await _db.updateAchatTotal(widget.achatId, _itemsTotal);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'تم تحديث الكمية والسعر والمخزون',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                Navigator.of(context).pop();
+              },
+              child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final canReturnItems = true; // الإرجاع متاح للجميع
+    final canEditInvoice =
+        _status != 'Confirmed' ||
+        settings.isManager; // التعديل بعد التأكيد فقط للمديرين
+    final statusText = _status == 'Confirmed'
+        ? Localization.translate('مؤكدة', lang)
+        : _status == 'Returned'
+        ? Localization.translate('مسترجعة', lang)
+        : _status == 'Partial Returned'
+        ? Localization.translate('جزئياً مسترجعة', lang)
+        : Localization.translate(_status, lang);
+    final statusColor = _status == 'Confirmed' || _status == 'Returned'
+        ? Colors.green
+        : Colors.orange;
+    return Scaffold(
+      appBar: AppBar(title: Text(Localization.translate('تفاصيل المشتريات', lang))),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextFormField(
+                                  controller: _invoiceController,
+                                  enabled: canEditInvoice,
+                                  decoration: InputDecoration(
+                                    labelText: Localization.translate('رقم الفاتورة', lang),
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  validator: (value) =>
+                                      (value == null || value.trim().isEmpty)
+                                      ? Localization.translate('يرجى إدخال رقم الفاتورة', lang)
+                                      : null,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _supplierController,
+                                  enabled: canEditInvoice,
+                                  decoration: InputDecoration(
+                                    labelText: Localization.translate('المورد', lang),
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  validator: (value) =>
+                                      (value == null || value.trim().isEmpty)
+                                      ? Localization.translate('يرجى إدخال اسم المورد', lang)
+                                      : null,
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFF2563EB,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          minimumSize: const Size.fromHeight(
+                                            48,
+                                          ),
+                                        ),
+                                        onPressed: canEditInvoice
+                                            ? _saveAchatDetails
+                                            : null,
+                                        child: Text(
+                                          Localization.translate('حفظ التعديلات', lang),
+                                          style: const TextStyle(fontFamily: 'Cairo'),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFF10B981,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          minimumSize: const Size.fromHeight(
+                                            48,
+                                          ),
+                                        ),
+                                        onPressed: canEditInvoice
+                                            ? _openItemPicker
+                                            : null,
+                                        icon: const Icon(Icons.add),
+                                        label: Text(
+                                          Localization.translate('إضافة عناصر', lang),
+                                          style: const TextStyle(fontFamily: 'Cairo'),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                if (canEditInvoice)
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 44,
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.orange.shade700,
+                                        side: BorderSide(
+                                          color: Colors.orange.shade400,
+                                          width: 1.5,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: _discardChanges,
+                                      icon: const Icon(Icons.undo, size: 18),
+                                      label: Text(
+                                        Localization.translate('تراجع عن التعديلات', lang),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_imagePath != null || _pdfPath != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(12.0),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (_imagePath != null) ...[
+                                        Text(
+                                          Localization.translate('صورة الفاتورة المرفقة', lang),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          child: Image.file(
+                                            File(_imagePath!),
+                                            height: 140,
+                                            width: double.infinity,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                      ],
+                                      if (_pdfPath != null) ...[
+                                        Text(
+                                          Localization.translate('ملف PDF محفوظ', lang),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                _pdfPath!.split('/').last,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            TextButton(
+                                              onPressed: _openPdfFile,
+                                              child: Text(Localization.translate('فتح', lang)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                      ],
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: ElevatedButton.icon(
+                                              onPressed:
+                                                  _showImageSourceOptions,
+                                              icon: const Icon(Icons.photo),
+                                              label: Text(Localization.translate('إرفاق صورة', lang)),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: ElevatedButton.icon(
+                                              onPressed: _generateInvoicePdf,
+                                              icon: const Icon(
+                                                Icons.picture_as_pdf,
+                                              ),
+                                              label: Text(Localization.translate('حفظ PDF', lang)),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              if (_imagePath == null && _pdfPath == null) ...[
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: _showImageSourceOptions,
+                                        icon: const Icon(Icons.photo),
+                                        label: Text(Localization.translate('إرفاق صورة', lang)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: _generateInvoicePdf,
+                                        icon: const Icon(Icons.picture_as_pdf),
+                                        label: Text(Localization.translate('حفظ PDF', lang)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              Card(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${Localization.translate('الحالة: ', lang)}$statusText',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: statusColor,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${Localization.translate('إجمالي العناصر: ', lang)}${_formatValue(_itemsTotal)}',
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '${Localization.translate('المدفوع: ', lang)}${_formatValue(_paidAmount)}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                      Text(
+                                        '${Localization.translate('المتبقي: ', lang)}${_formatValue(_remainingAmount)}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (_items.isEmpty) ...[
+                                Container(
+                                  height: 120,
+                                  padding: const EdgeInsets.all(16.0),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Center(
+                                    child: Text(Localization.translate('لا توجد عناصر مضافة بعد.', lang)),
+                                  ),
+                                ),
+                              ] else
+                                ..._items.map((item) {
+                                  final quantity =
+                                      (item['quantity'] as num?)?.toDouble() ??
+                                      0.0;
+                                  final price =
+                                      (item['price'] as num?)?.toDouble() ??
+                                      0.0;
+                                  final lineTotal = quantity * price;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: 12.0,
+                                    ),
+                                    child: Card(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(14.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '${Localization.translate(item['item_name'] ?? item['item_code'] ?? 'عنصر', lang)}',
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              '${Localization.translate('النوع: ', lang)}${Localization.translate(item['item_type'] ?? '', lang)}',
+                                            ),
+                                            if (item['color_id'] != null)
+                                              Text(
+                                                '${Localization.translate('اللون: ', lang)}${Localization.translate(item['color_name'] ?? 'مجهول', lang)}',
+                                                style: const TextStyle(
+                                                  color: Colors.blueGrey,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            Text(
+                                              '${Localization.translate('الكمية: ', lang)}${_formatValue(quantity)}',
+                                            ),
+                                            Text(
+                                              '${Localization.translate('سعر الوحدة: ', lang)}${_formatValue(price)}',
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              '${Localization.translate('الإجمالي: ', lang)}${_formatValue(lineTotal)}',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.end,
+                                              children: [
+                                                OutlinedButton.icon(
+                                                  onPressed: canEditInvoice
+                                                      ? () =>
+                                                            _editAchatItem(item)
+                                                      : null,
+                                                  icon: const Icon(
+                                                    Icons.edit,
+                                                    size: 18,
+                                                  ),
+                                                  label: Text(
+                                                    Localization.translate('تعديل', lang),
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Cairo',
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+
+                                                OutlinedButton.icon(
+                                                  onPressed:
+                                                      _status == 'Confirmed'
+                                                      ? null
+                                                      : () => _deleteAchatItem(
+                                                          item['id'] as int,
+                                                        ),
+                                                  icon: const Icon(
+                                                    Icons.delete_outline,
+                                                    size: 18,
+                                                  ),
+                                                  label: Text(
+                                                    Localization.translate('حذف', lang),
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Cairo',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              const SizedBox(height: 16),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}

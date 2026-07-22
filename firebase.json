@@ -1,0 +1,38 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "erp-aluminum-701f9",
+          "appId": "1:538203167181:android:de05ab37dc20ef64ac4c84",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "erp-aluminum-701f9",
+          "configurations": {
+            "android": "1:538203167181:android:de05ab37dc20ef64ac4c84",
+            "ios": "1:538203167181:ios:0425b33f9a9824a6ac4c84",
+            "macos": "1:538203167181:ios:0425b33f9a9824a6ac4c84",
+            "windows": "1:538203167181:web:751a0a5bf3d2693eac4c84"
+          }
+        }
+      }
+    }
+  }
+}

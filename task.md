@@ -1,0 +1,15 @@
+- [x] Update `migrateLegacyTreasuryRecords` in `lib/sql_database.dart` to sync legacy advance payments.
+- [x] Call `migrateLegacyTreasuryRecords` in `client_ledger_screen.dart`'s `_loadLedgerData`.
+- [x] Add `Navigator.pop(dialogContext)` to `onSubmit` inside `_showAddClientDialog` and `_showUpdateClientDialog` in `lib/Cliente/client.dart`.
+- [x] Fix title overflow and toggle button visibility in `ClientFormDialog` in `lib/Cliente/client.dart`.
+- [x] Make catalog manager screen (`catalogue_manager.dart`) backgrounds, selected states, and AppBar adaptive to dark mode.
+- [x] Fix Shutter Axe (المحور) disappearing from BOM when a size is selected.
+- [x] Integrate Shutter (Volet) settings as a unified tab in the bottom panel.
+- [x] Query Treasury table dynamically in `lib/Cliente/show_client.dart` and run `migrateLegacyTreasuryRecords` on load to ensure consistency with ledger/caisse.
+- [x] Implement matching overrides for shutter Lames (43), Coulisse (25), Lame Finale (45), and Axe (motor diameter vs 60 manual) in `lib/Commande/Systeme/model.dart`.
+- [x] Style client selector dialog (`ClientDropdownDialog`) inside `add_commande.dart` with a clean white background and dark text for maximum clarity.
+- [x] Set window default frame preference to '40' (e.g. 40mm) when resetting series in `lib/Commande/Systeme/model.dart`.
+- [x] Remove obsolete "Frame 140" button from Shutter Common settings.
+- [x] Load shutter options in `initState()` and tab switch in `show_system_francais.dart` to fix empty lists (blades, rails, boxes) and unify drawing actions.
+- [x] Prevent layout overflow in Shutter Common and Mechanism options by enforcing single-row layout without two-row wrapping.
+- [x] Verify everything compiles cleanly with `flutter analyze`.

@@ -1,0 +1,1073 @@
+import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
+import '../settings/localization.dart';
+import '../settings/app_settings.dart';
+import '../arabic_reshaper/arabic_reshaper.dart';
+import 'package:printing/printing.dart';
+import 'devis_builder.dart';
+
+class PdfInvoiceApi {
+  static AppLanguage _currentLang = AppLanguage.arabic;
+
+  static String t(String key) => Localization.translate(key, _currentLang);
+
+  static const PdfColor _blue = PdfColor.fromInt(0xFF1976D2);
+
+  // ── Font cache (Amiri: full Arabic + Latin support) ──────────────────────
+  // Cairo-Regular.ttf in this project is Latin-ONLY (0 Arabic glyphs).
+  // Amiri supports Arabic block (0600-06FF), Pres Forms-A (FB50) & -B (FE70).
+  static pw.Font? _cachedFont;
+  static pw.Font? _cachedFontBold;
+  static Future<void>? _preloadFuture; // singleton: prevents duplicate loads
+
+  /// Call this once when the invoice screen opens (runs in background).
+  static Future<void> preloadFonts() async {
+    _preloadFuture ??= _doPreloadFonts().catchError((e) {
+      print('PdfInvoiceApi: Font preloading failed: $e');
+      _preloadFuture = null; // Clear so we can retry on next attempt
+      throw e;
+    });
+    return _preloadFuture!;
+  }
+
+  static Future<void> _doPreloadFonts() async {
+    try {
+      print('PdfInvoiceApi: Preloading Amiri fonts from assets...');
+      final regular = await rootBundle.load('assets/fonts/Amiri-Regular.ttf');
+      print('PdfInvoiceApi: Loaded Amiri-Regular.ttf successfully.');
+      final bold = await rootBundle.load('assets/fonts/Amiri-Bold.ttf');
+      print('PdfInvoiceApi: Loaded Amiri-Bold.ttf successfully.');
+      _cachedFont = pw.Font.ttf(regular);
+      _cachedFontBold = pw.Font.ttf(bold);
+      print('PdfInvoiceApi: Font preloading completed successfully.');
+    } catch (e, stack) {
+      print('PdfInvoiceApi: Error preloading fonts: $e');
+      print(stack);
+      rethrow;
+    }
+  }
+
+
+  static Future<void> generateAndPrintInvoice({required DevisData data}) async {
+    final bytes = await buildPdfBytes(data);
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => bytes,
+      name: 'devis_${data.orderId}.pdf',
+    );
+  }
+
+  static Future<Uint8List> buildPdfBytes(DevisData data, {AppLanguage? overrideLang}) async {
+    if (overrideLang != null) {
+      _currentLang = overrideLang;
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final langIndex = prefs.getInt('app_language') ?? 0;
+      _currentLang = AppLanguage.values[langIndex];
+    }
+
+    await preloadFonts();
+    final font = _cachedFont!;
+    final fontBold = _cachedFontBold!;
+
+    if (data.documentTitleKey == 'BON_CHARGE') {
+      return _buildBonDeChargePdf(data, font, fontBold);
+    }
+
+    final pdf = pw.Document();
+
+    final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+    final imageWidgets = <int, pw.MemoryImage>{};
+    if (!isOfficial) {
+      for (int i = 0; i < data.items.length; i++) {
+        final path = data.items[i].imagePath;
+        if (path != null && path.isNotEmpty) {
+          try {
+            final file = File(path);
+            if (file.existsSync()) {
+              imageWidgets[i] = pw.MemoryImage(file.readAsBytesSync());
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 50),
+        textDirection: pw.TextDirection.ltr,
+        theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+        build: (context) => [
+          _buildTopHeader(data),
+          pw.SizedBox(height: 12),
+          pw.Divider(color: PdfColors.grey400),
+          pw.SizedBox(height: 12),
+          _buildParties(data),
+          if (data.chequeNumber.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Text(
+                _ar(_currentLang == AppLanguage.french ? 'N° chèque: ${data.chequeNumber}' : 'رقم الشيك: ${data.chequeNumber}'),
+                textDirection: _dir(_currentLang == AppLanguage.french ? 'N° chèque: ${data.chequeNumber}' : 'رقم الشيك: ${data.chequeNumber}'),
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _blue,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 4),
+          ] else ...[
+            pw.SizedBox(height: 14),
+          ],
+          _buildTable(data, imageWidgets),
+          if (!data.hidePrices) ...[
+            pw.SizedBox(height: 16),
+            pw.Text(
+              'Arrêtée la présente facture à la somme de: ${data.amountInWords}.',
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+            pw.SizedBox(height: 10),
+            _buildTotals(data),
+          ] else ...[
+            pw.SizedBox(height: 16),
+            _buildTotalQtyBlock(data),
+          ],
+          if (isOfficial && data.workshop.rib.isNotEmpty) ...[
+            pw.SizedBox(height: 14),
+            pw.Text(
+              _ar(_currentLang == AppLanguage.french ? 'RIB: ${data.workshop.rib}' :
+                  _currentLang == AppLanguage.english ? 'RIB: ${data.workshop.rib}' :
+                  'الحساب البنكي (RIB): ${data.workshop.rib}'),
+              textDirection: _dir(_currentLang == AppLanguage.french ? 'RIB: ${data.workshop.rib}' :
+                  _currentLang == AppLanguage.english ? 'RIB: ${data.workshop.rib}' :
+                  'الحساب البنكي (RIB): ${data.workshop.rib}'),
+              style: pw.TextStyle(
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey900,
+              ),
+            ),
+          ],
+        ],
+        footer: (context) {
+          final isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+          if (!isOfficial) return pw.SizedBox();
+
+          final parts = <String>[];
+          if (data.workshop.name.isNotEmpty) {
+            parts.add(data.workshop.name);
+          }
+          if (data.workshop.address.isNotEmpty) {
+            parts.add('Adresse: ${data.workshop.address}');
+          }
+          if (data.workshop.rc.isNotEmpty) parts.add('RC: ${data.workshop.rc}');
+          if (data.workshop.nif.isNotEmpty) parts.add('NIF: ${data.workshop.nif}');
+          if (data.workshop.nis.isNotEmpty) parts.add('NIS: ${data.workshop.nis}');
+          if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
+          if (data.workshop.phone.isNotEmpty) parts.add('Tél: ${data.workshop.phone}');
+
+          final footerText = parts.join(' | ');
+
+          return pw.Container(
+            alignment: pw.Alignment.center,
+            padding: const pw.EdgeInsets.only(top: 8),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+            ),
+            child: pw.Text(
+              _ar(footerText),
+              textDirection: _dir(footerText),
+              style: const pw.TextStyle(
+                fontSize: 7.5,
+                color: PdfColors.grey700,
+              ),
+              textAlign: pw.TextAlign.center,
+            ),
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static String _formatDocumentNumber(DevisData data) {
+    String year2 = '26';
+    try {
+      final dateStr = data.orderDate;
+      final yearMatch = RegExp(r'\b(20\d{2})\b').firstMatch(dateStr);
+      if (yearMatch != null) {
+        year2 = yearMatch.group(1)!.substring(2);
+      } else {
+        final any4Digit = RegExp(r'\b(\d{4})\b').firstMatch(dateStr);
+        if (any4Digit != null) {
+          year2 = any4Digit.group(1)!.substring(2);
+        }
+      }
+    } catch (_) {}
+
+    final orderIdStr = data.orderId.toString().padLeft(4, '0');
+    return '$year2/$orderIdStr';
+  }
+
+  static pw.Widget _buildTopHeader(DevisData data) {
+    String titleText;
+    if (data.isProForma) {
+      if (_currentLang == AppLanguage.french) {
+        titleText = 'Facture Proforma';
+      } else if (_currentLang == AppLanguage.english) {
+        titleText = 'Proforma Invoice';
+      } else {
+        titleText = 'فاتورة تقديرية / أولية';
+      }
+    } else {
+      var titleKey = data.documentTitleKey ?? (data.isPartial ? 'DEVIS_PARTIAL' : 'DEVIS');
+      if (titleKey == 'BON_ROUTE') {
+        titleKey = 'FACTURE_VENTE';
+      }
+      if (titleKey == 'doc_bon_livraison_sans_prix' ||
+          titleKey == 'doc_bon_livraison_partiel' ||
+          titleKey == 'doc_bon_livraison_partiel_sans_prix') {
+        if (_currentLang == AppLanguage.french) {
+          titleText = 'Bon de livraison';
+        } else if (_currentLang == AppLanguage.english) {
+          titleText = 'Delivery Note';
+        } else {
+          titleText = 'وصل تسليم';
+        }
+      } else {
+        titleText = t(titleKey);
+      }
+    }
+    
+    pw.Widget? logoWidget;
+    if (data.workshop.logoBase64.isNotEmpty) {
+      try {
+        final imageBytes = base64Decode(data.workshop.logoBase64);
+        logoWidget = pw.Image(pw.MemoryImage(imageBytes), width: 60, height: 60);
+      } catch (_) {}
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            if (logoWidget != null) ...[
+              logoWidget,
+              pw.SizedBox(width: 10),
+            ],
+            pw.Text(
+              _ar(data.workshop.name),
+              textDirection: _dir(data.workshop.name),
+              style: pw.TextStyle(
+                fontSize: 16,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey900,
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 8),
+        pw.Divider(thickness: 0.8, color: PdfColors.grey300),
+        pw.SizedBox(height: 8),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  _ar(titleText),
+                  textDirection: _dir(titleText),
+                  style: pw.TextStyle(
+                    fontSize: 22,
+                    fontWeight: pw.FontWeight.bold,
+                    color: _blue,
+                  ),
+                ),
+              ],
+            ),
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            if (data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE') ...[
+              _metaLine(t('Date:'), data.orderDate),
+            ] else if (data.documentTitleKey == 'doc_bon_livraison_sans_prix' ||
+                       data.documentTitleKey == 'doc_bon_livraison_partiel' ||
+                       data.documentTitleKey == 'doc_bon_livraison_partiel_sans_prix') ...[
+              _metaLine(t('N°:'), '${data.orderId}'),
+              _metaLine(t('Date:'), data.orderDate),
+            ] else ...[
+              _metaLine(t('N°:'), '${data.orderId}'),
+              _metaLine(t('Date:'), data.orderDate),
+              _metaLine(t('Valide jusqu\'au:'), data.validUntil),
+            ],
+          ],
+        ),
+      ],
+    ),
+  ],
+);
+}
+
+  static pw.Widget _metaLine(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 2),
+      child: pw.RichText(
+        textDirection: pw.TextDirection.ltr,
+        text: pw.TextSpan(
+          children: [
+            pw.TextSpan(
+              text: '${_ar(label)} ',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+            ),
+            pw.TextSpan(
+              text: _ar(value),
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _buildParties(DevisData data) {
+    final phonePrefix = _currentLang == AppLanguage.french ? 'Tél: ' :
+                        _currentLang == AppLanguage.english ? 'Phone: ' : 'الهاتف: ';
+    final clientIdPrefix = _currentLang == AppLanguage.french ? 'N° Client: ' :
+                           _currentLang == AppLanguage.english ? 'Client ID: ' : 'رقم الزبون: ';
+    final addressPrefix = _currentLang == AppLanguage.french ? 'Adresse: ' :
+                          _currentLang == AppLanguage.english ? 'Address: ' : 'العنوان: ';
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Expanded(
+          child: _partyBlock(_ar(t('FOURNISSEUR')), [
+            data.workshop.name,
+            if (data.workshop.phone.isNotEmpty) '$phonePrefix${data.workshop.phone}',
+            if (data.workshop.address.isNotEmpty) '$addressPrefix${data.workshop.address}',
+            if (data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE') ...[
+              if (data.workshop.rc.isNotEmpty) 'RC: ${data.workshop.rc}',
+              if (data.workshop.nif.isNotEmpty) 'NIF: ${data.workshop.nif}',
+              if (data.workshop.nis.isNotEmpty) 'NIS: ${data.workshop.nis}',
+              if (data.workshop.ai.isNotEmpty) 'AI: ${data.workshop.ai}',
+            ],
+          ]),
+        ),
+        pw.SizedBox(width: 20),
+        pw.Expanded(
+          child: _partyBlock(_ar(t('CLIENT')), [
+            '$clientIdPrefix${data.clientId}',
+            data.clientName,
+            if (data.clientPhone.isNotEmpty) '$phonePrefix${data.clientPhone}',
+            if (data.clientNif.isNotEmpty) 'NIF: ${data.clientNif}',
+            if (data.clientNis.isNotEmpty) 'NIS: ${data.clientNis}',
+            if (data.clientRc.isNotEmpty) 'RC: ${data.clientRc}',
+            if (data.clientAi.isNotEmpty) 'AI: ${data.clientAi}',
+          ]),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _partyBlock(String title, List<String> lines) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          _ar(title),
+          textDirection: _dir(title),
+          style: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.grey700,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        ...lines.map(
+          (line) => pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 2),
+            child: pw.Text(
+              _ar(line),
+              textDirection: _dir(line),
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static bool _hasArabic(String text) {
+    return text.runes.any(
+      (r) =>
+          (r >= 0x0600 && r <= 0x06FF) || // Arabic block
+          (r >= 0xFB50 && r <= 0xFEFF),
+    ); // Arabic Presentation Forms
+  }
+
+  /// Processes Arabic text for PDF rendering.
+  ///
+  /// The `pdf` package does NOT implement the Unicode BiDi algorithm.
+  /// It renders every glyph strictly left-to-right in the order they appear
+  /// in the string, even when textDirection: rtl is set (rtl only affects
+  /// alignment/paragraph direction, not glyph run reordering).
+  ///
+  /// To display Arabic correctly we must produce the text in **visual order**:
+  ///   1. Reshape each character to its contextual Arabic form.
+  ///   2. Reverse the characters **within each Arabic word** (so when rendered
+  ///      LTR the rightmost glyph appears on the left of each word).
+  ///   3. Reverse the **word order** (so the first Arabic word ends up on the
+  ///      right side of the rendered line).
+  ///   4. Render with textDirection: ltr (we have already done the reordering).
+  ///
+  /// Latin / numeric tokens embedded in the string are kept in their original
+  /// order and position relative to the Arabic words.
+  static String _ar(String text) {
+    if (!_hasArabic(text)) return text;
+
+    // Step 1 – reshape the whole text in one pass (handles ligatures etc.)
+    final reshaped = ArabicReshaper.instance.reshape(text);
+
+    // Step 2 & 3 – split into space-delimited tokens, process each, reverse order
+    final tokens = reshaped.split(' ');
+    final processed = tokens.map((token) {
+      if (_hasArabic(token)) {
+        // Reverse the rune sequence inside this Arabic word
+        return String.fromCharCodes(token.runes.toList().reversed);
+      }
+      return token; // Latin/digit token stays as-is
+    }).toList();
+
+    // Reverse the token order for RTL paragraph layout
+    return processed.reversed.join(' ');
+  }
+
+  // Always LTR: _ar() already produced visual-order text.
+  static pw.TextDirection _dir(String text) => pw.TextDirection.ltr;
+
+  // ── حساب أعرض الأعمدة بالـ points (بما يطابق تماماً pw.Table القديم) ──────
+  // A4 عرضها 595.28 pt، الهامش 28 من كل جانب => 539.28 pt متاحة
+  static const double _tableW = 595.28 - 56.0; // 539.28
+  static const double _col0w = 50.0; // Image  (fixed)
+  static const double _col3w = 32.0; // Qty    (fixed)
+  static const double _flexTotal = 4.0 + 1.5 + 1.6; // 7.1
+  static double get _flexUnit => (_tableW - _col0w - _col3w) / _flexTotal;
+
+  static double get _col1w => _flexUnit * 4.0;
+
+  static double get _col2w => _flexUnit * 1.5;
+
+  static double get _col4w => _flexUnit * 1.6;
+
+  /// خلية عادية داخل صف المحاكاة
+  static pw.Widget _cell(
+    double width,
+    pw.Widget child, {
+    pw.Alignment alignment = pw.Alignment.centerLeft,
+    PdfColor? bg,
+    pw.EdgeInsets padding = const pw.EdgeInsets.all(6),
+    bool hasBorder = true,
+  }) {
+    return pw.Container(
+      width: width,
+      padding: padding,
+      alignment: alignment,
+      decoration: pw.BoxDecoration(
+        color: bg,
+        border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+      ),
+      child: child,
+    );
+  }
+
+  /// صف رأس الجدول
+  static pw.Widget _tableHeader(bool hidePrices, bool isProForma, {bool hasBorder = true}) {
+    pw.Widget hCell(
+      double w,
+      String text, {
+      pw.Alignment align = pw.Alignment.centerLeft,
+    }) => pw.Container(
+      width: w,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      alignment: align,
+      decoration: pw.BoxDecoration(
+        color: _blue,
+        border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+      ),
+      child: pw.Text(
+        _ar(text),
+        textDirection: _dir(text),
+        style: pw.TextStyle(
+          color: PdfColors.white,
+          fontWeight: pw.FontWeight.bold,
+          fontSize: 9,
+        ),
+      ),
+    );
+    return pw.Row(
+      children: [
+        if (!isProForma) hCell(_col0w, t('Image')),
+        hCell(isProForma
+            ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
+            : (hidePrices ? (_tableW - _col0w - _col3w) : _col1w), t('Désignation')),
+        if (!hidePrices)
+          hCell(_col2w, isProForma ? 'P.U. H.T.' : t('Prix Unit.'), align: pw.Alignment.centerRight),
+        hCell(_col3w, t('Qté'), align: pw.Alignment.centerRight),
+        if (!hidePrices)
+          hCell(_col4w, isProForma ? 'TOTAL H.T.' : t('Total'), align: pw.Alignment.centerRight),
+      ],
+    );
+  }
+
+  /// بناء صف بيانات — إذا كان مشطوباً يُلف بـ Stack لرسم X على كامل الصف
+  static pw.Widget _dataRow({
+    required DevisLineItem item,
+    required int index,
+    required pw.MemoryImage? image,
+    required bool hidePrices,
+    required bool isProForma,
+    bool hasBorder = true,
+  }) {
+    final PdfColor bg = index.isEven ? PdfColors.white : PdfColors.grey100;
+    final PdfColor? txtColor = item.isReplaced ? PdfColors.red : null;
+
+    final List<String> displayDetails;
+    if (isProForma) {
+      if (_currentLang == AppLanguage.french) {
+        displayDetails = ['Largeur: ${item.width} mm | Hauteur: ${item.height} mm'];
+      } else if (_currentLang == AppLanguage.english) {
+        displayDetails = ['Width: ${item.width} mm | Height: ${item.height} mm'];
+      } else {
+        displayDetails = ['العرض: ${item.width} مم | الارتفاع: ${item.height} مم'];
+      }
+    } else {
+      displayDetails = item.details;
+    }
+
+    final pw.Widget rowContent = pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // عمود 0: الصورة
+        if (!isProForma)
+          _cell(
+            _col0w,
+            image != null
+                ? pw.Image(image, fit: pw.BoxFit.contain)
+                : pw.Text(
+                    '-',
+                    style: const pw.TextStyle(color: PdfColors.grey500),
+                  ),
+            alignment: pw.Alignment.center,
+            bg: bg,
+            padding: const pw.EdgeInsets.all(4),
+            hasBorder: hasBorder,
+          ),
+        // عمود 1: الاسم والتفاصيل
+        _cell(
+          isProForma
+              ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
+              : (hidePrices ? (_tableW - _col0w - _col3w) : _col1w),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                _ar(item.title),
+                textDirection: _dir(item.title),
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 10,
+                  color: txtColor,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              ...displayDetails.map(
+                (d) => pw.Text(
+                  _ar(d),
+                  textDirection: _dir(d),
+                  style: const pw.TextStyle(
+                    fontSize: 8.5,
+                    color: PdfColors.grey800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          bg: bg,
+          hasBorder: hasBorder,
+        ),
+        // عمود 2: سعر الوحدة
+        if (!hidePrices)
+          _cell(
+            _col2w,
+            pw.Text(
+              _formatMoney(item.unitPrice),
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: txtColor,
+              ),
+            ),
+            alignment: pw.Alignment.centerRight,
+            bg: bg,
+            hasBorder: hasBorder,
+          ),
+        // عمود 3: الكمية
+        _cell(
+          _col3w,
+          pw.Text(
+            '${item.quantity}',
+            style: pw.TextStyle(fontSize: 9, color: txtColor),
+          ),
+          alignment: pw.Alignment.centerRight,
+          bg: bg,
+          hasBorder: hasBorder,
+        ),
+        // عمود 4: الإجمالي
+        if (!hidePrices)
+          _cell(
+            _col4w,
+            pw.Text(
+              _formatMoney(item.unitPrice * item.quantity),
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: txtColor,
+              ),
+            ),
+            alignment: pw.Alignment.centerRight,
+            bg: bg,
+            hasBorder: hasBorder,
+          ),
+      ],
+    );
+
+    if (!item.isReplaced) return rowContent;
+
+    // ── صف مشطوب: Stack يضع علامة X فوق كامل الصف ──────────────────────
+    return pw.Stack(
+      children: [
+        rowContent,
+        pw.Positioned.fill(
+          child: pw.CustomPaint(
+            painter: (PdfGraphics canvas, PdfPoint size) {
+              canvas
+                ..setColor(PdfColors.red)
+                ..setLineWidth(1.5)
+                ..drawLine(0, 0, size.x, size.y)
+                ..drawLine(0, size.y, size.x, 0)
+                ..strokePath();
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _buildTable(
+    DevisData data,
+    Map<int, pw.MemoryImage> imageWidgets,
+  ) {
+    final bool hidePrices = data.hidePrices;
+    final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+    final bool hasBorder = data.documentTitleKey != 'BON_ROUTE';
+    final List<pw.Widget> rows = [_tableHeader(hidePrices, isOfficial, hasBorder: hasBorder)];
+
+    for (var entry in data.items.asMap().entries) {
+      final index = entry.key;
+      final item = entry.value;
+
+      rows.add(_dataRow(
+        item: item,
+        index: index,
+        image: imageWidgets[index],
+        hidePrices: hidePrices,
+        isProForma: isOfficial,
+        hasBorder: hasBorder,
+      ));
+
+      // صف سبب التعديل (يظهر أسفل الصف المشطوب)
+      if (item.isReplaced && item.replacementReason.isNotEmpty) {
+        final reasonText = 'سبب التعديل: ${item.replacementReason}';
+        rows.add(
+          pw.Row(
+            children: [
+              pw.Container(
+                width: _col0w,
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.red50,
+                  border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+                ),
+              ),
+              pw.Container(
+                width: hidePrices ? (_tableW - _col0w) : (_col1w + _col2w + _col3w + _col4w),
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 4,
+                ),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.red50,
+                  border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+                ),
+                child: pw.Text(
+                  _ar(reasonText),
+                  textDirection: _dir(reasonText),
+                  style: const pw.TextStyle(
+                    color: PdfColors.red900,
+                    fontSize: 9,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // صف مجموع الكميات في الأسفل
+    final int totalQty = data.items
+        .where((i) => !i.isReplaced)
+        .fold(0, (s, i) => s + i.quantity);
+    rows.add(
+      pw.Row(
+        children: [
+          pw.Container(
+            width: _col0w,
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+            ),
+          ),
+          pw.Container(
+            width: hidePrices ? (_tableW - _col0w - _col3w) : (_col1w + _col2w),
+            padding: const pw.EdgeInsets.all(6),
+            alignment: pw.Alignment.centerLeft,
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+            ),
+            child: pw.Text(
+              _ar(t('Quantité Totale / مجموع الكميات')),
+              textDirection: pw.TextDirection.ltr,
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey800,
+              ),
+            ),
+          ),
+          pw.Container(
+            width: _col3w,
+            padding: const pw.EdgeInsets.all(6),
+            alignment: pw.Alignment.centerRight,
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+            ),
+            child: pw.Text(
+              '$totalQty',
+              style: pw.TextStyle(
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+                color: _blue,
+              ),
+            ),
+          ),
+          if (!hidePrices)
+            pw.Container(
+              width: _col4w,
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+              ),
+            ),
+        ],
+      ),
+    );
+
+    return pw.Column(children: rows);
+  }
+
+  static pw.Widget _buildTotalQtyBlock(DevisData data) {
+    final int totalQty = data.items
+        .where((i) => !i.isReplaced)
+        .fold(0, (s, i) => s + i.quantity);
+
+    return pw.Align(
+      alignment: pw.Alignment.centerRight,
+      child: pw.Container(
+        width: 220,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: pw.BoxDecoration(
+          color: _blue,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+        ),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              _ar(t('Quantité Totale')),
+              textDirection: _dir(t('Quantité Totale')),
+              style: pw.TextStyle(
+                color: PdfColors.white,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 10,
+              ),
+            ),
+            pw.Text(
+              '$totalQty',
+              style: pw.TextStyle(
+                color: PdfColors.white,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _buildTotals(DevisData data) {
+    final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE';
+    final totalBrutLabel = isOfficial ? 'TOTAL HT' : t('Total Brut');
+    final remiseLabel = isOfficial ? 'REMISE' : t('Remise');
+    final netHtLabel = isOfficial ? 'NET HT' : t('Total après remise');
+    final tvaLabel = isOfficial ? 'TVA' : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
+    final totalTtcLabel = isOfficial ? 'NET A PAYER' : t('TOTAL TTC');
+
+    return pw.Align(
+      alignment: pw.Alignment.centerRight,
+      child: pw.SizedBox(
+        width: 220,
+        child: pw.Column(
+          children: [
+            _totalRow(totalBrutLabel, data.totalBrut),
+            _totalRow(remiseLabel, data.remise),
+            _totalRow(netHtLabel, data.totalBeforeTax),
+            _totalRow(tvaLabel, data.tvaAmount),
+            pw.Container(
+              width: double.infinity,
+              margin: const pw.EdgeInsets.only(top: 4),
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
+              color: _blue,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    _ar(totalTtcLabel),
+                    textDirection: _dir(totalTtcLabel),
+                    style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                  ),
+                  pw.Text(
+                    '${_formatMoney(data.totalTTC)} D.A',
+                    style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _totalRow(t('Montant payé'), data.amountPaid),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _totalRow(String label, double value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            _ar(label),
+            textDirection: _dir(label),
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+          pw.Text(
+            '${_formatMoney(value)} D.A',
+            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatMoney(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+    return value.toStringAsFixed(2);
+  }
+
+  static Future<Uint8List> _buildBonDeChargePdf(DevisData data, pw.Font font, pw.Font fontBold) async {
+    final pdf = pw.Document();
+
+    final List<Map<String, dynamic>> rows = [];
+    int globalIndex = 0;
+    for (final item in data.items) {
+      for (int i = 0; i < item.quantity; i++) {
+        globalIndex++;
+        final barcodeVal = 'CMD-${data.orderId}-D${item.detailId}-W$globalIndex-F';
+        final cumTicketNum = data.priorConfirmedWindowsCount + globalIndex;
+        rows.add({
+          'num': '$globalIndex\n(#$cumTicketNum)',
+          'client': data.clientName,
+          'dims': '${item.width} x ${item.height} mm',
+          'color': item.color,
+          'barcode': barcodeVal,
+        });
+      }
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 50),
+        textDirection: pw.TextDirection.ltr,
+        theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+        build: (context) => [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    _ar(data.workshop.name),
+                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                  ),
+                  if (data.workshop.phone.isNotEmpty)
+                    pw.Text('Tél: ${data.workshop.phone}', style: const pw.TextStyle(fontSize: 10)),
+                ],
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text(
+                    _currentLang == AppLanguage.french ? 'Bon de charge' : 'وصل الشحن',
+                    style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: _blue),
+                  ),
+                  pw.Text('Date: ${data.orderDate}', style: const pw.TextStyle(fontSize: 10)),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+          pw.Divider(color: PdfColors.grey400, thickness: 1),
+          pw.SizedBox(height: 10),
+          
+          pw.Container(
+            padding: const pw.EdgeInsets.all(8),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+              color: PdfColors.grey50,
+            ),
+            child: pw.Row(
+              children: [
+                pw.Text(
+                  '${_currentLang == AppLanguage.french ? "Client:" : "الزبون:"} ',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
+                ),
+                pw.Text(
+                  _ar(data.clientName),
+                  style: pw.TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 15),
+
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FixedColumnWidth(40),  // N° Ticket
+              1: const pw.FlexColumnWidth(1.2), // Dimensions
+              2: const pw.FlexColumnWidth(1),   // Couleur
+              3: const pw.FlexColumnWidth(1.5), // Barcode
+            },
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                children: [
+                  _headerCell(_currentLang == AppLanguage.french ? 'N°' : 'رقم'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Dimensions (mm)' : 'المقاسات (ملم)'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Couleur' : 'اللون'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Code à barres' : 'الكود بار'),
+                ],
+              ),
+              for (final row in rows)
+                pw.TableRow(
+                  children: [
+                    _dataCell(row['num']!),
+                    _dataCell(row['dims']!),
+                    _dataCell(row['color']!),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      alignment: pw.Alignment.center,
+                      child: pw.BarcodeWidget(
+                        barcode: pw.Barcode.code128(),
+                        data: row['barcode']!,
+                        width: 120,
+                        height: 25,
+                        drawText: true,
+                        textStyle: const pw.TextStyle(fontSize: 7),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static pw.Widget _headerCell(String text) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(6),
+      alignment: pw.Alignment.center,
+      child: pw.Text(
+        _ar(text),
+        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+      ),
+    );
+  }
+
+  static pw.Widget _dataCell(String text) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(6),
+      alignment: pw.Alignment.center,
+      child: pw.Text(
+        _ar(text),
+        style: const pw.TextStyle(fontSize: 9),
+      ),
+    );
+  }
+}
+

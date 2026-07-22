@@ -1,0 +1,310 @@
+@@ -9122,6 +9144,309 @@ class _WindowViewState extends State<WindowView> {
+         );
+       },
+     );
++  void _showHandleSelectorBottomSheet(BuildContext context, WindowZone zone) {
++    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
++    final isDark = Theme.of(context).brightness == Brightness.dark;
++    
++    // Determine allowed options
++    final List<Map<String, dynamic>> options = [];
++    
++    if (zone.content == ZoneContent.slidingSash) {
++      if (!widget.model.isPVC) {
++        options.addAll([
++          {
++            'label_ar': 'مقبض منزلق (اندراماتيك)',
++            'label_fr': 'Poignée Entrematique',
++            'lockType': LockType.none,
++            'useOcto': false,
++            'usePvcOnAlu': false,
++            'useClassicHandle': false,
++            'icon': Icons.sync_alt_rounded,
++          },
++          {
++            'label_ar': 'مقبض كلاسيكي (كودي)',
++            'label_fr': 'Poignée Coudée',
++            'lockType': LockType.none,
++            'useOcto': false,
++            'usePvcOnAlu': false,
++            'useClassicHandle': true,
++            'icon': Icons.sync_alt_rounded,
++          },
++        ]);
++      }
++    } else if (widget.model.isPVC) {
++      if (zone.isSash105) {
++        // PVC Door sashes
++        options.addAll([
++          {
++            'label_ar': 'مقبض الباب بمفتاح',
++            'label_fr': 'Poignée Porte à Clé',
++            'lockType': LockType.clef,
++            'useOcto': false,
++            'icon': Icons.vpn_key_rounded,
++          },
++          {
++            'label_ar': 'مقبض الباب حمام',
++            'label_fr': 'Poignée Condamnation',
++            'lockType': LockType.condamnation,
++            'useOcto': false,
++            'icon': Icons.lock_rounded,
++          },
++        ]);
++      } else {
++        // PVC Window sashes
++        if (zone.content == ZoneContent.doubleSash) {
++          options.addAll([
++            {
++              'label_ar': 'مقبض نافذة (قطعتين)',
++              'label_fr': 'Poignée Fenêtre (x2)',
++              'lockType': LockType.none,
++              'useOcto': false,
++              'icon': Icons.door_back_door_rounded,
++            },
++            {
++              'label_ar': 'مقبض أوكتو (قطعتين)',
++              'label_fr': 'Poignée Octo (x2)',
++              'lockType': LockType.none,
++              'useOcto': true,
++              'icon': Icons.radio_button_checked_rounded,
++            },
++          ]);
++        } else {
++          // Single sash PVC window
++          options.addAll([
++            {
++              'label_ar': 'مقبض نافذة',
++              'label_fr': 'Poignée Fenêtre',
++              'lockType': LockType.none,
++              'useOcto': false,
++              'icon': Icons.door_back_door_rounded,
++            },
++          ]);
++        }
++      }
++    } else {
++      // Aluminium swing sashes
++      if (zone.isSash105) {
++        // Door sashes
++        options.addAll([
++          {
++            'label_ar': 'مقبض الباب عادي',
++            'label_fr': 'Poignée Porte',
++            'lockType': LockType.none,
++            'useOcto': false,
++            'icon': Icons.door_back_door_rounded,
++          },
++          {
++            'label_ar': 'مقبض الباب بمفتاح',
++            'label_fr': 'Poignée Porte à Clé',
++            'lockType': LockType.clef,
++            'useOcto': false,
++            'icon': Icons.vpn_key_rounded,
++          },
++          {
++            'label_ar': 'مقبض الباب حمام',
++            'label_fr': 'Poignée Condamnation',
++            'lockType': LockType.condamnation,
++            'useOcto': false,
++            'icon': Icons.lock_rounded,
++          },
++          {
++            'label_ar': 'قفل نقطة',
++            'label_fr': 'Point Lock',
++            'lockType': LockType.point,
++            'useOcto': false,
++            'icon': Icons.adjust,
++          },
++          {
++            'label_ar': 'مقبض كبير ماريشال',
++            'label_fr': 'Poignée Maréchal',
++            'lockType': LockType.rouleau,
++            'useOcto': false,
++            'icon': Icons.door_back_door_rounded,
++          },
++        ]);
++      } else {
++        // Window sashes
++        if (zone.content == ZoneContent.doubleSash) {
++          options.addAll([
++            {
++              'label_ar': 'مقبض كريمون (قطعتين)',
++              'label_fr': 'Poignée Cremone (x2)',
++              'lockType': LockType.none,
++              'useOcto': false,
++              'icon': Icons.door_back_door_rounded,
++            },
++            {
++              'label_ar': 'مقبض أوكتو (قطعتين)',
++              'label_fr': 'Poignée Octo (x2)',
++              'lockType': LockType.none,
++              'useOcto': true,
++              'icon': Icons.radio_button_checked_rounded,
++            },
++            {
++              'label_ar': 'مقبض نافذة بي في سي (قطعتين)',
++              'label_fr': 'Poignée Fenêtre PVC (x2)',
++              'lockType': LockType.none,
++              'useOcto': false,
++              'usePvcOnAlu': true,
++              'icon': Icons.door_back_door_rounded,
++            },
++          ]);
++        } else {
++          options.addAll([
++            {
++              'label_ar': 'مقبض كريمون',
++              'label_fr': 'Poignée Cremone',
++              'lockType': LockType.none,
++              'useOcto': false,
++              'icon': Icons.door_back_door_rounded,
++            },
++            {
++              'label_ar': 'مقبض أوكتو',
++              'label_fr': 'Poignée Octo',
++              'lockType': LockType.none,
++              'useOcto': true,
++              'icon': Icons.radio_button_checked_rounded,
++            },
++            {
++              'label_ar': 'قفل نقطة',
++              'label_fr': 'Point Lock',
++              'lockType': LockType.point,
++              'useOcto': false,
++              'icon': Icons.adjust,
++            },
++            {
++              'label_ar': 'مقبض نافذة بي في سي',
++              'label_fr': 'Poignée Fenêtre PVC',
++              'lockType': LockType.none,
++              'useOcto': false,
++              'usePvcOnAlu': true,
++              'icon': Icons.door_back_door_rounded,
++            },
++          ]);
++        }
++      }
++    }
++
++    showModalBottomSheet(
++      context: context,
++      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
++      shape: const RoundedRectangleBorder(
++        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
++      ),
++      builder: (context) {
++        return Padding(
++          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            crossAxisAlignment: CrossAxisAlignment.stretch,
++            children: [
++              Text(
++                Localization.translate('اختر نوع المقبض / القفل', lang),
++                textAlign: TextAlign.center,
++                style: TextStyle(
++                  fontWeight: FontWeight.bold,
++                  fontSize: 16,
++                  color: isDark ? Colors.white : Colors.black87,
++                ),
++              ),
++              const SizedBox(height: 4),
++              Text(
++                Localization.translate('Choisir le type de poignée / serrure', lang),
++                textAlign: TextAlign.center,
++                style: const TextStyle(
++                  fontSize: 12,
++                  color: Colors.grey,
++                ),
++              ),
++              const SizedBox(height: 16),
++              Flexible(
++                child: ListView.separated(
++                  shrinkWrap: true,
++                  itemCount: options.length,
++                  separatorBuilder: (_, __) => const SizedBox(height: 8),
++                  itemBuilder: (context, idx) {
++                    final opt = options[idx];
++                    final isSelected = zone.lockType == opt['lockType'] &&
++                        zone.useOctoHandle == (opt['useOcto'] ?? false) &&
++                        zone.usePvcHandleOnAlu == (opt['usePvcOnAlu'] ?? false) &&
++                        zone.useClassicHandle == (opt['useClassicHandle'] ?? false);
++                    
++                    return InkWell(
++                      onTap: () {
++                        setState(() {
++                          widget.model.setSelectedZoneLockType(opt['lockType'] as LockType);
++                          zone.useOctoHandle = (opt['useOcto'] ?? false) as bool;
++                          widget.model.setSelectedZonePvcHandleOnAlu(opt['usePvcOnAlu'] == true);
++                          widget.model.setSelectedZoneClassicHandle(opt['useClassicHandle'] == true);
++                          widget.model.refreshUI();
++                        });
++                        Navigator.pop(context);
++                      },
++                      borderRadius: BorderRadius.circular(12),
++                      child: Container(
++                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
++                        decoration: BoxDecoration(
++                          color: isSelected
++                              ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.4) : Colors.blue.shade50)
++                              : (isDark ? Colors.blueGrey.shade800.withValues(alpha: 0.5) : Colors.grey.shade50),
++                          border: Border.all(
++                            color: isSelected
++                                ? Colors.blue
++                                : (isDark ? Colors.blueGrey.shade700 : Colors.grey.shade200),
++                            width: 1.5,
++                          ),
++                          borderRadius: BorderRadius.circular(12),
++                        ),
++                        child: Row(
++                          children: [
++                            Icon(
++                              opt['icon'] as IconData,
++                              color: isSelected ? Colors.blue : Colors.grey,
++                              size: 22,
++                            ),
++                            const SizedBox(width: 12),
++                            Expanded(
++                              child: Column(
++                                crossAxisAlignment: CrossAxisAlignment.start,
++                                children: [
++                                  Text(
++                                    opt['label_ar'] as String,
++                                    style: TextStyle(
++                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
++                                      fontSize: 13,
++                                      color: isDark ? Colors.white : Colors.black87,
++                                    ),
++                                  ),
++                                  Text(
++                                    opt['label_fr'] as String,
++                                    style: const TextStyle(
++                                      fontSize: 11,
++                                      color: Colors.grey,
++                                    ),
++                                  ),
++                                ],
++                              ),
++                            ),
++                            if (isSelected)
++                              const Icon(
++                                Icons.check_circle_rounded,
++                                color: Colors.blue,
++                                size: 20,
++                              ),
++                          ],
++                        ),
++                      ),
++                    );
++                  },
++                ),
++              ),
++            ],
++          ),
++        );
++      },
++    );
+   }
+ }
+ 

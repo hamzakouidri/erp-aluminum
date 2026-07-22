@@ -1,0 +1,89 @@
+name: database_data
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 🟢 الحزم الخاصة بقاعدة البيانات (تم إضافة دعم الكمبيوتر ffi)
+  sqflite_sqlcipher: ^3.4.0
+  # sqflite_common_ffi: ^2.3.3
+
+  audioplayers: ^6.7.0
+  path: ^1.9.1
+  intl: ^0.20.2
+  dropdown_button2: ^3.1.0
+  image_picker: ^1.1.2
+  google_generative_ai: ^0.4.7
+  path_provider: ^2.1.3
+  provider: ^6.1.5+1
+  shared_preferences: ^2.5.5
+  google_fonts: ^8.1.0
+  video_player: ^2.9.2
+
+  # حزم فايربيس (Firebase)
+  firebase_core: ^4.9.0
+  firebase_auth: ^6.5.1
+  cloud_firestore: ^6.4.1
+  firebase_storage: ^13.4.1
+
+  speech_to_text: ^7.4.0
+  permission_handler: ^11.3.1
+  share_plus: ^12.0.2
+  archive: ^3.6.1
+  record: ^6.2.1
+  google_sign_in: ^6.2.1
+  url_launcher: ^6.3.2
+  http: any
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  flutter_file_dialog: ^3.0.3
+  sqflite_common_ffi: ^2.4.0+3
+  sqflite_common_ffi_web: ^0.4.0
+  sqlite3_flutter_libs: ^0.6.0+eol
+  flutter_svg: ^2.0.10+1
+  window_manager: ^0.5.1
+  file_picker: ^11.0.2
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+  geolocator: ^14.0.2
+
+dependency_overrides:
+  mgrs_dart: 2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/water_ripples.mp4
+    - assets/images/water_ripples.png
+    - assets/images/wood_texture.png
+    - assets/images/wood_texture_d0.png
+    - assets/images/wood_texture_antique.png
+    - assets/images/wood_texture_dark.png
+    - assets/images/wood_texture_grey.png
+    - assets/fonts/Amiri-Regular.ttf
+    - assets/fonts/Amiri-Bold.ttf
+    - assets/fonts/Cairo-Regular.ttf
+    - assets/fonts/Cairo-Bold.ttf
+    - assets/fonts/Cairo.ttf
+    - assets/fonts/Arial-Regular.ttf
+    - assets/sections/
+    - Icon/
+    - images/
+
+  fonts:
+    - family: Amiri
+      fonts:
+        - asset: assets/fonts/Amiri-Regular.ttf
+        - asset: assets/fonts/Amiri-Bold.ttf
+          weight: 700

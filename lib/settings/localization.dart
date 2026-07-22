@@ -1,0 +1,54 @@
+import 'app_settings.dart';
+import 'locales/main_menu_keys.dart';
+import 'locales/drawer_keys.dart';
+import 'locales/product_keys.dart';
+import 'locales/order_keys.dart';
+import 'locales/general_keys.dart';
+
+class Localization {
+  static final Map<String, Map<AppLanguage, String>> _dictionary = {
+    ...mainMenuKeys,
+    ...drawerKeys,
+    ...productKeys,
+    ...orderKeys,
+    ...generalKeys,
+  };
+
+  static String translate(String key, AppLanguage lang) {
+    final trimmedKey = key.trim();
+
+    // Intercept dynamic series names like "سلسلة 45" or "سلسله 45" or "سلسلة"
+    if (lang != AppLanguage.arabic) {
+      final seriesMatch = RegExp(r'^(سلسلة|سلسله)\s+(.+)$', caseSensitive: false).firstMatch(trimmedKey);
+      if (seriesMatch != null) {
+        final remainder = seriesMatch.group(2)!.trim();
+        final translatedRemainder = _dictionary.containsKey(remainder) && _dictionary[remainder]!.containsKey(lang)
+            ? _dictionary[remainder]![lang]!
+            : remainder;
+        final prefix = lang == AppLanguage.french ? 'Gamme' : 'Series';
+        return '$prefix $translatedRemainder';
+      }
+      if (trimmedKey == 'سلسلة' || trimmedKey == 'سلسله') {
+        return lang == AppLanguage.french ? 'Gamme' : 'Series';
+      }
+    }
+
+    if (_dictionary.containsKey(trimmedKey) && _dictionary[trimmedKey]!.containsKey(lang)) {
+      return _dictionary[trimmedKey]![lang]!;
+    }
+
+    // Try parsing compound names with quality suffix like "Name (جودة ...)"
+    final match = RegExp(r'^(.+?)\s*\(\s*(جودة\s+[^)]+)\s*\)$').firstMatch(trimmedKey);
+    if (match != null) {
+      final base = match.group(1)!.trim();
+      final quality = match.group(2)!.trim();
+      
+      final translatedBase = translate(base, lang);
+      final translatedQuality = translate(quality, lang);
+      
+      return '$translatedBase ($translatedQuality)';
+    }
+
+    return key; // Fallback to key if not found
+  }
+}

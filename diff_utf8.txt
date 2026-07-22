@@ -1,0 +1,473 @@
+diff --git a/lib/Commande/Systeme/model.dart b/lib/Commande/Systeme/model.dart
+index ca856a6..ffa3c50 100644
+--- a/lib/Commande/Systeme/model.dart
++++ b/lib/Commande/Systeme/model.dart
+@@ -890,6 +890,8 @@ class WindowSnapshot {
+   final bool showWall;
+   final String wallColor;
+   final String? primaryMullionAxis;
++  final double? drawnLeft;
++  final double? drawnTop;
+ 
+   WindowSnapshot(
+     this.width,
+@@ -916,6 +918,8 @@ class WindowSnapshot {
+     this.showWall,
+     this.wallColor,
+     this.primaryMullionAxis,
++    this.drawnLeft,
++    this.drawnTop,
+   );
+ }
+ 
+@@ -1397,6 +1401,15 @@ class WindowModel extends ChangeNotifier {
+ 
+   double profileThickness;
+ 
++  bool coupleFrames = true;
++
++  double get divisionThickness {
++    if (coupleFrames) {
++      return profileThickness * 2;
++    }
++    return mullionThickness;
++  }
++
+   double get mullionThickness {
+     final s = getSectionByType('mullion');
+     if (s != null) return s.visibleWidth;
+@@ -1665,6 +1678,13 @@ class WindowModel extends ChangeNotifier {
+   Size? lastLayoutSize;
+   Offset? drawingStart;
+   Offset? drawingCurrent;
++  double? drawnLeft;
++  double? drawnTop;
++  bool? _lastIsEmpty;
++  double? _lastWidth;
++  double? _lastHeight;
++  double? _lastDrawnLeft;
++  double? _lastDrawnTop;
+ 
+   final SqlDatabase db;
+   List<AluminumProfileSystem> availableSystems = [];
+@@ -4336,6 +4356,8 @@ class WindowModel extends ChangeNotifier {
+         showWall,
+         wallColor,
+         primaryMullionAxis,
++        drawnLeft,
++        drawnTop,
+       ),
+     );
+     if (_history.length > 20) _history.removeAt(0);
+@@ -4748,6 +4770,8 @@ class WindowModel extends ChangeNotifier {
+         showWall,
+         wallColor,
+         primaryMullionAxis,
++        drawnLeft,
++        drawnTop,
+       ),
+     );
+     if (_redoHistory.length > 20) _redoHistory.removeAt(0);
+@@ -4777,6 +4801,8 @@ class WindowModel extends ChangeNotifier {
+     showWall = snap.showWall;
+     wallColor = snap.wallColor;
+     primaryMullionAxis = snap.primaryMullionAxis;
++    drawnLeft = snap.drawnLeft;
++    drawnTop = snap.drawnTop;
+ 
+     selection = SelectionInfo.none;
+     activeSubZone = null;
+@@ -4813,6 +4839,8 @@ class WindowModel extends ChangeNotifier {
+         showWall,
+         wallColor,
+         primaryMullionAxis,
++        drawnLeft,
++        drawnTop,
+       ),
+     );
+     if (_history.length > 20) _history.removeAt(0);
+@@ -4842,6 +4870,8 @@ class WindowModel extends ChangeNotifier {
+     showWall = snap.showWall;
+     wallColor = snap.wallColor;
+     primaryMullionAxis = snap.primaryMullionAxis;
++    drawnLeft = snap.drawnLeft;
++    drawnTop = snap.drawnTop;
+ 
+     selection = SelectionInfo.none;
+     activeSubZone = null;
+@@ -4854,11 +4884,39 @@ class WindowModel extends ChangeNotifier {
+     // تجنب إعادة الحساب أثناء الرسم النشط لمنع تحريف الإحداثيات
+     if (drawingStart != null) return;
+ 
++    bool stateChanged = _lastIsEmpty != zones.isEmpty ||
++        _lastWidth != width ||
++        _lastHeight != height ||
++        _lastDrawnLeft != drawnLeft ||
++        _lastDrawnTop != drawnTop;
++
+     // تجنب إعادة الحساب إذا لم يتغير الحجم فعلياً (اقتصاداً في الحساب)
+     if (lastLayoutSize == widgetSize &&
++        !stateChanged &&
+         canvasScale > 0 &&
+         (canvasDx != 0 || canvasDy != 0)) return;
++
+     lastLayoutSize = widgetSize;
++    _lastIsEmpty = zones.isEmpty;
++    _lastWidth = width;
++    _lastHeight = height;
++    _lastDrawnLeft = drawnLeft;
++    _lastDrawnTop = drawnTop;
++
++    if (drawnLeft != null && drawnTop != null && zones.isNotEmpty) {
++      double virtualW = 2400.0;
++      double virtualH = 1800.0;
++      double sX = (widgetSize.width - 40.0) / virtualW;
++      double sY = (widgetSize.height - 40.0) / virtualH;
++      canvasScale = math.min(sX, sY);
++
++      double virtualDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
++      double virtualDy = widgetSize.height / 2 - (virtualH / 2 * canvasScale);
++
++      canvasDx = virtualDx + drawnLeft! * canvasScale;
++      canvasDy = virtualDy + drawnTop! * canvasScale;
++      return;
++    }
+ 
+     if (width <= 0 || height <= 0 || zones.isEmpty) {
+       double virtualW = 2400.0;
+@@ -4941,7 +4999,7 @@ class WindowModel extends ChangeNotifier {
+     }
+ 
+     double hitSlop = 40.0;
+-    final mullionT = mullionThickness;
++    final mullionT = divisionThickness;
+     if (isDrawingMode) {
+       for (int i = 0; i < zones.length; i++) {
+         for (int j = i + 1; j < zones.length; j++) {
+@@ -5349,7 +5407,7 @@ class WindowModel extends ChangeNotifier {
+     bool isH = selection.isHorizontalMullion!;
+     double oldPos = selection.mullionPosition!;
+     final t = profileThickness;
+-    final mullionT = mullionThickness;
++    final mullionT = divisionThickness;
+     final sep = mullionT / 2;
+     double newPos = oldPos;
+     if (isH) {
+@@ -6160,7 +6218,7 @@ class WindowModel extends ChangeNotifier {
+     final zIdx = zones.indexWhere((z) => z.id == zoneId);
+     if (zIdx == -1) return 0;
+     final r = zones[zIdx].boundary;
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     if (isWidth) {
+       final bool isRightmost = !zones.any((z) => z.boundary.left > r.right - 2);
+       if (isRightmost) {
+@@ -6252,7 +6310,7 @@ class WindowModel extends ChangeNotifier {
+   }
+ 
+   void _moveInternalBoundaryX(double oldX, double diff) {
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     double divisionX = oldX;
+     bool foundRight = false;
+     for (var z in zones) {
+@@ -6318,7 +6376,7 @@ class WindowModel extends ChangeNotifier {
+   }
+ 
+   void _moveInternalBoundaryY(double oldY, double diff) {
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     double divisionY = oldY;
+     bool foundBottom = false;
+     for (var z in zones) {
+@@ -6422,9 +6480,9 @@ class WindowModel extends ChangeNotifier {
+         double overlapRight = math.min(z1.boundary.right, z2.boundary.right);
+         if (overlapLeft < overlapRight - 5.0) {
+           if ((z1.boundary.bottom - z2.boundary.top).abs() <=
+-                  mullionThickness + 2.0 ||
++                  divisionThickness + 2.0 ||
+               (z2.boundary.bottom - z1.boundary.top).abs() <=
+-                  mullionThickness + 2.0) {
++                  divisionThickness + 2.0) {
+             hasHorizontalBoundaries = true;
+           }
+         }
+@@ -6433,9 +6491,9 @@ class WindowModel extends ChangeNotifier {
+         double overlapBottom = math.min(z1.boundary.bottom, z2.boundary.bottom);
+         if (overlapTop < overlapBottom - 5.0) {
+           if ((z1.boundary.right - z2.boundary.left).abs() <=
+-                  mullionThickness + 2.0 ||
++                  divisionThickness + 2.0 ||
+               (z2.boundary.right - z1.boundary.left).abs() <=
+-                  mullionThickness + 2.0) {
++                  divisionThickness + 2.0) {
+             hasVerticalBoundaries = true;
+           }
+         }
+@@ -6470,7 +6528,7 @@ class WindowModel extends ChangeNotifier {
+     _saveSnapshot();
+     final zone = selectedZone!;
+     final index = zones.indexOf(zone);
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     zones.removeAt(index);
+     if (customSizes != null && customSizes.isNotEmpty) {
+       if (parts == 2) {
+@@ -6592,11 +6650,11 @@ class WindowModel extends ChangeNotifier {
+       }
+     } else {
+       // الحجم المتاح بعد خصم جميع الفواصل بين الأجزاء
+-      final totalMullions = (parts - 1) * mullionThickness;
++      final totalMullions = (parts - 1) * divisionThickness;
+       final availableHeight = zone.boundary.height - totalMullions;
+       final stepY = availableHeight / parts;
+       for (int i = 0; i < parts; i++) {
+-        double top = zone.boundary.top + (i * stepY) + (i * mullionThickness);
++        double top = zone.boundary.top + (i * stepY) + (i * divisionThickness);
+         double bottom = top + stepY;
+         zones.insert(
+           index + i,
+@@ -6636,7 +6694,7 @@ class WindowModel extends ChangeNotifier {
+     _saveSnapshot();
+     final zone = selectedZone!;
+     final index = zones.indexOf(zone);
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     zones.removeAt(index);
+     if (customSizes != null && customSizes.isNotEmpty) {
+       if (parts == 2) {
+@@ -6758,11 +6816,11 @@ class WindowModel extends ChangeNotifier {
+       }
+     } else {
+       // الحجم المتاح بعد خصم جميع الفواصل بين الأجزاء
+-      final totalMullions = (parts - 1) * mullionThickness;
++      final totalMullions = (parts - 1) * divisionThickness;
+       final availableWidth = zone.boundary.width - totalMullions;
+       final stepX = availableWidth / parts;
+       for (int i = 0; i < parts; i++) {
+-        double left = zone.boundary.left + (i * stepX) + (i * mullionThickness);
++        double left = zone.boundary.left + (i * stepX) + (i * divisionThickness);
+         double right = left + stepX;
+         zones.insert(
+           index + i,
+@@ -8573,6 +8631,8 @@ class WindowModel extends ChangeNotifier {
+       if (drawnRect.width > 50 && drawnRect.height > 50) {
+         width = drawnRect.width.clamp(200.0, 10000.0);
+         height = drawnRect.height.clamp(200.0, 10000.0);
++        drawnLeft = drawnRect.left;
++        drawnTop = drawnRect.top;
+         double topOffset = (hasShutter && !hasArchOrSlant)
+             ? shutterBoxHeight
+             : 0.0;
+@@ -8591,6 +8651,141 @@ class WindowModel extends ChangeNotifier {
+           ),
+         );
+       }
++    }
++    if (drawingMode == 'add_frame') {
++      Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
++      if (drawnRect.width > 50 && drawnRect.height > 50) {
++        double newW = drawnRect.width.clamp(200.0, 10000.0);
++        double newH = drawnRect.height.clamp(200.0, 10000.0);
++
++        double topOffset = (hasShutter && !hasArchOrSlant) ? shutterBoxHeight : 0.0;
++        double pHeight = hasFramePlintheBottom ? plintheHeight : 0.0;
++        double bottomOffset = hasBottomFrame ? profileThickness : 0.0;
++
++        double dxRight = (drawnRect.left - width).abs();
++        double dxLeft = (drawnRect.right - 0).abs();
++        double dyTop = (drawnRect.bottom - 0).abs();
++        double dyBottom = (drawnRect.top - height).abs();
++
++        double minVal = math.min(math.min(dxRight, dxLeft), math.min(dyTop, dyBottom));
++
++        final List<WindowZone> newZones = [];
++        final tThickness = divisionThickness;
++
++        if (minVal == dxRight) {
++          double oldW = width;
++          width = oldW + newW + tThickness;
++          for (var z in zones) {
++            double rightEdge = oldW - profileThickness;
++            if ((z.boundary.right - rightEdge).abs() < 2.0) {
++              final cloned = z.clone();
++              cloned.boundary = Rect.fromLTRB(
++                z.boundary.left,
++                z.boundary.top,
++                oldW - tThickness / 2,
++                z.boundary.bottom,
++              );
++              newZones.add(cloned);
++            } else {
++              newZones.add(z);
++            }
++          }
++          newZones.add(WindowZone(
++            id: UniqueKey().toString(),
++            boundary: Rect.fromLTRB(
++              oldW + tThickness / 2,
++              topOffset + profileThickness,
++              width - profileThickness,
++              height - bottomOffset - pHeight,
++            ),
++            sashThickness: _calculateSashThickness(false),
++          ));
++        } else if (minVal == dxLeft) {
++          double oldW = width;
++          width = oldW + newW + tThickness;
++          for (var z in zones) {
++            double leftEdge = profileThickness;
++            double newLeft = (z.boundary.left - leftEdge).abs() < 2.0
++                ? newW + tThickness / 2
++                : z.boundary.left + newW + tThickness;
++            final cloned = z.clone();
++            cloned.boundary = Rect.fromLTRB(
++              newLeft,
++              z.boundary.top,
++              z.boundary.right + newW + tThickness,
++              z.boundary.bottom,
++            );
++            newZones.add(cloned);
++          }
++          newZones.add(WindowZone(
++            id: UniqueKey().toString(),
++            boundary: Rect.fromLTRB(
++              profileThickness,
++              topOffset + profileThickness,
++              newW - tThickness / 2,
++              height - bottomOffset - pHeight,
++            ),
++            sashThickness: _calculateSashThickness(false),
++          ));
++        } else if (minVal == dyBottom) {
++          double oldH = height;
++          height = oldH + newH + tThickness;
++          for (var z in zones) {
++            double bottomEdge = oldH - bottomOffset - pHeight;
++            if ((z.boundary.bottom - bottomEdge).abs() < 2.0) {
++              final cloned = z.clone();
++              cloned.boundary = Rect.fromLTRB(
++                z.boundary.left,
++                z.boundary.top,
++                z.boundary.right,
++                oldH - tThickness / 2,
++              );
++              newZones.add(cloned);
++            } else {
++              newZones.add(z);
++            }
++          }
++          newZones.add(WindowZone(
++            id: UniqueKey().toString(),
++            boundary: Rect.fromLTRB(
++              profileThickness,
++              oldH + tThickness / 2,
++              width - profileThickness,
++              height - bottomOffset - pHeight,
++            ),
++            sashThickness: _calculateSashThickness(false),
++          ));
++        } else {
++          double oldH = height;
++          height = oldH + newH + tThickness;
++          for (var z in zones) {
++            double topEdge = topOffset + profileThickness;
++            double newTop = (z.boundary.top - topEdge).abs() < 2.0
++                ? newH + tThickness / 2
++                : z.boundary.top + newH + tThickness;
++            final cloned = z.clone();
++            cloned.boundary = Rect.fromLTRB(
++              z.boundary.left,
++              newTop,
++              z.boundary.right,
++              z.boundary.bottom + newH + tThickness,
++            );
++            newZones.add(cloned);
++          }
++          newZones.add(WindowZone(
++            id: UniqueKey().toString(),
++            boundary: Rect.fromLTRB(
++              profileThickness,
++              topOffset + profileThickness,
++              width - profileThickness,
++              newH - tThickness / 2,
++            ),
++            sashThickness: _calculateSashThickness(false),
++          ));
++        }
++        zones = newZones;
++        updatePrimaryMullionAxis();
++      }
+       drawingStart = null;
+       drawingCurrent = null;
+       notifyListeners();
+@@ -9014,7 +9209,7 @@ class WindowModel extends ChangeNotifier {
+   void _splitIntersectingZonesSmart(Offset start, Offset end, bool horizontal) {
+     _saveSnapshot();
+     final List<WindowZone> newZones = [];
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     double minPath = horizontal
+         ? math.min(start.dx, end.dx)
+         : math.min(start.dy, end.dy);
+@@ -9122,7 +9317,7 @@ class WindowModel extends ChangeNotifier {
+     _saveSnapshot();
+     bool isH = selection.isHorizontalMullion!;
+     double pos = selection.mullionPosition!;
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     final t = profileThickness;
+     if (isH) {
+       double minAllowedY = t * 2;
+@@ -9238,7 +9433,7 @@ class WindowModel extends ChangeNotifier {
+     _saveSnapshot();
+     bool isH = selection.isHorizontalMullion!;
+     double pos = selection.mullionPosition!;
+-    final sep = mullionThickness / 2;
++    final sep = divisionThickness / 2;
+     final List<WindowZone> toMerge = [];
+     final List<WindowZone> others = [];
+     for (var z in zones) {
+@@ -9437,6 +9632,8 @@ class WindowModel extends ChangeNotifier {
+     selection = SelectionInfo.none;
+     activeSubZone = null;
+     isDrawingMode = true;
++    drawnLeft = null;
++    drawnTop = null;
+ 
+     // Reset slants
+     topSlantLeftY = 0.0;
+diff --git a/lib/Commande/Systeme/show_system_francais.dart b/lib/Commande/Systeme/show_system_francais.dart
+index 27722cd..6696141 100644
+--- a/lib/Commande/Systeme/show_system_francais.dart
++++ b/lib/Commande/Systeme/show_system_francais.dart
+@@ -69,6 +69,8 @@ class _WindowViewState extends State<WindowView> {
+   Offset _userPan = Offset.zero;
+   Offset _baseUserPan = Offset.zero;
+   Offset _focalPointStart = Offset.zero;
++  Offset _focalPointCurrent = Offset.zero;
++  Size _lastConstraintsSize = Size.zero;
+ 
+   bool _isDrawerOpen = false;
+   bool _isLeftDrawerOpen = false;
+@@ -908,9 +910,8 @@ class _WindowViewState extends State<WindowView> {
+                   Expanded(
+                     child: LayoutBuilder(
+                       builder: (context, constraints) {
+-                        widget.model.updateLayoutMetrics(
+-                          Size(constraints.maxWidth, constraints.maxHeight),
+-                        );
++                        _lastConstraintsSize = Size(constraints.maxWidth, constraints.maxHeight);
++                        widget.model.updateLayoutMetrics(_lastConstraintsSize);
+                         return Stack(
+                           children: [
+                             GestureDetector(
+@@ -9941,7 +9942,7 @@ class AppWorkspacePainter extends CustomPainter {
+       }
+     }
+ 
+-    if (model.zones.isEmpty &&
++    if ((model.zones.isEmpty || model.drawingMode == 'add_frame') &&
+         model.isDrawingMode &&
+         model.drawingStart != null &&
+         model.drawingCurrent != null) {

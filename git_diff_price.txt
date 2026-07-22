@@ -1,0 +1,673 @@
+diff --git a/lib/Screen/price_management_screen.dart b/lib/Screen/price_management_screen.dart
+index b75936c..6175710 100644
+--- a/lib/Screen/price_management_screen.dart
++++ b/lib/Screen/price_management_screen.dart
+@@ -42,7 +42,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+   Map<int, Map<int, double>> sectionColorPrices = {};
+   Map<int, Map<int, double>> accessoryColorPrices = {};
+   Map<int, Map<int, double>> shutterColorPrices = {};
++  Map<String, Map<int, double>> shutterSqmPrices = {};
+   Map<int, List<int>> profileColorsMap = {};
++  List<String> shutterLamesList = [];
++  List<String> shutterGlissieresList = [];
++  int _shutterPricingMode = 0; // 0: Components, 1: Square Meter Prices
+ 
+   bool isLoading = true;
+   int? selectedAccessoryId;
+@@ -163,6 +167,17 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+             )
+           ''');
+           return await dbInstance.query(table);
++        } else if (table == 'ShutterSqmPrices') {
++          await dbInstance.execute('''
++            CREATE TABLE IF NOT EXISTS ShutterSqmPrices (
++              id INTEGER PRIMARY KEY AUTOINCREMENT,
++              blade_type TEXT NOT NULL,
++              color_id INTEGER NOT NULL,
++              price_per_sqm REAL NOT NULL DEFAULT 0.0,
++              UNIQUE(blade_type, color_id)
++            )
++          ''');
++          return await dbInstance.query(table);
+         }
+         return [];
+       }
+@@ -278,6 +293,36 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+       }
+     } catch (e) {}
+ 
++    Map<String, Map<int, double>> tempShutterSqmPrices = {};
++    try {
++      final sqmPricesData = await safeQuery('ShutterSqmPrices');
++      for (var row in sqmPricesData) {
++        String blade = row['blade_type'] as String;
++        int cId = row['color_id'] as int;
++        double p = (row['price_per_sqm'] as num).toDouble();
++        if (!tempShutterSqmPrices.containsKey(blade)) {
++          tempShutterSqmPrices[blade] = {};
++        }
++        tempShutterSqmPrices[blade]![cId] = p;
++      }
++    } catch (e) {
++      print("Error parsing ShutterSqmPrices: $e");
++    }
++
++    List<String> tempLames = [];
++    List<String> tempGlissieres = [];
++    try {
++      final opts = await db.getShutterOptions();
++      tempLames = opts['lames'] ?? [];
++      tempGlissieres = opts['glissieres'] ?? [];
++    } catch (_) {}
++    if (tempLames.isEmpty) {
++      tempLames = ['Lame Injectée', 'Lame Extrudée'];
++    }
++    if (tempGlissieres.isEmpty) {
++      tempGlissieres = ['Glissière 120', 'Glissière 100'];
++    }
++
+     if (!mounted) return;
+     setState(() {
+       seriesList = sList;
+@@ -293,6 +338,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+       accessoryColorPrices = tempAccPrices;
+       sectionColorPrices = tempSecPrices;
+       shutterColorPrices = tempShutterPrices;
++      shutterSqmPrices = tempShutterSqmPrices;
++      shutterLamesList = tempLames;
++      shutterGlissieresList = tempGlissieres;
+       profileColorsMap = tempProfColors;
+ 
+       if (seriesList.isNotEmpty && selectedSeriesId == null) {
+@@ -615,10 +663,76 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+   }
+ 
+   Widget _buildShutterPricingTab(BuildContext context) {
++    final lang = Provider.of<AppSettingsProvider>(context).language;
++    return Column(
++      children: [
++        Padding(
++          padding: const EdgeInsets.all(12.0),
++          child: Container(
++            decoration: BoxDecoration(
++              color: Colors.grey.shade100,
++              borderRadius: BorderRadius.circular(12),
++            ),
++            child: Row(
++              children: [
++                Expanded(
++                  child: GestureDetector(
++                    onTap: () => setState(() => _shutterPricingMode = 0),
++                    child: Container(
++                      padding: const EdgeInsets.symmetric(vertical: 10),
++                      decoration: BoxDecoration(
++                        color: _shutterPricingMode == 0 ? Colors.deepPurple : Colors.transparent,
++                        borderRadius: BorderRadius.circular(10),
++                      ),
++                      child: Text(
++                        Localization.translate('أسعار المكونات والقطع', lang),
++                        textAlign: TextAlign.center,
++                        style: TextStyle(
++                          color: _shutterPricingMode == 0 ? Colors.white : Colors.black,
++                          fontWeight: FontWeight.bold,
++                        ),
++                      ),
++                    ),
++                  ),
++                ),
++                Expanded(
++                  child: GestureDetector(
++                    onTap: () => setState(() => _shutterPricingMode = 1),
++                    child: Container(
++                      padding: const EdgeInsets.symmetric(vertical: 10),
++                      decoration: BoxDecoration(
++                        color: _shutterPricingMode == 1 ? Colors.deepPurple : Colors.transparent,
++                        borderRadius: BorderRadius.circular(10),
++                      ),
++                      child: Text(
++                        Localization.translate('سعر المتر المربع للستار', lang),
++                        textAlign: TextAlign.center,
++                        style: TextStyle(
++                          color: _shutterPricingMode == 1 ? Colors.white : Colors.black,
++                          fontWeight: FontWeight.bold,
++                        ),
++                      ),
++                    ),
++                  ),
++                ),
++              ],
++            ),
++          ),
++        ),
++        Expanded(
++          child: _shutterPricingMode == 0
++              ? _buildShutterComponentsList(context)
++              : _buildShutterSqmPricesList(context),
++        ),
++      ],
++    );
++  }
++
++  Widget _buildShutterComponentsList(BuildContext context) {
+     final lang = Provider.of<AppSettingsProvider>(context).language;
+     if (shutterList.isEmpty) {
+       return Center(
+-        child: Text(Localization.translate('لا يوجد ستائر.', lang)),
++        child: Text(Localization.translate('لا توجد بيانات.', lang)),
+       );
+     }
+     if (allColorList.isEmpty) {
+@@ -692,8 +806,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+                       ),
+                       child: Text(
+                         hasColorPrices
+-                            ? Localization.translate('بالألوان', lang)
+-                            : Localization.translate('سعر واحد', lang),
++                            ? Localization.translate('الألوان', lang)
++                            : Localization.translate('سعر موحد', lang),
+                         style: TextStyle(
+                           fontSize: 11,
+                           color: hasColorPrices
+@@ -742,7 +856,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+               ] else ...[
+                 // Single price row
+                 PriceEditRow(
+-                  title: Localization.translate('السعر الأساسي', lang),
++                  title: Localization.translate('السعر الافتراضي', lang),
+                   titleIcon: Icon(
+                     Icons.sell,
+                     size: 13,
+@@ -763,6 +877,493 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
+     );
+   }
+ 
++  Widget _buildShutterSqmPricesList(BuildContext context) {
++    final lang = Provider.of<AppSettingsProvider>(context).language;
++
++    // ── colour constants ──────────────────────────────────────────────────
++    const Color lamePurple    = Color(0xFF7C3AED);
++    const Color coulisseBlue  = Color(0xFF1D4ED8);
++    const Color moteurOrange  = Color(0xFFD97706);
++    const Color manivelleGreen = Color(0xFF059669);
++
++    // ── helper: section card ──────────────────────────────────────────────
++    Widget sectionCard({
++      required String title,
++      required IconData icon,
++      required Color color,
++      required Widget body,
++      Widget? trailing,
++    }) {
++      return Container(
++        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
++        decoration: BoxDecoration(
++          color: Colors.white,
++          borderRadius: BorderRadius.circular(16),
++          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
++          boxShadow: [
++            BoxShadow(
++              color: color.withValues(alpha: 0.07),
++              spreadRadius: 1,
++              blurRadius: 8,
++              offset: const Offset(0, 3),
++            ),
++          ],
++        ),
++        child: Column(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            // Header
++            Container(
++              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
++              decoration: BoxDecoration(
++                color: color.withValues(alpha: 0.08),
++                borderRadius: const BorderRadius.only(
++                  topLeft: Radius.circular(14),
++                  topRight: Radius.circular(14),
++                ),
++              ),
++              child: Row(
++                children: [
++                  Icon(icon, color: color, size: 18),
++                  const SizedBox(width: 8),
++                  Expanded(
++                    child: Text(
++                      title,
++                      style: TextStyle(
++                        fontWeight: FontWeight.bold,
++                        fontSize: 14,
++                        color: color,
++                      ),
++                    ),
++                  ),
++                  if (trailing != null) trailing,
++                ],
++              ),
++            ),
++            const Divider(height: 1, thickness: 0.8),
++            body,
++          ],
++        ),
++      );
++    }
++
++    // ── helper: color rows + add-button for a blade key ──────────────────
++    Widget colorPriceSection({
++      required String bladeKey,
++      required Color accentColor,
++      required String subtitle,
++    }) {
++      final colorMap = shutterSqmPrices[bladeKey] ?? {};
++      final assignedColorIds = colorMap.keys.toList();
++
++      return Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          // Existing color rows
++          ...assignedColorIds.asMap().entries.map((entry) {
++            final idx   = entry.key;
++            final cId   = entry.value;
++            final colMap = allColorList.firstWhere(
++              (c) => c['id'] == cId,
++              orElse: () => {'id': cId, 'name': 'Color $cId', 'hex_code': '#9E9E9E'},
++            );
++            final currentPrice = colorMap[cId] ?? 0.0;
++
++            return Column(
++              children: [
++                Padding(
++                  padding: const EdgeInsets.symmetric(horizontal: 4),
++                  child: Row(
++                    children: [
++                      Expanded(
++                        child: PriceEditRow(
++                          title: colMap['name'].toString(),
++                          titleIcon: _buildColorCircle(colMap, size: 22),
++                          subtitle: subtitle,
++                          currentPrice: currentPrice,
++                          canChangePrices: canChangePrices,
++                          onSave: (parsed) {
++                            _updateShutterSqmPrice(bladeKey, cId, parsed);
++                          },
++                        ),
++                      ),
++                      // Delete button
++                      if (canChangePrices)
++                        IconButton(
++                          tooltip: Localization.translate('حذف', lang),
++                          icon: Icon(Icons.delete_outline,
++                              color: Colors.red.shade300, size: 20),
++                          onPressed: () async {
++                            await db.deleteShutterSqmPrice(bladeKey, cId);
++                            _loadAllData();
++                          },
++                        ),
++                    ],
++                  ),
++                ),
++                if (idx < assignedColorIds.length - 1)
++                  Divider(
++                    height: 1,
++                    thickness: 0.5,
++                    indent: 16,
++                    endIndent: 16,
++                    color: Colors.grey.shade200,
++                  ),
++              ],
++            );
++          }),
++
++          // Empty state
++          if (assignedColorIds.isEmpty)
++            Padding(
++              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
++              child: Center(
++                child: Text(
++                  Localization.translate('لم تُضف ألوان بعد. اضغط + لإضافة لون.', lang),
++                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
++                  textAlign: TextAlign.center,
++                ),
++              ),
++            ),
++
++          // Add color button
++          if (canChangePrices) ...[
++            const Divider(height: 1, thickness: 0.5),
++            TextButton.icon(
++              onPressed: () => _showAddSqmColorDialog(bladeKey, accentColor),
++              icon: Icon(Icons.add_circle_outline, size: 18, color: accentColor),
++              label: Text(
++                Localization.translate('+ إضافة لون', lang),
++                style: TextStyle(color: accentColor, fontWeight: FontWeight.w600),
++              ),
++            ),
++          ],
++          const SizedBox(height: 4),
++        ],
++      );
++    }
++
++    // ── Lames section ─────────────────────────────────────────────────────
++    // Show a sub-section per blade type (Injectée, Extrudée …)
++    final List<Widget> lameSubSections = [];
++    for (int i = 0; i < shutterLamesList.length; i++) {
++      final blade = shutterLamesList[i];
++      lameSubSections.add(
++        Column(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            if (i > 0) const Divider(height: 1, thickness: 0.8, color: Color(0xFFE9D5FF)),
++            Padding(
++              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
++              child: Text(
++                blade,
++                style: const TextStyle(
++                  fontWeight: FontWeight.w700,
++                  fontSize: 13,
++                  color: lamePurple,
++                ),
++              ),
++            ),
++            colorPriceSection(
++              bladeKey: blade,
++              accentColor: lamePurple,
++              subtitle: Localization.translate('سعر م²', lang),
++            ),
++          ],
++        ),
++      );
++    }
++
++    // ── Moteur installation fee ───────────────────────────────────────────
++    final double moteurInstallPrice =
++        (shutterSqmPrices['Moteur_Install']?[0]) ?? 0.0;
++
++    // ── Manivelle price ───────────────────────────────────────────────────
++    final double manivellePrice =
++        (shutterSqmPrices['Manivelle']?[0]) ?? 0.0;
++
++    // ── Special Accessories Prices ────────────────────────────────────────
++    final double obInstallPrice =
++        (shutterSqmPrices['OB_Install']?[0]) ?? 0.0;
++    final double demiOBInstallPrice =
++        (shutterSqmPrices['DemiOB_Install']?[0]) ?? 0.0;
++    final double verrouInstallPrice =
++        (shutterSqmPrices['Verrou_Install']?[0]) ?? 0.0;
++
++    return ListView(
++      padding: const EdgeInsets.only(bottom: 16),
++      children: [
++        // ── 1. Lames ──────────────────────────────────────────────────────
++        sectionCard(
++          title: Localization.translate('الشرائح (Lames) — سعر المتر المربع', lang),
++          icon: Icons.curtains_closed,
++          color: lamePurple,
++          body: lameSubSections.isEmpty
++              ? Padding(
++                  padding: const EdgeInsets.all(16),
++                  child: Text(
++                    Localization.translate('لا توجد أنواع لام. أضف من إعدادات الستار.', lang),
++                    style: TextStyle(color: Colors.grey.shade500),
++                  ),
++                )
++              : Column(children: lameSubSections),
++        ),
++
++        // ── 2. Coulisses (by type, not color) ─────────────────────────────
++        sectionCard(
++          title: Localization.translate('السكك (Coulisses) — سعر لكل نوع', lang),
++          icon: Icons.linear_scale,
++          color: coulisseBlue,
++          body: shutterGlissieresList.isEmpty
++              ? Padding(
++                  padding: const EdgeInsets.all(16),
++                  child: Text(
++                    Localization.translate('لا توجد أنواع سكك. أضف من إعدادات الستار.', lang),
++                    style: TextStyle(color: Colors.grey.shade500),
++                  ),
++                )
++              : Column(
++                  children: shutterGlissieresList.asMap().entries.map((entry) {
++                    final idx = entry.key;
++                    final railName = entry.value;
++                    // Store in ShutterSqmPrices as blade_type=railName, color_id=0
++                    final currentPrice =
++                        (shutterSqmPrices[railName]?[0]) ?? 0.0;
++
++                    return Column(
++                      children: [
++                        PriceEditRow(
++                          title: railName,
++                          titleIcon: Icon(Icons.linear_scale,
++                              size: 18, color: coulisseBlue),
++                          subtitle: Localization.translate('سعر الوحدة', lang),
++                          currentPrice: currentPrice,
++                          canChangePrices: canChangePrices,
++                          onSave: (parsed) {
++                            _updateShutterSqmPrice(railName, 0, parsed);
++                          },
++                        ),
++                        if (idx < shutterGlissieresList.length - 1)
++                          Divider(
++                            height: 1,
++                            thickness: 0.5,
++                            indent: 16,
++                            endIndent: 16,
++                            color: Colors.grey.shade200,
++                          ),
++                      ],
++                    );
++                  }).toList(),
++                ),
++        ),
++
++        // ── 3. Moteur ─────────────────────────────────────────────────────
++        sectionCard(
++          title: Localization.translate('المحرك (Moteur) — سعر التركيب', lang),
++          icon: Icons.settings_input_component_outlined,
++          color: moteurOrange,
++          body: Column(
++            children: [
++              // Info chip
++              Padding(
++                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
++                child: Container(
++                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
++                  decoration: BoxDecoration(
++                    color: moteurOrange.withValues(alpha: 0.08),
++                    borderRadius: BorderRadius.circular(8),
++                    border: Border.all(color: moteurOrange.withValues(alpha: 0.3)),
++                  ),
++                  child: Row(
++                    children: [
++                      Icon(Icons.info_outline, size: 14, color: moteurOrange),
++                      const SizedBox(width: 6),
++                      Expanded(
++                        child: Text(
++                          Localization.translate(
++                            'سعر المحرك يُحسب تلقائياً من المنتج المختار في قاعدة البيانات. أضف هنا فقط سعر التركيب الإضافي.',
++                            lang,
++                          ),
++                          style: TextStyle(fontSize: 11, color: moteurOrange),
++                        ),
++                      ),
++                    ],
++                  ),
++                ),
++              ),
++              PriceEditRow(
++                title: Localization.translate('سعر التركيب', lang),
++                titleIcon: Icon(Icons.build_outlined, size: 18, color: moteurOrange),
++                subtitle: Localization.translate('يُضاف إلى سعر المحرك', lang),
++                currentPrice: moteurInstallPrice,
++                canChangePrices: canChangePrices,
++                onSave: (parsed) {
++                  _updateShutterSqmPrice('Moteur_Install', 0, parsed);
++                },
++              ),
++              const SizedBox(height: 4),
++            ],
++          ),
++        ),
++
++        // ── 4. Manivelle ──────────────────────────────────────────────────
++        sectionCard(
++          title: Localization.translate('المانيفال (Manivelle)', lang),
++          icon: Icons.rotate_right,
++          color: manivelleGreen,
++          body: Column(
++            children: [
++              PriceEditRow(
++                title: Localization.translate('سعر تركيب المانيفال', lang),
++                titleIcon: Icon(Icons.rotate_right, size: 18, color: manivelleGreen),
++                subtitle: Localization.translate('يُضاف إلى سعر القطعة', lang),
++                currentPrice: manivellePrice,
++                canChangePrices: canChangePrices,
++                onSave: (parsed) {
++                  _updateShutterSqmPrice('Manivelle', 0, parsed);
++                },
++              ),
++              const SizedBox(height: 4),
++            ],
++          ),
++        ),
++
++        // ── 5. Special Accessories ───────────────────────────────────────
++        sectionCard(
++          title: Localization.translate('إكسسوارات خاصة', lang),
++          icon: Icons.extension,
++          color: Colors.blueGrey,
++          body: Column(
++            children: [
++              PriceEditRow(
++                title: Localization.translate('سعر الكيت OB', lang),
++                titleIcon: const Icon(Icons.build_circle_outlined, size: 18, color: Colors.blueGrey),
++                currentPrice: obInstallPrice,
++                canChangePrices: canChangePrices,
++                onSave: (parsed) => _updateShutterSqmPrice('OB_Install', 0, parsed),
++              ),
++              const SizedBox(height: 4),
++              PriceEditRow(
++                title: Localization.translate('سعر ديمي OB', lang),
++                titleIcon: const Icon(Icons.build_circle_outlined, size: 18, color: Colors.blueGrey),
++                currentPrice: demiOBInstallPrice,
++                canChangePrices: canChangePrices,
++                onSave: (parsed) => _updateShutterSqmPrice('DemiOB_Install', 0, parsed),
++              ),
++              const SizedBox(height: 4),
++              PriceEditRow(
++                title: Localization.translate('سعر الفيرو سنترال', lang),
++                titleIcon: const Icon(Icons.build_circle_outlined, size: 18, color: Colors.blueGrey),
++                currentPrice: verrouInstallPrice,
++                canChangePrices: canChangePrices,
++                onSave: (parsed) => _updateShutterSqmPrice('Verrou_Install', 0, parsed),
++              ),
++              const SizedBox(height: 4),
++            ],
++          ),
++        ),
++      ],
++    );
++  }
++
++  /// Dialog to pick any color freely and assign it to a blade_type in ShutterSqmPrices
++  Future<void> _showAddSqmColorDialog(String bladeKey, Color accentColor) async {
++    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
++    final alreadyAdded = shutterSqmPrices[bladeKey]?.keys.toSet() ?? {};
++
++    await showDialog(
++      context: context,
++      builder: (dialogContext) {
++        return StatefulBuilder(
++          builder: (ctx, setStateDialog) {
++            final available = allColorList
++                .where((c) => !alreadyAdded.contains(c['id'] as int))
++                .toList();
++
++            return AlertDialog(
++              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
++              title: Row(
++                children: [
++                  Icon(Icons.palette_outlined, color: accentColor),
++                  const SizedBox(width: 8),
++                  Expanded(
++                    child: Text(
++                      Localization.translate('اختر لوناً لـ $bladeKey', lang),
++                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
++                    ),
++                  ),
++                ],
++              ),
++              content: SizedBox(
++                width: double.maxFinite,
++                height: 400,
++                child: available.isEmpty
++                    ? Center(
++                        child: Text(
++                          Localization.translate('كل الألوان المتاحة مضافة بالفعل.', lang),
++                          style: const TextStyle(color: Colors.grey),
++                          textAlign: TextAlign.center,
++                        ),
++                      )
++                    : ListView.builder(
++                        itemCount: available.length,
++                        itemBuilder: (_, i) {
++                          final color = available[i];
++                          final cId   = color['id'] as int;
++                          return ListTile(
++                            leading: _buildColorCircle(color, size: 28),
++                            title: Text(color['name'].toString()),
++                            trailing: Icon(
++                              Icons.add_circle_outline,
++                              color: accentColor,
++                            ),
++                            onTap: () async {
++                              // Add with price = 0 so user can fill it in the list
++                              await db.insertOrUpdateShutterSqmPrice(bladeKey, cId, 0.0);
++                              await _loadAllData();
++                              if (dialogContext.mounted) {
++                                Navigator.pop(dialogContext);
++                              }
++                            },
++                          );
++                        },
++                      ),
++              ),
++              actions: [
++                TextButton(
++                  onPressed: () => Navigator.pop(dialogContext),
++                  child: Text(Localization.translate('إغلاق', lang)),
++                ),
++              ],
++            );
++          },
++        );
++      },
++    );
++  }
++
++
++
++  Future<void> _updateShutterSqmPrice(
++    String bladeType,
++    int colorId,
++    double price,
++  ) async {
++    final lang = Provider.of<AppSettingsProvider>(
++      context,
++      listen: false,
++    ).language;
++    await db.insertOrUpdateShutterSqmPrice(bladeType, colorId, price);
++    _loadAllData();
++    if (context.mounted) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(
++          content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
++        ),
++      );
++    }
++  }
++
+   Future<void> _updateShutterColorPrice(
+     int shutterId,
+     int colorId,
