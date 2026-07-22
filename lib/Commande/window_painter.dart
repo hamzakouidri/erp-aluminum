@@ -4585,25 +4585,35 @@ class WindowPainter extends CustomPainter {
     } else {
       // Normal PVC / standard window handle — base plate + lever always pointing downward
       final RRect basePlate = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset.zero, width: 18, height: 60),
-        const Radius.circular(9),
+        Rect.fromCenter(center: Offset.zero, width: 20, height: 64),
+        const Radius.circular(8),
       );
       canvas.drawRRect(basePlate, basePaint);
       canvas.drawRRect(basePlate, borderPaint);
 
+      // Screw caps on base plate
+      canvas.drawCircle(const Offset(0, -21), 1.8, Paint()..color = Colors.black45);
+      canvas.drawCircle(const Offset(0, 21), 1.8, Paint()..color = Colors.black45);
+
+      // Central pivot hub
+      canvas.drawCircle(Offset.zero, 8.0, basePaint);
+      canvas.drawCircle(Offset.zero, 8.0, borderPaint);
+
+      // Lever handle body extending downwards
       final RRect lever = RRect.fromRectAndRadius(
-        Rect.fromLTRB(-7, -7, 7, 75),
+        Rect.fromLTRB(-8, -5, 8, 76),
         const Radius.circular(7),
       );
       canvas.drawRRect(lever, basePaint);
       canvas.drawRRect(lever, borderPaint);
 
+      // Highlight stripe along the window lever handle for 3D depth
       canvas.drawLine(
-        const Offset(-3, 2),
-        const Offset(-3, 70),
+        const Offset(-4, 0),
+        const Offset(-4, 70),
         Paint()
-          ..color = Colors.white
-          ..strokeWidth = 1.5,
+          ..color = Colors.white.withValues(alpha: 0.6)
+          ..strokeWidth = 2.0,
       );
     }
     canvas.restore();
