@@ -823,15 +823,23 @@ class DevisBuilder {
     final glassLines = <String>[];
     final uniqueSpecs = <String>{};
     for (final g in allGlassSpecs) {
-      final structure = g['structure']?.toString() ?? 'single';
-      final key = '${structure}_${g['thicknessOuter']}_${g['thicknessInner']}_${g['intercallThickness']}_${g['finishOuter']}_${g['colorOuter']}_${g['processingOuter']}_${g['temperedOuter']}_${g['finishInner']}_${g['colorInner']}_${g['processingInner']}_${g['temperedInner']}';
+      final structure = g['structure']?.toString().toLowerCase().trim() ?? 'single';
+      final double tOutVal = (g['thicknessOuter'] as num?)?.toDouble() ?? 6.0;
+      final double tInVal = (g['thicknessInner'] as num?)?.toDouble() ?? 4.0;
+      final int tInterVal = (g['intercallThickness'] as num?)?.toInt() ?? 16;
+      final String fOutVal = g['finishOuter']?.toString().toLowerCase().trim() ?? '';
+      final String cOutVal = g['colorOuter']?.toString().toLowerCase().trim() ?? '';
+      final String pOutVal = g['processingOuter']?.toString().toLowerCase().trim() ?? '';
+      final bool tempOutVal = g['temperedOuter'] as bool? ?? false;
+      final String key = '${structure}_${tOutVal}_${tInVal}_${tInterVal}_${fOutVal}_${cOutVal}_${pOutVal}_${tempOutVal}';
+
       if (uniqueSpecs.contains(key)) continue;
       uniqueSpecs.add(key);
 
       if (structure == 'double') {
-        final tOut = (g['thicknessOuter'] as num?)?.toDouble() ?? 4.0;
-        final tIn = (g['thicknessInner'] as num?)?.toDouble() ?? 4.0;
-        final tInter = (g['intercallThickness'] as num?)?.toInt() ?? 16;
+        final tOut = tOutVal;
+        final tIn = tInVal;
+        final tInter = tInterVal;
         final totalT = (tOut + tIn + tInter).toStringAsFixed(0);
         final tStr = '${tOut.toStringAsFixed(0)}+${tInter}+${tIn.toStringAsFixed(0)}';
 
@@ -864,7 +872,7 @@ class DevisBuilder {
       } else if (structure == 'closed') {
         final fv = g['finishOuter']?.toString() ?? '';
         final cv = g['colorOuter']?.toString() ?? '';
-        final double pThick = (g['thicknessOuter'] as num?)?.toDouble() ?? 24.0;
+        final double pThick = tOutVal;
         final pThickStr = '${pThick.toStringAsFixed(0)}mm';
         final outF = _formatFace(
           fv,
@@ -880,7 +888,7 @@ class DevisBuilder {
           glassLines.add('الزجاج: بانو ${pThick.toStringAsFixed(0)}مم ($outF)');
         }
       } else {
-        final tOut = (g['thicknessOuter'] as num?)?.toDouble() ?? 6.0;
+        final tOut = tOutVal;
         final tStr = '${tOut.toStringAsFixed(0)}mm';
         final outF = _formatFace(
           g['finishOuter']?.toString() ?? '',
@@ -900,16 +908,21 @@ class DevisBuilder {
 
     if (!isShutterOnly) {
       if (glassLines.isNotEmpty) {
-        details.addAll(glassLines);
+        for (final line in glassLines) {
+          if (!details.contains(line)) {
+            details.add(line);
+          }
+        }
       } else {
         final glass = item['glass']?.toString();
         if (glass != null && glass.isNotEmpty) {
-          if (_currentLang == AppLanguage.french) {
-            details.add('Vitrage: ${_glassLabel(glass)}');
-          } else if (_currentLang == AppLanguage.english) {
-            details.add('Glass: ${_glassLabel(glass)}');
-          } else {
-            details.add('الزجاج: ${_glassLabel(glass)}');
+          final glassStr = _currentLang == AppLanguage.french
+              ? 'Vitrage: ${_glassLabel(glass)}'
+              : _currentLang == AppLanguage.english
+                  ? 'Glass: ${_glassLabel(glass)}'
+                  : 'الزجاج: ${_glassLabel(glass)}';
+          if (!details.contains(glassStr)) {
+            details.add(glassStr);
           }
         }
       }
