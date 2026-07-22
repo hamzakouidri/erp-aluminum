@@ -329,13 +329,29 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         final int bBars = (caissonResult['grandTotalBottomCoverBars'] as int? ?? 0);
         final int pairs = (caissonResult['grandTotalPairs'] as int? ?? 0);
 
+        // Compute suggested price from DB
+        double suggestedPrice = 0.0;
+        try {
+          final ctPrices = await db.getCaissonTunnelPrices();
+          if (ctPrices.isNotEmpty) {
+            final priceRow = ctPrices.first;
+            final profileBar = (priceRow['profile_price_per_bar'] as num? ?? 0).toDouble();
+            final bottomBar = (priceRow['bottom_cover_price_per_bar'] as num? ?? 0).toDouble();
+            suggestedPrice = (cBars * profileBar) + (bBars * bottomBar);
+          }
+        } catch (_) {}
+
+        if (!context.mounted) return;
         final model = _makeModel(w: 1000, h: 300);
         model.isCaissonTunnel = true;
         model.isReplaced = false;
         model.manualNameOverride = 'Caisson Tunnel';
-        model.description = 'الكيت: ${caissonResult['kitType']} | بارات كيسون: $cBars (6م) | أغطية سفلية: $bBars (6م) | أغطية جانبية: $pairs زوج';
+        model.description = 'Kit: ${caissonResult['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
         model.quantity = 1;
         model.caissonPayload = caissonResult;
+        if (suggestedPrice > 0) {
+          model.manualPriceOverride = suggestedPrice;
+        }
 
         Navigator.pop(context, model);
       }

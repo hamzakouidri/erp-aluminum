@@ -1813,15 +1813,33 @@ class _CommandePageState extends State<CommandePage> {
                                     final int bBars = (result['grandTotalBottomCoverBars'] as int? ?? 0);
                                     final int pairs = (result['grandTotalPairs'] as int? ?? 0);
 
-                                    setState(() {
-                                      p.isCaissonTunnel = true;
-                                      p.isReplaced = false;
-                                      p.manualNameOverride = 'Caisson Tunnel';
-                                      p.description = 'الكيت: ${result['kitType']} | بارات كيسون: $cBars (6م) | أغطية سفلية: $bBars (6م) | أغطية جانبية: $pairs زوج';
-                                      p.caissonPayload = result;
-                                      _highlightedProduct = p;
-                                    });
-                                    _scrollToHighlightedProduct();
+                                    // Compute suggested price from DB prices
+                                    double suggestedPrice = 0.0;
+                                    try {
+                                      final ctPrices = await widget.db.getCaissonTunnelPrices();
+                                      if (ctPrices.isNotEmpty) {
+                                        // Use first color entry (or match by color if set)
+                                        final priceRow = ctPrices.first;
+                                        final profileBar = (priceRow['profile_price_per_bar'] as num? ?? 0).toDouble();
+                                        final bottomBar = (priceRow['bottom_cover_price_per_bar'] as num? ?? 0).toDouble();
+                                        suggestedPrice = (cBars * profileBar) + (bBars * bottomBar);
+                                      }
+                                    } catch (_) {}
+
+                                    if (mounted) {
+                                      setState(() {
+                                        p.isCaissonTunnel = true;
+                                        p.isReplaced = false;
+                                        p.manualNameOverride = 'Caisson Tunnel';
+                                        p.description = 'Kit: ${result['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
+                                        p.caissonPayload = result;
+                                        if (suggestedPrice > 0 && p.manualPriceOverride == null) {
+                                          p.manualPriceOverride = suggestedPrice;
+                                        }
+                                        _highlightedProduct = p;
+                                      });
+                                      _scrollToHighlightedProduct();
+                                    }
                                   }
                                   return;
                                 }

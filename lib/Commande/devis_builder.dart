@@ -656,6 +656,80 @@ class DevisBuilder {
     final isReplaced = (map['isReplaced'] == true || map['isReplaced']?.toString().toLowerCase() == 'true');
     final replacementReason = map['replacementReason']?.toString() ?? '';
 
+    // ── Caisson Tunnel: build details from caissonPayload ──────────────────
+    final bool isCaissonTunnel = map['isCaissonTunnel'] == true ||
+        title.contains('Caisson Tunnel');
+    if (isCaissonTunnel) {
+      final kitTypeStr = map['kitType']?.toString() ?? '';
+      final kitLabel = kitTypeStr.contains('16') ? '+16 cm' : '+11 cm';
+      final grandBars = map['grandTotalCaissonBars'] ?? 0;
+      final grandBottom = map['grandTotalBottomCoverBars'] ?? 0;
+      final grandPairs = map['grandTotalPairs'] ?? 0;
+      final itemsCount = map['itemsCount'] ?? 0;
+      final sizeCalcs = map['sizeCalculations'];
+
+      if (_currentLang == AppLanguage.french) {
+        details.add('Kit: $kitLabel');
+        details.add('Quantité: $itemsCount caisson(s) — $grandPairs paire(s)');
+        details.add('Profil caisson: $grandBars barre(s)');
+        details.add('Fond de caisson: $grandBottom barre(s)');
+        if (sizeCalcs is Map) {
+          for (final entry in sizeCalcs.entries) {
+            final c = entry.value as Map?;
+            if (c == null) continue;
+            final sz = c['sizeCm'] ?? entry.key;
+            final cBars = c['caissonBars'] ?? 0;
+            final bBars = c['bottomCoverBars'] ?? 0;
+            details.add('└ Caisson $sz cm: $cBars barre(s) profil + $bBars barre(s) fond');
+          }
+        }
+      } else if (_currentLang == AppLanguage.english) {
+        details.add('Kit: $kitLabel');
+        details.add('Qty: $itemsCount caisson(s) — $grandPairs pair(s)');
+        details.add('Caisson profile: $grandBars bar(s)');
+        details.add('Bottom cover: $grandBottom bar(s)');
+        if (sizeCalcs is Map) {
+          for (final entry in sizeCalcs.entries) {
+            final c = entry.value as Map?;
+            if (c == null) continue;
+            final sz = c['sizeCm'] ?? entry.key;
+            final cBars = c['caissonBars'] ?? 0;
+            final bBars = c['bottomCoverBars'] ?? 0;
+            details.add('└ Caisson $sz cm: $cBars profile bar(s) + $bBars bottom bar(s)');
+          }
+        }
+      } else {
+        details.add('Kit: $kitLabel');
+        details.add('عدد الكيسونات: $itemsCount — $grandPairs زوج');
+        details.add('بارات البروفيل: $grandBars بارة');
+        details.add('بارات الفوند: $grandBottom بارة');
+        if (sizeCalcs is Map) {
+          for (final entry in sizeCalcs.entries) {
+            final c = entry.value as Map?;
+            if (c == null) continue;
+            final sz = c['sizeCm'] ?? entry.key;
+            final cBars = c['caissonBars'] ?? 0;
+            final bBars = c['bottomCoverBars'] ?? 0;
+            details.add('└ كيسون $sz سم: $cBars بارة بروفيل + $bBars بارة فوند');
+          }
+        }
+      }
+
+      return DevisLineItem(
+        imagePath: 'assets/Icon/caisson_tunnel.jpg',
+        title: title,
+        details: details,
+        unitPrice: unitPrice,
+        quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+        isReplaced: isReplaced,
+        replacementReason: replacementReason,
+        width: 0,
+        height: 0,
+        color: itemProfColor,
+        detailId: detailId,
+      );
+    }
+
     final hasPartitions = map.isNotEmpty && map['zones'] != null;
     if (!hasPartitions && manualDesc != null && manualDesc.trim().isNotEmpty) {
       final overrideLines = manualDesc.trim().split('\n');
@@ -663,9 +737,7 @@ class DevisBuilder {
         details.add(line);
       }
       return DevisLineItem(
-        imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('Caisson Tunnel'))
-            ? 'assets/Icon/caisson_tunnel.jpg'
-            : item['drawing_image_path']?.toString(),
+        imagePath: item['drawing_image_path']?.toString(),
         title: title,
         details: details,
         unitPrice: unitPrice,
@@ -1257,9 +1329,7 @@ class DevisBuilder {
     }
 
     return DevisLineItem(
-      imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('Caisson Tunnel'))
-          ? 'assets/Icon/caisson_tunnel.jpg'
-          : item['drawing_image_path']?.toString(),
+      imagePath: item['drawing_image_path']?.toString(),
       title: title,
       details: details,
       unitPrice: unitPrice,

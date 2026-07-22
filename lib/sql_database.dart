@@ -41,6 +41,7 @@ class SqlDatabase {
     'ShutterComponentColors',
     'ShutterSqmPrices',
     'ShutterBoxLimits',
+    'CaissonTunnelPrices',
     'SeriesColorPrices',
     'SectionColorPrices',
     'AccessoryColorPrices',
@@ -489,6 +490,19 @@ class SqlDatabase {
               blade_id INTEGER NOT NULL,
               max_height REAL NOT NULL,
               FOREIGN KEY (blade_id) REFERENCES ShutterComponents(id) ON DELETE CASCADE
+            )
+          ''');
+        } catch (_) {}
+
+        try {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS CaissonTunnelPrices (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              color_id INTEGER NOT NULL,
+              profile_price_per_bar REAL NOT NULL DEFAULT 0.0,
+              bottom_cover_price_per_bar REAL NOT NULL DEFAULT 0.0,
+              price_per_meter REAL NOT NULL DEFAULT 0.0,
+              UNIQUE(color_id)
             )
           ''');
         } catch (_) {}
@@ -7846,6 +7860,61 @@ class SqlDatabase {
     if (myDb == null) return -1;
     final res = await myDb.delete(
       'ShutterBoxLimits',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
+  // ── Caisson Tunnel Prices ─────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getCaissonTunnelPrices() async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    try {
+      return await myDb.rawQuery('''
+        SELECT 
+          ctp.id,
+          ctp.color_id,
+          ctp.profile_price_per_bar,
+          ctp.bottom_cover_price_per_bar,
+          ctp.price_per_meter,
+          c.name as color_name,
+          c.hex_code as color_hex
+        FROM CaissonTunnelPrices ctp
+        LEFT JOIN Colors c ON ctp.color_id = c.id
+        ORDER BY c.name ASC
+      ''');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> upsertCaissonTunnelPrice({
+    required int colorId,
+    required double profilePricePerBar,
+    required double bottomCoverPricePerBar,
+    required double pricePerMeter,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.execute('''
+      INSERT INTO CaissonTunnelPrices (color_id, profile_price_per_bar, bottom_cover_price_per_bar, price_per_meter)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(color_id) DO UPDATE SET
+        profile_price_per_bar = excluded.profile_price_per_bar,
+        bottom_cover_price_per_bar = excluded.bottom_cover_price_per_bar,
+        price_per_meter = excluded.price_per_meter
+    ''', [colorId, profilePricePerBar, bottomCoverPricePerBar, pricePerMeter]);
+    CloudSyncService().notifyChange();
+  }
+
+  Future<int> deleteCaissonTunnelPrice(int id) async {
+    final myDb = await db;
+    if (myDb == null) return -1;
+    final res = await myDb.delete(
+      'CaissonTunnelPrices',
       where: 'id = ?',
       whereArgs: [id],
     );

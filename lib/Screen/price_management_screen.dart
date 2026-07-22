@@ -50,6 +50,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   List<Map<String, dynamic>> profilesList = [];
   List<Map<String, dynamic>> shutterBoxLimitsList = [];
   List<Map<String, dynamic>> kitBundlesList = [];
+  List<Map<String, dynamic>> caissonTunnelPricesList = [];
 
 
   Map<int, Map<int, double>> seriesColorPrices = {};
@@ -79,7 +80,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 8,
+      length: 9,
       vsync: this,
       initialIndex: widget.initialIndex,
     );
@@ -228,7 +229,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     try {
       kbList = await safeQuery('KitBundles');
     } catch (_) {}
-    
+
+    List<Map<String, dynamic>> ctPricesList = [];
+    try {
+      ctPricesList = await db.getCaissonTunnelPrices();
+    } catch (_) {}
+
     List<Map<String, dynamic>> limitsList = [];
 
     try {
@@ -372,6 +378,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       profilesList = pList;
       shutterBoxLimitsList = limitsList;
       kitBundlesList = kbList;
+      caissonTunnelPricesList = ctPricesList;
 
       seriesColorPrices = tempPrices;
       accessoryColorPrices = tempAccPrices;
@@ -1178,6 +1185,54 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       );
     }
 
+    // ── Caisson Tunnel section ───────────────────────────────────────────
+    final caissonDbNames = shutterList.where((item) {
+      final name = (item['name'] ?? '').toString().toLowerCase();
+      final type = (item['component_type'] ?? '').toString().toLowerCase();
+      return type == 'caisson_tunnel' || name.contains('caisson');
+    }).map((item) => (item['name'] ?? '').toString()).where((n) => n.isNotEmpty).toSet();
+
+    final List<String> caissonTypesList = caissonDbNames.isNotEmpty
+        ? caissonDbNames.toList()
+        : ['Caisson Tunnel 25 cm', 'Caisson Tunnel 30 cm', 'Caisson Tunnel 40 cm'];
+
+    final List<Widget> caissonSubSections = [];
+    const Color caissonOrange = Colors.deepOrange;
+    for (int i = 0; i < caissonTypesList.length; i++) {
+      final caissonName = caissonTypesList[i];
+
+      caissonSubSections.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (i > 0) const Divider(height: 1, thickness: 0.8, color: Color(0xFFFFCC80)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Row(
+                children: [
+                  const Icon(Icons.view_in_ar_rounded, size: 16, color: caissonOrange),
+                  const SizedBox(width: 6),
+                  Text(
+                    caissonName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: caissonOrange,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            colorPriceSection(
+              bladeKey: caissonName,
+              accentColor: caissonOrange,
+              subtitle: Localization.translate('سعر المتر الخطي', lang),
+            ),
+          ],
+        ),
+      );
+    }
+
     // ── Moteur installation fee ───────────────────────────────────────────
     final double moteurInstallPrice =
         (shutterSqmPrices['Moteur_Install']?[0]) ?? 0.0;
@@ -1211,6 +1266,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   ),
                 )
               : Column(children: lameSubSections),
+        ),
+
+        // ── 1.5 Caisson Tunnel ─────────────────────────────────────────────
+        sectionCard(
+          title: Localization.translate('Caisson Tunnel — سعر المتر الخطي', lang),
+          icon: Icons.view_in_ar_rounded,
+          color: caissonOrange,
+          body: caissonSubSections.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    Localization.translate('لا توجد أنواع Caisson Tunnel في قاعدة البيانات.', lang),
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+                )
+              : Column(children: caissonSubSections),
         ),
 
         // ── 2. Coulisses (by type, not color) ─────────────────────────────
@@ -2557,6 +2628,429 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Caisson Tunnel Pricing Tab
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCaissonTunnelPricingTab(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    const Color caissonColor = Color(0xFFE65100); // deep orange
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: canChangePrices
+          ? FloatingActionButton.extended(
+              onPressed: () => _showAddEditCaissonPriceDialog(null),
+              backgroundColor: caissonColor,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Ajouter couleur', style: TextStyle(color: Colors.white)),
+            )
+          : null,
+      body: caissonTunnelPricesList.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.view_in_ar_rounded, size: 72, color: caissonColor.withValues(alpha: 0.4)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Aucun prix Caisson Tunnel enregistré',
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontFamily: 'Cairo'),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  if (canChangePrices)
+                    ElevatedButton.icon(
+                      onPressed: () => _showAddEditCaissonPriceDialog(null),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Ajouter un prix'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: caissonColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                // Header explaining the 3 prices
+                Container(
+                  margin: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [caissonColor.withValues(alpha: 0.1), caissonColor.withValues(alpha: 0.03)],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: caissonColor.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.view_in_ar_rounded, color: caissonColor, size: 36),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Caisson Tunnel — Prix par couleur',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Cairo'),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Barre profil (DA/barre) • Fond caisson (DA/barre) • Prix au mètre (DA/ml)',
+                              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Column headers
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 40),
+                      const Expanded(flex: 3, child: Text('Couleur', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey))),
+                      Expanded(flex: 2, child: Text('Profil\n(DA/barre)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey.shade700), textAlign: TextAlign.center)),
+                      Expanded(flex: 2, child: Text('Fond\n(DA/barre)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey.shade700), textAlign: TextAlign.center)),
+                      Expanded(flex: 2, child: Text('Prix/ml\n(DA/m)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey.shade700), textAlign: TextAlign.center)),
+                      const SizedBox(width: 72),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                // List
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(10),
+                    itemCount: caissonTunnelPricesList.length,
+                    itemBuilder: (context, index) {
+                      final row = caissonTunnelPricesList[index];
+                      final colorName = row['color_name']?.toString() ?? 'Inconnu';
+                      final hex = row['color_hex']?.toString() ?? '#9E9E9E';
+                      final profilePrice = (row['profile_price_per_bar'] as num?)?.toDouble() ?? 0.0;
+                      final bottomPrice = (row['bottom_cover_price_per_bar'] as num?)?.toDouble() ?? 0.0;
+                      final meterPrice = (row['price_per_meter'] as num?)?.toDouble() ?? 0.0;
+
+                      Color dotColor = Colors.grey;
+                      try { dotColor = Color(int.parse(hex.replaceFirst('#', '0xFF'))); } catch (_) {}
+
+                      return Container(
+                        margin: const EdgeInsets.symmetric(vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: caissonColor.withValues(alpha: 0.15)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withValues(alpha: 0.07),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          child: Row(
+                            children: [
+                              // Color dot
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: dotColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.grey.shade300),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              // Color name
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  colorName,
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              // Profile price
+                              Expanded(
+                                flex: 2,
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1565C0).withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      profilePrice == 0 ? '—' : '${profilePrice.toStringAsFixed(0)} DA',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Bottom cover price
+                              Expanded(
+                                flex: 2,
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      bottomPrice == 0 ? '—' : '${bottomPrice.toStringAsFixed(0)} DA',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.orange.shade800),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Price per meter
+                              Expanded(
+                                flex: 2,
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withValues(alpha: 0.09),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      meterPrice == 0 ? '—' : '${meterPrice.toStringAsFixed(0)} DA',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2E7D32)),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Actions
+                              if (canChangePrices)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.edit, color: caissonColor, size: 20),
+                                      onPressed: () => _showAddEditCaissonPriceDialog(row),
+                                      tooltip: 'Modifier',
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                      onPressed: () => _confirmDeleteCaissonPrice(row['id'] as int),
+                                      tooltip: 'Supprimer',
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _confirmDeleteCaissonPrice(int id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Supprimer ce tarif ?', style: TextStyle(fontFamily: 'Cairo')),
+        content: const Text('Cette action est irréversible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await db.deleteCaissonTunnelPrice(id);
+      _loadAllData();
+    }
+  }
+
+  Future<void> _showAddEditCaissonPriceDialog(Map<String, dynamic>? existing) async {
+    // Determine color choices: all available colors not yet set, or editing existing
+    final usedColorIds = caissonTunnelPricesList.map((r) => r['color_id'] as int).toSet();
+
+    // Available colors: all colors, for new entry exclude already used; for edit allow the current one
+    List<Map<String, dynamic>> availableColors;
+    if (existing == null) {
+      availableColors = allColorList.where((c) => !usedColorIds.contains(c['id'] as int)).toList();
+    } else {
+      availableColors = allColorList;
+    }
+
+    if (availableColors.isEmpty && existing == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Toutes les couleurs ont déjà un tarif Caisson Tunnel.')),
+      );
+      return;
+    }
+
+    int? selectedColorId = existing != null
+        ? existing['color_id'] as int
+        : (availableColors.isNotEmpty ? availableColors.first['id'] as int : null);
+
+    final profileCtrl = TextEditingController(
+      text: existing != null ? (existing['profile_price_per_bar'] as num).toStringAsFixed(0) : '',
+    );
+    final bottomCtrl = TextEditingController(
+      text: existing != null ? (existing['bottom_cover_price_per_bar'] as num).toStringAsFixed(0) : '',
+    );
+    final meterCtrl = TextEditingController(
+      text: existing != null ? (existing['price_per_meter'] as num).toStringAsFixed(0) : '',
+    );
+
+    const Color caissonColor = Color(0xFFE65100);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (context, setStateDlg) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            contentPadding: const EdgeInsets.all(20),
+            title: Row(
+              children: [
+                const Icon(Icons.view_in_ar_rounded, color: caissonColor),
+                const SizedBox(width: 10),
+                Text(
+                  existing == null ? 'Nouveau tarif Caisson Tunnel' : 'Modifier le tarif',
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Color dropdown
+                  DropdownButtonFormField<int>(
+                    value: selectedColorId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Couleur',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      prefixIcon: const Icon(Icons.palette),
+                    ),
+                    items: availableColors.map((c) {
+                      Color dot = Colors.grey;
+                      try { dot = Color(int.parse((c['hex_code'] ?? '#9E9E9E').toString().replaceFirst('#', '0xFF'))); } catch (_) {}
+                      return DropdownMenuItem<int>(
+                        value: c['id'] as int,
+                        child: Row(
+                          children: [
+                            Container(width: 16, height: 16, decoration: BoxDecoration(color: dot, shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300))),
+                            const SizedBox(width: 8),
+                            Flexible(child: Text(c['name']?.toString() ?? '', overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: existing == null
+                        ? (v) => setStateDlg(() => selectedColorId = v)
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+                  // Profile price per bar
+                  TextField(
+                    controller: profileCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Barre profil caisson (DA/barre)',
+                      prefixIcon: const Icon(Icons.architecture, color: Color(0xFF1565C0)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      filled: true,
+                      fillColor: const Color(0xFF1565C0).withValues(alpha: 0.04),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Bottom cover price per bar
+                  TextField(
+                    controller: bottomCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Fond de caisson (DA/barre)',
+                      prefixIcon: Icon(Icons.horizontal_rule, color: Colors.orange.shade700),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      filled: true,
+                      fillColor: Colors.orange.withValues(alpha: 0.04),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Price per meter
+                  TextField(
+                    controller: meterCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Prix au mètre linéaire (DA/ml)',
+                      prefixIcon: const Icon(Icons.straighten, color: Color(0xFF2E7D32)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      filled: true,
+                      fillColor: Colors.green.withValues(alpha: 0.04),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: caissonColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  if (selectedColorId == null) return;
+                  final profilePrice = double.tryParse(profileCtrl.text.trim()) ?? 0.0;
+                  final bottomPrice = double.tryParse(bottomCtrl.text.trim()) ?? 0.0;
+                  final meterPrice = double.tryParse(meterCtrl.text.trim()) ?? 0.0;
+
+                  await db.upsertCaissonTunnelPrice(
+                    colorId: selectedColorId!,
+                    profilePricePerBar: profilePrice,
+                    bottomCoverPricePerBar: bottomPrice,
+                    pricePerMeter: meterPrice,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _loadAllData();
+                },
+                child: Text(existing == null ? 'Ajouter' : 'Enregistrer'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+
   Future<void> _confirmDeleteShutterBoxLimit(int id) async {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final confirmed = await showDialog<bool>(
@@ -2752,6 +3246,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             Tab(text: Localization.translate("الإكسسوارات", lang)),
             Tab(text: Localization.translate("أسعار المقاطع", lang)),
             Tab(text: Localization.translate("حدود الصناديق (Caissons)", lang)),
+            const Tab(text: 'Caisson Tunnel'),
           ],
         ),
       ),
@@ -2775,6 +3270,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 _buildAccessoryColorTab(context),
                 _buildSectionPricingTab(context),
                 _buildShutterBoxLimitsTab(context),
+                _buildCaissonTunnelPricingTab(context),
               ],
             ),
     );
