@@ -653,7 +653,7 @@ class DevisBuilder {
         ? (double.tryParse(map['height'].toString())?.toInt() ?? 0)
         : (double.tryParse(item['hauteur']?.toString() ?? '0')?.toInt() ?? 0);
 
-    final isReplaced = (map['isReplaced'] == true || map['isReplaced']?.toString().toLowerCase() == 'true') || (_toDouble(item['price']) == 0.0);
+    final isReplaced = (map['isReplaced'] == true || map['isReplaced']?.toString().toLowerCase() == 'true');
     final replacementReason = map['replacementReason']?.toString() ?? '';
 
     final hasPartitions = map.isNotEmpty && map['zones'] != null;
@@ -663,7 +663,9 @@ class DevisBuilder {
         details.add(line);
       }
       return DevisLineItem(
-        imagePath: item['drawing_image_path']?.toString(),
+        imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('كيسون النفق'))
+            ? 'assets/Icon/caisson_tunnel.jpg'
+            : item['drawing_image_path']?.toString(),
         title: title,
         details: details,
         unitPrice: unitPrice,
@@ -1255,7 +1257,9 @@ class DevisBuilder {
     }
 
     return DevisLineItem(
-      imagePath: item['drawing_image_path']?.toString(),
+      imagePath: (map['isCaissonTunnel'] == true || title.contains('Caisson Tunnel') || title.contains('كيسون النفق'))
+          ? 'assets/Icon/caisson_tunnel.jpg'
+          : item['drawing_image_path']?.toString(),
       title: title,
       details: details,
       unitPrice: unitPrice,

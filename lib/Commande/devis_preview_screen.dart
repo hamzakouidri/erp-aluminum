@@ -1091,6 +1091,24 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildItemImage(DevisLineItem item) {
     final path = item.imagePath;
+
+    if (item.title.contains('Caisson Tunnel') || item.title.contains('كيسون النفق') || (path != null && path.contains('caisson_tunnel'))) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        padding: const EdgeInsets.all(2),
+        child: Image.asset(
+          'Icon/caisson_tunnel.jpg',
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) =>
+              Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
+        ),
+      );
+    }
+
     if (path != null && path.isNotEmpty && File(path).existsSync()) {
       return Container(
         decoration: BoxDecoration(

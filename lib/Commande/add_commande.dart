@@ -17,6 +17,7 @@ import 'package:database_data/Commande/order_date_utils.dart';
 import 'dart:convert';
 import 'order_table_edit_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 
 class CommandePage extends StatefulWidget {
   final SqlDatabase db;
@@ -1776,6 +1777,31 @@ class _CommandePageState extends State<CommandePage> {
                             IconButton(
                               icon: const Icon(Icons.edit, color: Colors.blue),
                               onPressed: () async {
+                                if (p.isCaissonTunnel || (p.manualNameOverride?.contains('Caisson Tunnel') == true)) {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const CaissonTunnelScreen(),
+                                    ),
+                                  );
+                                  if (result != null && result is Map<String, dynamic> && mounted) {
+                                    final int cBars = (result['grandTotalCaissonBars'] as int? ?? 0);
+                                    final int bBars = (result['grandTotalBottomCoverBars'] as int? ?? 0);
+                                    final int pairs = (result['grandTotalPairs'] as int? ?? 0);
+
+                                    setState(() {
+                                      p.isCaissonTunnel = true;
+                                      p.isReplaced = false;
+                                      p.manualNameOverride = 'كيسون النفق (Caisson Tunnel)';
+                                      p.description = 'الكيت: ${result['kitType']} | بارات كيسون: $cBars (6م) | أغطية سفلية: $bBars (6م) | أغطية جانبية: $pairs زوج';
+                                      p.caissonPayload = result;
+                                      _highlightedProduct = p;
+                                    });
+                                    _scrollToHighlightedProduct();
+                                  }
+                                  return;
+                                }
+
                                 // العودة إلى الرسم لتعديل النافذة أو الستار
                                 if (p.isShutterOnly) {
                                   await Navigator.push(

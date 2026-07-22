@@ -85,8 +85,20 @@ class PdfInvoiceApi {
     final imageWidgets = <int, pw.MemoryImage>{};
     if (!isOfficial) {
       for (int i = 0; i < data.items.length; i++) {
-        final path = data.items[i].imagePath;
-        if (path != null && path.isNotEmpty) {
+        final item = data.items[i];
+        final path = item.imagePath;
+
+        if (item.title.contains('Caisson Tunnel') || item.title.contains('كيسون النفق') || (path != null && path.contains('caisson_tunnel'))) {
+          try {
+            final bytes = (await rootBundle.load('Icon/caisson_tunnel.jpg')).buffer.asUint8List();
+            imageWidgets[i] = pw.MemoryImage(bytes);
+          } catch (_) {
+            try {
+              final bytes = (await rootBundle.load('assets/Icon/caisson_tunnel.jpg')).buffer.asUint8List();
+              imageWidgets[i] = pw.MemoryImage(bytes);
+            } catch (_) {}
+          }
+        } else if (path != null && path.isNotEmpty) {
           try {
             final file = File(path);
             if (file.existsSync()) {
