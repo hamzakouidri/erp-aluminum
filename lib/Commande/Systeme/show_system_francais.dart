@@ -9385,13 +9385,13 @@ class _WindowViewState extends State<WindowView> {
                 }
               }
 
-              // 6. PVC handle on Aluminium (مقبض نافذة بي في سي)
+              // Window handle (مقبض نافذة / Poignée de fenêtre)
               children.add(
                 _ContentButton(
                   label: zone.content == ZoneContent.doubleSash
-                      ? Localization.translate('مقبض نافذة بي في سي (قطعتين)', lang)
-                      : Localization.translate('مقبض نافذة بي في سي', lang),
-                  icon: Icons.door_back_door_rounded,
+                      ? Localization.translate('مقبض نافذة (قطعتين)', lang)
+                      : Localization.translate('مقبض نافذة', lang),
+                  icon: Icons.window_rounded,
                   selected: zone.lockType == LockType.none && zone.useOctoHandle != true && zone.usePvcHandleOnAlu == true,
                   onPressed: () {
                     setState(() {
@@ -9406,8 +9406,29 @@ class _WindowViewState extends State<WindowView> {
               );
             } else {
               // Window sashes (Thin Sash / الظلفة الرقيقة)
+              // Window handle (مقبض نافذة / Poignée de fenêtre)
+              children.add(
+                _ContentButton(
+                  label: zone.content == ZoneContent.doubleSash
+                      ? Localization.translate('مقبض نافذة (قطعتين)', lang)
+                      : Localization.translate('مقبض نافذة', lang),
+                  icon: Icons.window_rounded,
+                  selected: zone.lockType == LockType.none && zone.useOctoHandle != true,
+                  onPressed: () {
+                    setState(() {
+                      widget.model.setSelectedZoneLockType(LockType.none);
+                      zone.useOctoHandle = false;
+                      widget.model.setSelectedZonePvcHandleOnAlu(true);
+                      widget.model.setSelectedZoneClassicHandle(false);
+                      widget.model.refreshUI();
+                    });
+                  },
+                ),
+              );
+              children.add(const SizedBox(width: 8));
+
               if (zone.content == ZoneContent.doubleSash) {
-                // Cremone x2 ONLY
+                // Cremone x2
                 children.add(
                   _ContentButton(
                     label: Localization.translate('مقبض كريمون (قطعتين)', lang),
@@ -9425,8 +9446,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                 );
               } else {
-                // Single sash: Cremone, Octo, Point Lock ONLY (no PVC handle)
-                // Cremone
+                // Single sash: Cremone, Octo, Point Lock
                 children.add(
                   _ContentButton(
                     label: Localization.translate('مقبض كريمون', lang),

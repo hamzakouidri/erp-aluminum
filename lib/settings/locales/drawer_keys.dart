@@ -21,6 +21,16 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Système d\'atelier - Sélection du système',
     AppLanguage.english: 'Workshop System - System Selection',
   },
+  'مقبض نافذة': {
+    AppLanguage.arabic: 'مقبض نافذة',
+    AppLanguage.french: 'Poignée de fenêtre',
+    AppLanguage.english: 'Window handle',
+  },
+  'مقبض نافذة (قطعتين)': {
+    AppLanguage.arabic: 'مقبض نافذة (قطعتين)',
+    AppLanguage.french: 'Poignée de fenêtre (2 pcs)',
+    AppLanguage.english: 'Window handle (2 pcs)',
+  },
   'إدارة الإكسسوارات': {
     AppLanguage.arabic: 'إدارة الإكسسوارات',
     AppLanguage.french: 'Accessoires',
