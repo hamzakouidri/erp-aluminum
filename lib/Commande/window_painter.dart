@@ -2688,7 +2688,7 @@ class WindowPainter extends CustomPainter {
         }
 
         if ((overrideIsInternalView ?? model.isInternalView)) {
-          final bool drawHandle = (i == 0 || i == count - 1) && !model.isPVC;
+          final bool drawHandle = (i == 0 || i == count - 1);
           if (drawHandle) {
             _drawWindowDrawHandle(
               canvas,
@@ -4199,11 +4199,11 @@ class WindowPainter extends CustomPainter {
 
     bool isSlidingHandle =
         ((zone?.content == ZoneContent.slidingSash) ||
-        _isHandleSashProfile(zone)) && zone?.useClassicHandle != true;
+        _isHandleSashProfile(zone)) && zone?.useClassicHandle != true && !model.isPVC;
 
     bool isClassicSlidingHandle =
         ((zone?.content == ZoneContent.slidingSash) ||
-        _isHandleSashProfile(zone)) && zone?.useClassicHandle == true;
+        _isHandleSashProfile(zone)) && (zone?.useClassicHandle == true || model.isPVC);
 
     final bool isMarechal = zone?.lockType == LockType.rouleau || zone?.lockType == LockType.rouleau2000;
 

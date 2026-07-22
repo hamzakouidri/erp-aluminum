@@ -4957,7 +4957,7 @@ class WindowModel extends ChangeNotifier {
       double virtualH = 1800.0;
       double sX = (widgetSize.width - 40.0) / virtualW;
       double sY = (widgetSize.height - 40.0) / virtualH;
-      canvasScale = math.min(sX, sY) * 1.30;
+      canvasScale = math.min(sX, sY) * 0.90;
 
       double virtualDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
       double virtualDy = widgetSize.height / 2 - (virtualH / 2 * canvasScale);
@@ -4972,7 +4972,7 @@ class WindowModel extends ChangeNotifier {
       double virtualH = 1800.0;
       double sX = (widgetSize.width - 40.0) / virtualW;
       double sY = (widgetSize.height - 40.0) / virtualH;
-      canvasScale = math.min(sX, sY) * 1.30;
+      canvasScale = math.min(sX, sY) * 0.90;
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
       canvasDy = widgetSize.height / 2 - (virtualH / 2 * canvasScale);
       return;
@@ -4996,7 +4996,7 @@ class WindowModel extends ChangeNotifier {
 
     double sX = maxW / totalW;
     double sY = maxH / totalH;
-    canvasScale = math.min(sX, sY) * 1.30;
+    canvasScale = math.min(sX, sY) * 0.90;
 
     double boundsCenterX = (width + wallRight - wallLeft) / 2;
     double boundsCenterY = (height + wallBottom - wallTop) / 2;
