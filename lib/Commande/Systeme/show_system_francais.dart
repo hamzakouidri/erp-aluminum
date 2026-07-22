@@ -4703,16 +4703,17 @@ class _WindowViewState extends State<WindowView> {
               }).toList(),
             ),
 
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                Localization.translate('إطار سفلي', lang),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            if (widget.model.systemMode != 'sliding')
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  Localization.translate('إطار سفلي', lang),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                value: widget.model.hasBottomFrame,
+                activeThumbColor: Colors.blue,
+                onChanged: (value) => widget.model.toggleBottomFrame(value),
               ),
-              value: widget.model.hasBottomFrame,
-              activeThumbColor: Colors.blue,
-              onChanged: (value) => widget.model.toggleBottomFrame(value),
-            ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(

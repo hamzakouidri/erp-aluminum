@@ -1572,18 +1572,17 @@ class WindowModel extends ChangeNotifier {
     final nameLower = frame.name.toLowerCase().trim();
 
     if (systemMode != 'sliding') {
-      if (codeLower.contains('4002') ||
-          codeLower.contains('4003') ||
+      if (codeLower == '4002' ||
+          codeLower == '4003' ||
           nameLower.contains('monobloc') ||
           nameLower.contains('rénovation') ||
           nameLower.contains('renovation')) {
         return false;
       }
     } else {
-      if (codeLower.contains('02') ||
-          codeLower.contains('03') ||
-          nameLower.contains('monobloc') ||
-          nameLower.contains('3 rails')) {
+      if (codeLower == '02' ||
+          codeLower == '03' ||
+          nameLower.contains('monobloc')) {
         return false;
       }
     }
@@ -6926,6 +6925,11 @@ class WindowModel extends ChangeNotifier {
   }
 
   void toggleBottomFrame(bool value) {
+    if (systemMode == 'sliding') {
+      hasBottomFrame = true;
+      notifyListeners();
+      return;
+    }
     _saveSnapshot();
     hasBottomFrame = value;
     if (hasBottomFrame) {
