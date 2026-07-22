@@ -49,7 +49,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     ).language;
     final types = {
       'box': Localization.translate('صندوق', lang),
-      'caisson_tunnel': Localization.translate('صندوق النفق (Caisson Tunnel)', lang),
+      'caisson_tunnel': 'Caisson Tunnel',
       'blade': Localization.translate('شفرة/شريحة', lang),
       'track': Localization.translate('سكة/مسار', lang),
       'motor': Localization.translate('محرك', lang),
@@ -112,6 +112,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: selectedType,
+                  isExpanded: true,
                   decoration: InputDecoration(
                     labelText: Localization.translate('النوع', lang),
                     border: OutlineInputBorder(),
@@ -120,7 +121,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       .map(
                         (e) => DropdownMenuItem(
                           value: e.key,
-                          child: Text(e.value),
+                          child: Text(
+                            e.value,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
@@ -393,7 +397,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     ).language;
     final types = {
       'box': Localization.translate('صندوق', lang),
-      'caisson_tunnel': Localization.translate('صندوق النفق (Caisson Tunnel)', lang),
+      'caisson_tunnel': 'Caisson Tunnel',
       'blade': Localization.translate('شفرة/شريحة', lang),
       'track': Localization.translate('سكة/مسار', lang),
       'motor': Localization.translate('محرك', lang),
@@ -450,6 +454,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   initialValue: types.containsKey(selectedType)
                       ? selectedType
                       : 'box',
+                  isExpanded: true,
                   decoration: InputDecoration(
                     labelText: Localization.translate('النوع', lang),
                     border: OutlineInputBorder(),
@@ -458,7 +463,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       .map(
                         (e) => DropdownMenuItem(
                           value: e.key,
-                          child: Text(e.value),
+                          child: Text(
+                            e.value,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
@@ -837,7 +845,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
 
     final typeLabels = {
       'box': Localization.translate('صندوق', lang),
-      'caisson_tunnel': Localization.translate('صندوق النفق (Caisson Tunnel)', lang),
+      'caisson_tunnel': 'Caisson Tunnel',
       'blade': Localization.translate('شفرات', lang),
       'track': Localization.translate('سكة/مسار', lang),
       'motor': Localization.translate('محرك', lang),
@@ -892,12 +900,15 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             children: [
               Icon(Icons.category, color: sectionColor, size: 22),
               const SizedBox(width: 8),
-              Text(
-                typeLabels[type] ?? type,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: sectionColor,
+              Flexible(
+                child: Text(
+                  typeLabels[type] ?? type,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: sectionColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
