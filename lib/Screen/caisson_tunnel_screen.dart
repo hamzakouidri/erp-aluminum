@@ -417,7 +417,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
             color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             child: Wrap(
               alignment: WrapAlignment.spaceBetween,
-              crossAlignment: WrapCrossAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               spacing: 8,
               runSpacing: 6,
               children: [
