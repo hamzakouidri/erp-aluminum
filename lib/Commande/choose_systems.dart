@@ -319,6 +319,26 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
   }
 
   void _navigateToSystem(BuildContext context, String systemType) async {
+    if (systemType == 'caisson_tunnel') {
+      final caissonResult = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const CaissonTunnelScreen()),
+      );
+      if (caissonResult != null && caissonResult is Map<String, dynamic> && context.mounted) {
+        final int cBars = (caissonResult['grandTotalCaissonBars'] as int? ?? 0);
+        final int bBars = (caissonResult['grandTotalBottomCoverBars'] as int? ?? 0);
+        final int pairs = (caissonResult['grandTotalPairs'] as int? ?? 0);
+
+        final model = _makeModel(w: 1000, h: 300);
+        model.manualNameOverride = 'كيسون النفق (Caisson Tunnel)';
+        model.description = 'الكيت: ${caissonResult['kitType']} | بارات كيسون: $cBars (6م) | أغطية سفلية: $bBars (6م) | أغطية جانبية: $pairs زوج';
+        model.quantity = 1;
+
+        Navigator.pop(context, model);
+      }
+      return;
+    }
+
     Widget targetPage;
 
     switch (systemType) {
@@ -344,9 +364,6 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         targetPage = WindowView(
           model: _makeModel(thickness: 30),
         );
-        break;
-      case 'caisson_tunnel':
-        targetPage = const CaissonTunnelScreen();
         break;
       default:
         targetPage = SystemRoling(model: _makeModel());

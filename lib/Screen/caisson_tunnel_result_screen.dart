@@ -20,7 +20,6 @@ class CaissonTunnelResultScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: _primaryBlue.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _primaryBlue.withValues(alpha: 0.3)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
@@ -110,7 +109,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
             ),
             const SizedBox(height: 14),
 
-            // Main 5-Column Data Table Card
+            // Main 5-Column Grid Table Card with Explicit Column Dividing Lines
             Card(
               elevation: 2,
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -125,7 +124,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                       children: [
                         const Row(
                           children: [
-                            Icon(Icons.view_list_rounded, color: _primaryBlue, size: 22),
+                            Icon(Icons.grid_on_rounded, color: _primaryBlue, size: 22),
                             SizedBox(width: 8),
                             Text(
                               'جدول الكميات والمكونات لكيسون النفق:',
@@ -152,25 +151,61 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                     ),
                     const Divider(height: 20),
 
-                    // Interactive 5-Column Data Table
+                    // Grid Table with explicit vertical & horizontal dividing lines
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        columnSpacing: 18,
-                        headingRowHeight: 46,
-                        dataRowMinHeight: 65,
-                        dataRowMaxHeight: 85,
-                        headingRowColor: WidgetStateProperty.all(
-                          isDark ? const Color(0xFF2C2C2C) : Colors.blue.shade50,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 650),
+                        child: Table(
+                          border: TableBorder.all(
+                            color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
+                            width: 1.2,
+                          ),
+                          columnWidths: const {
+                            0: FixedColumnWidth(70),  // Image
+                            1: FlexColumnWidth(1.2), // Caisson Size
+                            2: FlexColumnWidth(1.2), // Kit Type
+                            3: FlexColumnWidth(2.2), // Caisson Bars
+                            4: FlexColumnWidth(2.6), // Bottom Cover & Side Covers
+                          },
+                          children: [
+                            // Header Row
+                            TableRow(
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF2C2C2C) : Colors.blue.shade100,
+                              ),
+                              children: const [
+                                TableCell(
+                                  verticalAlignment: TableCellVerticalAlignment.middle,
+                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                  child: Center(child: Text('الصورة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                ),
+                                TableCell(
+                                  verticalAlignment: TableCellVerticalAlignment.middle,
+                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                  child: Center(child: Text('حجم الصندوق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                ),
+                                TableCell(
+                                  verticalAlignment: TableCellVerticalAlignment.middle,
+                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                  child: Center(child: Text('الـ Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                ),
+                                TableCell(
+                                  verticalAlignment: TableCellVerticalAlignment.middle,
+                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                  child: Center(child: Text('بارات الصندوق (الكيسون)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                ),
+                                TableCell(
+                                  verticalAlignment: TableCellVerticalAlignment.middle,
+                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                  child: Center(child: Text('الغطاء السفلي والأغطية الجانبية', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                ),
+                              ],
+                            ),
+                            // Data Rows
+                            ..._buildGridTableRows(sizeCalcs, kitType, isDark),
+                          ],
                         ),
-                        columns: const [
-                          DataColumn(label: Text('الصورة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('حجم الصندوق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('الـ Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('بارات الصندوق (الكيسون)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('الغطاء السفلي والأغطية الجانبية', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                        ],
-                        rows: _build5ColumnTableRows(sizeCalcs, kitType, isDark),
                       ),
                     ),
                   ],
@@ -207,8 +242,8 @@ class CaissonTunnelResultScreen extends StatelessWidget {
     );
   }
 
-  List<DataRow> _build5ColumnTableRows(Map<String, dynamic> sizeCalcs, String kitType, bool isDark) {
-    final List<DataRow> rows = [];
+  List<TableRow> _buildGridTableRows(Map<String, dynamic> sizeCalcs, String kitType, bool isDark) {
+    final List<TableRow> rows = [];
 
     sizeCalcs.forEach((sizeStr, calc) {
       final int sizeCm = calc['sizeCm'] ?? int.tryParse(sizeStr) ?? 30;
@@ -219,70 +254,91 @@ class CaissonTunnelResultScreen extends StatelessWidget {
       final double bMeters = (calc['bottomCoverMeters'] ?? 0.0).toDouble();
 
       rows.add(
-        DataRow(cells: [
-          // Column 1: System Image
-          DataCell(_buildSystemImage()),
+        TableRow(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          ),
+          children: [
+            // Cell 1: Image
+            TableCell(
+              verticalAlignment: TableCellVerticalAlignment.middle,
+              padding: const EdgeInsets.all(6),
+              child: Center(child: _buildSystemImage()),
+            ),
 
-          // Column 2: Caisson Size
-          DataCell(
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: _primaryBlue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
+            // Cell 2: Caisson Size
+            TableCell(
+              verticalAlignment: TableCellVerticalAlignment.middle,
+              padding: const EdgeInsets.all(8),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$sizeCm سم',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+                  ),
+                ),
               ),
-              child: Text(
-                '$sizeCm سم',
-                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+            ),
+
+            // Cell 3: Kit Type
+            TableCell(
+              verticalAlignment: TableCellVerticalAlignment.middle,
+              padding: const EdgeInsets.all(8),
+              child: Center(
+                child: Text(
+                  kitType,
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 13),
+                ),
               ),
             ),
-          ),
 
-          // Column 3: Kit Type
-          DataCell(
-            Text(
-              kitType,
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 13),
+            // Cell 4: Caisson Bars (Barres du Caisson)
+            TableCell(
+              verticalAlignment: TableCellVerticalAlignment.middle,
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$cBars بارة (6م)',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+                  ),
+                  Text(
+                    'الطول: ${cMeters.toStringAsFixed(2)} متر',
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.black54),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // Column 4: Caisson Bars (Barres du Caisson)
-          DataCell(
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$cBars بارة (6م)',
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
-                ),
-                Text(
-                  'الطول: ${cMeters.toStringAsFixed(2)} متر',
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.black54),
-                ),
-              ],
+            // Cell 5: Bottom Cover & Side Covers (Couvercle inférieur & Embouts)
+            TableCell(
+              verticalAlignment: TableCellVerticalAlignment.middle,
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'غطاء سفلي: $bBars بارة 6م (${bMeters.toStringAsFixed(2)}م)',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'أغطية جانبية $sizeCmسم: $pairs زوج (Paire)',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _accentOrange, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
-          ),
-
-          // Column 5: Bottom Cover & Side Covers (Couvercle inférieur & Embouts)
-          DataCell(
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'غطاء سفلي: $bBars بارة 6م (${bMeters.toStringAsFixed(2)}م)',
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'أغطية جانبية $sizeCmسم: $pairs زوج (Paire)',
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _accentOrange, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ]),
+          ],
+        ),
       );
     });
 
