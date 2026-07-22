@@ -413,31 +413,40 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
         children: [
           // Kit Selector Header
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            child: Row(
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
-                const Icon(Icons.extension_rounded, color: _primaryBlue),
-                const SizedBox(width: 8),
-                Text(
-                  'نوع الأغطية الجانبية (Kit):',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.extension_rounded, color: _primaryBlue, size: 20),
+                    const SizedBox(width: 6),
+                    Text(
+                      'نوع الأغطية الجانبية (Kit):',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                  ],
                 ),
-                const Spacer(),
                 SegmentedButton<KitType>(
+                  showSelectedIcon: false,
                   segments: const [
                     ButtonSegment(
                       value: KitType.kit11,
-                      label: Text('Kit 11 (+11cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
+                      label: Text('Kit 11 (+11cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                     ),
                     ButtonSegment(
                       value: KitType.kit16,
-                      label: Text('Kit 16 (+16cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
+                      label: Text('Kit 16 (+16cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                     ),
                   ],
                   selected: {_selectedKit},
@@ -447,6 +456,8 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                     });
                   },
                   style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     backgroundColor: WidgetStateProperty.resolveWith((states) {
                       if (states.contains(WidgetState.selected)) {
                         return _primaryBlue;
