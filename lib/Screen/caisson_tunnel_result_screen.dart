@@ -13,13 +13,40 @@ class CaissonTunnelResultScreen extends StatelessWidget {
   static const Color _primaryBlue = Color(0xFF1565C0);
   static const Color _accentOrange = Color(0xFFFF9800);
 
+  Widget _buildSystemImage() {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: _primaryBlue.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _primaryBlue.withValues(alpha: 0.3)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.asset(
+          'Icon/caisson_tunnel.jpg',
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Image.asset(
+              'assets/Icon/caisson_tunnel.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(Icons.square_rounded, color: _primaryBlue, size: 28);
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
     final String kitType = caissonData['kitType'] ?? 'Kit 11';
-    final String inputUnit = caissonData['inputUnit'] ?? 'mm';
     final int grandTotalCaissonBars = caissonData['grandTotalCaissonBars'] ?? 0;
     final int grandTotalBottomCoverBars = caissonData['grandTotalBottomCoverBars'] ?? 0;
     final int grandTotalPairs = caissonData['grandTotalPairs'] ?? 0;
@@ -29,7 +56,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF3F5F8),
       appBar: AppBar(
         title: const Text(
-          'جدول نتائج كيسون النفق',
+          'جدول كمية وتكلفة كيسون النفق',
           style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
@@ -42,37 +69,48 @@ class CaissonTunnelResultScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Top Summary Cards
-            Row(
-              children: [
-                _buildMetricCard(
-                  title: 'بارات الكيسون (6م)',
-                  value: '$grandTotalCaissonBars بارة',
-                  icon: Icons.view_day_rounded,
-                  color: _primaryBlue,
-                  isDark: isDark,
+            // Header Summary Card
+            Card(
+              elevation: 2,
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    _buildSystemImage(),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'نظام كيسون النفق (Caisson Tunnel)',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: _primaryBlue,
+                            ),
+                          ),
+                          Text(
+                            'نوع الكيت: $kitType  |  إجمالي أزواج الأغطية: $grandTotalPairs زوج',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                              color: isDark ? Colors.grey.shade300 : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                _buildMetricCard(
-                  title: 'بارات الغطاء (6م)',
-                  value: '$grandTotalBottomCoverBars بارة',
-                  icon: Icons.horizontal_rule_rounded,
-                  color: _accentOrange,
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 8),
-                _buildMetricCard(
-                  title: 'أزواج الأغطية',
-                  value: '$grandTotalPairs زوج',
-                  icon: Icons.square_rounded,
-                  color: Colors.green.shade700,
-                  isDark: isDark,
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-            // Main Results Data Table
+            // Main 5-Column Data Table Card
             Card(
               elevation: 2,
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -87,10 +125,10 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                       children: [
                         const Row(
                           children: [
-                            Icon(Icons.table_chart_rounded, color: _primaryBlue, size: 22),
+                            Icon(Icons.view_list_rounded, color: _primaryBlue, size: 22),
                             SizedBox(width: 8),
                             Text(
-                              'جدول توزيع البارات والأغطية الجانبية:',
+                              'جدول الكميات والمكونات لكيسون النفق:',
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontWeight: FontWeight.bold,
@@ -102,33 +140,37 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: _primaryBlue.withValues(alpha: 0.1),
+                            color: _accentOrange.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            'نوع الكيت: $kitType',
-                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: _primaryBlue),
+                            'إجمالي البارات: ${grandTotalCaissonBars + grandTotalBottomCoverBars} بارة',
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: _accentOrange),
                           ),
                         ),
                       ],
                     ),
                     const Divider(height: 20),
 
-                    // Interactive Data Table
+                    // Interactive 5-Column Data Table
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: DataTable(
-                        columnSpacing: 16,
+                        columnSpacing: 18,
+                        headingRowHeight: 46,
+                        dataRowMinHeight: 65,
+                        dataRowMaxHeight: 85,
                         headingRowColor: WidgetStateProperty.all(
-                          isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade100,
+                          isDark ? const Color(0xFF2C2C2C) : Colors.blue.shade50,
                         ),
                         columns: const [
-                          DataColumn(label: Text('نوع العنصر', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                          DataColumn(label: Text('الصورة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
                           DataColumn(label: Text('حجم الصندوق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('الطول الإجمالي (متر)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('عدد البارات (6م) / أزواج', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                          DataColumn(label: Text('الـ Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                          DataColumn(label: Text('بارات الصندوق (الكيسون)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                          DataColumn(label: Text('الغطاء السفلي والأغطية الجانبية', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
                         ],
-                        rows: _buildTableRows(sizeCalcs, isDark),
+                        rows: _build5ColumnTableRows(sizeCalcs, kitType, isDark),
                       ),
                     ),
                   ],
@@ -155,7 +197,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
               ),
               icon: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 24),
               label: const Text(
-                'إضافة إلى الطلب (حفظ الحساب)',
+                'إضافة كيسون النفق إلى الطلب',
                 style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
@@ -165,53 +207,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMetricCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required bool isDark,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: color,
-              ),
-            ),
-            Text(
-              title,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 10,
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<DataRow> _buildTableRows(Map<String, dynamic> sizeCalcs, bool isDark) {
+  List<DataRow> _build5ColumnTableRows(Map<String, dynamic> sizeCalcs, String kitType, bool isDark) {
     final List<DataRow> rows = [];
 
     sizeCalcs.forEach((sizeStr, calc) {
@@ -222,33 +218,70 @@ class CaissonTunnelResultScreen extends StatelessWidget {
       final double cMeters = (calc['caissonMeters'] ?? 0.0).toDouble();
       final double bMeters = (calc['bottomCoverMeters'] ?? 0.0).toDouble();
 
-      // Row 1: Caisson Profile Bars
       rows.add(
         DataRow(cells: [
-          const DataCell(Text('بارات كيسون النفق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600))),
-          DataCell(Text('$sizeCm سم', style: const TextStyle(fontFamily: 'Cairo'))),
-          DataCell(Text('${cMeters.toStringAsFixed(2)} م', style: const TextStyle(fontFamily: 'Cairo'))),
-          DataCell(Text('$cBars بارة (6م)', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue))),
-        ]),
-      );
+          // Column 1: System Image
+          DataCell(_buildSystemImage()),
 
-      // Row 2: Bottom Cover Bars
-      rows.add(
-        DataRow(cells: [
-          const DataCell(Text('بارات غطاء سفلي', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600))),
-          DataCell(Text('$sizeCm سم', style: const TextStyle(fontFamily: 'Cairo'))),
-          DataCell(Text('${bMeters.toStringAsFixed(2)} م', style: const TextStyle(fontFamily: 'Cairo'))),
-          DataCell(Text('$bBars بارة (6م)', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _accentOrange))),
-        ]),
-      );
+          // Column 2: Caisson Size
+          DataCell(
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$sizeCm سم',
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+              ),
+            ),
+          ),
 
-      // Row 3: Side Cover Pairs
-      rows.add(
-        DataRow(cells: [
-          const DataCell(Text('أغطية جانبية (Paire)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600))),
-          DataCell(Text('$sizeCm سم', style: const TextStyle(fontFamily: 'Cairo'))),
-          const DataCell(Text('-', style: TextStyle(fontFamily: 'Cairo'))),
-          DataCell(Text('$pairs زوج', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.green.shade700))),
+          // Column 3: Kit Type
+          DataCell(
+            Text(
+              kitType,
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+
+          // Column 4: Caisson Bars (Barres du Caisson)
+          DataCell(
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$cBars بارة (6م)',
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+                ),
+                Text(
+                  'الطول: ${cMeters.toStringAsFixed(2)} متر',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.black54),
+                ),
+              ],
+            ),
+          ),
+
+          // Column 5: Bottom Cover & Side Covers (Couvercle inférieur & Embouts)
+          DataCell(
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'غطاء سفلي: $bBars بارة 6م (${bMeters.toStringAsFixed(2)}م)',
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'أغطية جانبية $sizeCmسم: $pairs زوج (Paire)',
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _accentOrange, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
         ]),
       );
     });
