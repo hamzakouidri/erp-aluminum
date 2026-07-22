@@ -350,6 +350,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildBonDeChargeScreenBody() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const textColor = Colors.black87;
     const subtextColor = Colors.black54;
     final headerBg = Colors.grey.shade200;
