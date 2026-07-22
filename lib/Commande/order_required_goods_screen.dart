@@ -661,6 +661,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return '🔷 الزجاج';
       case 'shutter':
         return '🎛️ مكونات الستارة';
+      case 'caisson_tunnel':
+        return '📦 كيسون النفق (Caisson Tunnel)';
       case 'accessory':
         return '🔩 الإكسسوارات';
       default:
@@ -680,6 +682,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return Colors.cyan.shade700;
       case 'shutter':
         return Colors.orange.shade700;
+      case 'caisson_tunnel':
+        return Colors.amber.shade900;
       case 'accessory':
         return Colors.teal.shade600;
       default:
@@ -1570,6 +1574,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return Icons.grid_on;
       case 'shutter':
         return Icons.layers;
+      case 'caisson_tunnel':
+        return Icons.dns_rounded;
       case 'accessory':
         return Icons.settings;
       default:

@@ -1985,21 +1985,28 @@ class _CommandePageState extends State<CommandePage> {
                               border: Border.all(color: Colors.grey.shade300),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: IgnorePointer(
-                              child: FittedBox(
-                                fit: BoxFit.contain,
-                                child: Opacity(
-                                  opacity: p.isReplaced ? 0.5 : 1.0,
-                                  child: CustomPaint(
-                                    size: Size(
-                                      p.width.toDouble(),
-                                      p.height.toDouble(),
+                            child: p.isCaissonTunnel
+                                ? Image.asset(
+                                    'Icon/caisson_tunnel.jpg',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
+                                  )
+                                : IgnorePointer(
+                                    child: FittedBox(
+                                      fit: BoxFit.contain,
+                                      child: Opacity(
+                                        opacity: p.isReplaced ? 0.5 : 1.0,
+                                        child: CustomPaint(
+                                          size: Size(
+                                            p.width.toDouble(),
+                                            p.height.toDouble(),
+                                          ),
+                                          painter: WindowPainter(model: p),
+                                        ),
+                                      ),
                                     ),
-                                    painter: WindowPainter(model: p),
                                   ),
-                                ),
-                              ),
-                            ),
                           ),
                         ],
                       ),
