@@ -5,37 +5,42 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/widgets/draggable_fab.dart';
 
 enum KitType {
-  kit11, // Adds +11 cm to Caisson length
-  kit16, // Adds +16 cm to Caisson length
+  kit11, // Adds +11 cm (+110 mm) to Caisson length
+  kit16, // Adds +16 cm (+160 mm) to Caisson length
+}
+
+enum InputUnit {
+  mm, // Millimeter (ملم) - Standard
+  cm, // Centimeter (سم)
 }
 
 class CaissonItem {
   final String id;
-  double lengthCm;
+  double lengthMm; // Internal length stored in mm
   int quantity;
-  int sizeCm; // 25, 30, or 40
+  int sizeCm; // 25, 30, or 40 cm
 
   CaissonItem({
     required this.id,
-    required this.lengthCm,
+    required this.lengthMm,
     required this.quantity,
     required this.sizeCm,
   });
 
-  double getAdditionCm(KitType kit) {
-    return kit == KitType.kit11 ? 11.0 : 16.0;
+  double getAdditionMm(KitType kit) {
+    return kit == KitType.kit11 ? 110.0 : 160.0;
   }
 
-  double getCaissonCutLengthCm(KitType kit) {
-    return lengthCm + getAdditionCm(kit);
+  double getCaissonCutLengthMm(KitType kit) {
+    return lengthMm + getAdditionMm(kit);
   }
 
-  double getTotalCaissonLengthCm(KitType kit) {
-    return getCaissonCutLengthCm(kit) * quantity;
+  double getTotalCaissonLengthMm(KitType kit) {
+    return getCaissonCutLengthMm(kit) * quantity;
   }
 
-  double getTotalBottomCoverLengthCm() {
-    return lengthCm * quantity;
+  double getTotalBottomCoverLengthMm() {
+    return lengthMm * quantity;
   }
 }
 
@@ -49,23 +54,27 @@ class CaissonTunnelScreen extends StatefulWidget {
 class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
   final List<CaissonItem> _items = [];
   KitType _selectedKit = KitType.kit11;
+  InputUnit _inputUnit = InputUnit.mm;
   bool _isCalculated = false;
 
   static const Color _primaryBlue = Color(0xFF1565C0);
   static const Color _accentOrange = Color(0xFFFF9800);
 
-  String t(String key) {
+  String get _appBarTitle {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    try {
-      return Localization.translate(key, lang);
-    } catch (_) {
-      return key;
+    if (lang == AppLanguage.french || lang == AppLanguage.english) {
+      return 'Caisson Tunnel';
     }
+    return 'صندوق النفق';
   }
 
   void _openAddDialog({CaissonItem? editItem}) {
+    final double initialVal = editItem != null
+        ? (_inputUnit == InputUnit.mm ? editItem.lengthMm : editItem.lengthMm / 10.0)
+        : 0;
+
     final lengthController = TextEditingController(
-      text: editItem != null ? editItem.lengthCm.toStringAsFixed(0) : '',
+      text: editItem != null ? (initialVal == initialVal.toInt() ? initialVal.toInt().toString() : initialVal.toStringAsFixed(1)) : '',
     );
     final quantityController = TextEditingController(
       text: editItem != null ? editItem.quantity.toString() : '1',
@@ -80,6 +89,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
           builder: (context, setDialogState) {
             final theme = Theme.of(context);
             final isDark = theme.brightness == Brightness.dark;
+            final unitText = _inputUnit == InputUnit.mm ? 'ملم' : 'سم';
 
             void submitItem({required bool closeDialog}) {
               final lengthVal = double.tryParse(lengthController.text.trim());
@@ -87,27 +97,30 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
               if (lengthVal == null || lengthVal <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('يرجى إدخال قياس (طول) صحيح بالكيسون',
-                      style: TextStyle(fontFamily: 'Cairo'),
+                  SnackBar(
+                    content: Text('يرجى إدخال قياس (طول) صحيح بـ $unitText',
+                      style: const TextStyle(fontFamily: 'Cairo'),
                     ),
                     backgroundColor: Colors.red,
-                    duration: Duration(seconds: 2),
+                    duration: const Duration(seconds: 2),
                   ),
                 );
                 return;
               }
 
+              // Convert input to internal mm
+              final lengthInMm = _inputUnit == InputUnit.mm ? lengthVal : lengthVal * 10.0;
+
               setState(() {
                 if (editItem != null) {
-                  editItem.lengthCm = lengthVal;
+                  editItem.lengthMm = lengthInMm;
                   editItem.quantity = qtyVal > 0 ? qtyVal : 1;
                   editItem.sizeCm = selectedSizeCm;
                 } else {
                   _items.add(
                     CaissonItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      lengthCm: lengthVal,
+                      lengthMm: lengthInMm,
                       quantity: qtyVal > 0 ? qtyVal : 1,
                       sizeCm: selectedSizeCm,
                     ),
@@ -183,9 +196,9 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       autofocus: editItem == null,
                       decoration: InputDecoration(
-                        labelText: 'القياس / الطول (سم أو مم)',
-                        hintText: 'مثال: 150',
-                        suffixText: 'سم',
+                        labelText: 'القياس / الطول ($unitText)',
+                        hintText: _inputUnit == InputUnit.mm ? 'مثال: 1500' : 'مثال: 150',
+                        suffixText: unitText,
                         prefixIcon: const Icon(Icons.straighten, color: _primaryBlue),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       ),
@@ -235,7 +248,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
                     // Caisson Size Checkboxes (25 cm, 30 cm, 40 cm)
                     Text(
-                      'حجم الكيسون (حجم الغطاء الجانبي):',
+                      'حجم الكيسون (الأغطية الجانبية):',
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontWeight: FontWeight.bold,
@@ -367,18 +380,20 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final additionCm = _selectedKit == KitType.kit11 ? 11.0 : 16.0;
+    // Addition in mm and cm
+    final additionMm = _selectedKit == KitType.kit11 ? 110.0 : 160.0;
+    final additionCm = additionMm / 10.0;
 
-    // Totals calculations
-    double totalCaissonCm = 0;
-    double totalBottomCoverCm = 0;
+    // Totals calculations in mm and meters
+    double totalCaissonMm = 0;
+    double totalBottomCoverMm = 0;
     int pairs25 = 0;
     int pairs30 = 0;
     int pairs40 = 0;
 
     for (final item in _items) {
-      totalCaissonCm += item.getTotalCaissonLengthCm(_selectedKit);
-      totalBottomCoverCm += item.getTotalBottomCoverLengthCm();
+      totalCaissonMm += item.getTotalCaissonLengthMm(_selectedKit);
+      totalBottomCoverMm += item.getTotalBottomCoverLengthMm();
       if (item.sizeCm == 25) pairs25 += item.quantity;
       if (item.sizeCm == 30) pairs30 += item.quantity;
       if (item.sizeCm == 40) pairs40 += item.quantity;
@@ -386,16 +401,20 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
     final totalPairs = pairs25 + pairs30 + pairs40;
 
-    // Standard bar length = 600 cm (6 meters)
-    const barLengthCm = 600.0;
-    final caissonBars = _items.isEmpty ? 0 : (totalCaissonCm / barLengthCm).ceil();
-    final bottomCoverBars = _items.isEmpty ? 0 : (totalBottomCoverCm / barLengthCm).ceil();
+    // Standard bar length = 6000 mm = 6.0 meters
+    const barLengthMm = 6000.0;
+    final caissonBars = _items.isEmpty ? 0 : (totalCaissonMm / barLengthMm).ceil();
+    final bottomCoverBars = _items.isEmpty ? 0 : (totalBottomCoverMm / barLengthMm).ceil();
+
+    final totalCaissonMeters = totalCaissonMm / 1000.0;
+    final totalBottomCoverMeters = totalBottomCoverMm / 1000.0;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF3F5F8),
       appBar: AppBar(
-        title: const Text('كيسون تونيل (Caisson Tunnel)',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
+        title: Text(
+          _appBarTitle,
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : _primaryBlue,
@@ -406,320 +425,383 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
         children: [
           Column(
             children: [
-          // Kit Selector Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+              // Kit Selector Header & Unit Selector
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                child: Column(
                   children: [
-                    const Icon(Icons.extension_rounded, color: _primaryBlue, size: 20),
-                    const SizedBox(width: 6),
-                    Text(
-                      'نوع الأغطية الجانبية (Kit):',
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ],
-                ),
-                SegmentedButton<KitType>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: KitType.kit11,
-                      label: Text('Kit 11 (+11cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
-                    ),
-                    ButtonSegment(
-                      value: KitType.kit16,
-                      label: Text('Kit 16 (+16cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                  selected: {_selectedKit},
-                  onSelectionChanged: (newSelection) {
-                    setState(() {
-                      _selectedKit = newSelection.first;
-                    });
-                  },
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    backgroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return _primaryBlue;
-                      }
-                      return isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200;
-                    }),
-                    foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return Colors.white;
-                      }
-                      return isDark ? Colors.white70 : Colors.black87;
-                    }),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const Divider(height: 1),
-
-          // Items List Area
-          Expanded(
-            child: _items.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.inventory_2_outlined, size: 70, color: Colors.grey.shade400),
-                        const SizedBox(height: 12),
-                        Text(
-                          'القائمة فارغة كلياً',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                          ),
+                        Row(
+                          children: [
+                            const Icon(Icons.extension_rounded, color: _primaryBlue, size: 20),
+                            const SizedBox(width: 6),
+                            Text(
+                              'نوع الأغطية (Kit):',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'انقر على زر + الأسفل لإضافة مقاسات الكيسون',
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                        SegmentedButton<KitType>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: KitType.kit11,
+                              label: Text('Kit 11 (+11cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                            ButtonSegment(
+                              value: KitType.kit16,
+                              label: Text('Kit 16 (+16cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                          selected: {_selectedKit},
+                          onSelectionChanged: (newSelection) {
+                            setState(() {
+                              _selectedKit = newSelection.first;
+                              _isCalculated = false;
+                            });
+                          },
+                          style: ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            backgroundColor: WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return _primaryBlue;
+                              }
+                              return isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200;
+                            }),
+                            foregroundColor: WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return Colors.white;
+                              }
+                              return isDark ? Colors.white70 : Colors.black87;
+                            }),
                           ),
                         ),
                       ],
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: _items.length,
-                    itemBuilder: (context, index) {
-                      final item = _items[index];
-                      final cutLengthCm = item.getCaissonCutLengthCm(_selectedKit);
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        elevation: 1.5,
-                        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundColor: _primaryBlue.withValues(alpha: 0.1),
-                                child: Text(
-                                  '${index + 1}',
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontWeight: FontWeight.bold,
-                                    color: _primaryBlue,
-                                    fontSize: 13,
-                                  ),
-                                ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.square_foot, color: _accentOrange, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              'وحدة الإدخال:',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.grey.shade300 : Colors.black87,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      crossAxisAlignment: WrapCrossAlignment.center,
-                                      spacing: 6,
-                                      runSpacing: 4,
+                            ),
+                          ],
+                        ),
+                        SegmentedButton<InputUnit>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: InputUnit.mm,
+                              label: Text('ملم (mm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                            ButtonSegment(
+                              value: InputUnit.cm,
+                              label: Text('سم (cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                          selected: {_inputUnit},
+                          onSelectionChanged: (newSelection) {
+                            setState(() {
+                              _inputUnit = newSelection.first;
+                            });
+                          },
+                          style: ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            backgroundColor: WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return _accentOrange;
+                              }
+                              return isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200;
+                            }),
+                            foregroundColor: WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return Colors.white;
+                              }
+                              return isDark ? Colors.white70 : Colors.black87;
+                            }),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const Divider(height: 1),
+
+              // Items List Area
+              Expanded(
+                child: _items.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inventory_2_outlined, size: 70, color: Colors.grey.shade400),
+                            const SizedBox(height: 12),
+                            Text(
+                              'القائمة فارغة كلياً',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'انقر على زر + الإضافة لإدخال قياسات الكيسون',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 13,
+                                color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        itemCount: _items.length,
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          final cutLengthMm = item.getCaissonCutLengthMm(_selectedKit);
+
+                          final displayLen = _inputUnit == InputUnit.mm ? item.lengthMm : item.lengthMm / 10.0;
+                          final displayCutLen = _inputUnit == InputUnit.mm ? cutLengthMm : cutLengthMm / 10.0;
+                          final unitStr = _inputUnit == InputUnit.mm ? 'ملم' : 'سم';
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1.5,
+                            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: _primaryBlue.withValues(alpha: 0.1),
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontWeight: FontWeight.bold,
+                                        color: _primaryBlue,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        Wrap(
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          spacing: 6,
+                                          runSpacing: 4,
+                                          children: [
+                                            Text(
+                                              'القياس: ${displayLen.toStringAsFixed(0)} $unitStr',
+                                              style: TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                                color: isDark ? Colors.white : Colors.black87,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.shade100,
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'مع الزيادة (+$additionCm سم): ${displayCutLen.toStringAsFixed(0)} $unitStr',
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.amber.shade900,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
                                         Text(
-                                          'القياس: ${item.lengthCm.toStringAsFixed(0)} سم',
+                                          'الكمية: ${item.quantity}  |  حجم الأغطية: ${item.sizeCm} سم  (زوج x ${item.quantity})',
                                           style: TextStyle(
                                             fontFamily: 'Cairo',
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: isDark ? Colors.white : Colors.black87,
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.amber.shade100,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            'مع الزيادة: ${cutLengthCm.toStringAsFixed(0)} سم',
-                                            style: TextStyle(
-                                              fontFamily: 'Cairo',
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.amber.shade900,
-                                            ),
+                                            fontSize: 12,
+                                            color: isDark ? Colors.grey.shade400 : Colors.black54,
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'الكمية: ${item.quantity}  |  حجم الأغطية: ${item.sizeCm} سم  (زوج x ${item.quantity})',
-                                      style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 12,
-                                        color: isDark ? Colors.grey.shade400 : Colors.black54,
-                                      ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                                    onPressed: () => _openAddDialog(editItem: item),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                                    onPressed: () => _deleteItem(index),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+
+              // Calculation Action Button & Results Card
+              if (_items.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _isCalculated = true;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _primaryBlue,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.calculate, color: Colors.white),
+                          label: const Text(
+                            'حساب البارات والأغطية الجانبية',
+                            style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ),
+                      ),
+
+                      if (_isCalculated) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF262626) : Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _primaryBlue.withValues(alpha: 0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'النتائج المطلوبة:',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: isDark ? Colors.white : _primaryBlue,
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  Text(
+                                    'نوع الكيت: ${_selectedKit == KitType.kit11 ? "Kit 11 (+11cm)" : "Kit 16 (+16cm)"}',
+                                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                                  ),
+                                ],
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
-                                onPressed: () => _openAddDialog(editItem: item),
+                              const Divider(height: 16),
+
+                              // Caisson Bars Total
+                              _buildResultRow(
+                                icon: Icons.view_day_rounded,
+                                title: 'بارات الكيسون (6 أمتار):',
+                                value: '$caissonBars بارة',
+                                subtext: 'إجمالي الطول: ${totalCaissonMeters.toStringAsFixed(2)} متر (مع زيادة $additionCm سم لكل كيسون)',
+                                isDark: isDark,
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                                onPressed: () => _deleteItem(index),
+                              const SizedBox(height: 8),
+
+                              // Bottom Cover Bars Total
+                              _buildResultRow(
+                                icon: Icons.horizontal_rule_rounded,
+                                title: 'بارات أغطية الكيسون السفلية (6 أمتار):',
+                                value: '$bottomCoverBars بارة',
+                                subtext: 'إجمالي الطول: ${totalBottomCoverMeters.toStringAsFixed(2)} متر (بدون زيادة الأغطية الجانبية)',
+                                isDark: isDark,
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Side Covers Pairs Breakdown
+                              _buildResultRow(
+                                icon: Icons.square_rounded,
+                                title: 'الأغطية الجانبية (بالزوج / Paire):',
+                                value: '$totalPairs زوج',
+                                subtext: 'التفصيل: ${pairs25 > 0 ? "25سم ($pairs25 زوج)  " : ""}${pairs30 > 0 ? "30سم ($pairs30 زوج)  " : ""}${pairs40 > 0 ? "40سم ($pairs40 زوج)" : ""}',
+                                isDark: isDark,
                               ),
                             ],
                           ),
                         ),
-                      );
-                    },
+                      ],
+                    ],
                   ),
+                ),
+              ],
+            ],
           ),
 
-          // Calculation Action Button & Results Card
-          if (_items.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _isCalculated = true;
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _primaryBlue,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      icon: const Icon(Icons.calculate, color: Colors.white),
-                      label: const Text(
-                        'حساب البارات والأغطية الجانبية',
-                        style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                    ),
-                  ),
-
-                  if (_isCalculated) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF262626) : Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _primaryBlue.withValues(alpha: 0.3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'النتائج الإجمالية المطلوبة:',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: isDark ? Colors.white : _primaryBlue,
-                                ),
-                              ),
-                              Text(
-                                'نوع الكيت: ${_selectedKit == KitType.kit11 ? "Kit 11 (+11cm)" : "Kit 16 (+16cm)"}',
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 16),
-
-                          // Caisson Bars Total
-                          _buildResultRow(
-                            icon: Icons.view_day_rounded,
-                            title: 'بارات الكيسون (6 أمتار):',
-                            value: '$caissonBars بارة',
-                            subtext: 'مجموع الطول: ${(totalCaissonCm / 100).toStringAsFixed(2)} متر (مع زيادة $additionCm سم لكل قطعة)',
-                            isDark: isDark,
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Bottom Cover Bars Total
-                          _buildResultRow(
-                            icon: Icons.horizontal_rule_rounded,
-                            title: 'بارات غطاء الكيسون السفلي (6 أمتار):',
-                            value: '$bottomCoverBars بارة',
-                            subtext: 'مجموع الطول: ${(totalBottomCoverCm / 100).toStringAsFixed(2)} متر (بدون زيادات الأغطية)',
-                            isDark: isDark,
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Side Covers Pairs Breakdown
-                          _buildResultRow(
-                            icon: Icons.square_rounded,
-                            title: 'الأغطية الجانبية (بالزوج / Paire):',
-                            value: '$totalPairs زوج',
-                            subtext: 'التفصيل: ${pairs25 > 0 ? "25سم ($pairs25 زوج)  " : ""}${pairs30 > 0 ? "30سم ($pairs30 زوج)  " : ""}${pairs40 > 0 ? "40سم ($pairs40 زوج)" : ""}',
-                            isDark: isDark,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
+          // Draggable Floating Action Button
+          DraggableFloatingActionButton(
+            initialOffset: const Offset(16, 220),
+            child: FloatingActionButton.extended(
+              onPressed: () => _openAddDialog(),
+              backgroundColor: _accentOrange,
+              elevation: 6,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'إضافة كيسون',
+                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
-          ],
+          ),
         ],
       ),
-      DraggableFloatingActionButton(
-        initialOffset: const Offset(16, 200),
-        child: FloatingActionButton.extended(
-          onPressed: () => _openAddDialog(),
-          backgroundColor: _accentOrange,
-          elevation: 6,
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text(
-            'إضافة كيسون',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-        ),
-      ),
-    ],
-  ),
-);
+    );
   }
 
   Widget _buildResultRow({
