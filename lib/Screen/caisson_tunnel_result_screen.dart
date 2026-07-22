@@ -183,28 +183,38 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                               children: const [
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
-                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                                  child: Center(child: Text('الصورة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                    child: Center(child: Text('الصورة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  ),
                                 ),
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
-                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                                  child: Center(child: Text('حجم الصندوق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                    child: Center(child: Text('حجم الصندوق', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  ),
                                 ),
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
-                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                                  child: Center(child: Text('عدد أزواج Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                    child: Center(child: Text('عدد أزواج Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  ),
                                 ),
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
-                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                                  child: Center(child: Text('بارات الصندوق (الكيسون)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                    child: Center(child: Text('بارات الصندوق (الكيسون)', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  ),
                                 ),
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
-                                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                                  child: Center(child: Text('الغطاء السفلي والأغطية الجانبية', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                                    child: Center(child: Text('الغطاء السفلي والأغطية الجانبية', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  ),
                                 ),
                               ],
                             ),
@@ -268,24 +278,28 @@ class CaissonTunnelResultScreen extends StatelessWidget {
             // Cell 1: Image
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
-              padding: const EdgeInsets.all(6),
-              child: Center(child: _buildSystemImage()),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Center(child: _buildSystemImage()),
+              ),
             ),
 
             // Cell 2: Caisson Size
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
-              padding: const EdgeInsets.all(8),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _primaryBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '$sizeCm سم',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _primaryBlue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$sizeCm سم',
+                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+                    ),
                   ),
                 ),
               ),
@@ -294,11 +308,13 @@ class CaissonTunnelResultScreen extends StatelessWidget {
             // Cell 3: Kit Count & Addition (e.g., 4 زوج (+11 سم))
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
-              padding: const EdgeInsets.all(8),
-              child: Center(
-                child: Text(
-                  '$pairs زوج ($kitLabel)',
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13, color: _primaryBlue),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Center(
+                  child: Text(
+                    '$pairs زوج ($kitLabel)',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13, color: _primaryBlue),
+                  ),
                 ),
               ),
             ),
@@ -306,41 +322,45 @@ class CaissonTunnelResultScreen extends StatelessWidget {
             // Cell 4: Caisson Bars (Barres du Caisson - includes Kit Addition)
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$cBars بارة (6م)',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
-                  ),
-                  Text(
-                    'الطول: ${cMeters.toStringAsFixed(2)} متر',
-                    style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.black54),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$cBars بارة (6م)',
+                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _primaryBlue, fontSize: 14),
+                    ),
+                    Text(
+                      'الطول: ${cMeters.toStringAsFixed(2)} متر',
+                      style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.black54),
+                    ),
+                  ],
+                ),
               ),
             ),
 
             // Cell 5: Bottom Cover Bars (NO Kit addition) & Side Cover Pairs
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'غطاء سفلي: $bBars بارة 6م (${bMeters.toStringAsFixed(2)}م)',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'أغطية جانبية $sizeCmسم: $pairs زوج (Paire)',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _accentOrange, fontSize: 12),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'غطاء سفلي: $bBars بارة 6م (${bMeters.toStringAsFixed(2)}م)',
+                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'أغطية جانبية $sizeCmسم: $pairs زوج (Paire)',
+                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _accentOrange, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
