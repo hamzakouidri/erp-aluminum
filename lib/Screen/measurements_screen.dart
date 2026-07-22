@@ -14,6 +14,8 @@ import 'package:audioplayers/audioplayers.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../Commande/add_commande.dart';
+import '../Commande/Systeme/model.dart';
 
 class MeasurementsScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -41,7 +43,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   List<Map<String, dynamic>> _allColors = [];
   Map<String, dynamic>? _selectedColor;
 
-  String _openingSystem = 'French'; // French (Ouvrant / Batteur) or Sliding (Coulissant)
+  String _openingSystem = 'French'; // French (Battante) or Sliding (Coulissante)
   bool _shutterExists = false;
   String _shutterSide = 'Inside'; // Inside or Outside
   String _shutterType = 'Aluminium'; // Aluminium or PVC
@@ -111,6 +113,105 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     } catch (e) {
       debugPrint('Error loading measurements: $e');
     }
+  }
+
+  // ── Populating Form from Saved Measurement ────────────────────────────
+  void _populateFormFromMeasurement(Map<String, dynamic> item) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    setState(() {
+      _lengthController.text = (item['length'] ?? '').toString();
+      _widthController.text = (item['width'] ?? '').toString();
+      _locationController.text = (item['window_location'] ?? '').toString();
+      _openingSystem = (item['opening_system'] ?? 'French').toString();
+      _shutterExists = (item['shutter_exists'] ?? 0) == 1;
+      _shutterSide = (item['shutter_side'] ?? 'Inside').toString();
+      _shutterType = (item['shutter_type'] ?? 'Aluminium').toString();
+      _shutterMotorManeuver = (item['shutter_motor_maneuver'] ?? 0) == 1;
+      _glassType = (item['glass_type'] ?? 'Double').toString();
+      _bottomFrameExists = (item['bottom_frame_exists'] ?? 1) == 1;
+      _noteController.text = (item['note'] ?? '').toString();
+
+      final frameType = (item['frame_type'] ?? '').toString();
+      if (frameType.isNotEmpty && _allColors.isNotEmpty) {
+        try {
+          _selectedColor = _allColors.firstWhere(
+            (c) => c['name'].toString().toLowerCase() == frameType.toLowerCase(),
+            orElse: () => _allColors.first,
+          );
+        } catch (_) {}
+      }
+
+      final imgPath = (item['media_path'] ?? '').toString();
+      final vidPath = (item['video_path'] ?? '').toString();
+      final audPath = (item['audio_path'] ?? '').toString();
+
+      _imageFile = imgPath.isNotEmpty && File(imgPath).existsSync() ? File(imgPath) : null;
+      _videoFile = vidPath.isNotEmpty && File(vidPath).existsSync() ? File(vidPath) : null;
+      _recordedAudioPath = audPath.isNotEmpty && File(audPath).existsSync() ? audPath : null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(Localization.translate('تم توظيف واسترجاع بيانات القياس في الشاشة بنجاح!', lang)),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
+  // ── Convert Measurement(s) to Order ──────────────────────────────────
+  WindowModel _createWindowModelFromMeasurement(Map<String, dynamic> item) {
+    final double w = (item['width'] as num?)?.toDouble() ?? 0.0;
+    final double h = (item['length'] as num?)?.toDouble() ?? 0.0;
+    final String location = (item['window_location'] ?? '').toString();
+    final bool shutterExists = (item['shutter_exists'] ?? 0) == 1;
+
+    final model = WindowModel(
+      width: w,
+      height: h,
+      db: widget.db,
+    );
+    model.position = location;
+    model.hasShutter = shutterExists;
+
+    final frameType = (item['frame_type'] ?? '').toString();
+    if (frameType.isNotEmpty && _allColors.isNotEmpty) {
+      try {
+        final matched = _allColors.firstWhere(
+          (c) => c['name'].toString().toLowerCase() == frameType.toLowerCase(),
+          orElse: () => _allColors.first,
+        );
+        model.selectedDbColor = matched;
+      } catch (_) {}
+    }
+
+    return model;
+  }
+
+  void _convertMeasurementToOrder(Map<String, dynamic> item) {
+    final model = _createWindowModelFromMeasurement(item);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CommandePage(
+          db: widget.db,
+          initialProducts: [model],
+        ),
+      ),
+    );
+  }
+
+  void _convertAllMeasurementsToOrder() {
+    if (_savedMeasurements.isEmpty) return;
+    final models = _savedMeasurements.map((item) => _createWindowModelFromMeasurement(item)).toList();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CommandePage(
+          db: widget.db,
+          initialProducts: models,
+        ),
+      ),
+    );
   }
 
   // ── Media handling ────────────────────────────────────────────────────
@@ -405,7 +506,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? selectedColor.withOpacity(0.12) : Theme.of(context).cardColor,
+          color: isSelected ? selectedColor.withValues(alpha: 0.12) : Theme.of(context).cardColor,
           border: Border.all(
             color: isSelected ? selectedColor : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
@@ -469,12 +570,16 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Separate location choices
     final locationOptions = [
       Localization.translate('المطبخ', lang),
       Localization.translate('الصالون', lang),
       Localization.translate('غرفة النوم', lang),
       Localization.translate('الحمام', lang),
       Localization.translate('المرحاض', lang),
+      Localization.translate('دلافينات', lang),
+      Localization.translate('بالكون', lang),
+      Localization.translate('تيراس', lang),
       Localization.translate('الشرفة', lang),
     ];
 
@@ -541,7 +646,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // موقع النافذة (أزرار الاختيار فقط)
+                        // موقع النافذة (أزرار اختيار منفصلة لكل خيار)
                         Text(
                           Localization.translate('موقع النافذة', lang),
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
@@ -555,7 +660,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                             return ChoiceChip(
                               label: Text(loc, style: const TextStyle(fontFamily: 'Cairo')),
                               selected: isSel,
-                              selectedColor: Colors.blue.withOpacity(0.2),
+                              selectedColor: Colors.blue.withValues(alpha: 0.2),
                               onSelected: (selected) {
                                 if (selected) {
                                   setState(() {
@@ -568,7 +673,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         ),
                         const Divider(height: 32),
 
-                        // الألوان المتوفرة للبروفيلات (جميع الألوان متوفرة)
+                        // الألوان المتوفرة للبروفيلات
                         Text(
                           Localization.translate('لون البروفيل', lang),
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
@@ -584,7 +689,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                   return ChoiceChip(
                                     label: Text(col['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
                                     selected: isSel,
-                                    selectedColor: Colors.blue.withOpacity(0.2),
+                                    selectedColor: Colors.blue.withValues(alpha: 0.2),
                                     onSelected: (selected) {
                                       if (selected) {
                                         setState(() {
@@ -597,22 +702,23 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               ),
                         const Divider(height: 32),
 
-                        // نظام الفتح (فتح فرنسي أو منزلق)
+                        // نظام الفتح (مستقل وبدون overflow)
                         Text(
                           Localization.translate('نظام الفتح', lang),
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         const SizedBox(height: 8),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
                             _buildToggleChip(
-                              Localization.translate('منزلق / Coulissant', lang),
+                              Localization.translate('Coulissante', lang),
                               _openingSystem == 'Sliding',
                               () => setState(() => _openingSystem = 'Sliding'),
                             ),
-                            const SizedBox(width: 10),
                             _buildToggleChip(
-                              Localization.translate('فتح فرنسي / Batteur (Français)', lang),
+                              Localization.translate('Battante', lang),
                               _openingSystem == 'French',
                               () => setState(() => _openingSystem = 'French'),
                             ),
@@ -681,7 +787,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         ),
                         const SizedBox(height: 20),
 
-                        // ── قسم الميديا وتسجيل الصوت (مصحح لتفادي الـ overflow) ──
+                        // ── قسم الميديا وتسجيل الصوت ──
                         Row(
                           children: [
                             const Icon(Icons.attach_file, color: Colors.blue),
@@ -816,10 +922,21 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                 children: [
                   const Icon(Icons.history),
                   const SizedBox(width: 8),
-                  Text(
-                    '${Localization.translate('القياسات المسجلة سابقاً', lang)} (${_savedMeasurements.length})',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                  Expanded(
+                    child: Text(
+                      '${Localization.translate('القياسات المسجلة سابقاً', lang)} (${_savedMeasurements.length})',
+                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
                   ),
+                  if (_savedMeasurements.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: _convertAllMeasurementsToOrder,
+                      icon: const Icon(Icons.add_shopping_cart, size: 18),
+                      label: Text(
+                        Localization.translate('تحويل الكل إلى طلبية', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -835,6 +952,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         return Card(
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
+                            onTap: () => _populateFormFromMeasurement(item),
                             title: Text(
                               '${Localization.translate((item['window_location'] ?? '').toString(), lang)} - ${item['length']} × ${item['width']} ${Localization.translate('مم', lang)}',
                               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
@@ -846,6 +964,11 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                IconButton(
+                                  icon: const Icon(Icons.add_shopping_cart, color: Colors.green),
+                                  tooltip: Localization.translate('تحويل إلى طلبية', lang),
+                                  onPressed: () => _convertMeasurementToOrder(item),
+                                ),
                                 IconButton(
                                   icon: const Icon(Icons.share, color: Colors.blue),
                                   tooltip: Localization.translate('مشاركة ورفع كـ ZIP', lang),

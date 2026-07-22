@@ -23,12 +23,14 @@ class CommandePage extends StatefulWidget {
   final SqlDatabase db;
   final int? editCommandeId;
   final int? projectId;
+  final List<WindowModel>? initialProducts;
 
   const CommandePage({
     super.key,
     required this.db,
     this.editCommandeId,
     this.projectId,
+    this.initialProducts,
   });
 
   @override
@@ -126,6 +128,9 @@ class _CommandePageState extends State<CommandePage> {
       _loadEditData();
     } else if (widget.projectId != null) {
       _loadInitialProject(widget.projectId!);
+    }
+    if (widget.initialProducts != null && widget.initialProducts!.isNotEmpty) {
+      addedProducts.addAll(widget.initialProducts!);
     }
   }
 

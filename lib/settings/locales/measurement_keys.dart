@@ -371,4 +371,44 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Rechercher accessoires...',
     AppLanguage.english: 'Search accessories...',
   },
+  'دلافينات': {
+    AppLanguage.arabic: 'دلافينات',
+    AppLanguage.french: 'Dauphine',
+    AppLanguage.english: 'Dauphine',
+  },
+  'بالكون': {
+    AppLanguage.arabic: 'بالكون',
+    AppLanguage.french: 'Balcon',
+    AppLanguage.english: 'Balcony',
+  },
+  'تيراس': {
+    AppLanguage.arabic: 'تيراس',
+    AppLanguage.french: 'Terrasse',
+    AppLanguage.english: 'Terrace',
+  },
+  'Coulissante': {
+    AppLanguage.arabic: 'منزلق (Coulissante)',
+    AppLanguage.french: 'Coulissante',
+    AppLanguage.english: 'Sliding (Coulissante)',
+  },
+  'Battante': {
+    AppLanguage.arabic: 'فتح (Battante)',
+    AppLanguage.french: 'Battante',
+    AppLanguage.english: 'Side-Hung (Battante)',
+  },
+  'تم توظيف واسترجاع بيانات القياس في الشاشة بنجاح!': {
+    AppLanguage.arabic: 'تم توظيف واسترجاع بيانات القياس في الشاشة بنجاح!',
+    AppLanguage.french: 'Données de mesure chargées dans le formulaire !',
+    AppLanguage.english: 'Measurement data loaded into form!',
+  },
+  'تحويل إلى طلبية': {
+    AppLanguage.arabic: 'تحويل إلى طلبية',
+    AppLanguage.french: 'Convertir en commande',
+    AppLanguage.english: 'Convert to Order',
+  },
+  'تحويل الكل إلى طلبية': {
+    AppLanguage.arabic: 'تحويل الكل إلى طلبية',
+    AppLanguage.french: 'Tout convertir en commande',
+    AppLanguage.english: 'Convert All to Order',
+  },
 };
