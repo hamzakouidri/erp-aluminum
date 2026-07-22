@@ -45,7 +45,8 @@ class CaissonTunnelResultScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final String kitType = caissonData['kitType'] ?? 'Kit 11';
+    final String kitType = caissonData['kitType'] ?? 'Kit 11 (+11cm)';
+    final String kitLabel = kitType.contains('16') ? '+16 سم' : '+11 سم';
     final int grandTotalCaissonBars = caissonData['grandTotalCaissonBars'] ?? 0;
     final int grandTotalBottomCoverBars = caissonData['grandTotalBottomCoverBars'] ?? 0;
     final int grandTotalPairs = caissonData['grandTotalPairs'] ?? 0;
@@ -109,7 +110,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
             ),
             const SizedBox(height: 14),
 
-            // Main 5-Column Grid Table Card with Explicit Column Dividing Lines
+            // Main 5-Column Grid Table Card
             Card(
               elevation: 2,
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -119,19 +120,24 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Header Wrap (Prevents title overflow on small screens)
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
                         const Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.grid_on_rounded, color: _primaryBlue, size: 22),
                             SizedBox(width: 8),
                             Text(
-                              'جدول الكميات والمكونات لكيسون النفق:',
+                              'جدول كميات ومكونات كيسون النفق:',
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                                fontSize: 15,
                               ),
                             ),
                           ],
@@ -164,7 +170,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                           columnWidths: const {
                             0: FixedColumnWidth(70),  // Image
                             1: FlexColumnWidth(1.2), // Caisson Size
-                            2: FlexColumnWidth(1.2), // Kit Type
+                            2: FlexColumnWidth(1.4), // Kit Count & Type
                             3: FlexColumnWidth(2.2), // Caisson Bars
                             4: FlexColumnWidth(2.6), // Bottom Cover & Side Covers
                           },
@@ -188,7 +194,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
                                   padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                                  child: Center(child: Text('الـ Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
+                                  child: Center(child: Text('عدد أزواج Kit', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13))),
                                 ),
                                 TableCell(
                                   verticalAlignment: TableCellVerticalAlignment.middle,
@@ -203,7 +209,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
                               ],
                             ),
                             // Data Rows
-                            ..._buildGridTableRows(sizeCalcs, kitType, isDark),
+                            ..._buildGridTableRows(sizeCalcs, kitLabel, isDark),
                           ],
                         ),
                       ),
@@ -242,7 +248,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
     );
   }
 
-  List<TableRow> _buildGridTableRows(Map<String, dynamic> sizeCalcs, String kitType, bool isDark) {
+  List<TableRow> _buildGridTableRows(Map<String, dynamic> sizeCalcs, String kitLabel, bool isDark) {
     final List<TableRow> rows = [];
 
     sizeCalcs.forEach((sizeStr, calc) {
@@ -285,19 +291,19 @@ class CaissonTunnelResultScreen extends StatelessWidget {
               ),
             ),
 
-            // Cell 3: Kit Type
+            // Cell 3: Kit Count & Addition (e.g., 4 زوج (+11 سم))
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
               padding: const EdgeInsets.all(8),
               child: Center(
                 child: Text(
-                  kitType,
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 13),
+                  '$pairs زوج ($kitLabel)',
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13, color: _primaryBlue),
                 ),
               ),
             ),
 
-            // Cell 4: Caisson Bars (Barres du Caisson)
+            // Cell 4: Caisson Bars (Barres du Caisson - includes Kit Addition)
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
               padding: const EdgeInsets.all(8),
@@ -317,7 +323,7 @@ class CaissonTunnelResultScreen extends StatelessWidget {
               ),
             ),
 
-            // Cell 5: Bottom Cover & Side Covers (Couvercle inférieur & Embouts)
+            // Cell 5: Bottom Cover Bars (NO Kit addition) & Side Cover Pairs
             TableCell(
               verticalAlignment: TableCellVerticalAlignment.middle,
               padding: const EdgeInsets.all(8),
