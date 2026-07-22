@@ -311,4 +311,64 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Note',
     AppLanguage.english: 'Note',
   },
+  'تخصيص جدول الكمية والتكلفة': {
+    AppLanguage.arabic: 'تخصيص جدول الكمية والتكلفة',
+    AppLanguage.french: 'Configuration table quantité & coût',
+    AppLanguage.english: 'Quantity & Cost Table Config',
+  },
+  '1. اختر البروفيل / السيستم': {
+    AppLanguage.arabic: '1. اختر البروفيل / السيستم',
+    AppLanguage.french: '1. Choisir le profil / système',
+    AppLanguage.english: '1. Select Profile / System',
+  },
+  '2. اختر السلسلة': {
+    AppLanguage.arabic: '2. اختر السلسلة',
+    AppLanguage.french: '2. Choisir la gamme',
+    AppLanguage.english: '2. Select Series',
+  },
+  'أنواع القطاعات المسموحة بالجدول': {
+    AppLanguage.arabic: 'أنواع القطاعات المسموحة بالجدول',
+    AppLanguage.french: 'Types de profilés autorisés',
+    AppLanguage.english: 'Allowed Profile Section Types',
+  },
+  'أنواع الإكسسوارات المسموحة بالجدول': {
+    AppLanguage.arabic: 'أنواع الإكسسوارات المسموحة بالجدول',
+    AppLanguage.french: 'Types d\'accessoires autorisés',
+    AppLanguage.english: 'Allowed Accessory Types',
+  },
+  'قائمة الإكسسوارات الفردية المسموحة': {
+    AppLanguage.arabic: 'قائمة الإكسسوارات الفردية المسموحة',
+    AppLanguage.french: 'Liste des accessoires autorisés',
+    AppLanguage.english: 'Allowed Specific Accessories',
+  },
+  'حفظ الإعدادات': {
+    AppLanguage.arabic: 'حفظ الإعدادات',
+    AppLanguage.french: 'Enregistrer les paramètres',
+    AppLanguage.english: 'Save Settings',
+  },
+  'تم حفظ إعدادات جدول الكمية والتكلفة بنجاح': {
+    AppLanguage.arabic: 'تم حفظ إعدادات جدول الكمية والتكلفة بنجاح',
+    AppLanguage.french: 'Paramètres enregistrés avec succès',
+    AppLanguage.english: 'Table settings saved successfully',
+  },
+  'لا توجد سلاسل مسجلة لهذا البروفيل': {
+    AppLanguage.arabic: 'لا توجد سلاسل مسجلة لهذا البروفيل',
+    AppLanguage.french: 'Aucune gamme pour ce profil',
+    AppLanguage.english: 'No series found for this profile',
+  },
+  'تحديد الكل': {
+    AppLanguage.arabic: 'تحديد الكل',
+    AppLanguage.french: 'Tout sélectionner',
+    AppLanguage.english: 'Select All',
+  },
+  'إلغاء الكل': {
+    AppLanguage.arabic: 'إلغاء الكل',
+    AppLanguage.french: 'Tout désélectionner',
+    AppLanguage.english: 'Deselect All',
+  },
+  'بحث في الإكسسوارات...': {
+    AppLanguage.arabic: 'بحث في الإكسسوارات...',
+    AppLanguage.french: 'Rechercher accessoires...',
+    AppLanguage.english: 'Search accessories...',
+  },
 };

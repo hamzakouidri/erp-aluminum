@@ -339,12 +339,64 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     }
 
-    return ComponentCalculator.generateBom(
+    final generatedBom = ComponentCalculator.generateBom(
       model,
       activeVariants,
       kitBundleData: kitBundleData,
       kitPerLeafMap: kitPerLeafMap,
     );
+
+    return await _applySeriesTableConfigFilter(model, generatedBom);
+  }
+
+  Future<List<BomItem>> _applySeriesTableConfigFilter(
+    WindowModel model,
+    List<BomItem> items,
+  ) async {
+    int? seriesId = model.activeSeries?.id;
+    if (seriesId == null && model.loadedSeriesName != null && model.loadedSeriesName!.isNotEmpty) {
+      try {
+        final dbInstance = await widget.db.db;
+        if (dbInstance != null) {
+          final res = await dbInstance.query('Series', where: 'name = ?', whereArgs: [model.loadedSeriesName]);
+          if (res.isNotEmpty) {
+            seriesId = res.first['id'] as int?;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (seriesId == null) return items;
+
+    final config = await widget.db.getSeriesTableConfig(seriesId);
+    if (config == null) return items;
+
+    final allowedAccIdsStr = (config['allowed_accessory_ids'] ?? '').toString();
+    final exclAccIdsStr = (config['excluded_accessory_ids'] ?? '').toString();
+
+    final allowedAccIds = allowedAccIdsStr.isEmpty
+        ? <int>{}
+        : allowedAccIdsStr.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toSet();
+    final exclAccIds = exclAccIdsStr.isEmpty
+        ? <int>{}
+        : exclAccIdsStr.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toSet();
+
+    if (allowedAccIds.isEmpty && exclAccIds.isEmpty) return items;
+
+    final filtered = <BomItem>[];
+    for (var item in items) {
+      if (item.category == 'accessory') {
+        final override = model.componentOverrides[item.originalName];
+        final accId = override != null ? (override['id'] as int?) : null;
+
+        if (accId != null) {
+          if (exclAccIds.contains(accId)) continue;
+          if (allowedAccIds.isNotEmpty && !allowedAccIds.contains(accId)) continue;
+        }
+      }
+      filtered.add(item);
+    }
+    return filtered;
   }
 
   Future<void> _loadAndAggregate() async {

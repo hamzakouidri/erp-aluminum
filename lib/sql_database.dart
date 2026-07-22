@@ -507,6 +507,19 @@ class SqlDatabase {
           ''');
         } catch (_) {}
 
+        try {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS SeriesTableConfig (
+              series_id INTEGER PRIMARY KEY,
+              allowed_section_types TEXT NOT NULL DEFAULT '',
+              allowed_accessory_ids TEXT NOT NULL DEFAULT '',
+              allowed_accessory_types TEXT NOT NULL DEFAULT '',
+              excluded_accessory_ids TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT ''
+            )
+          ''');
+        } catch (_) {}
+
 
         // Ensure ShutterComponents has measurement, shutter_subtype, and bar_length_m columns and migrate existing records
         try {

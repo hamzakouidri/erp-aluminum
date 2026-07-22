@@ -12,6 +12,7 @@ import 'joint.dart';
 import 'kit_bundles_screen.dart';
 import 'catalogue_manager.dart';
 import 'series_accessories_screen.dart';
+import 'series_table_config_screen.dart';
 
 class ProductsMenuScreen extends StatelessWidget {
   final SqlDatabase db;
@@ -170,6 +171,21 @@ class ProductsMenuScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => KitBundlesScreen(db: db),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              _buildMenuCard(
+                context,
+                title: Localization.translate("تخصيص جدول الكمية والتكلفة", lang),
+                icon: Icons.table_chart_rounded,
+                color: Colors.green,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SeriesTableConfigScreen(db: db),
                     ),
                   );
                 },
