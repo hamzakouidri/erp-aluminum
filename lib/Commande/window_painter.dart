@@ -3560,18 +3560,6 @@ class WindowPainter extends CustomPainter {
           cell.rect.left + (cellW - widthText.width) / 2,
           labelY,
         );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              wOffset.dx - 4,
-              wOffset.dy - 1,
-              widthText.width + 8,
-              widthText.height + 2,
-            ),
-            const Radius.circular(4),
-          ),
-          Paint()..color = Colors.white.withValues(alpha: 0.85),
-        );
         widthText.paint(canvas, wOffset);
       }
 
@@ -3588,18 +3576,6 @@ class WindowPainter extends CustomPainter {
           cell.rect.top + (cellH + heightText.width) / 2,
         );
         canvas.rotate(-3.1415926535897932 / 2);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              -4,
-              -heightText.height - 1,
-              heightText.width + 8,
-              heightText.height + 2,
-            ),
-            const Radius.circular(4),
-          ),
-          Paint()..color = Colors.white.withValues(alpha: 0.85),
-        );
         heightText.paint(canvas, Offset(0, -heightText.height));
         canvas.restore();
       }
@@ -4629,7 +4605,6 @@ class WindowPainter extends CustomPainter {
       color: Colors.blue.shade900,
       fontSize: 80,
       fontWeight: FontWeight.bold,
-      backgroundColor: Colors.white.withValues(alpha: 0.7),
     );
 
     if (handleSide == OpenDirection.left || handleSide == OpenDirection.right) {
