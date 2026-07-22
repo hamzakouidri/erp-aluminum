@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
+import 'package:database_data/widgets/draggable_fab.dart';
 
 enum KitType {
   kit11, // Adds +11 cm to Caisson length
@@ -401,16 +402,10 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
         foregroundColor: Colors.white,
         elevation: 1.0,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openAddDialog(),
-        backgroundColor: _accentOrange,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('إضافة كيسون',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-      ),
-      body: Column(
+      body: Stack(
         children: [
+          Column(
+            children: [
           // Kit Selector Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -542,20 +537,22 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
+                                    Wrap(
+                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      spacing: 6,
+                                      runSpacing: 4,
                                       children: [
                                         Text(
                                           'القياس: ${item.lengthCm.toStringAsFixed(0)} سم',
                                           style: TextStyle(
                                             fontFamily: 'Cairo',
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 15,
+                                            fontSize: 14,
                                             color: isDark ? Colors.white : Colors.black87,
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
                                             color: Colors.amber.shade100,
                                             borderRadius: BorderRadius.circular(6),
@@ -564,7 +561,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                             'مع الزيادة: ${cutLengthCm.toStringAsFixed(0)} سم',
                                             style: TextStyle(
                                               fontFamily: 'Cairo',
-                                              fontSize: 11,
+                                              fontSize: 10,
                                               fontWeight: FontWeight.bold,
                                               color: Colors.amber.shade900,
                                             ),
@@ -707,7 +704,22 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
           ],
         ],
       ),
-    );
+      DraggableFloatingActionButton(
+        initialOffset: const Offset(16, 200),
+        child: FloatingActionButton.extended(
+          onPressed: () => _openAddDialog(),
+          backgroundColor: _accentOrange,
+          elevation: 6,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            'إضافة كيسون',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+        ),
+      ),
+    ],
+  ),
+);
   }
 
   Widget _buildResultRow({
