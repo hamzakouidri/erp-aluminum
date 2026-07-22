@@ -43,6 +43,30 @@ class CaissonItem {
   double getTotalBottomCoverLengthMm() {
     return lengthMm * quantity;
   }
+
+  /// Real-world cutting math for 6m profile bars accounting for offcuts/waste
+  int getCaissonBars(KitType kit) {
+    final cutMm = getCaissonCutLengthMm(kit);
+    if (cutMm <= 0 || quantity <= 0) return 0;
+    const double barLengthMm = 6000.0;
+    final int piecesPerBar = (barLengthMm / cutMm).floor();
+    if (piecesPerBar >= 1) {
+      return (quantity / piecesPerBar).ceil();
+    }
+    return (cutMm / barLengthMm).ceil() * quantity;
+  }
+
+  /// Real-world cutting math for 6m bottom cover bars accounting for offcuts/waste
+  int getBottomCoverBars() {
+    final cutMm = lengthMm;
+    if (cutMm <= 0 || quantity <= 0) return 0;
+    const double barLengthMm = 6000.0;
+    final int piecesPerBar = (barLengthMm / cutMm).floor();
+    if (piecesPerBar >= 1) {
+      return (quantity / piecesPerBar).ceil();
+    }
+    return (cutMm / barLengthMm).ceil() * quantity;
+  }
 }
 
 class CaissonSizeCalculation {
@@ -412,9 +436,8 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
     // Addition in mm and cm
     final additionMm = _selectedKit == KitType.kit11 ? 110.0 : 160.0;
     final additionCm = additionMm / 10.0;
-    const double barLengthMm = 6000.0;
 
-    // Group items and calculate totals per caisson size (25 cm, 30 cm, 40 cm)
+    // Group items and calculate totals per caisson size (25 cm, 30 cm, 40 cm) with real-world cutting waste math
     final Map<int, CaissonSizeCalculation> sizeCalculations = {};
 
     for (final size in [25, 30, 40]) {
@@ -424,23 +447,26 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
       double sizeCaissonMm = 0;
       double sizeBottomCoverMm = 0;
       int sizePairs = 0;
+      int cBarsForSize = 0;
+      int bBarsForSize = 0;
 
       for (final item in itemsForSize) {
         sizeCaissonMm += item.getTotalCaissonLengthMm(_selectedKit);
         sizeBottomCoverMm += item.getTotalBottomCoverLengthMm();
         sizePairs += item.quantity;
-      }
 
-      final cBars = (sizeCaissonMm / barLengthMm).ceil();
-      final bBars = (sizeBottomCoverMm / barLengthMm).ceil();
+        // Calculate 6m bars taking cutting offcuts & piece fit into account
+        cBarsForSize += item.getCaissonBars(_selectedKit);
+        bBarsForSize += item.getBottomCoverBars();
+      }
 
       sizeCalculations[size] = CaissonSizeCalculation(
         sizeCm: size,
         caissonLengthMm: sizeCaissonMm,
         bottomCoverLengthMm: sizeBottomCoverMm,
         totalPairs: sizePairs,
-        caissonBars: cBars,
-        bottomCoverBars: bBars,
+        caissonBars: cBarsForSize,
+        bottomCoverBars: bBarsForSize,
       );
     }
 
