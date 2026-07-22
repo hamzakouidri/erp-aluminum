@@ -4295,9 +4295,11 @@ class WindowPainter extends CustomPainter {
           ..strokeWidth = 2.0,
       );
 
-      // Keyhole or turn knob below lever
+      // Keyhole or turn knob below lever — only drawn when lock or bathroom option is selected
       double keyholeY = 25.0;
       final bool isCondamnation = zone?.lockType == LockType.condamnation;
+      final bool isClef = zone?.lockType == LockType.clef;
+
       if (isCondamnation) {
         canvas.drawCircle(
           Offset(0, keyholeY),
@@ -4319,7 +4321,7 @@ class WindowPainter extends CustomPainter {
             ..color = Colors.grey[800]!
             ..style = PaintingStyle.fill,
         );
-      } else {
+      } else if (isClef) {
         canvas.drawCircle(
           Offset(0, keyholeY),
           3.5,
