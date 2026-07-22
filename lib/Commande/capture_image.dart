@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/window_painter.dart';
@@ -11,6 +12,21 @@ Future<Uint8List> captureWindowImage(
   WindowModel model, {
   int maxSide = 1400,
 }) async {
+  // If model is Caisson Tunnel, return official Caisson Tunnel asset image bytes for PDF/Flyer
+  if (model.isCaissonTunnel || (model.manualNameOverride?.contains('Caisson Tunnel') == true)) {
+    try {
+      final ByteData data = await rootBundle.load('Icon/caisson_tunnel.jpg');
+      return data.buffer.asUint8List();
+    } catch (_) {
+      try {
+        final ByteData data = await rootBundle.load('assets/Icon/caisson_tunnel.jpg');
+        return data.buffer.asUint8List();
+      } catch (_) {
+        // Fallback drawing if asset not found
+      }
+    }
+  }
+
   if (model.isCustomProduct) {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -98,6 +114,7 @@ Future<Uint8List> captureWindowImage(
     model: model,
     overrideIsInternalView: true,
   ).paint(canvas, Size(windowW, windowH));
+
   canvas.restore();
 
   final picture = recorder.endRecording();
@@ -106,18 +123,19 @@ Future<Uint8List> captureWindowImage(
   return byteData!.buffer.asUint8List();
 }
 
-Future<String> saveWindowImageToDisk(WindowModel model) async {
+Future<String> saveWindowImageToDisk(WindowModel model, {int maxSide = 1400}) async {
   try {
-    final Uint8List imageBytes = await captureWindowImage(model);
-    final directory = await getApplicationDocumentsDirectory();
-    final String fileName =
-        'window_${DateTime.now().millisecondsSinceEpoch}.png';
-    final String filePath = '${directory.path}/$fileName';
-    final File file = File(filePath);
-    await file.writeAsBytes(imageBytes);
-    return filePath;
-  } catch (e) {
-    debugPrint('Error saving window image: $e');
+    final bytes = await captureWindowImage(model, maxSide: maxSide);
+    final appDir = await getApplicationDocumentsDirectory();
+    final imagesDir = Directory('${appDir.path}/window_drawings');
+    if (!await imagesDir.exists()) {
+      await imagesDir.create(recursive: true);
+    }
+    final fileName = 'window_${DateTime.now().millisecondsSinceEpoch}.png';
+    final file = File('${imagesDir.path}/$fileName');
+    await file.writeAsBytes(bytes);
+    return file.path;
+  } catch (_) {
     return '';
   }
 }

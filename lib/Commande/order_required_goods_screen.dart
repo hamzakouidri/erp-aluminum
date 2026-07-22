@@ -1361,9 +1361,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8.0),
-                              child: CustomPaint(
-                                painter: WindowPainter(model: pb.model),
-                              ),
+                              child: pb.model.isCaissonTunnel
+                                  ? Image.asset(
+                                      'Icon/caisson_tunnel.jpg',
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (context, error, stackTrace) =>
+                                          Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
+                                    )
+                                  : CustomPaint(
+                                      painter: WindowPainter(model: pb.model),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 16),
