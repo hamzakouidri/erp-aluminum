@@ -88,7 +88,9 @@ class CaissonSizeCalculation {
 }
 
 class CaissonTunnelScreen extends StatefulWidget {
-  const CaissonTunnelScreen({super.key});
+  final Map<String, dynamic>? initialPayload;
+
+  const CaissonTunnelScreen({super.key, this.initialPayload});
 
   @override
   State<CaissonTunnelScreen> createState() => _CaissonTunnelScreenState();
@@ -99,6 +101,34 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
   KitType _selectedKit = KitType.kit11;
   InputUnit _inputUnit = InputUnit.mm;
   bool _isCalculated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialPayload != null) {
+      final payload = widget.initialPayload!;
+      final kitStr = payload['kitType']?.toString() ?? '';
+      _selectedKit = kitStr.contains('16') ? KitType.kit16 : KitType.kit11;
+      _inputUnit = (payload['inputUnit']?.toString() == 'cm') ? InputUnit.cm : InputUnit.mm;
+
+      final rawItems = payload['items'] as List?;
+      if (rawItems != null) {
+        for (final itemMap in rawItems) {
+          if (itemMap is Map) {
+            _items.add(
+              CaissonItem(
+                id: itemMap['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                lengthMm: (itemMap['lengthMm'] as num?)?.toDouble() ?? 0.0,
+                quantity: (itemMap['quantity'] as num?)?.toInt() ?? 1,
+                sizeCm: (itemMap['sizeCm'] as num?)?.toInt() ?? 25,
+              ),
+            );
+          }
+        }
+      }
+      _isCalculated = _items.isNotEmpty;
+    }
+  }
 
   static const Color _primaryBlue = Color(0xFF1565C0);
   static const Color _accentOrange = Color(0xFFFF9800);
@@ -848,7 +878,10 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
             backgroundColor: _accentOrange,
             icon: Icons.add,
             label: Localization.translate('إضافة كيسون', lang),
-            initialOffset: const Offset(16, 220),
+            initialOffset: Offset(
+              (MediaQuery.of(context).size.width - 160.0).clamp(10.0, 500.0),
+              (MediaQuery.of(context).size.height - 140.0).clamp(60.0, 1000.0),
+            ),
           ),
         ],
       ),

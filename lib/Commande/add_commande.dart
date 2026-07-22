@@ -1728,21 +1728,36 @@ class _CommandePageState extends State<CommandePage> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${p.manualNameOverride?.trim().isNotEmpty == true 
-                              ? p.manualNameOverride!.trim() 
-                              : (p.isShutterOnly
-                                  ? 'Volet roulant'
-                                  : (p.isDoor
-                                      ? (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                                          ? t('باب بضلفتين')
-                                          : t('باب بضلفة واحدة'))
-                                      : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                                          ? t('نافذة بضلفتين')
-                                          : t('نافذة بضلفة واحدة'))))} - ${p.width.toInt()}x${p.height.toInt()} mm',
+                          isCaisson
+                              ? (() {
+                                  String dimSummary = '';
+                                  if (p.caissonPayload != null && p.caissonPayload!['items'] != null) {
+                                    final itemsList = (p.caissonPayload!['items'] as List);
+                                    if (itemsList.isNotEmpty) {
+                                      final firstMap = itemsList.first as Map;
+                                      final double lengthMm = (firstMap['lengthMm'] as num? ?? 0.0).toDouble();
+                                      final int sizeCm = (firstMap['sizeCm'] as num? ?? 25).toInt();
+                                      final String lenStr = (lengthMm / 10.0).toStringAsFixed(0);
+                                      dimSummary = ' ($lenStr سم - صندوق $sizeCm سم)';
+                                    }
+                                  }
+                                  return '${p.manualNameOverride ?? "كيسون النفق (Caisson Tunnel)"}$dimSummary';
+                                })()
+                              : '${p.manualNameOverride?.trim().isNotEmpty == true 
+                                  ? p.manualNameOverride!.trim() 
+                                  : (p.isShutterOnly
+                                      ? 'Volet roulant'
+                                      : (p.isDoor
+                                          ? (p.zones.any((z) => z.content == ZoneContent.doubleSash)
+                                              ? t('باب بضلفتين')
+                                              : t('باب بضلفة واحدة'))
+                                          : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
+                                              ? t('نافذة بضلفتين')
+                                              : t('نافذة بضلفة واحدة'))))} - ${p.width.toInt()}x${p.height.toInt()} mm',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: p.isReplaced
+                            color: (p.isReplaced && !isCaisson)
                                 ? Colors.grey
                                 : Colors.blueAccent,
                           ),
@@ -1762,14 +1777,15 @@ class _CommandePageState extends State<CommandePage> {
                               },
                             ),
                             IconButton(
-                              icon: const Icon(Icons.text_snippet, color: Colors.purple),
-                              tooltip: t('Edit properties'),
+                              icon: const Icon(Icons.table_chart, color: Colors.purple),
+                              tooltip: 'جدول المقاسات (Edit Table Details)',
                               onPressed: () async {
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => OrderTableEditScreen(
                                       products: [p],
+                                      db: widget.db,
                                     ),
                                   ),
                                 );
@@ -1790,7 +1806,7 @@ class _CommandePageState extends State<CommandePage> {
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const CaissonTunnelScreen(),
+                                      builder: (context) => CaissonTunnelScreen(initialPayload: p.caissonPayload),
                                     ),
                                   );
                                   if (result != null && result is Map<String, dynamic> && mounted) {
