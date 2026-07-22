@@ -1440,6 +1440,7 @@ class WindowModel extends ChangeNotifier {
 
   bool hasShutter = false;
   bool isCaissonTunnel = false;
+  Map<String, dynamic>? caissonPayload;
   bool showBottomWall = true;
   bool showWall = false;
   String wallColor = 'red';
