@@ -1,14 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:archive/archive_io.dart';
 import 'package:record/record.dart';
@@ -32,33 +29,24 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   // Controllers
   final _lengthController = TextEditingController();
   final _widthController = TextEditingController();
-  final _handleHeightController = TextEditingController();
-  final _locationController = TextEditingController();
+  final _locationController = TextEditingController(text: 'المطبخ');
   final _noteController = TextEditingController();
-  final _smartVoiceController = TextEditingController();
 
-  // Focus Nodes for Voice navigation
+  // Focus Nodes
   final _lengthFocus = FocusNode();
   final _widthFocus = FocusNode();
-  final _handleHeightFocus = FocusNode();
-  final _locationFocus = FocusNode();
   final _noteFocus = FocusNode();
 
   // Form State Values
-  List<Map<String, dynamic>> _seriesList = [];
-  Map<String, dynamic>? _selectedSeries;
-  List<Map<String, dynamic>> _filteredColors = [];
+  List<Map<String, dynamic>> _allColors = [];
   Map<String, dynamic>? _selectedColor;
 
-  String _openingSystem = 'French'; // French (ouvrant) or Sliding (coulisse)
+  String _openingSystem = 'French'; // French (Ouvrant / Batteur) or Sliding (Coulissant)
   bool _shutterExists = false;
   String _shutterSide = 'Inside'; // Inside or Outside
   String _shutterType = 'Aluminium'; // Aluminium or PVC
   bool _shutterMotorManeuver = false;
-  String _glassType = 'Double'; // Simple, Double, StopSol, etc.
-  bool _glassDecoration = false;
-  bool _reinforcedLateral = false;
-  bool _reinforcedCenter = false;
+  String _glassType = 'Double'; // Simple or Double
   bool _bottomFrameExists = true;
 
   // Attached files
@@ -72,35 +60,24 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   bool _isRecording = false;
   bool _isPlaying = false;
 
-  // Speech to Text state
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _isListening = false;
-  String _spokenText = '';
-  String _voiceStatusText = 'اضغط على الميكروفون لبدء الإملاء الصوتي';
-
   // Measurements list
   List<Map<String, dynamic>> _savedMeasurements = [];
 
   @override
   void initState() {
     super.initState();
-    _loadSeriesAndColors();
+    _loadAllColors();
     _loadSavedMeasurements();
-    _initSpeech();
   }
 
   @override
   void dispose() {
     _lengthController.dispose();
     _widthController.dispose();
-    _handleHeightController.dispose();
     _locationController.dispose();
     _noteController.dispose();
-    _smartVoiceController.dispose();
     _lengthFocus.dispose();
     _widthFocus.dispose();
-    _handleHeightFocus.dispose();
-    _locationFocus.dispose();
     _noteFocus.dispose();
     _audioRecorder.dispose();
     _audioPlayer.dispose();
@@ -108,48 +85,15 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   }
 
   // ── Database Loaders ──────────────────────────────────────────────────
-  Future<void> _loadSeriesAndColors() async {
+  Future<void> _loadAllColors() async {
     try {
       final dbClient = await widget.db.db;
       if (dbClient != null) {
-        final seriesData = await dbClient.query('Series', where: 'is_active = 1');
+        final colorsData = await dbClient.query('Colors');
         setState(() {
-          _seriesList = seriesData;
-          if (_seriesList.isNotEmpty) {
-            _selectedSeries = _seriesList.first;
-            _updateColorsForSelectedSeries();
-            final String type = _selectedSeries?['type']?.toString() ?? '';
-            if (type == 'Coulissant' || type.toLowerCase().contains('sliding')) {
-              _openingSystem = 'Sliding';
-            } else if (type == 'Frappe' || type.toLowerCase().contains('french') || type.toLowerCase().contains('frappe')) {
-              _openingSystem = 'French';
-            }
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading series: $e');
-    }
-  }
-
-  Future<void> _updateColorsForSelectedSeries() async {
-    if (_selectedSeries == null) return;
-    try {
-      final dbClient = await widget.db.db;
-      if (dbClient != null) {
-        // Query colors associated with this series
-        final results = await dbClient.rawQuery('''
-          SELECT c.* FROM Colors c
-          JOIN SeriesColorPrices scp ON c.id = scp.color_id
-          WHERE scp.series_id = ?
-        ''', [_selectedSeries!['id']]);
-
-        setState(() {
-          _filteredColors = results;
-          if (_filteredColors.isNotEmpty) {
-            _selectedColor = _filteredColors.first;
-          } else {
-            _selectedColor = null;
+          _allColors = colorsData;
+          if (_allColors.isNotEmpty) {
+            _selectedColor = _allColors.first;
           }
         });
       }
@@ -213,23 +157,24 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
           _isRecording = false;
           _recordedAudioPath = path;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم حفظ التسجيل الصوتي بنجاح')),
-        );
-      } else {
-        if (await Permission.microphone.request().isGranted) {
-          final appDir = await getApplicationDocumentsDirectory();
-          final targetFolder = Directory(p.join(appDir.path, 'measurements_media'));
-          if (!await targetFolder.exists()) {
-            await targetFolder.create(recursive: true);
-          }
-          final path = p.join(targetFolder.path, 'rec_${DateTime.now().millisecondsSinceEpoch}.m4a');
-          await _audioRecorder.start(const RecordConfig(), path: path);
-          setState(() {
-            _isRecording = true;
-            _recordedAudioPath = null;
-          });
+        if (mounted) {
+          final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(Localization.translate('تم حفظ التسجيل الصوتي بنجاح', lang))),
+          );
         }
+      } else {
+        final appDir = await getApplicationDocumentsDirectory();
+        final targetFolder = Directory(p.join(appDir.path, 'measurements_media'));
+        if (!await targetFolder.exists()) {
+          await targetFolder.create(recursive: true);
+        }
+        final path = p.join(targetFolder.path, 'rec_${DateTime.now().millisecondsSinceEpoch}.m4a');
+        await _audioRecorder.start(const RecordConfig(), path: path);
+        setState(() {
+          _isRecording = true;
+          _recordedAudioPath = null;
+        });
       }
     } catch (e) {
       debugPrint('Audio recording error: $e');
@@ -262,183 +207,27 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     }
   }
 
-  // ── Speech to Text Tonal Engine ───────────────────────────────────────
-  Future<void> _initSpeech() async {
-    try {
-      await _speech.initialize(
-        onError: (val) => debugPrint('Speech error: $val'),
-        onStatus: (val) => debugPrint('Speech status: $val'),
-      );
-    } catch (e) {
-      debugPrint('STT init error: $e');
-    }
-  }
-
-  void _toggleSpeechListening() async {
-    if (_isListening) {
-      await _speech.stop();
-      setState(() {
-        _isListening = false;
-        _voiceStatusText = 'توقف الميكروفون.';
-      });
-    } else {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() {
-          _isListening = true;
-          _voiceStatusText = 'جاري الاستماع...';
-        });
-        _speech.listen(
-          onResult: (result) {
-            setState(() {
-              _spokenText = result.recognizedWords;
-              _smartVoiceController.text = _spokenText;
-              _parseSmartVoiceText(_spokenText);
-            });
-          },
-          localeId: 'ar-DZ',
-          listenFor: const Duration(seconds: 45),
-          pauseFor: const Duration(seconds: 8),
-        );
-      } else {
-        setState(() {
-          _voiceStatusText = 'التعرف الصوتي غير متاح حالياً.';
-        });
-      }
-    }
-  }
-
-  void _parseSmartVoiceText(String text) {
-    if (text.isEmpty) return;
-    final lowerText = text.toLowerCase().trim();
-
-    // 1. Check for Width (العرض) and Length (الطول)
-    RegExp widthReg = RegExp(r'(?:عرض|العرض|لارش|لارج|لارجور|width)\s*[:=-]?\s*(\d+)');
-    RegExp heightReg = RegExp(r'(?:طول|الطول|ارتفاع|الارتفاع|لارتفاع|height|longueur)\s*[:=-]?\s*(\d+)');
-
-    var widthMatch = widthReg.firstMatch(lowerText);
-    var heightMatch = heightReg.firstMatch(lowerText);
-
-    if (widthMatch != null) {
-      _widthController.text = widthMatch.group(1)!;
-    }
-    if (heightMatch != null) {
-      _lengthController.text = heightMatch.group(1)!;
-    }
-
-    if (widthMatch == null && heightMatch == null) {
-      RegExp dimensionsReg = RegExp(r'(\d+)\s*(?:على|في|x|X|/)\s*(\d+)');
-      var dimMatch = dimensionsReg.firstMatch(lowerText);
-      if (dimMatch != null) {
-        _widthController.text = dimMatch.group(1)!;
-        _lengthController.text = dimMatch.group(2)!;
-      }
-    }
-
-    // 2. Location matching
-    final locations = {
-      'المطبخ': ['مطبخ', 'المطبخ', 'الكوزينة', 'cuisine'],
-      'الصالون': ['صالون', 'الصالون', 'salon'],
-      'غرفة النوم': ['غرفة', 'الغرفة', 'بيت', 'chambre'],
-      'الحمام': ['حمام', 'الحمام', 'دوش', 'douche', 'bain'],
-      'الشرفة': ['شرفة', 'الشرفة', 'بلكون', 'بلكونة', 'balcon'],
-    };
-
-    bool locationFound = false;
-    for (var entry in locations.entries) {
-      for (var kw in entry.value) {
-        if (lowerText.contains(kw)) {
-          setState(() {
-            _locationController.text = entry.key;
-          });
-          locationFound = true;
-          break;
-        }
-      }
-      if (locationFound) break;
-    }
-
-    // 3. Shutter matching (الستار)
-    final shutterYes = ['مع ستار', 'بستار', 'بالستار', 'فيها ستار', 'يوجد ستار', 'شتر', 'volet'];
-    final shutterNo = ['بدون ستار', 'بلا ستار', 'مافيش ستار', 'sans volet'];
-
-    for (var kw in shutterYes) {
-      if (lowerText.contains(kw)) {
-        setState(() => _shutterExists = true);
-        break;
-      }
-    }
-    for (var kw in shutterNo) {
-      if (lowerText.contains(kw)) {
-        setState(() => _shutterExists = false);
-        break;
-      }
-    }
-
-    // 4. Series matching
-    for (var ser in _seriesList) {
-      final name = ser['name'].toString().toLowerCase();
-      final numberMatch = RegExp(r'\d+').firstMatch(name);
-      if (numberMatch != null) {
-        final numStr = numberMatch.group(0)!;
-        if (lowerText.contains(numStr)) {
-          setState(() {
-            _selectedSeries = ser;
-            _updateColorsForSelectedSeries();
-            final String type = ser['type']?.toString() ?? '';
-            if (type == 'Coulissant' || type.toLowerCase().contains('sliding')) {
-              _openingSystem = 'Sliding';
-            } else if (type == 'Frappe' || type.toLowerCase().contains('french') || type.toLowerCase().contains('frappe')) {
-              _openingSystem = 'French';
-            }
-          });
-          break;
-        }
-      }
-    }
-
-    // 5. Color matching (from filtered colors)
-    for (var col in _filteredColors) {
-      final name = col['name'].toString().toLowerCase();
-      if (lowerText.contains(name)) {
-        setState(() {
-          _selectedColor = col;
-        });
-        break;
-      }
-    }
-
-    // 6. Handle height
-    RegExp handleReg = RegExp(r'(?:مقبض|المقبض|ارتفاع المقبض)\s*[:=-]?\s*(\d+)');
-    var handleMatch = handleReg.firstMatch(lowerText);
-    if (handleMatch != null) {
-      _handleHeightController.text = handleMatch.group(1)!;
-    }
-
-    // 7. Store entire transcribed text in notes
-    _noteController.text = text;
-  }
-
   // ── Operations ────────────────────────────────────────────────────────
   Future<void> _saveMeasurement() async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     if (!_formKey.currentState!.validate()) return;
 
     final data = {
       'length': double.tryParse(_lengthController.text) ?? 0.0,
       'width': double.tryParse(_widthController.text) ?? 0.0,
-      'frame_type': _selectedSeries != null ? _selectedSeries!['name'].toString() : '',
+      'frame_type': _selectedColor != null ? _selectedColor!['name'].toString() : '',
       'opening_system': _openingSystem,
       'shutter_exists': _shutterExists ? 1 : 0,
       'shutter_side': _shutterSide,
       'shutter_type': _shutterType,
       'shutter_motor_maneuver': _shutterMotorManeuver ? 1 : 0,
       'glass_type': _glassType,
-      'glass_decoration': _glassDecoration ? 1 : 0,
-      'handle_height': double.tryParse(_handleHeightController.text) ?? 0.0,
-      'reinforced_lateral': _reinforcedLateral ? 1 : 0,
-      'reinforced_center': _reinforcedCenter ? 1 : 0,
+      'glass_decoration': 0,
+      'handle_height': 0.0,
+      'reinforced_lateral': 0,
+      'reinforced_center': 0,
       'bottom_frame_exists': _bottomFrameExists ? 1 : 0,
-      'window_location': _locationController.text.trim(),
+      'window_location': _locationController.text.trim().isEmpty ? 'المطبخ' : _locationController.text.trim(),
       'media_path': _imageFile?.path ?? '',
       'audio_path': _recordedAudioPath ?? '',
       'video_path': _videoFile?.path ?? '',
@@ -447,9 +236,11 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
 
     try {
       await widget.db.insertMeasurement(data);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ ورقة القياسات بنجاح')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(Localization.translate('تم حفظ ورقة القياسات بنجاح', lang))),
+        );
+      }
       _clearForm();
       _loadSavedMeasurements();
     } catch (e) {
@@ -460,8 +251,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   void _clearForm() {
     _lengthController.clear();
     _widthController.clear();
-    _handleHeightController.clear();
-    _locationController.clear();
+    _locationController.text = 'المطبخ';
     _noteController.clear();
     setState(() {
       _imageFile = null;
@@ -469,43 +259,37 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       _recordedAudioPath = null;
       _shutterExists = false;
       _shutterMotorManeuver = false;
-      _reinforcedLateral = false;
-      _reinforcedCenter = false;
       _bottomFrameExists = true;
     });
   }
 
   // ── ZIP Export / Import ───────────────────────────────────────────────
   Future<void> _exportToZip(Map<String, dynamic> item) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     try {
       final archive = Archive();
 
-      // Write info json
       final jsonBytes = utf8.encode(jsonEncode(item));
       archive.addFile(ArchiveFile('metadata.json', jsonBytes.length, jsonBytes));
 
-      // Add image if exists
       final imgPath = item['media_path']?.toString() ?? '';
       if (imgPath.isNotEmpty && File(imgPath).existsSync()) {
         final bytes = await File(imgPath).readAsBytes();
         archive.addFile(ArchiveFile('image${p.extension(imgPath)}', bytes.length, bytes));
       }
 
-      // Add video if exists
       final vidPath = item['video_path']?.toString() ?? '';
       if (vidPath.isNotEmpty && File(vidPath).existsSync()) {
         final bytes = await File(vidPath).readAsBytes();
         archive.addFile(ArchiveFile('video${p.extension(vidPath)}', bytes.length, bytes));
       }
 
-      // Add audio if exists
       final audPath = item['audio_path']?.toString() ?? '';
       if (audPath.isNotEmpty && File(audPath).existsSync()) {
         final bytes = await File(audPath).readAsBytes();
         archive.addFile(ArchiveFile('audio${p.extension(audPath)}', bytes.length, bytes));
       }
 
-      // Encode ZIP
       final zipEncoder = ZipEncoder();
       final zipData = zipEncoder.encode(archive);
       if (zipData == null) return;
@@ -515,14 +299,14 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       final zipFile = File(p.join(tempDir.path, '${cleanLocation}_${item['length']}x${item['width']}.zip'));
       await zipFile.writeAsBytes(zipData);
 
-      // Share ZIP (OneDrive/Google Drive upload path)
-      await Share.shareXFiles([XFile(zipFile.path)], text: 'مشاركة ملف القياسات المضغوط');
+      await Share.shareXFiles([XFile(zipFile.path)], text: Localization.translate('مشاركة ملف القياسات المضغوط', lang));
     } catch (e) {
       debugPrint('Export ZIP error: $e');
     }
   }
 
   Future<void> _importFromZip() async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -533,13 +317,14 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       final zipFile = File(result.files.single.path!);
       final bytes = await zipFile.readAsBytes();
 
-      // Decode ZIP
       final archive = ZipDecoder().decodeBytes(bytes);
       final metadataFile = archive.findFile('metadata.json');
       if (metadataFile == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('خطأ: لم يتم العثور على ملف البيانات الأساسي داخل الـ ZIP')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(Localization.translate('خطأ: لم يتم العثور على ملف البيانات الأساسي داخل الـ ZIP', lang))),
+          );
+        }
         return;
       }
 
@@ -572,7 +357,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         }
       }
 
-      // Reconstruct item for database insertion
       final restoredItem = {
         'length': item['length'],
         'width': item['width'],
@@ -583,10 +367,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         'shutter_type': item['shutter_type'] ?? '',
         'shutter_motor_maneuver': item['shutter_motor_maneuver'] ?? 0,
         'glass_type': item['glass_type'] ?? '',
-        'glass_decoration': item['glass_decoration'] ?? 0,
-        'handle_height': item['handle_height'] ?? 0.0,
-        'reinforced_lateral': item['reinforced_lateral'] ?? 0,
-        'reinforced_center': item['reinforced_center'] ?? 0,
+        'glass_decoration': 0,
+        'handle_height': 0.0,
+        'reinforced_lateral': 0,
+        'reinforced_center': 0,
         'bottom_frame_exists': item['bottom_frame_exists'] ?? 1,
         'window_location': item['window_location'] ?? '',
         'media_path': localImgPath,
@@ -596,15 +380,19 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       };
 
       await widget.db.insertMeasurement(restoredItem);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم استيراد واسترجاع ورقة القياس بجميع مرفقاتها بنجاح!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(Localization.translate('تم استيراد واسترجاع ورقة القياس بجميع مرفقاتها بنجاح!', lang))),
+        );
+      }
       _loadSavedMeasurements();
     } catch (e) {
       debugPrint('Import ZIP error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء استيراد الـ ZIP: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${Localization.translate('خطأ أثناء استيراد الـ ZIP', lang)}: $e')),
+        );
+      }
     }
   }
 
@@ -617,7 +405,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? selectedColor.withOpacity(0.12) : Colors.white,
+          color: isSelected ? selectedColor.withOpacity(0.12) : Theme.of(context).cardColor,
           border: Border.all(
             color: isSelected ? selectedColor : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
@@ -639,7 +427,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? selectedColor : Colors.black87,
+                color: isSelected ? selectedColor : null,
               ),
             ),
           ],
@@ -679,16 +467,29 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final locationOptions = [
+      Localization.translate('المطبخ', lang),
+      Localization.translate('الصالون', lang),
+      Localization.translate('غرفة النوم', lang),
+      Localization.translate('الحمام', lang),
+      Localization.translate('المرحاض', lang),
+      Localization.translate('الشرفة', lang),
+    ];
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ورقة رفع القياسات الذكية', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+        title: Text(
+          Localization.translate('ورقة رفع القياسات الذكية', lang),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.blue,
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.unarchive_outlined),
-            tooltip: 'استيراد قياس ZIP / Import',
+            tooltip: Localization.translate('استيراد قياس ZIP', lang),
             onPressed: _importFromZip,
           ),
         ],
@@ -698,111 +499,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // ── الجزء الصوتي الفعال ──────────────────────────────────
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 3,
-                color: Colors.blue.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.mic, color: _isListening ? Colors.red : Colors.blue, size: 28),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _isListening ? 'جاري الاستماع... تحدث الآن' : 'المساعد الصوتي والإملاء الذكي',
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Colors.blue,
-                              ),
-                            ),
-                          ),
-                          if (_isListening)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _smartVoiceController,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          hintText: 'مثال: "نافذة في المطبخ عرض 120 وطول 150 مع ستار أبيض سلسلة 67000"',
-                          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontFamily: 'Cairo'),
-                          fillColor: Colors.white,
-                          filled: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.blue.shade200),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.blue, width: 1.5),
-                          ),
-                        ),
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                        onChanged: (text) {
-                          _parseSmartVoiceText(text);
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _toggleSpeechListening,
-                              icon: Icon(_isListening ? Icons.stop : Icons.mic, color: Colors.white),
-                              label: Text(
-                                _isListening ? 'إيقاف الاستماع' : 'ابدأ الإملاء الصوتي',
-                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _isListening ? Colors.red : Colors.blue,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              _parseSmartVoiceText(_smartVoiceController.text);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('تم تحليل وتطبيق البيانات في الحقول أدناه بنجاح!'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.analytics, color: Colors.white),
-                            label: const Text(
-                              'تحليل وتطبيق',
-                              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // ── استمارة القياسات ─────────────────────────────────────
               Form(
                 key: _formKey,
                 child: Card(
@@ -822,10 +518,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                 focusNode: _lengthFocus,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 decoration: InputDecoration(
-                                  labelText: 'الطول (مم)',
+                                  labelText: Localization.translate('الطول (مم)', lang),
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                                 ),
-                                validator: (val) => val == null || val.isEmpty ? 'مطلوب' : null,
+                                validator: (val) => val == null || val.isEmpty ? Localization.translate('مطلوب', lang) : null,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -835,35 +531,31 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                 focusNode: _widthFocus,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 decoration: InputDecoration(
-                                  labelText: 'العرض (مم)',
+                                  labelText: Localization.translate('العرض (مم)', lang),
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                                 ),
-                                validator: (val) => val == null || val.isEmpty ? 'مطلوب' : null,
+                                validator: (val) => val == null || val.isEmpty ? Localization.translate('مطلوب', lang) : null,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 16),
 
-                        // موقع النافذة
-                        TextFormField(
-                          controller: _locationController,
-                          focusNode: _locationFocus,
-                          decoration: InputDecoration(
-                            labelText: 'موقع النافذة (مثال: المطبخ، الصالون)',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          validator: (val) => val == null || val.isEmpty ? 'مطلوب' : null,
+                        // موقع النافذة (أزرار الاختيار فقط)
+                        Text(
+                          Localization.translate('موقع النافذة', lang),
+                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
                         ),
-                        const SizedBox(height: 12),
-
-                        // اختيارات سريعة للمواقع المعتادة
+                        const SizedBox(height: 8),
                         Wrap(
                           spacing: 8,
-                          children: ['المطبخ', 'الصالون', 'غرفة النوم', 'الحمام', 'الشرفة'].map((loc) {
+                          runSpacing: 8,
+                          children: locationOptions.map((loc) {
+                            final isSel = _locationController.text == loc;
                             return ChoiceChip(
                               label: Text(loc, style: const TextStyle(fontFamily: 'Cairo')),
-                              selected: _locationController.text == loc,
+                              selected: isSel,
+                              selectedColor: Colors.blue.withOpacity(0.2),
                               onSelected: (selected) {
                                 if (selected) {
                                   setState(() {
@@ -876,33 +568,27 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         ),
                         const Divider(height: 32),
 
-                        // اختيار السلسلة ديناميكياً
-                        const Text(
-                          'نظام السلسلة (Series)',
-                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                        // الألوان المتوفرة للبروفيلات (جميع الألوان متوفرة)
+                        Text(
+                          Localization.translate('لون البروفيل', lang),
+                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         const SizedBox(height: 8),
-                        _seriesList.isEmpty
-                            ? const Text('جاري تحميل السلاسل...')
+                        _allColors.isEmpty
+                            ? Text(Localization.translate('جاري تحميل الألوان...', lang))
                             : Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
-                                children: _seriesList.map((ser) {
-                                  final isSel = _selectedSeries?['id'] == ser['id'];
+                                children: _allColors.map((col) {
+                                  final isSel = _selectedColor?['id'] == col['id'];
                                   return ChoiceChip(
-                                    label: Text(ser['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
+                                    label: Text(col['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
                                     selected: isSel,
+                                    selectedColor: Colors.blue.withOpacity(0.2),
                                     onSelected: (selected) {
                                       if (selected) {
                                         setState(() {
-                                          _selectedSeries = ser;
-                                          _updateColorsForSelectedSeries();
-                                          final String type = ser['type']?.toString() ?? '';
-                                          if (type == 'Coulissant' || type.toLowerCase().contains('sliding')) {
-                                            _openingSystem = 'Sliding';
-                                          } else if (type == 'Frappe' || type.toLowerCase().contains('french') || type.toLowerCase().contains('frappe')) {
-                                            _openingSystem = 'French';
-                                          }
+                                          _selectedColor = col;
                                         });
                                       }
                                     },
@@ -911,141 +597,77 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               ),
                         const Divider(height: 32),
 
-                        // الألوان المفلترة
-                        if (_selectedSeries != null) ...[
-                          const Text(
-                            'اللون المتوفر لهذه السلسلة',
-                            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                          const SizedBox(height: 8),
-                          _filteredColors.isEmpty
-                              ? const Text('لا توجد ألوان محددة لهذه السلسلة في قاعدة البيانات.')
-                              : Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: _filteredColors.map((col) {
-                                    final isSel = _selectedColor?['id'] == col['id'];
-                                    return ChoiceChip(
-                                      label: Text(col['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
-                                      selected: isSel,
-                                      onSelected: (selected) {
-                                        if (selected) {
-                                          setState(() {
-                                            _selectedColor = col;
-                                          });
-                                        }
-                                      },
-                                    );
-                                  }).toList(),
-                                ),
-                          const Divider(height: 32),
-                        ],
+                        // نظام الفتح (فتح فرنسي أو منزلق)
+                        Text(
+                          Localization.translate('نظام الفتح', lang),
+                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            _buildToggleChip(
+                              Localization.translate('منزلق / Coulissant', lang),
+                              _openingSystem == 'Sliding',
+                              () => setState(() => _openingSystem = 'Sliding'),
+                            ),
+                            const SizedBox(width: 10),
+                            _buildToggleChip(
+                              Localization.translate('فتح فرنسي / Batteur (Français)', lang),
+                              _openingSystem == 'French',
+                              () => setState(() => _openingSystem = 'French'),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 32),
 
-                        if (_selectedSeries == null) ...[
-                          // نظام الفتح
-                          const Text(
-                            'نظام الفتح',
-                            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              _buildToggleChip('منزلق / Sliding', _openingSystem == 'Sliding', () {
-                                setState(() => _openingSystem = 'Sliding');
-                              }),
-                              const SizedBox(width: 10),
-                              _buildToggleChip('فتحة / Ouvrant', _openingSystem == 'French', () {
-                                setState(() => _openingSystem = 'French');
-                              }),
-                            ],
-                          ),
-                          const Divider(height: 32),
-                        ],
-
-                        // خيارات بنعم/لا ذكية
+                        // خيارات الستار والزجاج
                         _buildSelectionRow(
-                          title: 'هل يوجد ستار؟ (Shutter)',
-                          yesLabel: 'نعم يوجد',
-                          noLabel: 'لا يوجد',
+                          title: Localization.translate('هل يوجد ستار؟ (Shutter)', lang),
+                          yesLabel: Localization.translate('نعم يوجد', lang),
+                          noLabel: Localization.translate('لا يوجد', lang),
                           value: _shutterExists,
                           onChanged: (val) => setState(() => _shutterExists = val),
                         ),
 
                         if (_shutterExists) ...[
                           _buildSelectionRow(
-                            title: 'جهة الستار',
-                            yesLabel: 'داخل / Inside',
-                            noLabel: 'خارج / Outside',
+                            title: Localization.translate('جهة الستار', lang),
+                            yesLabel: Localization.translate('داخل / Inside', lang),
+                            noLabel: Localization.translate('خارج / Outside', lang),
                             value: _shutterSide == 'Inside',
                             onChanged: (val) => setState(() => _shutterSide = val ? 'Inside' : 'Outside'),
                           ),
                           _buildSelectionRow(
-                            title: 'نوع شفرة الستار',
-                            yesLabel: 'ألمنيوم / Aluminium',
-                            noLabel: 'بي في سي / PVC',
+                            title: Localization.translate('نوع شفرة الستار', lang),
+                            yesLabel: Localization.translate('ألمنيوم / Aluminium', lang),
+                            noLabel: Localization.translate('بي في سي / PVC', lang),
                             value: _shutterType == 'Aluminium',
                             onChanged: (val) => setState(() => _shutterType = val ? 'Aluminium' : 'PVC'),
                           ),
                           _buildSelectionRow(
-                            title: 'هل المحرك بمناورة أمان (Maneuver Security)؟',
-                            yesLabel: 'نعم / Yes',
-                            noLabel: 'لا / No',
+                            title: Localization.translate('هل المحرك بمناورة أمان (Maneuver Security)؟', lang),
+                            yesLabel: Localization.translate('نعم / Yes', lang),
+                            noLabel: Localization.translate('لا / No', lang),
                             value: _shutterMotorManeuver,
                             onChanged: (val) => setState(() => _shutterMotorManeuver = val),
                           ),
                         ],
 
                         _buildSelectionRow(
-                          title: 'نوع الزجاج',
-                          yesLabel: 'مزدوج / Double',
-                          noLabel: 'بسيط / Simple',
+                          title: Localization.translate('نوع الزجاج', lang),
+                          yesLabel: Localization.translate('مزدوج / Double', lang),
+                          noLabel: Localization.translate('بسيط / Simple', lang),
                           value: _glassType == 'Double',
                           onChanged: (val) => setState(() => _glassType = val ? 'Double' : 'Simple'),
                         ),
 
                         _buildSelectionRow(
-                          title: 'هل يوجد ديكور زجاج؟',
-                          yesLabel: 'نعم يوجد',
-                          noLabel: 'لا يوجد',
-                          value: _glassDecoration,
-                          onChanged: (val) => setState(() => _glassDecoration = val),
-                        ),
-
-                        _buildSelectionRow(
-                          title: 'محل جانبي مدعم (Montant Latéral Renforcé)؟',
-                          yesLabel: 'نعم مدعم',
-                          noLabel: 'غير مدعم',
-                          value: _reinforcedLateral,
-                          onChanged: (val) => setState(() => _reinforcedLateral = val),
-                        ),
-
-                        _buildSelectionRow(
-                          title: 'محل وسطي مدعم (Montant Central Renforcé)؟',
-                          yesLabel: 'نعم مدعم',
-                          noLabel: 'غير مدعم',
-                          value: _reinforcedCenter,
-                          onChanged: (val) => setState(() => _reinforcedCenter = val),
-                        ),
-
-                        _buildSelectionRow(
-                          title: 'هل الإطار السفلي موجود؟',
-                          yesLabel: 'موجود',
-                          noLabel: 'ملغي',
+                          title: Localization.translate('هل الإطار السفلي موجود؟', lang),
+                          yesLabel: Localization.translate('موجود', lang),
+                          noLabel: Localization.translate('ملغي', lang),
                           value: _bottomFrameExists,
                           onChanged: (val) => setState(() => _bottomFrameExists = val),
                         ),
-
-                        // ارتفاع المقبض
-                        TextFormField(
-                          controller: _handleHeightController,
-                          focusNode: _handleHeightFocus,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                            labelText: 'ارتفاع المقبض (مم) - اختياري',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
 
                         // الملاحظات
                         TextFormField(
@@ -1053,42 +675,44 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           focusNode: _noteFocus,
                           maxLines: 3,
                           decoration: InputDecoration(
-                            labelText: 'ملاحظات إضافية',
+                            labelText: Localization.translate('ملاحظات إضافية', lang),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
                         const SizedBox(height: 20),
 
-                        // ── قسم الميديا وتسجيل الصوت ────────────────────────
+                        // ── قسم الميديا وتسجيل الصوت (مصحح لتفادي الـ overflow) ──
                         Row(
                           children: [
                             const Icon(Icons.attach_file, color: Colors.blue),
                             const SizedBox(width: 8),
                             Text(
-                              'المرفقات والوسائط التوضيحية',
-                              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.blue[800]),
+                              Localization.translate('المرفقات والوسائط التوضيحية', lang),
+                              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.start,
                           children: [
                             ElevatedButton.icon(
                               icon: const Icon(Icons.camera_alt),
-                              label: const Text('صورة', style: TextStyle(fontFamily: 'Cairo')),
+                              label: Text(Localization.translate('صورة', lang), style: const TextStyle(fontFamily: 'Cairo')),
                               onPressed: _pickImage,
                             ),
                             ElevatedButton.icon(
                               icon: const Icon(Icons.videocam),
-                              label: const Text('فيديو', style: TextStyle(fontFamily: 'Cairo')),
+                              label: Text(Localization.translate('فيديو', lang), style: const TextStyle(fontFamily: 'Cairo')),
                               onPressed: _pickVideo,
                             ),
                             ElevatedButton.icon(
                               icon: Icon(_isRecording ? Icons.stop : Icons.mic, color: _isRecording ? Colors.red : Colors.white),
-                              label: Text(_isRecording ? 'إيقاف' : 'تسجيل صوت', style: const TextStyle(fontFamily: 'Cairo')),
+                              label: Text(_isRecording ? Localization.translate('إيقاف', lang) : Localization.translate('تسجيل صوت', lang), style: const TextStyle(fontFamily: 'Cairo')),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _isRecording ? Colors.red[50] : null,
+                                backgroundColor: _isRecording ? Colors.red.shade100 : null,
                               ),
                               onPressed: _toggleAudioRecording,
                             ),
@@ -1098,7 +722,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
 
                         // معاينة الميديا المرفقة
                         if (_imageFile != null || _videoFile != null || _recordedAudioPath != null) ...[
-                          const Text('المرفقات المحملة حالياً:', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                          Text(Localization.translate('المرفقات المحملة حالياً:', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 12,
@@ -1141,7 +765,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               if (_recordedAudioPath != null)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green)),
+                                  decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green)),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -1149,7 +773,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                         icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: Colors.green),
                                         onPressed: _playRecordedAudio,
                                       ),
-                                      const Text('تسجيل صوتي', style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                                      Text(Localization.translate('تسجيل صوتي', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                                       const SizedBox(width: 8),
                                       GestureDetector(
                                         onTap: () => setState(() => _recordedAudioPath = null),
@@ -1168,12 +792,15 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           width: double.infinity,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[700],
+                              backgroundColor: Colors.blue.shade700,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                             onPressed: _saveMeasurement,
-                            child: const Text('حفظ القياس في الهاتف', style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                            child: Text(
+                              Localization.translate('حفظ القياس في الهاتف', lang),
+                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
                           ),
                         ),
                       ],
@@ -1187,10 +814,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
               // ── قائمة القياسات السابقة ──────────────────────────────
               Row(
                 children: [
-                  const Icon(Icons.history, color: Colors.black87),
+                  const Icon(Icons.history),
                   const SizedBox(width: 8),
                   Text(
-                    'القياسات المسجلة سابقاً (${_savedMeasurements.length})',
+                    '${Localization.translate('القياسات المسجلة سابقاً', lang)} (${_savedMeasurements.length})',
                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ],
@@ -1198,7 +825,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
               const SizedBox(height: 12),
 
               _savedMeasurements.isEmpty
-                  ? const Text('لا توجد قياسات مسجلة بعد.')
+                  ? Text(Localization.translate('لا توجد قياسات مسجلة بعد.', lang))
                   : ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -1209,11 +836,11 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
                             title: Text(
-                              '${item['window_location']} - ${item['length']} × ${item['width']} مم',
+                              '${item['window_location']} - ${item['length']} × ${item['width']} ${Localization.translate('مم', lang)}',
                               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
-                              'نظام: ${item['opening_system']} | ستار: ${item['shutter_exists'] == 1 ? 'نعم' : 'لا'}\nملاحظة: ${item['note'] ?? ''}',
+                              '${Localization.translate('نظام', lang)}: ${item['opening_system']} | ${Localization.translate('ستار', lang)}: ${item['shutter_exists'] == 1 ? Localization.translate('نعم', lang) : Localization.translate('لا', lang)}\n${Localization.translate('ملاحظة', lang)}: ${item['note'] ?? ''}',
                               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                             ),
                             trailing: Row(
@@ -1221,7 +848,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.share, color: Colors.blue),
-                                  tooltip: 'مشاركة ورفع كـ ZIP',
+                                  tooltip: Localization.translate('مشاركة ورفع كـ ZIP', lang),
                                   onPressed: () => _exportToZip(item),
                                 ),
                                 IconButton(
