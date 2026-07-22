@@ -836,11 +836,11 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
                             title: Text(
-                              '${item['window_location']} - ${item['length']} × ${item['width']} ${Localization.translate('مم', lang)}',
+                              '${Localization.translate((item['window_location'] ?? '').toString(), lang)} - ${item['length']} × ${item['width']} ${Localization.translate('مم', lang)}',
                               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
-                              '${Localization.translate('نظام', lang)}: ${item['opening_system']} | ${Localization.translate('ستار', lang)}: ${item['shutter_exists'] == 1 ? Localization.translate('نعم', lang) : Localization.translate('لا', lang)}\n${Localization.translate('ملاحظة', lang)}: ${item['note'] ?? ''}',
+                              '${Localization.translate('نظام', lang)}: ${Localization.translate((item['opening_system'] ?? '').toString(), lang)} | ${Localization.translate('ستار', lang)}: ${item['shutter_exists'] == 1 ? Localization.translate('نعم', lang) : Localization.translate('لا', lang)}\n${Localization.translate('ملاحظة', lang)}: ${item['note'] ?? ''}',
                               style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                             ),
                             trailing: Row(
