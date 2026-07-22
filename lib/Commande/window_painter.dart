@@ -2687,20 +2687,18 @@ class WindowPainter extends CustomPainter {
           }
         }
 
-        if ((overrideIsInternalView ?? model.isInternalView)) {
-          final bool drawHandle = (i == 0 || i == count - 1);
-          if (drawHandle) {
-            _drawWindowDrawHandle(
-              canvas,
-              sashRect,
-              (i == 0) ? OpenDirection.left : OpenDirection.right,
-              zone.handlePositionRatio ?? 0.5,
-              t: t,
-              topOffset: topOffset,
-              isTopBound: isTopBound,
-              zone: zone,
-            );
-          }
+        final bool drawHandle = (i == 0 || i == count - 1);
+        if (drawHandle) {
+          _drawWindowDrawHandle(
+            canvas,
+            sashRect,
+            (i == 0) ? OpenDirection.left : OpenDirection.right,
+            zone.handlePositionRatio ?? 0.5,
+            t: t,
+            topOffset: topOffset,
+            isTopBound: isTopBound,
+            zone: zone,
+          );
         }
       }
     }

@@ -6098,7 +6098,7 @@ class _WindowViewState extends State<WindowView> {
                   border: Border.all(color: isDark ? Colors.blue.shade800 : Colors.blue.shade200),
                 ),
                 child: Text(
-                  '${widget.model.width.toInt()} * ${widget.model.height.toInt()}',
+                  'Dim: ${widget.model.width.toInt()} * ${widget.model.height.toInt()}',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,

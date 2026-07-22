@@ -4952,51 +4952,34 @@ class WindowModel extends ChangeNotifier {
     _lastDrawnLeft = drawnLeft;
     _lastDrawnTop = drawnTop;
 
-    if (drawnLeft != null && drawnTop != null && zones.isNotEmpty) {
-      double virtualW = 2400.0;
-      double virtualH = 1800.0;
-      double sX = (widgetSize.width - 40.0) / virtualW;
-      double sY = (widgetSize.height - 40.0) / virtualH;
-      canvasScale = math.min(sX, sY) * 0.90;
-
-      double virtualDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
-      double virtualDy = widgetSize.height / 2 - (virtualH / 2 * canvasScale);
-
-      canvasDx = virtualDx + drawnLeft! * canvasScale;
-      canvasDy = virtualDy + drawnTop! * canvasScale;
-      return;
-    }
-
     if (width <= 0 || height <= 0 || zones.isEmpty) {
       double virtualW = 2400.0;
       double virtualH = 1800.0;
-      double sX = (widgetSize.width - 40.0) / virtualW;
-      double sY = (widgetSize.height - 40.0) / virtualH;
-      canvasScale = math.min(sX, sY) * 0.90;
+      double sX = (widgetSize.width - 60.0) / virtualW;
+      double sY = (widgetSize.height - 60.0) / virtualH;
+      canvasScale = math.min(sX, sY) * 0.85;
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
       canvasDy = widgetSize.height / 2 - (virtualH / 2 * canvasScale);
       return;
     }
 
-    final double wallLeft = showWall ? 500.0 : 0.0;
-    final double wallRight = showWall ? 500.0 : 0.0;
+    final double wallLeft = showWall ? 300.0 : 0.0;
+    final double wallRight = showWall ? 300.0 : 0.0;
     final double wallTop = showWall
-        ? (hasShutter && !isCaissonTunnel ? (shutterBoxHeight + 150.0) : 250.0)
+        ? (hasShutter && !isCaissonTunnel ? (shutterBoxHeight + 100.0) : 150.0)
         : 0.0;
-    final double wallBottom = (showWall && showBottomWall) ? 200.0 : 0.0;
+    final double wallBottom = (showWall && showBottomWall) ? 150.0 : 0.0;
 
     double totalW = width + wallLeft + wallRight;
     double totalH = height + wallTop + wallBottom;
 
-    final padding = 40.0; // wall serves as padding
-    double maxW = widgetSize.width - padding;
-    double maxH = widgetSize.height - padding;
-    if (maxW <= 0) maxW = 100;
-    if (maxH <= 0) maxH = 100;
+    final padding = 60.0;
+    double maxW = math.max(100.0, widgetSize.width - padding);
+    double maxH = math.max(100.0, widgetSize.height - padding);
 
     double sX = maxW / totalW;
     double sY = maxH / totalH;
-    canvasScale = math.min(sX, sY) * 0.90;
+    canvasScale = math.min(sX, sY) * 0.85;
 
     double boundsCenterX = (width + wallRight - wallLeft) / 2;
     double boundsCenterY = (height + wallBottom - wallTop) / 2;
