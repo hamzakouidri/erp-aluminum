@@ -41,6 +41,16 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Poignée de fenêtre (2 pcs)',
     AppLanguage.english: 'Window handle (2 pcs)',
   },
+  'مقبض منزلق (اندراماتيك)': {
+    AppLanguage.arabic: 'مقبض منزلق (اندراماتيك)',
+    AppLanguage.french: 'Poignée Entrematique',
+    AppLanguage.english: 'Entrematique handle',
+  },
+  'مقبض كلاسيكي (بواني كودي)': {
+    AppLanguage.arabic: 'مقبض كلاسيكي (بواني كودي)',
+    AppLanguage.french: 'Poignée Bawani Kodi',
+    AppLanguage.english: 'Bawani Kodi handle',
+  },
   'إدارة الإكسسوارات': {
     AppLanguage.arabic: 'إدارة الإكسسوارات',
     AppLanguage.french: 'Accessoires',

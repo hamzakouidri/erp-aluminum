@@ -4201,11 +4201,11 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    bool isSlidingHandle = false;
+    final bool isSlidingSash = (zone?.content == ZoneContent.slidingSash) || _isHandleSashProfile(zone);
 
-    bool isClassicSlidingHandle =
-        ((zone?.content == ZoneContent.slidingSash) ||
-        _isHandleSashProfile(zone)) && !model.isPVC;
+    bool isSlidingHandle = isSlidingSash && !model.isPVC && zone?.useClassicHandle != true;
+
+    bool isClassicSlidingHandle = isSlidingSash && !model.isPVC && zone?.useClassicHandle == true;
 
     final bool isMarechal = zone?.lockType == LockType.rouleau || zone?.lockType == LockType.rouleau2000;
 

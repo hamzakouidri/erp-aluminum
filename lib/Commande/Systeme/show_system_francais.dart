@@ -9085,7 +9085,7 @@ class _WindowViewState extends State<WindowView> {
               // 2. Classic handle
               children.add(
                 _ContentButton(
-                  label: Localization.translate('مقبض كلاسيكي (كودي)', lang),
+                  label: Localization.translate('مقبض كلاسيكي (بواني كودي)', lang),
                   icon: Icons.sync_alt_rounded,
                   selected: zone.useClassicHandle == true,
                   onPressed: () {
