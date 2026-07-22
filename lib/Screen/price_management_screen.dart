@@ -2442,17 +2442,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       return name.contains(query);
     }).toList();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: TextField(
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             decoration: InputDecoration(
               hintText: Localization.translate('بحث...', lang),
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
               isDense: true,
-              border: const OutlineInputBorder(
-                borderRadius: BorderRadius.all(Radius.circular(20)),
+              filled: true,
+              fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(20)),
+                borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(20)),
+                borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
               ),
             ),
             onChanged: (val) {
@@ -2467,11 +2476,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               ? Center(
                   child: Text(
                     Localization.translate('لا توجد نتائج مطابقة للبحث.', lang),
-                    style: const TextStyle(color: Colors.grey),
+                    style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey),
                   ),
                 )
               : ListView.builder(
-                  padding: EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final item = filtered[index];
@@ -2479,14 +2488,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         ? (item[priceCol] as num).toDouble()
                         : 0.0;
                     return Container(
-                      margin: EdgeInsets.only(bottom: 15),
+                      margin: const EdgeInsets.only(bottom: 15),
                       decoration: BoxDecoration(
-                        border: Border.all(width: 1, color: Colors.grey.shade300),
-                        color: Colors.white,
+                        border: Border.all(
+                          width: 1,
+                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                        ),
+                        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.grey.withValues(alpha: 0.1),
+                            color: isDark
+                                ? Colors.black.withValues(alpha: 0.25)
+                                : Colors.grey.withValues(alpha: 0.1),
                             spreadRadius: 2,
                             blurRadius: 8,
                             offset: const Offset(0, 4),
@@ -2509,6 +2523,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       ],
     );
   }
+
 
   Widget _buildShutterBoxLimitsTab(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
@@ -3292,6 +3307,7 @@ class _PriceEditRowState extends State<PriceEditRow> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -3307,9 +3323,10 @@ class _PriceEditRowState extends State<PriceEditRow> {
                     Expanded(
                       child: Text(
                         widget.title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
                       ),
                     ),
@@ -3318,7 +3335,7 @@ class _PriceEditRowState extends State<PriceEditRow> {
                 if (widget.subtitle.isNotEmpty)
                   Text(
                     widget.subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
                   ),
               ],
             ),
@@ -3333,14 +3350,23 @@ class _PriceEditRowState extends State<PriceEditRow> {
                 decimal: true,
               ),
               style: TextStyle(
-                color: _isEditing ? Colors.black : Colors.grey.shade700,
+                color: _isEditing
+                    ? (isDark ? Colors.white : Colors.black)
+                    : (isDark ? Colors.grey.shade300 : Colors.grey.shade700),
                 fontWeight: _isEditing ? FontWeight.bold : FontWeight.normal,
               ),
               decoration: InputDecoration(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: _isEditing ? Colors.blue : Colors.grey.shade300,
+                    color: _isEditing ? Colors.blue : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                    width: _isEditing ? 2 : 1,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: _isEditing ? Colors.blue : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                     width: _isEditing ? 2 : 1,
                   ),
                 ),
@@ -3349,12 +3375,16 @@ class _PriceEditRowState extends State<PriceEditRow> {
                   vertical: 8,
                 ),
                 suffixText: 'DZD',
-                filled: _isEditing,
-                fillColor: _isEditing ? Colors.white : Colors.grey.shade100,
+                suffixStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                filled: true,
+                fillColor: _isEditing
+                    ? (isDark ? const Color(0xFF2A2A2A) : Colors.white)
+                    : (isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100),
               ),
             ),
           ),
           const SizedBox(width: 8),
+
           if (widget.canChangePrices)
             Container(
               decoration: BoxDecoration(
