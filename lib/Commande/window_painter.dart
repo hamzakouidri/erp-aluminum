@@ -2687,7 +2687,7 @@ class WindowPainter extends CustomPainter {
           }
         }
 
-        final bool drawHandle = (i == 0 || i == count - 1);
+        final bool drawHandle = (i == 0 || i == count - 1) && model.isPVC;
         if (drawHandle) {
           _drawWindowDrawHandle(
             canvas,
