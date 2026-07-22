@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/widgets/draggable_fab.dart';
+import 'package:database_data/Screen/caisson_tunnel_result_screen.dart';
 
 enum KitType {
   kit11, // Adds +11 cm (+110 mm) to Caisson length
@@ -743,10 +744,45 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: () {
+                            onPressed: () async {
                               setState(() {
                                 _isCalculated = true;
                               });
+
+                              final payload = {
+                                'systemType': 'caisson_tunnel',
+                                'kitType': _selectedKit == KitType.kit11 ? 'Kit 11 (+11cm)' : 'Kit 16 (+16cm)',
+                                'inputUnit': _inputUnit == InputUnit.mm ? 'mm' : 'cm',
+                                'itemsCount': _items.length,
+                                'grandTotalCaissonBars': grandTotalCaissonBars,
+                                'grandTotalBottomCoverBars': grandTotalBottomCoverBars,
+                                'grandTotalPairs': grandTotalPairs,
+                                'items': _items.map((i) => {
+                                  'lengthMm': i.lengthMm,
+                                  'quantity': i.quantity,
+                                  'sizeCm': i.sizeCm,
+                                  'cutLengthMm': i.getCaissonCutLengthMm(_selectedKit),
+                                }).toList(),
+                                'sizeCalculations': sizeCalculations.map((size, calc) => MapEntry(size.toString(), {
+                                  'sizeCm': calc.sizeCm,
+                                  'caissonBars': calc.caissonBars,
+                                  'bottomCoverBars': calc.bottomCoverBars,
+                                  'totalPairs': calc.totalPairs,
+                                  'caissonMeters': calc.caissonLengthMm / 1000.0,
+                                  'bottomCoverMeters': calc.bottomCoverLengthMm / 1000.0,
+                                })),
+                              };
+
+                              final result = await Navigator.push<Map<String, dynamic>>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CaissonTunnelResultScreen(caissonData: payload),
+                                ),
+                              );
+
+                              if (result != null && mounted) {
+                                Navigator.of(context).pop(result);
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _primaryBlue,
