@@ -350,14 +350,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildBonDeChargeScreenBody() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subtextColor = isDark ? Colors.grey.shade300 : Colors.black54;
-    final headerBg = isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200;
-    final clientBg = isDark ? const Color(0xFF262626) : Colors.grey.shade100;
-    final clientBorder = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
-    final itemBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    const textColor = Colors.black87;
+    const subtextColor = Colors.black54;
+    final headerBg = Colors.grey.shade200;
+    final clientBg = Colors.grey.shade100;
+    final clientBorder = Colors.grey.shade300;
+    const itemBg = Colors.white;
 
     final List<Map<String, dynamic>> rows = [];
     int globalIndex = 0;
@@ -627,7 +625,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
