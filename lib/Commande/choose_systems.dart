@@ -7,6 +7,7 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/selected_systems_screen.dart';
+import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChooseSysteme extends StatefulWidget {
@@ -343,6 +344,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         targetPage = WindowView(
           model: _makeModel(thickness: 30),
         );
+        break;
+      case 'caisson_tunnel':
+        targetPage = const CaissonTunnelScreen();
         break;
       default:
         targetPage = SystemRoling(model: _makeModel());
