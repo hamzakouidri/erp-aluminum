@@ -980,9 +980,30 @@ class ComponentCalculator {
           140.0;
     }
 
+    double integratedCoverW = window.sideCoverWidth;
+    if (integratedCoverW <= 0 && window.frameOverride != null) {
+      integratedCoverW = ((window.frameOverride!['couvre_joint_width'] ?? window.frameOverride!['visible_width']) as num?)?.toDouble() ?? 0.0;
+    }
+    if (integratedCoverW <= 0) {
+      final sec = window.getSectionByType('frame');
+      if (sec != null) {
+        integratedCoverW = sec.couvreJointWidth > 0 ? sec.couvreJointWidth : (sec.visibleWidth ?? 0.0);
+      }
+    }
+
+    final bool hasL = !window.removedShutterSides.contains('left');
+    final bool hasR = !window.removedShutterSides.contains('right');
+    final bool hasT = !window.removedShutterSides.contains('top');
+    final bool hasB = !window.removedShutterSides.contains('bottom') && window.hasBottomFrame;
+
     for (final r in frameRects) {
       double fWidth = r.width + weldVal;
       double fHeight = r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+
+      if (window.isIntegratedFrame) {
+        fWidth = r.width + (hasL ? integratedCoverW : 0.0) + (hasR ? integratedCoverW : 0.0) + weldVal;
+        fHeight = r.height + (hasT ? integratedCoverW : 0.0) + (hasB ? integratedCoverW : 0.0) + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+      }
       
       double hPiece = fHeight / 1000.0;
       double wPiece = fWidth / 1000.0;
@@ -1047,7 +1068,7 @@ class ComponentCalculator {
       );
     }
 
-    bool showSideCover = window.hasSideCovers && window.isSideCoverAllowed && !hasIntegratedSideCover;
+    bool showSideCover = window.hasSideCovers && window.isSideCoverAllowed && !window.isIntegratedFrame && !hasIntegratedSideCover;
 
     if (showSideCover) {
       double w = window.sideCoverWidth; // cover visible width in mm

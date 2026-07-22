@@ -387,6 +387,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     final filtered = <BomItem>[];
     for (var item in items) {
+      if (model.isIntegratedFrame) {
+        final origLower = item.originalName.toLowerCase();
+        final nameLower = item.name.toLowerCase();
+        if (origLower.contains('الغطاء الجانبي') ||
+            origLower.contains('side cover') ||
+            origLower.contains('couvre-joint') ||
+            nameLower.contains('الغطاء الجانبي') ||
+            nameLower.contains('couvre-joint')) {
+          continue; // Strictly remove side cover when frame has integrated cover!
+        }
+      }
+
       if (item.category == 'accessory') {
         final override = model.componentOverrides[item.originalName];
         final accId = override != null ? (override['id'] as int?) : null;

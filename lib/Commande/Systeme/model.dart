@@ -1591,23 +1591,44 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isIntegratedFrame {
-    if (zones.length > 1) return false;
-    if (!isSideCoverAllowed) return false;
+    if (frameOverride != null) {
+      final nameLower = (frameOverride!['name'] ?? '').toString().toLowerCase();
+      final typeLower = (frameOverride!['type'] ?? '').toString().toLowerCase();
+      final double cjW = (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ?? 0.0;
+      if (cjW > 0 ||
+          nameLower.contains('مدمج') ||
+          nameLower.contains('intégré') ||
+          nameLower.contains('integre') ||
+          nameLower.contains('monobloc') ||
+          nameLower.contains('cj') ||
+          typeLower.contains('monobloc')) {
+        return true;
+      }
+    }
     final frame = getSectionByType('frame');
     if (frame == null) return false;
     if (frame.couvreJointWidth > 0) return true;
     final nameLower = frame.name.toLowerCase();
     final codeLower = frame.code.toLowerCase();
-    return codeLower.contains('103')||
-    nameLower.contains('cadre cj');
+    return nameLower.contains('مدمج') ||
+           nameLower.contains('intégré') ||
+           nameLower.contains('integre') ||
+           nameLower.contains('monobloc') ||
+           nameLower.contains('cadre cj') ||
+           codeLower.contains('103');
   }
 
   double get sideCoverWidth {
+    if (frameOverride != null) {
+      final double? w = (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ??
+          (frameOverride!['visible_width'] as num?)?.toDouble();
+      if (w != null && w > 0) return w;
+    }
+
     final frame = getSectionByType('frame');
-    if (isIntegratedFrame && frame != null) {
-      // 🟢 عرض شريط الكوفر المدمج فقط (منفصل عن عرض الإطار profileThickness)
-      // إذا كان صفراً، فهذا يعني إطار "مونوبلوك" حقيقي بعرض واحد كامل بدون شريط إضافي
-      return frame.couvreJointWidth > 0 ? frame.couvreJointWidth : 0.0;
+    if (frame != null) {
+      if (frame.couvreJointWidth > 0) return frame.couvreJointWidth;
+      if (isIntegratedFrame && (frame.visibleWidth ?? 0) > 0) return frame.visibleWidth!;
     }
 
     if (selectedSideCover != null) {
@@ -1615,19 +1636,7 @@ class WindowModel extends ChangeNotifier {
       final w2 = selectedSideCover!.visibleWidth;
       if (w2 > 0) return w2;
       if (w1 > 0) return w1;
-    }
-
-    if (frameOverride != null) {
-      final double? w = (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ??
-          (frameOverride!['visible_width'] as num?)?.toDouble();
-      if (w != null && w > 0) return w;
-    }
-
-    if (frame != null) {
-      if (frame.couvreJointWidth > 0) return frame.couvreJointWidth;
-      if (frame.visibleWidth > 0) return frame.visibleWidth;
-    }
-    return 40.0;
+    }    return 40.0;
   }
 
   FrameColor _frameColor = FrameColor.white;
