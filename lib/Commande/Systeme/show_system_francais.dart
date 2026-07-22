@@ -8638,9 +8638,9 @@ class _WindowViewState extends State<WindowView> {
               btnSelected = true;
             } else {
               btnLabel = zone.content == ZoneContent.doubleSash
-                  ? Localization.translate('مقبض كريمون (قطعتين)', lang)
-                  : Localization.translate('مقبض كريمون', lang);
-              btnIcon = Icons.door_back_door_rounded;
+                  ? Localization.translate('Poignée fenêtre (2 pcs)', lang)
+                  : Localization.translate('Poignée fenêtre', lang);
+              btnIcon = Icons.window_rounded;
               btnSelected = true;
             }
           }
@@ -9385,12 +9385,12 @@ class _WindowViewState extends State<WindowView> {
                 }
               }
 
-              // Window handle (مقبض نافذة / Poignée de fenêtre)
+              // Window handle (Poignée fenêtre)
               children.add(
                 _ContentButton(
                   label: zone.content == ZoneContent.doubleSash
-                      ? Localization.translate('مقبض نافذة (قطعتين)', lang)
-                      : Localization.translate('مقبض نافذة', lang),
+                      ? Localization.translate('Poignée fenêtre (2 pcs)', lang)
+                      : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected: zone.lockType == LockType.none && zone.useOctoHandle != true && zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -9406,12 +9406,12 @@ class _WindowViewState extends State<WindowView> {
               );
             } else {
               // Window sashes (Thin Sash / الظلفة الرقيقة)
-              // Window handle (مقبض نافذة / Poignée de fenêtre)
+              // Window handle (Poignée fenêtre)
               children.add(
                 _ContentButton(
                   label: zone.content == ZoneContent.doubleSash
-                      ? Localization.translate('مقبض نافذة (قطعتين)', lang)
-                      : Localization.translate('مقبض نافذة', lang),
+                      ? Localization.translate('Poignée fenêtre (2 pcs)', lang)
+                      : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected: zone.lockType == LockType.none && zone.useOctoHandle != true,
                   onPressed: () {
