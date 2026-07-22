@@ -49,6 +49,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     ).language;
     final types = {
       'box': Localization.translate('صندوق', lang),
+      'caisson_tunnel': Localization.translate('صندوق النفق (Caisson Tunnel)', lang),
       'blade': Localization.translate('شفرة/شريحة', lang),
       'track': Localization.translate('سكة/مسار', lang),
       'motor': Localization.translate('محرك', lang),
@@ -392,6 +393,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     ).language;
     final types = {
       'box': Localization.translate('صندوق', lang),
+      'caisson_tunnel': Localization.translate('صندوق النفق (Caisson Tunnel)', lang),
       'blade': Localization.translate('شفرة/شريحة', lang),
       'track': Localization.translate('سكة/مسار', lang),
       'motor': Localization.translate('محرك', lang),
@@ -799,6 +801,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
 
     final typeOrder = [
       'box',
+      'caisson_tunnel',
       'blade',
       'track',
       'motor',
@@ -834,6 +837,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
 
     final typeLabels = {
       'box': Localization.translate('صندوق', lang),
+      'caisson_tunnel': Localization.translate('صندوق النفق (Caisson Tunnel)', lang),
       'blade': Localization.translate('شفرات', lang),
       'track': Localization.translate('سكة/مسار', lang),
       'motor': Localization.translate('محرك', lang),
@@ -859,6 +863,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
 
     final typeColors = {
       'box': Colors.blue,
+      'caisson_tunnel': Colors.deepOrange,
       'blade': Colors.teal,
       'track': Colors.orange,
       'motor': Colors.purple,
