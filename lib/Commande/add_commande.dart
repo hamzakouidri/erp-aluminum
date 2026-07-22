@@ -1689,6 +1689,15 @@ class _CommandePageState extends State<CommandePage> {
     final cardKey = _cardKeys.putIfAbsent(p, () => GlobalKey());
     bool isHighlighted = _highlightedProduct == p;
 
+    final bool isCaisson = p.isCaissonTunnel ||
+        (p.manualNameOverride?.contains('Caisson Tunnel') == true) ||
+        (p.manualNameOverride?.contains('كيسون النفق') == true);
+
+    if (isCaisson) {
+      p.isCaissonTunnel = true;
+      p.isReplaced = false;
+    }
+
     return Card(
       key: cardKey,
       elevation: isHighlighted ? 8 : 4,
@@ -1702,15 +1711,15 @@ class _CommandePageState extends State<CommandePage> {
         ),
       ),
       color: isDark
-          ? (p.isReplaced ? Colors.grey.shade900 : const Color(0xFF1E1E1E))
-          : (p.isReplaced ? const Color(0xFFF5F5F5) : Colors.white),
+          ? ((p.isReplaced && !isCaisson) ? Colors.grey.shade900 : const Color(0xFF1E1E1E))
+          : ((p.isReplaced && !isCaisson) ? const Color(0xFFF5F5F5) : Colors.white),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CustomPaint(
-              foregroundPainter: p.isReplaced ? CardCrossPainter() : null,
+              foregroundPainter: (p.isReplaced && !isCaisson) ? CardCrossPainter() : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2011,7 +2020,7 @@ class _CommandePageState extends State<CommandePage> {
                               border: Border.all(color: Colors.grey.shade300),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: p.isCaissonTunnel
+                            child: isCaisson
                                 ? Image.asset(
                                     'Icon/caisson_tunnel.jpg',
                                     fit: BoxFit.contain,
