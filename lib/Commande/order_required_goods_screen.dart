@@ -339,6 +339,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     }
 
+    await model.loadSeriesTableConfig();
+
     final generatedBom = ComponentCalculator.generateBom(
       model,
       activeVariants,

@@ -401,4 +401,39 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Tout convertir en commande',
     AppLanguage.english: 'Convert All to Order',
   },
+  'طريقة وحسابات عرض الدلفة والزجاج بالسلسلة': {
+    AppLanguage.arabic: 'طريقة وحسابات عرض الدلفة والزجاج بالسلسلة',
+    AppLanguage.french: 'Formules de largeur d\'ouvrant et vitrage',
+    AppLanguage.english: 'Sash & Glass Width Formula Rules',
+  },
+  'خصم/ثابت عرض الدلفة (ضلفتين 2 Sashes)': {
+    AppLanguage.arabic: 'خصم/ثابت عرض الدلفة (ضلفتين 2 Sashes)',
+    AppLanguage.french: 'Déduction Ouvrant (2 Vantaux)',
+    AppLanguage.english: 'Sash Width Deduction (2 Sashes)',
+  },
+  'خصم/ثابت عرض الدلفة (3 ضلفات 3 Sashes)': {
+    AppLanguage.arabic: 'خصم/ثابت عرض الدلفة (3 ضلفات 3 Sashes)',
+    AppLanguage.french: 'Déduction Ouvrant (3 Vantaux)',
+    AppLanguage.english: 'Sash Width Deduction (3 Sashes)',
+  },
+  'خصم/ثابت عرض الدلفة (4 ضلفات 4 Sashes)': {
+    AppLanguage.arabic: 'خصم/ثابت عرض الدلفة (4 ضلفات 4 Sashes)',
+    AppLanguage.french: 'Déduction Ouvrant (4 Vantaux)',
+    AppLanguage.english: 'Sash Width Deduction (4 Sashes)',
+  },
+  'ثابت تداخل المنزلق (Overlap مم)': {
+    AppLanguage.arabic: 'ثابت تداخل المنزلق (Overlap مم)',
+    AppLanguage.french: 'Chevauchement Coulissant (Overlap mm)',
+    AppLanguage.english: 'Sliding Overlap Constant (mm)',
+  },
+  'خصم عرض الزجاج من عرض الدلفة (مم)': {
+    AppLanguage.arabic: 'خصم عرض الزجاج من عرض الدلفة (مم)',
+    AppLanguage.french: 'Déduction Vitrage / Ouvrant (mm)',
+    AppLanguage.english: 'Glass Deduction from Sash (mm)',
+  },
+  'ملاحظات المعادلات الخاصة بالسلسلة': {
+    AppLanguage.arabic: 'ملاحظات المعادلات الخاصة بالسلسلة',
+    AppLanguage.french: 'Remarques sur les formules',
+    AppLanguage.english: 'Formula Notes',
+  },
 };

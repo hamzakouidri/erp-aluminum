@@ -515,9 +515,33 @@ class SqlDatabase {
               allowed_accessory_ids TEXT NOT NULL DEFAULT '',
               allowed_accessory_types TEXT NOT NULL DEFAULT '',
               excluded_accessory_ids TEXT NOT NULL DEFAULT '',
+              sash_w_deduction_2 REAL DEFAULT 0.0,
+              sash_w_deduction_3 REAL DEFAULT 0.0,
+              sash_w_deduction_4 REAL DEFAULT 0.0,
+              sash_overlap_val REAL DEFAULT 0.0,
+              glass_w_deduction REAL DEFAULT 0.0,
+              custom_formula_notes TEXT DEFAULT '',
               updated_at TEXT NOT NULL DEFAULT ''
             )
           ''');
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_2 REAL DEFAULT 0.0;");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_3 REAL DEFAULT 0.0;");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_4 REAL DEFAULT 0.0;");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_overlap_val REAL DEFAULT 0.0;");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN glass_w_deduction REAL DEFAULT 0.0;");
+        } catch (_) {}
+        try {
+          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN custom_formula_notes TEXT DEFAULT '';");
         } catch (_) {}
 
 
@@ -7959,18 +7983,31 @@ class SqlDatabase {
     required String allowedAccessoryIds,
     required String allowedAccessoryTypes,
     required String excludedAccessoryIds,
+    double sashWDeduction2 = 0.0,
+    double sashWDeduction3 = 0.0,
+    double sashWDeduction4 = 0.0,
+    double sashOverlapVal = 0.0,
+    double glassWDeduction = 0.0,
+    String customFormulaNotes = '',
   }) async {
     final myDb = await db;
     if (myDb == null) return;
     await myDb.execute('''
       INSERT INTO SeriesTableConfig (
-        series_id, allowed_section_types, allowed_accessory_ids, allowed_accessory_types, excluded_accessory_ids, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        series_id, allowed_section_types, allowed_accessory_ids, allowed_accessory_types, excluded_accessory_ids,
+        sash_w_deduction_2, sash_w_deduction_3, sash_w_deduction_4, sash_overlap_val, glass_w_deduction, custom_formula_notes, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(series_id) DO UPDATE SET
         allowed_section_types = excluded.allowed_section_types,
         allowed_accessory_ids = excluded.allowed_accessory_ids,
         allowed_accessory_types = excluded.allowed_accessory_types,
         excluded_accessory_ids = excluded.excluded_accessory_ids,
+        sash_w_deduction_2 = excluded.sash_w_deduction_2,
+        sash_w_deduction_3 = excluded.sash_w_deduction_3,
+        sash_w_deduction_4 = excluded.sash_w_deduction_4,
+        sash_overlap_val = excluded.sash_overlap_val,
+        glass_w_deduction = excluded.glass_w_deduction,
+        custom_formula_notes = excluded.custom_formula_notes,
         updated_at = excluded.updated_at
     ''', [
       seriesId,
@@ -7978,6 +8015,12 @@ class SqlDatabase {
       allowedAccessoryIds,
       allowedAccessoryTypes,
       excludedAccessoryIds,
+      sashWDeduction2,
+      sashWDeduction3,
+      sashWDeduction4,
+      sashOverlapVal,
+      glassWDeduction,
+      customFormulaNotes,
       DateTime.now().toIso8601String(),
     ]);
     CloudSyncService().notifyChange();

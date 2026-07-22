@@ -5,7 +5,7 @@ import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 
-/// شاشة تخصيص عناصر جدول الكمية والتكلفة لكل سلسلة
+/// شاشة تخصيص عناصر وطريقة حساب جدول الكمية والتكلفة لكل سلسلة
 /// المسار: المنتجات ← تخصيص جدول الكمية والتكلفة
 class SeriesTableConfigScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -19,7 +19,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _seriesList = [];
   List<Map<String, dynamic>> _allAccessories = [];
-  List<Map<String, dynamic>> _allSections = [];
 
   Map<String, dynamic>? _selectedProfile;
   Map<String, dynamic>? _selectedSeries;
@@ -34,6 +33,14 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   final Set<int> _allowedAccessoryIds = {};
   final Set<String> _allowedAccessoryTypes = {};
   final Set<int> _excludedAccessoryIds = {};
+
+  // Calculation Formula Controllers
+  final TextEditingController _sashDeduction2Ctrl = TextEditingController();
+  final TextEditingController _sashDeduction3Ctrl = TextEditingController();
+  final TextEditingController _sashDeduction4Ctrl = TextEditingController();
+  final TextEditingController _sashOverlapCtrl = TextEditingController();
+  final TextEditingController _glassDeductionCtrl = TextEditingController();
+  final TextEditingController _formulaNotesCtrl = TextEditingController();
 
   String _accSearchQuery = '';
   final TextEditingController _accSearchCtrl = TextEditingController();
@@ -75,6 +82,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   @override
   void dispose() {
     _accSearchCtrl.dispose();
+    _sashDeduction2Ctrl.dispose();
+    _sashDeduction3Ctrl.dispose();
+    _sashDeduction4Ctrl.dispose();
+    _sashOverlapCtrl.dispose();
+    _glassDeductionCtrl.dispose();
+    _formulaNotesCtrl.dispose();
     super.dispose();
   }
 
@@ -93,11 +106,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _selectedSeries = null;
       _seriesList = [];
       _allAccessories = [];
-      _allSections = [];
       _allowedSectionTypes.clear();
       _allowedAccessoryIds.clear();
       _allowedAccessoryTypes.clear();
       _excludedAccessoryIds.clear();
+      _clearFormulaInputs();
       _loadingSeries = true;
     });
     final s = await widget.db.readSeriesByProfile(profile['id'] as int);
@@ -105,6 +118,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _seriesList = s;
       _loadingSeries = false;
     });
+  }
+
+  void _clearFormulaInputs() {
+    _sashDeduction2Ctrl.clear();
+    _sashDeduction3Ctrl.clear();
+    _sashDeduction4Ctrl.clear();
+    _sashOverlapCtrl.clear();
+    _glassDeductionCtrl.clear();
+    _formulaNotesCtrl.clear();
   }
 
   Future<void> _selectSeries(Map<String, dynamic> series) async {
@@ -115,16 +137,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _allowedAccessoryIds.clear();
       _allowedAccessoryTypes.clear();
       _excludedAccessoryIds.clear();
+      _clearFormulaInputs();
     });
 
     final seriesId = series['id'] as int;
-
-    // Load Sections belonging to this series
-    final dbInstance = await widget.db.db;
-    List<Map<String, dynamic>> secList = [];
-    if (dbInstance != null) {
-      secList = await dbInstance.query('Sections', where: 'series_id = ?', whereArgs: [seriesId]);
-    }
 
     // Load Accessories and Joints
     final allAcc = await widget.db.readAccessories();
@@ -165,7 +181,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       if (accIdsStr.isNotEmpty) {
         _allowedAccessoryIds.addAll(accIdsStr.split(',').map((e) => int.tryParse(e.trim())).whereType<int>());
       } else {
-        // By default, select all accessories linked to this series or global
         for (var a in filteredAcc) {
           final id = a['id'] as int?;
           if (id != null) {
@@ -187,8 +202,22 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       if (exclIdsStr.isNotEmpty) {
         _excludedAccessoryIds.addAll(exclIdsStr.split(',').map((e) => int.tryParse(e.trim())).whereType<int>());
       }
+
+      // Populate formula controllers
+      final d2 = (existingConfig['sash_w_deduction_2'] as num?)?.toDouble() ?? 0.0;
+      final d3 = (existingConfig['sash_w_deduction_3'] as num?)?.toDouble() ?? 0.0;
+      final d4 = (existingConfig['sash_w_deduction_4'] as num?)?.toDouble() ?? 0.0;
+      final ov = (existingConfig['sash_overlap_val'] as num?)?.toDouble() ?? 0.0;
+      final gd = (existingConfig['glass_w_deduction'] as num?)?.toDouble() ?? 0.0;
+      final fn = (existingConfig['custom_formula_notes'] ?? '').toString();
+
+      _sashDeduction2Ctrl.text = d2 != 0.0 ? d2.toString() : '';
+      _sashDeduction3Ctrl.text = d3 != 0.0 ? d3.toString() : '';
+      _sashDeduction4Ctrl.text = d4 != 0.0 ? d4.toString() : '';
+      _sashOverlapCtrl.text = ov != 0.0 ? ov.toString() : '';
+      _glassDeductionCtrl.text = gd != 0.0 ? gd.toString() : '';
+      _formulaNotesCtrl.text = fn;
     } else {
-      // Default initial state
       _allowedSectionTypes.addAll(_defaultSectionTypes);
       _allowedAccessoryTypes.addAll(_defaultAccessoryTypes);
       for (var a in filteredAcc) {
@@ -204,7 +233,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     }
 
     setState(() {
-      _allSections = secList;
       _allAccessories = filteredAcc;
       _loadingDetails = false;
     });
@@ -224,6 +252,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         allowedAccessoryIds: _allowedAccessoryIds.join(','),
         allowedAccessoryTypes: _allowedAccessoryTypes.join(','),
         excludedAccessoryIds: _excludedAccessoryIds.join(','),
+        sashWDeduction2: double.tryParse(_sashDeduction2Ctrl.text) ?? 0.0,
+        sashWDeduction3: double.tryParse(_sashDeduction3Ctrl.text) ?? 0.0,
+        sashWDeduction4: double.tryParse(_sashDeduction4Ctrl.text) ?? 0.0,
+        sashOverlapVal: double.tryParse(_sashOverlapCtrl.text) ?? 0.0,
+        glassWDeduction: double.tryParse(_glassDeductionCtrl.text) ?? 0.0,
+        customFormulaNotes: _formulaNotesCtrl.text.trim(),
       );
 
       if (mounted) {
@@ -320,207 +354,337 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               _loadingSeries
                   ? const Center(child: CircularProgressIndicator())
                   : _seriesList.isEmpty
-                      ? Text(Localization.translate('لا توجد سلاسل مسجلة لهذا البروفيل', lang))
-                      : Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _seriesList.map((ser) {
-                            final isSel = _selectedSeries?['id'] == ser['id'];
-                            return ChoiceChip(
-                              label: Text(ser['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
-                              selected: isSel,
-                              selectedColor: Colors.green.withValues(alpha: 0.3),
-                              onSelected: (_) => _selectSeries(ser),
-                            );
-                          }).toList(),
+                      ? Text(Localization.translate('لا توجد سلاسل مسجلة لهذا البروفيل', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.orange))
+                      : SizedBox(
+                          height: 50,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _seriesList.length,
+                            itemBuilder: (ctx, i) {
+                              final ser = _seriesList[i];
+                              final isSel = _selectedSeries?['id'] == ser['id'];
+                              return Padding(
+                                padding: const EdgeInsets.only(left: 8.0, right: 8.0),
+                                child: ChoiceChip(
+                                  label: Text(ser['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
+                                  selected: isSel,
+                                  selectedColor: Colors.green.withValues(alpha: 0.3),
+                                  onSelected: (_) => _selectSeries(ser),
+                                ),
+                              );
+                            },
+                          ),
                         ),
               const Divider(height: 28),
             ],
 
-            // ── Step 3: Configure Allowed Components and Accessories ──────────
+            // ── Details Section ────────────────────────────────────────────────
             if (_selectedSeries != null) ...[
               if (_loadingDetails)
                 const Center(child: CircularProgressIndicator())
               else ...[
-                // Card A: Allowed Profile Section Types
-                _buildCardSection(
-                  context,
-                  title: Localization.translate('أنواع القطاعات المسموحة بالجدول', lang),
-                  icon: Icons.format_shapes_rounded,
-                  color: Colors.indigo,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _defaultSectionTypes.map((type) {
-                      final isSel = _allowedSectionTypes.contains(type);
-                      return FilterChip(
-                        label: Text(type, style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-                        selected: isSel,
-                        selectedColor: Colors.indigo.withValues(alpha: 0.25),
-                        onSelected: (val) {
-                          setState(() {
-                            val ? _allowedSectionTypes.add(type) : _allowedSectionTypes.remove(type);
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Card B: Allowed Accessory Types
-                _buildCardSection(
-                  context,
-                  title: Localization.translate('أنواع الإكسسوارات المسموحة بالجدول', lang),
-                  icon: Icons.category_rounded,
-                  color: Colors.purple,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _defaultAccessoryTypes.map((accType) {
-                      final isSel = _allowedAccessoryTypes.contains(accType);
-                      return FilterChip(
-                        label: Text(accType, style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-                        selected: isSel,
-                        selectedColor: Colors.purple.withValues(alpha: 0.25),
-                        onSelected: (val) {
-                          setState(() {
-                            val ? _allowedAccessoryTypes.add(accType) : _allowedAccessoryTypes.remove(accType);
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Card C: Allowed Specific Accessory Items
-                _buildCardSection(
-                  context,
-                  title: Localization.translate('قائمة الإكسسوارات الفردية المسموحة', lang),
-                  icon: Icons.construction_rounded,
-                  color: Colors.orange,
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _accSearchCtrl,
-                        decoration: InputDecoration(
-                          hintText: Localization.translate('بحث في الإكسسوارات...', lang),
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                // ── Section 1: Calculation Formulas for Sash & Glass Width ────
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calculate_outlined, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                Localization.translate('طريقة وحسابات عرض الدلفة والزجاج بالسلسلة', lang),
+                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                            ),
+                          ],
                         ),
-                        onChanged: (v) => setState(() => _accSearchQuery = v.trim().toLowerCase()),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                for (var a in _allAccessories) {
-                                  final id = a['id'] as int?;
-                                  if (id != null) _allowedAccessoryIds.add(id);
-                                }
-                              });
-                            },
-                            icon: const Icon(Icons.select_all),
-                            label: Text(Localization.translate('تحديد الكل', lang)),
+                        const SizedBox(height: 6),
+                        Text(
+                          'تتيح لك هذه الخانات تحديد طريقة الخصم أو التداخل لحساب عرض الدلفة وعرض الزجاج بدقة لهذه السلسلة (مثال: سلاسل 10 بياس، سلاسل PVC المنزلقة... إلخ).',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[700]),
+                        ),
+                        const SizedBox(height: 16),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _sashDeduction2Ctrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate('خصم/ثابت عرض الدلفة (ضلفتين 2 Sashes)', lang),
+                                  hintText: 'مثال: 26.0 أو -154.0',
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _sashDeduction3Ctrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate('خصم/ثابت عرض الدلفة (3 ضلفات 3 Sashes)', lang),
+                                  hintText: 'مثال: 52.0 أو -160.0',
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _sashDeduction4Ctrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate('خصم/ثابت عرض الدلفة (4 ضلفات 4 Sashes)', lang),
+                                  hintText: 'مثال: 78.0',
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _sashOverlapCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate('ثابت تداخل المنزلق (Overlap مم)', lang),
+                                  hintText: 'افتراضي: 26 مم',
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        TextField(
+                          controller: _glassDeductionCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: Localization.translate('خصم عرض الزجاج من عرض الدلفة (مم)', lang),
+                            hintText: 'مثال: الخصم من عرض الدلفة للزجاج',
+                            border: const OutlineInputBorder(),
                           ),
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() => _allowedAccessoryIds.clear());
-                            },
-                            icon: const Icon(Icons.deselect),
-                            label: Text(Localization.translate('إلغاء الكل', lang)),
+                        ),
+                        const SizedBox(height: 12),
+
+                        TextField(
+                          controller: _formulaNotesCtrl,
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            labelText: Localization.translate('ملاحظات المعادلات الخاصة بالسلسلة', lang),
+                            hintText: 'أدخل أي شرح أو قواعد خاصة لمعادلة هذه السلسلة...',
+                            border: const OutlineInputBorder(),
                           ),
-                        ],
-                      ),
-                      const Divider(),
-                      SizedBox(
-                        height: 320,
-                        child: ListView.builder(
-                          itemCount: _allAccessories.length,
-                          itemBuilder: (ctx, idx) {
-                            final acc = _allAccessories[idx];
-                            final id = acc['id'] as int;
-                            final name = acc['name'].toString();
-                            final type = (acc['type'] ?? acc['material_type'] ?? '').toString();
-                            if (_accSearchQuery.isNotEmpty &&
-                                !name.toLowerCase().contains(_accSearchQuery) &&
-                                !type.toLowerCase().contains(_accSearchQuery)) {
-                              return const SizedBox.shrink();
-                            }
-                            final isAllowed = _allowedAccessoryIds.contains(id);
-                            return CheckboxListTile(
-                              value: isAllowed,
-                              title: Text(name, style: const TextStyle(fontFamily: 'Cairo', fontSize: 14)),
-                              subtitle: Text(type, style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontSize: 12)),
-                              dense: true,
-                              activeColor: Colors.orange,
-                              onChanged: (val) {
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ── Section 2: Allowed Section Types ───────────────────────────
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          Localization.translate('أنواع القطاعات المسموحة بالجدول', lang),
+                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: primaryColor),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _defaultSectionTypes.map((type) {
+                            final isSel = _allowedSectionTypes.contains(type);
+                            return FilterChip(
+                              label: Text(type, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                              selected: isSel,
+                              selectedColor: Colors.blue.withValues(alpha: 0.2),
+                              onSelected: (val) {
                                 setState(() {
-                                  if (val == true) {
-                                    _allowedAccessoryIds.add(id);
-                                    _excludedAccessoryIds.remove(id);
+                                  if (val) {
+                                    _allowedSectionTypes.add(type);
                                   } else {
-                                    _allowedAccessoryIds.remove(id);
-                                    _excludedAccessoryIds.add(id);
+                                    _allowedSectionTypes.remove(type);
                                   }
                                 });
                               },
                             );
-                          },
+                          }).toList(),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 80), // Padding for FAB
-              ],
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCardSection(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required Color color,
-    required Widget child,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 24),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontFamily: GoogleFonts.cairo().fontFamily,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      ],
                     ),
                   ),
                 ),
+                const SizedBox(height: 20),
+
+                // ── Section 3: Allowed Accessory Types ─────────────────────────
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          Localization.translate('أنواع الإكسسوارات المسموحة بالجدول', lang),
+                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: primaryColor),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _defaultAccessoryTypes.map((type) {
+                            final isSel = _allowedAccessoryTypes.contains(type);
+                            return FilterChip(
+                              label: Text(type, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                              selected: isSel,
+                              selectedColor: Colors.amber.withValues(alpha: 0.2),
+                              onSelected: (val) {
+                                setState(() {
+                                  if (val) {
+                                    _allowedAccessoryTypes.add(type);
+                                  } else {
+                                    _allowedAccessoryTypes.remove(type);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ── Section 4: Specific Accessories List ───────────────────────
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                Localization.translate('قائمة الإكسسوارات الفردية المسموحة', lang),
+                                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: primaryColor),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _allowedAccessoryIds.addAll(_allAccessories.map((a) => a['id'] as int));
+                                });
+                              },
+                              child: Text(Localization.translate('تحديد الكل', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _allowedAccessoryIds.clear();
+                                });
+                              },
+                              child: Text(Localization.translate('إلغاء الكل', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.red)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        TextField(
+                          controller: _accSearchCtrl,
+                          onChanged: (val) => setState(() => _accSearchQuery = val.trim().toLowerCase()),
+                          decoration: InputDecoration(
+                            hintText: Localization.translate('بحث في الإكسسوارات...', lang),
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        Builder(builder: (ctx) {
+                          final list = _allAccessories.where((a) {
+                            if (_accSearchQuery.isEmpty) return true;
+                            final name = (a['name'] ?? '').toString().toLowerCase();
+                            final ref = (a['reference'] ?? '').toString().toLowerCase();
+                            return name.contains(_accSearchQuery) || ref.contains(_accSearchQuery);
+                          }).toList();
+
+                          if (list.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: Text('لا توجد نتائج مطابقة للبحث', style: TextStyle(fontFamily: 'Cairo'))),
+                            );
+                          }
+
+                          return ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: list.length,
+                            separatorBuilder: (context, idx) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final item = list[index];
+                              final id = item['id'] as int;
+                              final name = item['name'].toString();
+                              final isJoint = item['isJoint'] == true;
+                              final isChecked = _allowedAccessoryIds.contains(id);
+
+                              return CheckboxListTile(
+                                dense: true,
+                                title: Text(
+                                  '$name ${isJoint ? "(جوان)" : ""}',
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                                ),
+                                subtitle: Text(
+                                  'ID: $id | النوع: ${item['type'] ?? "-"}',
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey),
+                                ),
+                                value: isChecked,
+                                onChanged: (val) {
+                                  setState(() {
+                                    if (val == true) {
+                                      _allowedAccessoryIds.add(id);
+                                    } else {
+                                      _allowedAccessoryIds.remove(id);
+                                    }
+                                  });
+                                },
+                              );
+                            },
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 80),
               ],
-            ),
-            const Divider(height: 20),
-            child,
+            ],
           ],
         ),
       ),

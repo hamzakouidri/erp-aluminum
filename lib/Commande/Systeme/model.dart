@@ -1341,6 +1341,20 @@ class WindowModel extends ChangeNotifier {
   String? loadedSlidingSeriesName;
   int? loadedSeriesId;
   int? loadedSlidingSeriesId;
+  Map<String, dynamic>? seriesTableConfig;
+
+  Future<void> loadSeriesTableConfig() async {
+    final myDb = db;
+    if (myDb == null) return;
+    final sId = loadedSlidingSeriesId ?? loadedSeriesId ?? activeSlidingSeries?.id ?? activeSeries?.id;
+    if (sId != null) {
+      try {
+        seriesTableConfig = await myDb.getSeriesTableConfig(sId);
+      } catch (e) {
+        debugPrint('Error loading seriesTableConfig: $e');
+      }
+    }
+  }
 
   double archHeight = 0.0;
   double topSlantLeftY = 0.0;
