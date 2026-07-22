@@ -79,6 +79,11 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
   static const Color _primaryBlue = Color(0xFF1565C0);
   static const Color _accentOrange = Color(0xFFFF9800);
 
+  String tr(String key) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    return Localization.translate(key, lang);
+  }
+
   String get _appBarTitle {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     if (lang == AppLanguage.french || lang == AppLanguage.english) {
@@ -88,6 +93,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
   }
 
   void _openAddDialog({CaissonItem? editItem}) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final double initialVal = editItem != null
         ? (_inputUnit == InputUnit.mm ? editItem.lengthMm : editItem.lengthMm / 10.0)
         : 0;
@@ -108,7 +114,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
           builder: (context, setDialogState) {
             final theme = Theme.of(context);
             final isDark = theme.brightness == Brightness.dark;
-            final unitText = _inputUnit == InputUnit.mm ? 'ملم' : 'سم';
+            final unitText = _inputUnit == InputUnit.mm ? Localization.translate('ملم (mm)', lang) : Localization.translate('سم (cm)', lang);
 
             void submitItem({required bool closeDialog}) {
               final lengthVal = double.tryParse(lengthController.text.trim());
@@ -153,7 +159,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      editItem != null ? 'تم تعديل الكيسون بنجاح' : 'تم إضافة الكيسون بنجاح',
+                      editItem != null ? Localization.translate('تعديل الكيسون', lang) : Localization.translate('إضافة كيسون', lang),
                       style: const TextStyle(fontFamily: 'Cairo'),
                     ),
                     backgroundColor: Colors.green,
@@ -193,7 +199,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    editItem != null ? 'تعديل الكيسون' : 'إضافة كيسون جديد',
+                    editItem != null ? Localization.translate('تعديل الكيسون', lang) : Localization.translate('إضافة كيسون جديد', lang),
                     style: TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
@@ -215,8 +221,8 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       autofocus: editItem == null,
                       decoration: InputDecoration(
-                        labelText: 'القياس / الطول ($unitText)',
-                        hintText: _inputUnit == InputUnit.mm ? 'مثال: 1500' : 'مثال: 150',
+                        labelText: '${Localization.translate("القياس / الطول", lang)} ($unitText)',
+                        hintText: _inputUnit == InputUnit.mm ? '1500' : '150',
                         suffixText: unitText,
                         prefixIcon: const Icon(Icons.straighten, color: _primaryBlue),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -233,7 +239,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                             controller: quantityController,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: 'الكمية',
+                              labelText: Localization.translate('الكمية', lang),
                               prefixIcon: const Icon(Icons.format_list_numbered, color: _primaryBlue),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                             ),
@@ -267,7 +273,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
                     // Caisson Size Checkboxes (25 cm, 30 cm, 40 cm)
                     Text(
-                      'حجم الكيسون (الأغطية الجانبية):',
+                      Localization.translate('حجم الكيسون (الأغطية الجانبية):', lang),
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontWeight: FontWeight.bold,
@@ -279,6 +285,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                     Row(
                       children: [25, 30, 40].map((size) {
                         final isSelected = selectedSizeCm == size;
+                        final cmStr = lang == AppLanguage.arabic ? 'سم' : 'cm';
                         return Expanded(
                           child: GestureDetector(
                             onTap: () {
@@ -308,7 +315,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '$size سم',
+                                    '$size $cmStr',
                                     style: TextStyle(
                                       fontFamily: 'Cairo',
                                       fontWeight: FontWeight.bold,
@@ -337,8 +344,9 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                         ),
-                        child: const Text('إلغاء',
-                          style: TextStyle(fontFamily: 'Cairo', color: Colors.grey, fontWeight: FontWeight.bold),
+                        child: Text(
+                          Localization.translate('إلغاء', lang),
+                          style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -354,8 +362,9 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          child: const Text('إضافة',
-                            style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          child: Text(
+                            Localization.translate('إضافة', lang),
+                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                         ),
                       ),
@@ -372,7 +381,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                         child: Text(
-                          editItem != null ? 'تعديل' : 'إضافة وإنهاء',
+                          editItem != null ? Localization.translate('تعديل', lang) : Localization.translate('إضافة وإنهاء', lang),
                           style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                       ),
@@ -398,6 +407,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
 
     // Addition in mm and cm
     final additionMm = _selectedKit == KitType.kit11 ? 110.0 : 160.0;
@@ -475,7 +485,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                             const Icon(Icons.extension_rounded, color: _primaryBlue, size: 20),
                             const SizedBox(width: 6),
                             Text(
-                              'نوع الأغطية (Kit):',
+                              Localization.translate('نوع الأغطية (Kit):', lang),
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontWeight: FontWeight.bold,
@@ -532,7 +542,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                             const Icon(Icons.square_foot, color: _accentOrange, size: 18),
                             const SizedBox(width: 6),
                             Text(
-                              'وحدة الإدخال:',
+                              Localization.translate('وحدة الإدخال:', lang),
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 12,
@@ -544,14 +554,14 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                         ),
                         SegmentedButton<InputUnit>(
                           showSelectedIcon: false,
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: InputUnit.mm,
-                              label: Text('ملم (mm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                              label: Text(Localization.translate('ملم (mm)', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                             ),
                             ButtonSegment(
                               value: InputUnit.cm,
-                              label: Text('سم (cm)', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
+                              label: Text(Localization.translate('سم (cm)', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                             ),
                           ],
                           selected: {_inputUnit},
@@ -595,7 +605,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                             Icon(Icons.inventory_2_outlined, size: 70, color: Colors.grey.shade400),
                             const SizedBox(height: 12),
                             Text(
-                              'القائمة فارغة كلياً',
+                              Localization.translate('القائمة فارغة كلياً', lang),
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 18,
@@ -605,7 +615,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'انقر على زر + الإضافة لإدخال قياسات الكيسون',
+                              Localization.translate('انقر على زر + الإضافة لإدخال قياسات الكيسون', lang),
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 13,
@@ -624,7 +634,9 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
                           final displayLen = _inputUnit == InputUnit.mm ? item.lengthMm : item.lengthMm / 10.0;
                           final displayCutLen = _inputUnit == InputUnit.mm ? cutLengthMm : cutLengthMm / 10.0;
-                          final unitStr = _inputUnit == InputUnit.mm ? 'ملم' : 'سم';
+                          final unitStr = _inputUnit == InputUnit.mm ? (lang == AppLanguage.arabic ? 'ملم' : 'mm') : (lang == AppLanguage.arabic ? 'سم' : 'cm');
+                          final cmStr = lang == AppLanguage.arabic ? 'سم' : 'cm';
+                          final pairStr = Localization.translate('زوج', lang);
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
@@ -660,7 +672,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                           runSpacing: 4,
                                           children: [
                                             Text(
-                                              'القياس: ${displayLen.toStringAsFixed(0)} $unitStr',
+                                              '${Localization.translate("القياس:", lang)} ${displayLen.toStringAsFixed(0)} $unitStr',
                                               style: TextStyle(
                                                 fontFamily: 'Cairo',
                                                 fontWeight: FontWeight.bold,
@@ -675,7 +687,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                                 borderRadius: BorderRadius.circular(6),
                                               ),
                                               child: Text(
-                                                'مع الزيادة (+$additionCm سم): ${displayCutLen.toStringAsFixed(0)} $unitStr',
+                                                '${Localization.translate("مع الزيادة", lang)} (+$additionCm $cmStr): ${displayCutLen.toStringAsFixed(0)} $unitStr',
                                                 style: TextStyle(
                                                   fontFamily: 'Cairo',
                                                   fontSize: 10,
@@ -708,7 +720,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                   Padding(
                                     padding: const EdgeInsets.only(right: 42),
                                     child: Text(
-                                      'الكمية: ${item.quantity}  |  حجم الكيسون: ${item.sizeCm} سم  (زوج x ${item.quantity})',
+                                      '${Localization.translate("الكمية", lang)}: ${item.quantity}  |  ${Localization.translate("حجم الكيسون:", lang)} ${item.sizeCm} $cmStr  ($pairStr x ${item.quantity})',
                                       style: TextStyle(
                                         fontFamily: 'Cairo',
                                         fontSize: 12,
@@ -790,190 +802,12 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                             icon: const Icon(Icons.calculate, color: Colors.white),
-                            label: const Text(
-                              'حساب البارات والأغطية الجانبية',
-                              style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                            label: Text(
+                              Localization.translate('حساب البارات والأغطية الجانبية', lang),
+                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                           ),
                         ),
-
-                        if (_isCalculated) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF262626) : Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _primaryBlue.withValues(alpha: 0.3)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'المجموع الإجمالي العام:',
-                                      style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: isDark ? Colors.white : _primaryBlue,
-                                      ),
-                                    ),
-                                    Text(
-                                      'الكيت: ${_selectedKit == KitType.kit11 ? "Kit 11 (+11cm)" : "Kit 16 (+16cm)"}',
-                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(height: 16),
-
-                                // Grand Caisson Bars Total
-                                _buildResultRow(
-                                  icon: Icons.view_day_rounded,
-                                  title: 'إجمالي بارات الكيسون (6 أمتار):',
-                                  value: '$grandTotalCaissonBars بارة',
-                                  subtext: 'مجموع البارات الإجمالية لكافة أحجام الكيسون المستعملة',
-                                  isDark: isDark,
-                                ),
-                                const SizedBox(height: 8),
-
-                                // Grand Bottom Cover Bars Total
-                                _buildResultRow(
-                                  icon: Icons.horizontal_rule_rounded,
-                                  title: 'إجمالي بارات أغطية الكيسون (6 أمتار):',
-                                  value: '$grandTotalBottomCoverBars بارة',
-                                  subtext: 'مجموع أغطية الكيسون السفلية لكافة الأحجام',
-                                  isDark: isDark,
-                                ),
-                                const SizedBox(height: 8),
-
-                                // Grand Side Covers Pairs Total
-                                _buildResultRow(
-                                  icon: Icons.square_rounded,
-                                  title: 'إجمالي الأغطية الجانبية (بالزوج / Paire):',
-                                  value: '$grandTotalPairs زوج',
-                                  subtext: 'مجموع أزواج الأغطية الجانبية لكافة الأحجام',
-                                  isDark: isDark,
-                                ),
-
-                                const Divider(height: 20, thickness: 1.2),
-
-                                // Detailed Breakdown per Caisson Size (25cm, 30cm, 40cm)
-                                Text(
-                                  'تفاصيل الحساب مقسمة حسب حجم الكيسون:',
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: isDark ? Colors.orangeAccent : _accentOrange,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                ...sizeCalculations.values.map((calc) {
-                                  final cMeters = calc.caissonLengthMm / 1000.0;
-                                  final bMeters = calc.bottomCoverLengthMm / 1000.0;
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey.shade400),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.widgets_outlined, size: 16, color: _primaryBlue),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              'كيسون حجم ${calc.sizeCm} سم:',
-                                              style: TextStyle(
-                                                fontFamily: 'Cairo',
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: isDark ? Colors.white : Colors.black87,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          ' • بارات الكيسون (6م): ${calc.caissonBars} بارة (الطول: ${cMeters.toStringAsFixed(2)} م)',
-                                          style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: isDark ? Colors.grey.shade300 : Colors.black87),
-                                        ),
-                                        Text(
-                                          ' • بارات الغطاء السفلي (6م): ${calc.bottomCoverBars} بارة (الطول: ${bMeters.toStringAsFixed(2)} م)',
-                                          style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: isDark ? Colors.grey.shade300 : Colors.black87),
-                                        ),
-                                        Text(
-                                          ' • أغطية جانبية ${calc.sizeCm}سم: ${calc.totalPairs} زوج (Paire)',
-                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: _accentOrange),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-
-                                const SizedBox(height: 12),
-
-                                // Button: Add to Order
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      final orderPayload = {
-                                        'systemType': 'caisson_tunnel',
-                                        'kitType': _selectedKit == KitType.kit11 ? 'Kit 11 (+11cm)' : 'Kit 16 (+16cm)',
-                                        'inputUnit': _inputUnit == InputUnit.mm ? 'mm' : 'cm',
-                                        'itemsCount': _items.length,
-                                        'grandTotalCaissonBars': grandTotalCaissonBars,
-                                        'grandTotalBottomCoverBars': grandTotalBottomCoverBars,
-                                        'grandTotalPairs': grandTotalPairs,
-                                        'items': _items.map((i) => {
-                                          'lengthMm': i.lengthMm,
-                                          'quantity': i.quantity,
-                                          'sizeCm': i.sizeCm,
-                                          'cutLengthMm': i.getCaissonCutLengthMm(_selectedKit),
-                                        }).toList(),
-                                        'sizeCalculations': sizeCalculations.map((size, calc) => MapEntry(size.toString(), {
-                                          'sizeCm': calc.sizeCm,
-                                          'caissonBars': calc.caissonBars,
-                                          'bottomCoverBars': calc.bottomCoverBars,
-                                          'totalPairs': calc.totalPairs,
-                                          'caissonMeters': calc.caissonLengthMm / 1000.0,
-                                          'bottomCoverMeters': calc.bottomCoverLengthMm / 1000.0,
-                                        })),
-                                      };
-                                      Navigator.of(context).pop(orderPayload);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('تمت إضافة كيسون النفق إلى الطلب بنجاح', style: TextStyle(fontFamily: 'Cairo')),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green.shade700,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    ),
-                                    icon: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white),
-                                    label: const Text(
-                                      'إضافة كيسون النفق إلى الطلب',
-                                      style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -987,62 +821,11 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
             onPressed: () => _openAddDialog(),
             backgroundColor: _accentOrange,
             icon: Icons.add,
-            label: 'إضافة كيسون',
+            label: Localization.translate('إضافة كيسون', lang),
             initialOffset: const Offset(16, 220),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildResultRow({
-    required IconData icon,
-    required String title,
-    required String value,
-    required String subtext,
-    required bool isDark,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 18, color: _primaryBlue),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: isDark ? Colors.white70 : Colors.black87,
-                ),
-              ),
-            ),
-            Text(
-              value,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: isDark ? Colors.orangeAccent : _accentOrange,
-              ),
-            ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 24, top: 2),
-          child: Text(
-            subtext,
-            style: const TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 10,
-              color: Colors.grey,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

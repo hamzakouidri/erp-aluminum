@@ -4,6 +4,7 @@ import 'locales/drawer_keys.dart';
 import 'locales/product_keys.dart';
 import 'locales/order_keys.dart';
 import 'locales/general_keys.dart';
+import 'locales/caisson_tunnel_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -12,6 +13,7 @@ class Localization {
     ...productKeys,
     ...orderKeys,
     ...generalKeys,
+    ...caissonTunnelKeys,
   };
 
   static String translate(String key, AppLanguage lang) {
