@@ -1094,7 +1094,10 @@ class DevisBuilder {
     }
 
     // 7. Couvre Joint (Side Covers) - window only, not for standalone shutters
-    if (!isShutterOnly && map['hasSideCovers'] == true) {
+    final bool isIntegrated = map['isIntegratedFrame'] == true ||
+        (map['frameOverride'] != null && map['frameOverride']['code']?.toString() == '103');
+    final bool showCover = !isShutterOnly && (!isIntegrated || map['hasSideCovers'] == true);
+    if (showCover) {
       final removedSides = (map['removedShutterSides'] as List?)?.map((e) => e.toString().toLowerCase()).toList() ?? [];
       final hasL = !removedSides.contains('left');
       final hasR = !removedSides.contains('right');
