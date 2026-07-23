@@ -666,8 +666,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         final bool showSideCover =
             model.hasSideCovers &&
             model.isSideCoverAllowed &&
-            !model.isIntegratedFrame &&
-            !model.hasIntegratedSideCover;
+            !model.isIntegratedFrame;
         if (!showSideCover) {
           continue; // إزالة الغطاء الجانبي إذا كان الإطار مدمجاً أو غير مفعل في الرسم
         }
@@ -1563,16 +1562,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                           if (category == 'frame') {
                             pb.model.frameOverride = mutableSec;
                             pb.model.slidingFrameOverride = mutableSec;
-                            final isIntegrated = (mutableSec['type'] ?? '').toString().toLowerCase().contains('integrated') ||
-                                (mutableSec['name'] ?? '').toString().toLowerCase().contains('مدمج') ||
-                                (mutableSec['name'] ?? '').toString().toLowerCase().contains('monobloc') ||
-                                (mutableSec['code'] ?? '').toString().contains('103');
-                            if (isIntegrated) {
-                              pb.model.hasIntegratedSideCover = true;
-                              pb.model.hasSideCovers = false; // إلغاء الغطاء الجانبي المنفصل من الرسم وحذفه من الجدول عند اختيار إطار مدمج
-                            } else {
-                              pb.model.hasIntegratedSideCover = false;
-                            }
                           } else if (origLower.contains('side cover') ||
                               origLower.contains('غطاء جانبي')) {
                             pb.model.sideCoverOverride = mutableSec;
