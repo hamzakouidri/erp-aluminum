@@ -317,12 +317,12 @@ class WindowPainter extends CustomPainter {
           canvas.drawRect(plintheRect, bPaint);
         }
 
-        // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم فقط إذا لم يكن الإطار مدمجاً)
-            {
+        // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم دائماً عند تفعيله)
+        {
           final _frameForCover = model.getSectionByType('frame');
           final bool _hasBuiltInCoverBand = model.isIntegratedFrame && model.isSideCoverAllowed &&
               _frameForCover != null && _frameForCover.couvreJointWidth > 0;
-          if (_hasBuiltInCoverBand || (model.hasSideCovers && model.isSideCoverAllowed && !model.isIntegratedFrame)) {
+          if (_hasBuiltInCoverBand || (model.hasSideCovers && model.isSideCoverAllowed)) {
             _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
           }
         }

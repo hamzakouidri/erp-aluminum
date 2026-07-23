@@ -240,7 +240,7 @@ class CloudSyncService {
         for (var doc in existingChunks.docs) {
           deleteBatch.delete(doc.reference);
           count++;
-          if (count >= 400) {
+          if (count >= 15) {
             await deleteBatch.commit().timeout(const Duration(seconds: 15));
             deleteBatch = _firestore.batch();
             count = 0;
@@ -268,7 +268,7 @@ class CloudSyncService {
             'data': chunks[i],
           });
           batchCount++;
-          if (batchCount >= 400) {
+          if (batchCount >= 15) {
             await uploadBatch.commit().timeout(const Duration(seconds: 20));
             uploadBatch = _firestore.batch();
             batchCount = 0;
@@ -533,7 +533,7 @@ class CloudSyncService {
         for (var doc in existingChunks.docs) {
           deleteBatch.delete(doc.reference);
           count++;
-          if (count >= 400) {
+          if (count >= 15) {
             await deleteBatch.commit().timeout(const Duration(seconds: 15));
             deleteBatch = _firestore.batch();
             count = 0;
@@ -560,7 +560,7 @@ class CloudSyncService {
             'data': chunks[i],
           });
           batchCount++;
-          if (batchCount >= 400) {
+          if (batchCount >= 15) {
             await uploadBatch.commit().timeout(const Duration(seconds: 20));
             uploadBatch = _firestore.batch();
             batchCount = 0;
