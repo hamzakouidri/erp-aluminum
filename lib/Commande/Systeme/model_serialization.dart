@@ -280,6 +280,7 @@ extension WindowModelSerialization on WindowModel {
       'isDrawingMode': isDrawingMode,
       'hasShutter': hasShutter,
       'isCaissonTunnel': isCaissonTunnel,
+      'caissonPayload': caissonPayload,
       'caissonTunnelHeight': caissonTunnelHeight,
       'showBottomWall': showBottomWall,
       'showWall': showWall,
@@ -361,6 +362,21 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.isDrawingMode = false;
   model.hasShutter = map['hasShutter'] ?? false;
   model.isCaissonTunnel = map['isCaissonTunnel'] ?? false;
+  if (map['caissonPayload'] != null && map['caissonPayload'] is Map) {
+    model.caissonPayload = Map<String, dynamic>.from(map['caissonPayload']);
+  } else if (map['items'] != null && map['kitType'] != null) {
+    model.caissonPayload = {
+      'systemType': 'caisson_tunnel',
+      'kitType': map['kitType'],
+      'inputUnit': map['inputUnit'] ?? 'cm',
+      'itemsCount': map['itemsCount'] ?? (map['items'] as List).length,
+      'grandTotalCaissonBars': map['grandTotalCaissonBars'] ?? 0,
+      'grandTotalBottomCoverBars': map['grandTotalBottomCoverBars'] ?? 0,
+      'grandTotalPairs': map['grandTotalPairs'] ?? 0,
+      'items': map['items'],
+      'sizeCalculations': map['sizeCalculations'],
+    };
+  }
   model.showBottomWall = map['showBottomWall'] ?? true;
   model.showWall = map['showWall'] ?? true;
   model.wallColor = map['wallColor'] ?? 'red';

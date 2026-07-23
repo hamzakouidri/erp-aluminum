@@ -623,9 +623,15 @@ class DevisBuilder {
         ? gameName.trim()
         : (seriesName ?? profileName ?? '');
 
+    final bool isCaissonTunnel = map['isCaissonTunnel'] == true ||
+        (item['game']?.toString().contains('Caisson Tunnel') == true) ||
+        (displaySeries.toLowerCase().contains('caisson tunnel'));
+
     // Build DevisLineItem Title
     final String title;
-    if (isShutterOnly) {
+    if (isCaissonTunnel) {
+      title = 'Caisson Tunnel';
+    } else if (isShutterOnly) {
       title = 'Volet roulant';
     } else {
       if (displaySeries.isNotEmpty) {
@@ -657,62 +663,34 @@ class DevisBuilder {
     final replacementReason = map['replacementReason']?.toString() ?? '';
 
     // ── Caisson Tunnel: build details from caissonPayload ──────────────────
-    final bool isCaissonTunnel = map['isCaissonTunnel'] == true ||
-        title.contains('Caisson Tunnel');
     if (isCaissonTunnel) {
-      final kitTypeStr = map['kitType']?.toString() ?? '';
-      final kitLabel = kitTypeStr.contains('16') ? '+16 cm' : '+11 cm';
-      final grandBars = map['grandTotalCaissonBars'] ?? 0;
-      final grandBottom = map['grandTotalBottomCoverBars'] ?? 0;
-      final grandPairs = map['grandTotalPairs'] ?? 0;
-      final itemsCount = map['itemsCount'] ?? 0;
-      final sizeCalcs = map['sizeCalculations'];
 
-      if (_currentLang == AppLanguage.french) {
-        details.add('Kit: $kitLabel');
-        details.add('Quantité: $itemsCount caisson(s) — $grandPairs paire(s)');
-        details.add('Profil caisson: $grandBars barre(s)');
-        details.add('Fond de caisson: $grandBottom barre(s)');
-        if (sizeCalcs is Map) {
-          for (final entry in sizeCalcs.entries) {
-            final c = entry.value as Map?;
-            if (c == null) continue;
-            final sz = c['sizeCm'] ?? entry.key;
-            final cBars = c['caissonBars'] ?? 0;
-            final bBars = c['bottomCoverBars'] ?? 0;
-            details.add('└ Caisson $sz cm: $cBars barre(s) profil + $bBars barre(s) fond');
-          }
-        }
-      } else if (_currentLang == AppLanguage.english) {
-        details.add('Kit: $kitLabel');
-        details.add('Qty: $itemsCount caisson(s) — $grandPairs pair(s)');
-        details.add('Caisson profile: $grandBars bar(s)');
-        details.add('Bottom cover: $grandBottom bar(s)');
-        if (sizeCalcs is Map) {
-          for (final entry in sizeCalcs.entries) {
-            final c = entry.value as Map?;
-            if (c == null) continue;
-            final sz = c['sizeCm'] ?? entry.key;
-            final cBars = c['caissonBars'] ?? 0;
-            final bBars = c['bottomCoverBars'] ?? 0;
-            details.add('└ Caisson $sz cm: $cBars profile bar(s) + $bBars bottom bar(s)');
+      final payload = (map['caissonPayload'] is Map)
+          ? (map['caissonPayload'] as Map<String, dynamic>)
+          : map;
+      final kitTypeStr = payload['kitType']?.toString() ?? map['kitType']?.toString() ?? '';
+      final kitLabel = kitTypeStr.isNotEmpty ? kitTypeStr : 'Kit 11 (+11cm)';
+      final rawItems = payload['items'] as List?;
+
+      details.clear();
+      details.add('Kit: $kitLabel');
+
+      if (rawItems != null && rawItems.isNotEmpty) {
+        for (int i = 0; i < rawItems.length; i++) {
+          final it = rawItems[i];
+          if (it is Map) {
+            final double lenMm = (it['lengthMm'] as num? ?? 0.0).toDouble();
+            final int szCm = (it['sizeCm'] as num? ?? 25).toInt();
+            final int qty = (it['quantity'] as num? ?? 1).toInt();
+            final String lenStr = (lenMm / 10.0).toStringAsFixed(0);
+            details.add('Caisson N°${i + 1}: Dimension: ${lenStr} cm | Diamètre Caisson: ${szCm} cm | Qty: $qty');
           }
         }
       } else {
-        details.add('Kit: $kitLabel');
-        details.add('عدد الكيسونات: $itemsCount — $grandPairs زوج');
-        details.add('بارات البروفيل: $grandBars بارة');
-        details.add('بارات الفوند: $grandBottom بارة');
-        if (sizeCalcs is Map) {
-          for (final entry in sizeCalcs.entries) {
-            final c = entry.value as Map?;
-            if (c == null) continue;
-            final sz = c['sizeCm'] ?? entry.key;
-            final cBars = c['caissonBars'] ?? 0;
-            final bBars = c['bottomCoverBars'] ?? 0;
-            details.add('└ كيسون $sz سم: $cBars بارة بروفيل + $bBars بارة فوند');
-          }
-        }
+        final grandBars = payload['grandTotalCaissonBars'] ?? map['grandTotalCaissonBars'] ?? 0;
+        final grandBottom = payload['grandTotalBottomCoverBars'] ?? map['grandTotalBottomCoverBars'] ?? 0;
+        final grandPairs = payload['grandTotalPairs'] ?? map['grandTotalPairs'] ?? 0;
+        details.add('Barres Caisson: $grandBars | Fond: $grandBottom | Paires: $grandPairs');
       }
 
       return DevisLineItem(

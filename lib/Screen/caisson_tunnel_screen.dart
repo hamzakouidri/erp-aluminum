@@ -678,6 +678,21 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
                                 color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
                               ),
                             ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () => _openAddDialog(),
+                              icon: const Icon(Icons.add, color: Colors.white),
+                              label: Text(
+                                Localization.translate('إضافة كيسون جديد', lang),
+                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _accentOrange,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                elevation: 3,
+                              ),
+                            ),
                           ],
                         ),
                       )
@@ -871,19 +886,16 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
               ],
             ],
           ),
-
-          // Draggable Floating Action Button
-          DraggableFloatingActionButton(
-            onPressed: () => _openAddDialog(),
-            backgroundColor: _accentOrange,
-            icon: Icons.add,
-            label: Localization.translate('إضافة كيسون', lang),
-            initialOffset: Offset(
-              (MediaQuery.of(context).size.width - 160.0).clamp(10.0, 500.0),
-              (MediaQuery.of(context).size.height - 140.0).clamp(60.0, 1000.0),
-            ),
-          ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openAddDialog(),
+        backgroundColor: _accentOrange,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: Text(
+          Localization.translate('إضافة كيسون', lang),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
+        ),
       ),
     );
   }
