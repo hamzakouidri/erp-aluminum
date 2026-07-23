@@ -1575,9 +1575,67 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 keywordFr = 'renfort';
                 keywordAr = 'حديد';
               } else if (item.originalName.contains('Réducteur') ||
-                  item.originalName.contains('ريديكتور')) {
-                keywordFr = '80116';
-                keywordAr = '80116';
+                  item.originalName.contains('ريديكتور') ||
+                  item.originalName.contains('reducteur') ||
+                  item.originalName.contains('مخفض')) {
+                final sId = widget.model.systemMode == 'sliding'
+                    ? widget.model.activeSlidingSeries?.id
+                    : widget.model.activeSeries?.id;
+                final redRes = await dbInstance.query(
+                  'Sections',
+                  where: 'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(code) LIKE ? OR name LIKE ? OR LOWER(type) LIKE ?)',
+                  whereArgs: [sId, '%reduct%', '%reduct%', '%67114%', '%مخفض%', '%parclose%'],
+                  limit: 1,
+                );
+                if (redRes.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(redRes.first);
+                  double price = 0.0;
+                  if (colorId != null) {
+                    price = await sqlDb.getSectionPrice(
+                      redRes.first['id'] as int,
+                      colorId,
+                    );
+                  } else {
+                    price = _safeDouble(redRes.first['price_dzd'] ?? redRes.first['price']);
+                  }
+                  mutableItem['calculated_price'] = price;
+                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  if (mounted) setState(() {});
+                  continue;
+                } else {
+                  keywordFr = 'reducteur';
+                  keywordAr = 'مخفض';
+                }
+              } else if (item.originalName.contains('Rail') ||
+                  item.originalName.contains('سكة')) {
+                final sId = widget.model.systemMode == 'sliding'
+                    ? widget.model.activeSlidingSeries?.id
+                    : widget.model.activeSeries?.id;
+                final railRes = await dbInstance.query(
+                  'Sections',
+                  where: 'series_id = ? AND (LOWER(type) = ? OR LOWER(name) = ? OR LOWER(name) LIKE ?) AND LOWER(type) NOT LIKE ? AND LOWER(name) NOT LIKE ?',
+                  whereArgs: [sId, 'rail', 'rail', 'rail%', '%frame%', '%cadre%'],
+                  limit: 1,
+                );
+                if (railRes.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(railRes.first);
+                  double price = 0.0;
+                  if (colorId != null) {
+                    price = await sqlDb.getSectionPrice(
+                      railRes.first['id'] as int,
+                      colorId,
+                    );
+                  } else {
+                    price = _safeDouble(railRes.first['price_dzd'] ?? railRes.first['price']);
+                  }
+                  mutableItem['calculated_price'] = price;
+                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  if (mounted) setState(() {});
+                  continue;
+                } else {
+                  keywordFr = 'rail';
+                  keywordAr = 'سكة';
+                }
               }
             }
             // إذا حُدد جدول وكلمة مفتاحية، نفّذ البحث العام في قاعدة البيانات

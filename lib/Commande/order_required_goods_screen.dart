@@ -284,13 +284,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               keywordFr = 'renfort'; keywordAr = 'تسليح';
             } else if (item.originalName.contains('Rail') || item.originalName.contains('سكة')) {
               keywordFr = 'rail'; keywordAr = 'سكة';
-            } else if (item.originalName.contains('Parclose') ||
-                       item.originalName.contains('باكيت') ||
-                       item.originalName.contains('Réducteur') ||
+            } else if (item.originalName.contains('Réducteur') ||
                        item.originalName.contains('ريديكتور') ||
                        item.originalName.contains('reducteur') ||
                        item.originalName.contains('مخفض')) {
-              keywordFr = 'parclose'; keywordAr = 'parclose';
+              keywordFr = 'reducteur'; keywordAr = 'مخفض';
+            } else if (item.originalName.contains('Parclose') ||
+                       item.originalName.contains('باكيت')) {
+              keywordFr = 'parclose'; keywordAr = 'باكيت';
             }
           }
 
@@ -298,8 +299,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             final matType = model.isPVC ? 'PVC' : 'Aluminium';
             var queryRes = await dbInstance.query(
               table,
-              where: "(LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR name LIKE ? OR type LIKE ?) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
-              whereArgs: ['%$keywordFr%', '%$keywordFr%', '%$keywordAr%', '%$keywordAr%', matType],
+              where: "(LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR name LIKE ? OR type LIKE ? OR code LIKE ?) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+              whereArgs: ['%$keywordFr%', '%$keywordFr%', '%$keywordAr%', '%$keywordAr%', '%$keywordFr%', matType],
             );
 
             if (table == 'Sections' && queryRes.isNotEmpty) {
@@ -313,25 +314,45 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               final origLower = item.originalName.toLowerCase();
               if (origLower.contains('rail') || origLower.contains('سكة')) {
                 // استبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail من نتائج السكة Rail
-                queryRes = queryRes.where((s) {
+                final railMatches = queryRes.where((s) {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
-                  return (t == 'rail' || t.contains('rail') || n == 'rail' || n.startsWith('rail')) &&
+                  return (t == 'rail' || t.contains('rail') || n == 'rail' || n.startsWith('rail') || n.contains('سكة')) &&
                       !t.contains('frame') &&
                       !t.contains('cadre') &&
                       !n.contains('cadre') &&
-                      !n.contains('إطار');
+                      !n.contains('إطار') &&
+                      !n.contains('cadre 2 rail') &&
+                      !n.contains('cadre 3 rail');
                 }).toList();
+                if (railMatches.isNotEmpty) {
+                  queryRes = railMatches;
+                }
               } else if (origLower.contains('réducteur') ||
                   origLower.contains('ريديكتور') ||
                   origLower.contains('reducteur') ||
                   origLower.contains('مخفض')) {
-                // للريديكتور: البحث بالنوع parclose أو reducteur واستبعاد الإطارات والسكك
-                queryRes = queryRes.where((s) {
+                // للريديكتور: البحث بـ reducteur أو مخفض أو كود 67114 واستبعاد الإطارات والسكك
+                final redMatches = queryRes.where((s) {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
-                  return (t.contains('parclose') || n.contains('reducteur'));
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return (t.contains('reduct') || n.contains('reduct') || n.contains('مخفض') || n.contains('ريديكتور') || c.contains('67114')) &&
+                      !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
+                      !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
                 }).toList();
+                if (redMatches.isNotEmpty) {
+                  queryRes = redMatches;
+                } else {
+                  // fallback to parclose if no dedicated reducteur profile exists
+                  queryRes = queryRes.where((s) {
+                    final t = (s['type'] ?? '').toString().toLowerCase();
+                    final n = (s['name'] ?? '').toString().toLowerCase();
+                    return (t.contains('parclose') || t.contains('reduct')) &&
+                        !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
+                        !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
+                  }).toList();
+                }
               } else if (origLower.contains('lateral') || origLower.contains('قائم جانبي')) {
                 // للقائم الجانبي: تصفية القوائم الجانبية فقط واستبعاد القائم الوسطي / الشيكان
                 final latMatches = queryRes.where((s) {
