@@ -3505,7 +3505,13 @@ class ComponentCalculator {
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
           final double cellThick = cellGlass.totalThickness(window.allGlassCache);
-          if (window.systemMode == 'sliding') {
+          final bool isSlidingSystem = window.systemMode == 'sliding' ||
+              window.systemMode == 'coulissant' ||
+              window.systemMode == 'منزلق' ||
+              window.activeSlidingSeries != null ||
+              zone.content == ZoneContent.slidingSash;
+
+          if (isSlidingSystem) {
             if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
               final double reducteurThick = (cellGlass.structure == GlassStructure.simple) ? 15.0 : 0.0;
               if (reducteurThick > 0) {
@@ -3529,9 +3535,6 @@ class ComponentCalculator {
                 remaining = 2.0; // fallback to ensure glass gasket is calculated
               }
               if (remaining > 0) {
-                // إذا كان الفراغ المتبقي أكبر من 6 مم (مثلاً 15 مم - 5 مم = 10 مم)، 
-                // لا يوجد جوان سمكه 10 مم، فيلزم إجبارياً استخدام جوان من جهتين (jointTwoSides = true)
-                // ويقسم الفراغ إلى جهتين (10 / 2 = 5 مم لكل جهة)، فيأخذ جوان 5 مم ومحيط × 2.
                 final bool forceTwoSides = cellGlass.jointTwoSides;
                 final double targetThick = forceTwoSides ? (remaining / 2.0) : remaining;
                 String jointName = 'جوان البوراج (Joint Bourrage)';
@@ -3541,6 +3544,13 @@ class ComponentCalculator {
               }
             }
           } else {
+            if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
+              final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
+              final double mult = cellGlass.jointTwoSides ? 2.0 : 1.0;
+              final double gasketQty = perimeter * mult * totalPieces;
+              String gName = 'جوان زجاج (Joint Vitrage)';
+              slidingGlassJoints[gName] = (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
+            }
             if (cellThick > 10.0) {
               for (int q = 0; q < pieceMultiplier; q++) {
                 parcloseDoublePieces.add(cellGw / 1000.0);
