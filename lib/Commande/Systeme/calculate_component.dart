@@ -1074,12 +1074,11 @@ class ComponentCalculator {
       double w = window.sideCoverWidth; // cover visible width in mm
       final double weldAllowance = window.isPVC ? 5.0 : 0.0; // 5 مم تلحيم (لحيم / تفخيم) لكل قطعة في PVC فقط
 
-      final hasL = !window.removedShutterSides.contains('left');
-      final hasR = !window.removedShutterSides.contains('right');
-      final hasT = !window.removedShutterSides.contains('top');
-      final hasB =
-          !window.removedShutterSides.contains('bottom') &&
-          window.hasBottomFrame;
+      final checkShutterRemoval = window.hasShutter && window.removedShutterSides.isNotEmpty;
+      final hasL = !checkShutterRemoval || !window.removedShutterSides.contains('left');
+      final hasR = !checkShutterRemoval || !window.removedShutterSides.contains('right');
+      final hasT = !checkShutterRemoval || !window.removedShutterSides.contains('top');
+      final hasB = (!checkShutterRemoval || !window.removedShutterSides.contains('bottom')) && window.hasBottomFrame;
 
       // الطول الرأسي: ارتفاع النافذة + عرض الغطاء العلوي/السفلي (إذا موجود) + 5 مم لحيم
       double verticalLen =
@@ -1094,17 +1093,25 @@ class ComponentCalculator {
       if (hasT) sideCoverPieces.add(horizontalLen / 1000.0);
       if (hasB) sideCoverPieces.add(horizontalLen / 1000.0);
 
-      if (sideCoverPieces.isNotEmpty) {
-        items.add(
-          createProfile(
-            'الغطاء الجانبي (Side Cover)',
-            colorName,
-            pieces: sideCoverPieces,
-            unit: 'قطاع',
-            overrideMap: window.sideCoverOverride,
-          ),
-        );
+      // ضمان عدم خلو قطع الغطاء الجانبي إطلاقاً
+      if (sideCoverPieces.isEmpty) {
+        sideCoverPieces = [
+          (window.height + weldAllowance) / 1000.0,
+          (window.height + weldAllowance) / 1000.0,
+          (window.width + weldAllowance) / 1000.0,
+          if (window.hasBottomFrame) (window.width + weldAllowance) / 1000.0,
+        ];
       }
+
+      items.add(
+        createProfile(
+          'الغطاء الجانبي (Side Cover)',
+          colorName,
+          pieces: sideCoverPieces,
+          unit: 'قطاع',
+          overrideMap: window.sideCoverOverride,
+        ),
+      );
     }
 
     if (hasSingleSash || hasDoubleSash || hasSlidingSash) {
