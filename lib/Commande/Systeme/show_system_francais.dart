@@ -10133,10 +10133,9 @@ class AppWorkspacePainter extends CustomPainter {
       }
     }
 
-    Offset wMid = Offset(pos.dx + model.width / 2, widthY);
-    _drawText(canvas, '${model.width.toInt()} mm', wMid, isVertical: false);
-    _drawArrow(
+    _drawDimension(
       canvas,
+      '${model.width.toInt()} mm',
       Offset(pos.dx, widthY),
       Offset(pos.dx + model.width, widthY),
       isVerticalLine: false,
@@ -10147,25 +10146,18 @@ class AppWorkspacePainter extends CustomPainter {
       final vJoints = model.getVerticalFrameJoints();
       if (vJoints.isNotEmpty) {
         final xCoords = [0.0, ...vJoints, model.width];
-        // Layer-1 Y is 50 units above Layer-2 (total)
         double layer1Y = widthY + 50.0;
         for (int i = 0; i < xCoords.length - 1; i++) {
           double x0 = xCoords[i];
           double x1 = xCoords[i + 1];
           double segW = x1 - x0;
-          double xMid = (x0 + x1) / 2;
-          _drawText(
+          _drawDimension(
             canvas,
             '${segW.toInt()} mm',
-            Offset(pos.dx + xMid, layer1Y),
-            isVertical: false,
-            isSmall: true,
-          );
-          _drawArrow(
-            canvas,
             Offset(pos.dx + x0, layer1Y),
             Offset(pos.dx + x1, layer1Y),
             isVerticalLine: false,
+            isSmall: true,
           );
         }
       }
@@ -10181,19 +10173,13 @@ class AppWorkspacePainter extends CustomPainter {
           double y0 = yCoords[j];
           double y1 = yCoords[j + 1];
           double segH = y1 - y0;
-          double yMid = (y0 + y1) / 2;
-          _drawText(
+          _drawDimension(
             canvas,
             '${segH.toInt()} mm',
-            Offset(layer1X + 15, pos.dy + yMid),
-            isVertical: true,
-            isSmall: true,
-          );
-          _drawArrow(
-            canvas,
             Offset(layer1X, pos.dy + y0),
             Offset(layer1X, pos.dy + y1),
             isVerticalLine: true,
+            isSmall: true,
           );
         }
       }
@@ -10203,70 +10189,37 @@ class AppWorkspacePainter extends CustomPainter {
     if (model.hasShutter) {
       double boxSize = model.shutterBoxHeight;
       if (model.isCaissonTunnel) {
-        // Tunnel Box is drawn above the window frame (from pos.dy - boxSize to pos.dy)
-        Offset boxMid = Offset(pos.dx - offsetDistLeft, pos.dy - boxSize / 2);
-        _drawText(
+        _drawDimension(
           canvas,
           '${boxSize.toInt()} mm',
-          Offset(boxMid.dx - 15, boxMid.dy),
-          isVertical: true,
-          isSmall: true,
-        );
-        _drawArrow(
-          canvas,
           Offset(pos.dx - offsetDistLeft, pos.dy - boxSize),
           Offset(pos.dx - offsetDistLeft, pos.dy),
           isVerticalLine: true,
+          isSmall: true,
         );
 
-        // Window height dimension takes full model.height (from pos.dy to pos.dy + model.height)
         double windowHeight = model.height;
-        Offset windowMid = Offset(
-          pos.dx - offsetDistLeft,
-          pos.dy + windowHeight / 2,
-        );
-        _drawText(
+        _drawDimension(
           canvas,
           '${windowHeight.toInt()} mm',
-          Offset(windowMid.dx - 15, windowMid.dy),
-          isVertical: true,
-        );
-        _drawArrow(
-          canvas,
           Offset(pos.dx - offsetDistLeft, pos.dy),
           Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
           isVerticalLine: true,
         );
       } else {
-        // Normal Shutter Box is part of the overall height
-        Offset boxMid = Offset(pos.dx - offsetDistLeft, pos.dy + boxSize / 2);
-        _drawText(
+        _drawDimension(
           canvas,
           '${boxSize.toInt()} mm',
-          Offset(boxMid.dx - 15, boxMid.dy),
-          isVertical: true,
-          isSmall: true,
-        );
-        _drawArrow(
-          canvas,
           Offset(pos.dx - offsetDistLeft, pos.dy),
           Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
           isVerticalLine: true,
+          isSmall: true,
         );
 
         double windowHeight = model.height - boxSize;
-        Offset windowMid = Offset(
-          pos.dx - offsetDistLeft,
-          pos.dy + boxSize + windowHeight / 2,
-        );
-        _drawText(
+        _drawDimension(
           canvas,
           '${windowHeight.toInt()} mm',
-          Offset(windowMid.dx - 15, windowMid.dy),
-          isVertical: true,
-        );
-        _drawArrow(
-          canvas,
           Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
           Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
           isVerticalLine: true,
@@ -10285,15 +10238,9 @@ class AppWorkspacePainter extends CustomPainter {
 
       double startY = pos.dy + model.topSlantLeftY;
       double endY = pos.dy + model.height - model.bottomSlantLeftY;
-      Offset hMid = Offset(pos.dx - offsetDistLeft, (startY + endY) / 2);
-      _drawText(
+      _drawDimension(
         canvas,
         '${leftH.toInt()} mm',
-        Offset(hMid.dx - 15, hMid.dy),
-        isVertical: true,
-      );
-      _drawArrow(
-        canvas,
         Offset(pos.dx - offsetDistLeft, startY),
         Offset(pos.dx - offsetDistLeft, endY),
         isVerticalLine: true,
@@ -10307,16 +10254,9 @@ class AppWorkspacePainter extends CustomPainter {
         }
         double startYRight = pos.dy + model.topSlantRightY;
         double endYRight = pos.dy + model.height - model.bottomSlantRightY;
-        Offset hMidRight = Offset(pos.dx + model.width + offsetDistRight,
-            (startYRight + endYRight) / 2);
-        _drawText(
+        _drawDimension(
           canvas,
           '${rightH.toInt()} mm',
-          Offset(hMidRight.dx + 15, hMidRight.dy),
-          isVertical: true,
-        );
-        _drawArrow(
-          canvas,
           Offset(pos.dx + model.width + offsetDistRight, startYRight),
           Offset(pos.dx + model.width + offsetDistRight, endYRight),
           isVerticalLine: true,
@@ -10325,7 +10265,36 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _drawText(Canvas canvas,
+  void _drawDimension(
+    Canvas canvas,
+    String text,
+    Offset p1,
+    Offset p2, {
+    bool isVerticalLine = false,
+    bool isSmall = false,
+  }) {
+    final double midX = (p1.dx + p2.dx) / 2;
+    final double midY = (p1.dy + p2.dy) / 2;
+    final Offset center = Offset(midX, midY);
+
+    final double textWidth = _drawText(
+      canvas,
+      text,
+      center,
+      isVertical: isVerticalLine,
+      isSmall: isSmall,
+    );
+
+    _drawArrow(
+      canvas,
+      p1,
+      p2,
+      isVerticalLine: isVerticalLine,
+      textGap: textWidth + 60.0,
+    );
+  }
+
+  double _drawText(Canvas canvas,
       String text,
       Offset center, {
         bool isVertical = false,
@@ -10348,6 +10317,7 @@ class AppWorkspacePainter extends CustomPainter {
     if (isVertical) canvas.rotate(-math.pi / 2);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
+    return tp.width;
   }
 
   void _drawArrow(Canvas canvas,
