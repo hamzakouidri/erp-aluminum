@@ -1896,10 +1896,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       // 2. اسم وتفاصيل القطاع المختار المجلوبة من قاعدة البيانات أو الـ ShowDialog بخط رقيق تحته
                       Text(
                         item.name != item.originalName
-                            ? '${item.profileCode != null && item.profileCode!.isNotEmpty ? "[${item.profileCode}] " : ""}${item.name} • ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
+                            ? '${item.profileCode != null && item.profileCode!.isNotEmpty ? "[${item.profileCode}] " : ""}${item.name} • ${item.unitPrice > 0 ? "${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}" : ""}'
                             : (item.profileCode != null && item.profileCode!.isNotEmpty
                                 ? '[${item.profileCode}] ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
-                                : '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'),
+                                : (item.unitPrice > 0 ? '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}' : '📌 انقر هنا لاختيار القطاع المناسب')),
                         style: TextStyle(
                           fontWeight: FontWeight.w400,
                           color: isDark ? Colors.white60 : Colors.grey.shade700,
