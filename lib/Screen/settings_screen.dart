@@ -543,38 +543,39 @@ class SettingsScreen extends StatelessWidget {
                               child: CircularProgressIndicator(),
                             ),
                           );
+                          bool success = false;
+                          String errorMsg = '';
                           try {
                             await CloudSyncService().init();
                             await CloudSyncService().downloadGlobalCatalog();
-                            if (!context.mounted) return;
-                            Navigator.of(
-                              context,
-                              rootNavigator: true,
-                            ).pop(); // Close the dialog safely
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  Localization.translate('تم تحديث البروفيلات والإكسسوارات بنجاح!', lang),
-                                  style: TextStyle(fontFamily: 'Cairo'),
-                                ),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                            success = true;
                           } catch (e) {
-                            if (!context.mounted) return;
-                            Navigator.of(
-                              context,
-                              rootNavigator: true,
-                            ).pop(); // Close the dialog safely
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'حدث خطأ: $e',
-                                  style: const TextStyle(fontFamily: 'Cairo'),
-                                ),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
+                            errorMsg = e.toString();
+                          } finally {
+                            if (context.mounted) {
+                              Navigator.of(context, rootNavigator: true).pop();
+                              if (success) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      Localization.translate('تم تحديث البروفيلات والإكسسوارات بنجاح!', lang),
+                                      style: const TextStyle(fontFamily: 'Cairo'),
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'حدث خطأ: $errorMsg',
+                                      style: const TextStyle(fontFamily: 'Cairo'),
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
                           }
                         },
                       ),
@@ -630,50 +631,35 @@ class SettingsScreen extends StatelessWidget {
                               child: CircularProgressIndicator(),
                             ),
                           );
+                          bool success = false;
+                          String errorMsg = '';
                           try {
                             await CloudSyncService().backupGlobalCatalog();
-                            if (!context.mounted) return;
-                            Navigator.of(
-                              context,
-                              rootNavigator: true,
-                            ).pop(); // pop dialog
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  Localization.translate('تم رفع الكتالوج المركزي بنجاح!', lang),
-                                  style: TextStyle(fontFamily: 'Cairo'),
-                                ),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                            success = true;
                           } catch (e) {
-                            if (!context.mounted) return;
-                            Navigator.of(
-                              context,
-                              rootNavigator: true,
-                            ).pop(); // pop dialog
-                            showDialog(
-                              context: context,
-                              builder: (dialogCtx) => AlertDialog(
-                                title: Text(
-                                  'خطأ Firebase',
-                                  style: TextStyle(fontFamily: 'Cairo'),
-                                ),
-                                content: Text(
-                                  e.toString(),
-                                  style: const TextStyle(fontFamily: 'Cairo'),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(dialogCtx),
-                                    child: Text(
-                                      'حسنا',
-                                      style: TextStyle(fontFamily: 'Cairo'),
+                            errorMsg = e.toString();
+                          } finally {
+                            if (context.mounted) {
+                              Navigator.of(context, rootNavigator: true).pop();
+                              if (success) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      Localization.translate('تم رفع الكتالوج المركزي بنجاح!', lang),
+                                      style: const TextStyle(fontFamily: 'Cairo'),
                                     ),
+                                    backgroundColor: Colors.green,
                                   ),
-                                ],
-                              ),
-                            );
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('حدث خطأ: $errorMsg', style: const TextStyle(fontFamily: 'Cairo')),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
                           }
                         },
                       ),

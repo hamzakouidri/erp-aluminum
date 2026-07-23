@@ -24,6 +24,7 @@ import 'inventory_screen.dart';
 import 'measurements_screen.dart';
 import 'worker_tasks_screen.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
 
 class WelcomScreen extends StatefulWidget {
@@ -72,9 +73,25 @@ class _WelcomScreenState extends State<WelcomScreen> {
   String _cliTrend = '';
   String _produitsCount = '—';
 
-  // تنبيهات المخزون المنخفض
+  // تنبيهات الطلبات والمخزون
   int _lowStockCount = 0;
   List<Map<String, dynamic>> _lowStockItems = [];
+  int _newOrdersCount = 0;
+
+  Future<void> _markOrdersAsRead() async {
+    try {
+      final allCmds = await db.readCommande();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('last_seen_orders_count', allCmds.length);
+      if (mounted) {
+        setState(() {
+          _newOrdersCount = 0;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error marking orders read: $e");
+    }
+  }
 
   // بيانات المخطط البياني
   Map<String, int> _ordersByStatus = {};
@@ -261,8 +278,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final stats = await db.getDashboardStats();
       final profiles = await db.readProfile();
       final chartData = await db.getOrderStatusStats();
+      final allCmds = await db.readCommande();
+      final prefs = await SharedPreferences.getInstance();
+      final lastCmdCount = prefs.getInt('last_seen_orders_count');
+      int unreadOrders = 0;
+      if (lastCmdCount == null) {
+        await prefs.setInt('last_seen_orders_count', allCmds.length);
+        unreadOrders = 0;
+      } else {
+        unreadOrders = allCmds.length > lastCmdCount ? (allCmds.length - lastCmdCount) : 0;
+      }
       if (mounted) {
         setState(() {
+          _newOrdersCount = unreadOrders;
           _commandesCount = stats['cmdCount'] ?? '0';
           _cmdTrend = stats['cmdTrend'] ?? '—';
           _clientsCount = stats['cliCount'] ?? '0';
@@ -457,117 +485,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.cloud_sync_rounded, color: Colors.white),
-          tooltip: 'استرجاع البيانات من السحابة',
+          icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+          tooltip: 'تحديث البيانات والرسوم البيانية',
           onPressed: () async {
-            final hasLocalData = await SqlDatabase().hasLocalData();
-
-            if (hasLocalData && context.mounted) {
-              final action = await showDialog<String>(
-                context: context,
-                builder: (dialogCtx) => AlertDialog(
-                  title: Text(
-                    'تنبيه المزامنة والاستعادة',
-                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                  ),
+            await _loadStats();
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
                   content: Text(
-                    'لديك بيانات مسجلة محلياً على هذا الجهاز. لتفادي فقدان أي تعديلات غير محفوظة بالسحابة، هل تريد رفع بياناتك الحالية أولاً قبل المزامنة؟',
+                    'تم تحديث بيانات الزبائن والطلبات بنجاح',
                     style: TextStyle(fontFamily: 'Cairo'),
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogCtx, 'cancel'),
-                      child: Text(
-                        'إلغاء',
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.grey),
-                      ),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                      onPressed: () => Navigator.pop(dialogCtx, 'restore_only'),
-                      child: Text(
-                        'استعادة بدون رفع',
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-                      ),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue),
-                      onPressed: () => Navigator.pop(dialogCtx, 'upload_and_restore'),
-                      child: Text(
-                        'الرفع أولاً ثم المزامنة',
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.white),
-                      ),
-                    ),
-                  ],
+                  duration: Duration(seconds: 2),
+                  backgroundColor: Colors.blue,
                 ),
               );
-
-              if (action == null || action == 'cancel') return;
-
-              if (action == 'upload_and_restore') {
-                // إظهار شاشة تحميل للرفع
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (ctx) => Center(
-                    child: CircularProgressIndicator(color: Theme.of(context).cardColor),
-                  ),
-                );
-                try {
-                  await CloudSyncService().backupToCloud();
-                  if (context.mounted) {
-                    Navigator.of(context, rootNavigator: true).pop(); // إخفاء تحميل الرفع
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    Navigator.of(context, rootNavigator: true).pop(); // إخفاء تحميل الرفع
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('فشل رفع البيانات الاحتياطية: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                  return; // لا نكمل الاستعادة إذا فشل الرفع لكي لا تضيع البيانات
-                }
-              }
-            }
-
-            // إظهار شاشة تحميل أثناء المزامنة
-            if (!context.mounted) return;
-            showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (ctx) => Center(
-                child: CircularProgressIndicator(color: Theme.of(context).cardColor),
-              ),
-            );
-            try {
-              await CloudSyncService().fullRecoverySync();
-              if (context.mounted) {
-                Navigator.of(
-                  context,
-                  rootNavigator: true,
-                ).pop(); // إخفاء التحميل
-                _loadStats(); // تحديث الإحصائيات بعد الجلب
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تم استرجاع جميع بياناتك بنجاح من فايربيز'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            } catch (e) {
-              if (context.mounted) {
-                Navigator.of(context, rootNavigator: true).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('حدث خطأ أثناء المزامنة: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
             }
           },
         ),
@@ -576,16 +508,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
           children: [
             IconButton(
               icon: Icon(
-                _lowStockCount > 0
+                (_lowStockCount + _newOrdersCount) > 0
                     ? Icons.notifications_active_rounded
                     : Icons.notifications_none_rounded,
-                color: _lowStockCount > 0 ? Colors.amberAccent : Colors.white,
+                color: (_lowStockCount + _newOrdersCount) > 0 ? Colors.amberAccent : Colors.white,
               ),
-              onPressed: () {
-                _showLowStockNotifications(context);
+              onPressed: () async {
+                await _markOrdersAsRead();
+                if (context.mounted) {
+                  _showLowStockNotifications(context);
+                }
               },
             ),
-            if (_lowStockCount > 0)
+            if ((_lowStockCount + _newOrdersCount) > 0)
               Positioned(
                 top: 8,
                 right: 8,
@@ -600,7 +535,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     minHeight: 16,
                   ),
                   child: Text(
-                    '$_lowStockCount',
+                    '${_lowStockCount + _newOrdersCount}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -966,12 +901,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
           icon: Icons.receipt_long_rounded,
           label: Localization.translate('commandes', lang),
           color: const Color(0xFF2563EB), // Luminous Royal Blue
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('commandes', lang),
-            icon: Icons.receipt_long_rounded,
-            screen: const Commande(),
-          ),
+          onTap: () async {
+            await _markOrdersAsRead();
+            if (context.mounted) {
+              openAdaptiveScreen(
+                context,
+                title: Localization.translate('commandes', lang),
+                icon: Icons.receipt_long_rounded,
+                screen: const Commande(),
+              );
+            }
+          },
         ),
       if (settings.canViewOrders())
         _NavItem(
