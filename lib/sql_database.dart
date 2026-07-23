@@ -1769,6 +1769,11 @@ class SqlDatabase {
           "ALTER TABLE Sections ADD COLUMN linked_parclose_double_id INTEGER;",
         );
       } catch (_) {}
+      try {
+        await db.execute(
+          "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
+        );
+      } catch (_) {}
     }
 
     if (oldVersion < 42) {
@@ -1956,6 +1961,7 @@ class SqlDatabase {
       sash_overlap REAL NOT NULL DEFAULT 0.0,
       max_glass_thickness REAL NOT NULL DEFAULT 0.0,
       linked_parclose_double_id INTEGER,
+      allows_side_cover INTEGER NOT NULL DEFAULT 1,
       FOREIGN KEY (series_id) REFERENCES Series(id) ON DELETE CASCADE
     )
     ''');
@@ -2663,6 +2669,7 @@ class SqlDatabase {
     String? imagePath,
     double maxGlassThickness = 0.0,
     int? linkedParcloseDoubleId,
+    int allowsSideCover = 1,
   }) async {
     Database? myDb = await db;
     var res = await myDb!.insert('Sections', {
@@ -2683,6 +2690,7 @@ class SqlDatabase {
       'image_path': imagePath,
       'max_glass_thickness': maxGlassThickness,
       'linked_parclose_double_id': linkedParcloseDoubleId,
+      'allows_side_cover': allowsSideCover,
     });
     CloudSyncService().notifyChange();
     return res;

@@ -1080,6 +1080,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final maxGlassThicknessCtrl = TextEditingController(
       text: section['max_glass_thickness']?.toString() ?? '',
     );
+    bool allowsSideCoverVal = (section['allows_side_cover'] as int?) != 0;
     int? selectedParcloseDoubleId = section['linked_parclose_double_id'] as int?;
     String? selectedImagePath = section['image_path']?.toString();
     String selectedType = section['type']?.toString() ?? 'frame';
@@ -1326,7 +1327,26 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         labelText: 'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
                       ),
                     ),
-                    SizedBox(height: 12),
+                    if (selectedType == 'frame' && (double.tryParse(couvreJointWidthCtrl.text) ?? 0.0) == 0) ...[
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'يسمح بركوب غطاء جانبي منفصل (Couvre-joint)',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: const Text(
+                          'قم بإلغاء التحديد إذا كان هذا الإطار لا يركب عليه غطاء جانبي منفصل مطلقاً',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey),
+                        ),
+                        value: allowsSideCoverVal,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            allowsSideCoverVal = val ?? true;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
                   if (selectedType == 'batmo') ...[
                     TextField(
@@ -1519,6 +1539,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         'image_path': selectedImagePath,
                         'max_glass_thickness': double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
                         'linked_parclose_double_id': selectedParcloseDoubleId,
+                        'allows_side_cover': allowsSideCoverVal ? 1 : 0,
                       });
                       _loadSections(_selectedSeriesId!);
                       if (context.mounted) {

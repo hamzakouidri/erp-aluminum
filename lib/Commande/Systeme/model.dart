@@ -78,6 +78,7 @@ class AluminumSection {
   final double maxGlassThickness;
   final int? linkedParcloseDoubleId;
   final String? imagePath;
+  final bool allowsSideCover;
 
   AluminumSection({
     required this.id,
@@ -102,6 +103,7 @@ class AluminumSection {
     this.maxGlassThickness = 0.0,
     this.linkedParcloseDoubleId,
     this.imagePath,
+    this.allowsSideCover = true,
   }) : thickness = profileThickness ?? thickness;
 
   factory AluminumSection.fromMap(Map<String, dynamic> map) {
@@ -129,6 +131,7 @@ class AluminumSection {
           (map['max_glass_thickness'] as num?)?.toDouble() ?? 0.0,
       linkedParcloseDoubleId: map['linked_parclose_double_id'] as int?,
       imagePath: map['image_path']?.toString(),
+      allowsSideCover: (map['allows_side_cover'] as int?) != 0,
     );
   }
 
@@ -155,6 +158,7 @@ class AluminumSection {
       'max_glass_thickness': maxGlassThickness,
       'linked_parclose_double_id': linkedParcloseDoubleId,
       'image_path': imagePath,
+      'allows_side_cover': allowsSideCover ? 1 : 0,
     };
   }
 }
@@ -1565,8 +1569,11 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isSideCoverAllowed {
-    if (isPVC) return true;
     final frame = getSectionByType('frame');
+    if (frame != null && !frame.allowsSideCover) {
+      return false;
+    }
+    if (isPVC) return true;
     if (frame == null) return true;
     final codeLower = frame.code.toLowerCase().trim();
     final nameLower = frame.name.toLowerCase().trim();
