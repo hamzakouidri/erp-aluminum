@@ -1581,12 +1581,41 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final sId = widget.model.systemMode == 'sliding'
                     ? widget.model.activeSlidingSeries?.id
                     : widget.model.activeSeries?.id;
-                final redRes = await dbInstance.query(
+                // البحث عن الريديكتور بالكود أو الاسم/النوع ضمن السلسلة النشطة
+                final redResAll = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND LOWER(code) LIKE ?',
-                  whereArgs: [sId, '%67114%'],
-                  limit: 1,
+                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  whereArgs: [sId],
                 );
+                final redMatches = redResAll.where((s) {
+                  final t = (s['type'] ?? '').toString().toLowerCase();
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return (c.contains('67114') ||
+                          t.contains('reduct') ||
+                          n.contains('reduct') ||
+                          n.contains('مخفض') ||
+                          n.contains('ريديكتور')) &&
+                      !t.contains('rail') &&
+                      !t.contains('cadre') &&
+                      !t.contains('frame') &&
+                      !n.contains('rail') &&
+                      !n.contains('سكة') &&
+                      !n.contains('cadre') &&
+                      !n.contains('إطار');
+                }).toList();
+                final redRes = redMatches.isNotEmpty
+                    ? redMatches
+                    : redResAll.where((s) {
+                        final t = (s['type'] ?? '').toString().toLowerCase();
+                        final n = (s['name'] ?? '').toString().toLowerCase();
+                        return (t.contains('parclose') || t.contains('reduct')) &&
+                            !t.contains('rail') &&
+                            !n.contains('rail') &&
+                            !n.contains('سكة') &&
+                            !n.contains('cadre') &&
+                            !n.contains('إطار');
+                      }).toList();
                 if (redRes.isNotEmpty) {
                   final mutableItem = Map<String, dynamic>.from(redRes.first);
                   double price = 0.0;
@@ -1601,11 +1630,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] = mutableItem;
                   if (mounted) setState(() {});
-                  continue;
-                } else {
-                  keywordFr = '67114';
-                  keywordAr = '67114';
                 }
+                continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات خاطئة مثل السكة Rail
               } else if (item.originalName.contains('Rail') ||
                   item.originalName.contains('سكة')) {
                 final sId = widget.model.systemMode == 'sliding'
@@ -1631,11 +1657,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] = mutableItem;
                   if (mounted) setState(() {});
-                  continue;
-                } else {
-                  keywordFr = 'rail';
-                  keywordAr = 'سكة';
                 }
+                continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات عشوائية
               }
             }
             // إذا حُدد جدول وكلمة مفتاحية، نفّذ البحث العام في قاعدة البيانات
@@ -1737,6 +1760,62 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     whereArgs: queryArgs,
                     limit: 1,
                   );
+                }
+                // تصفية نتائج Sections حسب نوع العنصر (Rail vs Réducteur وغيرها)
+                if (table == 'Sections' && res.isNotEmpty) {
+                  final origLower = item.originalName.toLowerCase();
+                  if (origLower.contains('rail') || origLower.contains('سكة') || origLower.contains('الري')) {
+                    final railMatches = res.where((s) {
+                      final t = (s['type'] ?? '').toString().toLowerCase();
+                      final n = (s['name'] ?? '').toString().toLowerCase();
+                      return (t == 'rail' || t.contains('rail') || n == 'rail' || n.startsWith('rail') || n.contains('سكة')) &&
+                          !t.contains('frame') &&
+                          !t.contains('cadre') &&
+                          !n.contains('cadre') &&
+                          !n.contains('إطار') &&
+                          !n.contains('cadre 2 rail') &&
+                          !n.contains('cadre 3 rail');
+                    }).toList();
+                    if (railMatches.isNotEmpty) res = railMatches;
+                  } else if (origLower.contains('réducteur') ||
+                      origLower.contains('ريديكتور') ||
+                      origLower.contains('reducteur') ||
+                      origLower.contains('مخفض')) {
+                    final redMatches = res.where((s) {
+                      final t = (s['type'] ?? '').toString().toLowerCase();
+                      final n = (s['name'] ?? '').toString().toLowerCase();
+                      final c = (s['code'] ?? '').toString().toLowerCase();
+                      return (t.contains('reduct') ||
+                              n.contains('reduct') ||
+                              n.contains('مخفض') ||
+                              n.contains('ريديكتور') ||
+                              c.contains('67114')) &&
+                          !t.contains('frame') &&
+                          !t.contains('cadre') &&
+                          !t.contains('rail') &&
+                          !n.contains('cadre') &&
+                          !n.contains('إطار') &&
+                          !n.contains('rail') &&
+                          !n.contains('سكة');
+                    }).toList();
+                    if (redMatches.isNotEmpty) {
+                      res = redMatches;
+                    } else {
+                      final parcloseMatches = res.where((s) {
+                        final t = (s['type'] ?? '').toString().toLowerCase();
+                        final n = (s['name'] ?? '').toString().toLowerCase();
+                        return (t.contains('parclose') || t.contains('reduct')) &&
+                            !t.contains('frame') &&
+                            !t.contains('cadre') &&
+                            !t.contains('rail') &&
+                            !n.contains('cadre') &&
+                            !n.contains('إطار') &&
+                            !n.contains('rail') &&
+                            !n.contains('سكة');
+                      }).toList();
+                      if (parcloseMatches.isNotEmpty) res = parcloseMatches;
+                    }
+                  }
                 }
               }
               if (res.isNotEmpty) {
@@ -5027,8 +5106,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
           pType.contains('بيركلوز')) {
         pType = 'parclose';
       } else if (pType.toLowerCase().contains('rail') ||
-          pType.contains('راي') ||
-          pType.contains('ري')) {
+          pType.contains('الري') ||
+          pType.contains('سكة')) {
         pType = 'rail';
       }
       // مكونات الستار: تحديد نوعها الدقيق (مانيفال/محرك/صندوق/كيت/سكك/شريحة نهائية/شريحة/محور/أطاش...)

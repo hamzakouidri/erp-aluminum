@@ -925,7 +925,31 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           // البحث بالكود مباشرة (مثلاً 67114 للريديكتور)
           final code = (s['code'] ?? '').toString().toLowerCase().trim();
           if (RegExp(r'^\d+$').hasMatch(t)) {
-            return code.contains(t);
+            return code.contains(t) &&
+                !ty.contains('rail') &&
+                !name.contains('rail') &&
+                !name.contains('سكة');
+          }
+          if (t.contains('reduct') || t.contains('67114') || t.contains('ريديك') || t.contains('مخفض')) {
+            return (ty.contains('reduct') ||
+                    name.contains('reduct') ||
+                    name.contains('مخفض') ||
+                    name.contains('ريديكتور') ||
+                    code.contains('67114')) &&
+                !ty.contains('rail') &&
+                !ty.contains('cadre') &&
+                !ty.contains('frame') &&
+                !name.contains('rail') &&
+                !name.contains('سكة') &&
+                !name.contains('cadre') &&
+                !name.contains('إطار');
+          }
+          if (t == 'rail' || t.contains('rail') || t.contains('الري') || t.contains('سكة')) {
+            return (ty == 'rail' || ty.contains('rail') || name.contains('rail') || name.contains('سكة')) &&
+                !ty.contains('frame') &&
+                !ty.contains('cadre') &&
+                !name.contains('cadre') &&
+                !name.contains('إطار');
           }
           return ty.contains(t) || t.contains(ty) || name.contains(t) || t.contains(name);
         }).toList();

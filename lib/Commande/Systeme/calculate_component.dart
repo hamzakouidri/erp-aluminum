@@ -3960,24 +3960,36 @@ class ComponentCalculator {
           window.componentOverrides['باكيت الزجاج (Parclose)'];
 
       if (reducteurOverride == null && activeSeries != null) {
-        // 1. البحث عن قطاع باسم يحتوي صراحة على reducteur أو مخفض أو ريديكتور
+        bool isReducteurSection(dynamic s) {
+          final n = s.name.toLowerCase();
+          final t = s.type.toLowerCase();
+          final c = s.code.toLowerCase();
+          return (n.contains('reduct') ||
+                  n.contains('مخفض') ||
+                  n.contains('ريديكتور') ||
+                  t.contains('reduct') ||
+                  c.contains('67114')) &&
+              !t.contains('rail') &&
+              !t.contains('cadre') &&
+              !t.contains('frame') &&
+              !n.contains('rail') &&
+              !n.contains('سكة') &&
+              !n.contains('cadre') &&
+              !n.contains('إطار');
+        }
+
+        // 1. البحث عن قطاع reducteur صريح (استبعاد السكك Rail)
         try {
-          final redSec = activeSeries.sections.firstWhere((s) {
-            final n = s.name.toLowerCase();
-            final t = s.type.toLowerCase();
-            return n.contains('reduct') ||
-                n.contains('مخفض') ||
-                n.contains('ريديكتور') ||
-                t.contains('reduct');
-          });
+          final redSec = activeSeries.sections.firstWhere(isReducteurSection);
           reducteurOverride = redSec.toMap();
         } catch (_) {
-          // 2. إذا لم يكتب اسمه صراحة، ابحث عن قطاع نوعه parclose بشرط ألا يكون سكة Rail
+          // 2. fallback: parclose بشرط ألا يكون سكة Rail
           try {
             final parcloseSec = activeSeries.sections.firstWhere((s) {
               final n = s.name.toLowerCase();
               final t = s.type.toLowerCase();
               return (t.contains('parclose') || t.contains('reduct')) &&
+                  !t.contains('rail') &&
                   !n.contains('rail') &&
                   !n.contains('سكة') &&
                   !n.contains('frame') &&
@@ -4346,9 +4358,11 @@ class ComponentCalculator {
     List<double>? pieces,
     Map<String, dynamic>? overrideMap,
   }) {
-    bool isLinked = overrideMap != null
-        ? true
-        : overrides.containsKey(originalName);
+    final Map<String, dynamic>? savedOverride =
+        overrides.containsKey(originalName)
+            ? overrides[originalName] as Map<String, dynamic>?
+            : null;
+    bool isLinked = savedOverride != null || overrideMap != null;
     double price = defaultPrice;
     double finalQty = qty;
     double? finalLength = length;
@@ -4357,7 +4371,7 @@ class ComponentCalculator {
     String? imagePath;
     String subName = '';
     if (isLinked) {
-      final ov = overrideMap ?? overrides[originalName];
+      final ov = savedOverride ?? overrideMap!;
       profileCode = ov['code']?.toString();
       imagePath = ov['image_path']?.toString();
       subName = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
@@ -4368,7 +4382,7 @@ class ComponentCalculator {
     if (pieces != null && pieces.isNotEmpty) {
       double barLength = 5.8;
       if (isLinked) {
-        final ov = overrideMap ?? overrides[originalName];
+        final ov = savedOverride ?? overrideMap!;
         barLength = (ov['bar_length'] as num?)?.toDouble() ?? 5.8;
       } else if (originalName.contains('حديد') ||
           originalName.contains('Renfort')) {
@@ -4410,7 +4424,7 @@ class ComponentCalculator {
     }
  
     if (isLinked && (finalLength == null || finalLength == 0.0)) {
-      final ov = overrideMap ?? overrides[originalName];
+      final ov = savedOverride ?? overrideMap!;
       finalLength = (ov['bar_length'] as num?)?.toDouble() ?? 5.8;
     }
  
