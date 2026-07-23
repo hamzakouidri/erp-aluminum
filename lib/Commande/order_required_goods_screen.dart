@@ -10,7 +10,6 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/widgets/section_image.dart';
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // نموذج سلعة مجمّعة بعد الجمع من كل المنتجات
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +43,7 @@ class AggregatedGoodItem {
   double totalQuantity;
   double totalCost;
   final String? profileCode;
-  
+
   // 🟢 List of sub-items if this item is a grouped Kit
   final List<BomItem> kitSubItems;
   final String? kitGroupName;
@@ -94,7 +93,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   @override
   void initState() {
     super.initState();
-    _currentLang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    _currentLang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _loadAndAggregate();
   }
 
@@ -124,20 +126,27 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       kitPerLeafMap: kitPerLeafMap,
     );
 
-    final colorId = model.selectedDbColor != null ? model.selectedDbColor!['id'] as int? : null;
-    final accessoryColorId = model.selectedAccessoryColor != null ? model.selectedAccessoryColor!['id'] as int? : null;
+    final colorId = model.selectedDbColor != null
+        ? model.selectedDbColor!['id'] as int?
+        : null;
+    final accessoryColorId = model.selectedAccessoryColor != null
+        ? model.selectedAccessoryColor!['id'] as int?
+        : null;
 
     for (var item in bomItems) {
-      if (item.isMissing && !model.componentOverrides.containsKey(item.originalName)) {
+      if (item.isMissing &&
+          !model.componentOverrides.containsKey(item.originalName)) {
         try {
           // Espagnolette special case
-          if (item.originalName.contains('إسبانيوليت') || item.originalName.contains('Espagnolette')) {
+          if (item.originalName.contains('إسبانيوليت') ||
+              item.originalName.contains('Espagnolette')) {
             final match = RegExp(r'\d+').firstMatch(item.originalName);
             String targetSize = match != null ? match.group(0)! : '';
             final matType = model.isPVC ? 'PVC' : 'Aluminium';
             var allEsp = await dbInstance.query(
               'Accessories',
-              where: "(type LIKE '%إسبانيوليت%' OR LOWER(name) LIKE '%esp%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+              where:
+                  "(type LIKE '%إسبانيوليت%' OR LOWER(name) LIKE '%esp%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
               whereArgs: [matType],
             );
             if (allEsp.isNotEmpty) {
@@ -161,13 +170,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   where: 'accessory_id = ? AND color_id = ?',
                   whereArgs: [selectedEsp['id'], accessoryColorId],
                 );
-                if (colorPriceRes.isNotEmpty && _safeDouble(colorPriceRes.first['price']) > 0) {
+                if (colorPriceRes.isNotEmpty &&
+                    _safeDouble(colorPriceRes.first['price']) > 0) {
                   price = _safeDouble(colorPriceRes.first['price']);
                 } else {
-                  price = _safeDouble(selectedEsp['price_dzd'] ?? selectedEsp['price']);
+                  price = _safeDouble(
+                    selectedEsp['price_dzd'] ?? selectedEsp['price'],
+                  );
                 }
               } else {
-                price = _safeDouble(selectedEsp['price_dzd'] ?? selectedEsp['price']);
+                price = _safeDouble(
+                  selectedEsp['price_dzd'] ?? selectedEsp['price'],
+                );
               }
               mutableItem['calculated_price'] = price;
               model.componentOverrides[item.originalName] = mutableItem;
@@ -182,89 +196,165 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
           if (item.category == 'shutter') {
             table = 'ShutterComponents';
-            if (item.originalName.contains('Lames') || item.originalName.contains('الشرائح')) {
-              keywordFr = 'lame'; keywordAr = 'شريح';
-            } else if (item.originalName.contains('Coulisses') || item.originalName.contains('السكك')) {
-              keywordFr = 'coulisse'; keywordAr = 'سك';
-            } else if (item.originalName.contains('Axe') || item.originalName.contains('المحور')) {
-              keywordFr = 'axe'; keywordAr = 'محور';
-            } else if (item.originalName.contains('Caisson') || item.originalName.contains('الصندوق')) {
-              keywordFr = 'caisson'; keywordAr = 'صندوق';
-            } else if (item.originalName.contains('Moteur') || item.originalName.contains('المحرك')) {
-              keywordFr = 'moteur'; keywordAr = 'محرك';
-            } else if (item.originalName.contains('Manivelle') || item.originalName.contains('المانيفال')) {
-              keywordFr = 'manivelle'; keywordAr = 'مانيفال';
-            } else if (item.originalName.contains('Tandem') || item.originalName.contains('طانديم')) {
-              keywordFr = 'tandem'; keywordAr = 'طانديم';
-            } else if (item.originalName.contains('Lame Finale') || item.originalName.contains('الشريحة النهائية')) {
-              keywordFr = 'finale'; keywordAr = 'نهائي';
-            } else if (item.originalName.contains('Joint Brosse') || item.originalName.contains('جوان بروس')) {
-              keywordFr = 'bross'; keywordAr = 'بروس';
-            } else if (item.originalName.contains('Kit') || item.originalName.contains('كيت')) {
-              keywordFr = 'kit'; keywordAr = 'كيت';
-            } else if (item.originalName.contains('Attache') || item.originalName.contains('أطاش')) {
-              keywordFr = 'attache'; keywordAr = 'أطاش';
-            } else if (item.originalName.contains('Support Moteur') || item.originalName.contains('سيبور موتور')) {
-              keywordFr = 'support_moteur'; keywordAr = 'سيبور موتور';
-            } else if (item.originalName.contains('Embout') || item.originalName.contains('الامبو')) {
-              keywordFr = 'embout'; keywordAr = 'امبو';
-            } else if (item.originalName.contains('Support Roulement') || item.originalName.contains('سيبور رولمو')) {
-              keywordFr = 'support_roulement'; keywordAr = 'سيبور رولمو';
-            } else if (item.originalName.contains('Bouchons Lames') || item.originalName.contains('أغطية الشفرات')) {
-              keywordFr = 'bouchon_lame'; keywordAr = 'أغطية الشفرات';
+            if (item.originalName.contains('Lames') ||
+                item.originalName.contains('الشرائح')) {
+              keywordFr = 'lame';
+              keywordAr = 'شريح';
+            } else if (item.originalName.contains('Coulisses') ||
+                item.originalName.contains('السكك')) {
+              keywordFr = 'coulisse';
+              keywordAr = 'سك';
+            } else if (item.originalName.contains('Axe') ||
+                item.originalName.contains('المحور')) {
+              keywordFr = 'axe';
+              keywordAr = 'محور';
+            } else if (item.originalName.contains('Caisson') ||
+                item.originalName.contains('الصندوق')) {
+              keywordFr = 'caisson';
+              keywordAr = 'صندوق';
+            } else if (item.originalName.contains('Moteur') ||
+                item.originalName.contains('المحرك')) {
+              keywordFr = 'moteur';
+              keywordAr = 'محرك';
+            } else if (item.originalName.contains('Manivelle') ||
+                item.originalName.contains('المانيفال')) {
+              keywordFr = 'manivelle';
+              keywordAr = 'مانيفال';
+            } else if (item.originalName.contains('Tandem') ||
+                item.originalName.contains('طانديم')) {
+              keywordFr = 'tandem';
+              keywordAr = 'طانديم';
+            } else if (item.originalName.contains('Lame Finale') ||
+                item.originalName.contains('الشريحة النهائية')) {
+              keywordFr = 'finale';
+              keywordAr = 'نهائي';
+            } else if (item.originalName.contains('Joint Brosse') ||
+                item.originalName.contains('جوان بروس')) {
+              keywordFr = 'bross';
+              keywordAr = 'بروس';
+            } else if (item.originalName.contains('Kit') ||
+                item.originalName.contains('كيت')) {
+              keywordFr = 'kit';
+              keywordAr = 'كيت';
+            } else if (item.originalName.contains('Attache') ||
+                item.originalName.contains('أطاش')) {
+              keywordFr = 'attache';
+              keywordAr = 'أطاش';
+            } else if (item.originalName.contains('Support Moteur') ||
+                item.originalName.contains('سيبور موتور')) {
+              keywordFr = 'support_moteur';
+              keywordAr = 'سيبور موتور';
+            } else if (item.originalName.contains('Embout') ||
+                item.originalName.contains('الامبو')) {
+              keywordFr = 'embout';
+              keywordAr = 'امبو';
+            } else if (item.originalName.contains('Support Roulement') ||
+                item.originalName.contains('سيبور رولمو')) {
+              keywordFr = 'support_roulement';
+              keywordAr = 'سيبور رولمو';
+            } else if (item.originalName.contains('Bouchons Lames') ||
+                item.originalName.contains('أغطية الشفرات')) {
+              keywordFr = 'bouchon_lame';
+              keywordAr = 'أغطية الشفرات';
             }
           } else if (item.category == 'accessory') {
             table = 'Accessories';
-            if (item.originalName.contains('المقبض') || item.originalName.contains('Handle')) {
-              keywordFr = 'poign'; keywordAr = 'مقبض';
-            } else if (item.originalName.contains('المفاصل') || item.originalName.contains('Hinges')) {
-              keywordFr = 'paumel'; keywordAr = 'مفصل';
+            if (item.originalName.contains('المقبض') ||
+                item.originalName.contains('Handle')) {
+              keywordFr = 'poign';
+              keywordAr = 'مقبض';
+            } else if (item.originalName.contains('المفاصل') ||
+                item.originalName.contains('Hinges')) {
+              keywordFr = 'paumel';
+              keywordAr = 'مفصل';
             } else if (item.originalName.contains('System OB')) {
-              keywordFr = 'ob'; keywordAr = 'ob';
-            } else if ((item.originalName.contains('الفيرو') || item.originalName.contains('Verrou')) && !item.originalName.contains('Central')) {
-              keywordFr = 'verrou'; keywordAr = 'فيرو';
-            } else if (item.originalName.contains('براغي') || item.originalName.toLowerCase().contains('screw')) {
-              keywordFr = 'visse'; keywordAr = 'براغي';
-            } else if (item.originalName.contains('عجلات') || item.originalName.contains('Roulette')) {
-              keywordFr = 'roulette'; keywordAr = 'عجل';
-            } else if (item.originalName.contains('أونتروماتيك') || item.originalName.contains('Entrematique')) {
-              keywordFr = 'intra'; keywordAr = 'انترام';
-            } else if (item.originalName.contains('اسبانيولات') || item.originalName.contains('Espagnolette')) {
-              keywordFr = 'espagnol'; keywordAr = 'اسبانيول';
-            } else if (item.originalName.contains('كاش كوليسون') || item.originalName.contains('Gache coulissant')) {
-              keywordFr = 'gache'; keywordAr = 'كاش';
-            } else if (item.originalName.contains('صداد') || item.originalName.contains('Arrêt')) {
-              keywordFr = 'arret'; keywordAr = 'صداد';
+              keywordFr = 'ob';
+              keywordAr = 'ob';
+            } else if ((item.originalName.contains('الفيرو') ||
+                    item.originalName.contains('Verrou')) &&
+                !item.originalName.contains('Central')) {
+              keywordFr = 'verrou';
+              keywordAr = 'فيرو';
+            } else if (item.originalName.contains('براغي') ||
+                item.originalName.toLowerCase().contains('screw')) {
+              keywordFr = 'visse';
+              keywordAr = 'براغي';
+            } else if (item.originalName.contains('عجلات') ||
+                item.originalName.contains('Roulette')) {
+              keywordFr = 'roulette';
+              keywordAr = 'عجل';
+            } else if (item.originalName.contains('أونتروماتيك') ||
+                item.originalName.contains('Entrematique')) {
+              keywordFr = 'intra';
+              keywordAr = 'انترام';
+            } else if (item.originalName.contains('اسبانيولات') ||
+                item.originalName.contains('Espagnolette')) {
+              keywordFr = 'espagnol';
+              keywordAr = 'اسبانيول';
+            } else if (item.originalName.contains('كاش كوليسون') ||
+                item.originalName.contains('Gache coulissant')) {
+              keywordFr = 'gache';
+              keywordAr = 'كاش';
+            } else if (item.originalName.contains('صداد') ||
+                item.originalName.contains('Arrêt')) {
+              keywordFr = 'arret';
+              keywordAr = 'صداد';
             }
           } else if (item.category == 'joint') {
             table = 'Joints';
-            if (item.originalName.contains('Joint Brosse') || item.originalName.contains('جوان بروس')) {
-              keywordFr = 'bross'; keywordAr = 'بروس';
-            } else if (item.originalName.contains('2mm') || item.originalName.contains('2 ملم')) {
-              keywordFr = '2'; keywordAr = '2';
-            } else if (item.originalName.contains('3-4mm') || item.originalName.contains('3-4 ملم')) {
-              keywordFr = '3'; keywordAr = '3';
-            } else if (item.originalName.contains('5-6mm') || item.originalName.contains('5-6 ملم')) {
-              keywordFr = '5'; keywordAr = '5';
-            } else if (item.originalName.contains('7-8mm') || item.originalName.contains('7-8 ملم')) {
-              keywordFr = '7'; keywordAr = '7';
+            if (item.originalName.contains('Joint Brosse') ||
+                item.originalName.contains('جوان بروس')) {
+              keywordFr = 'bross';
+              keywordAr = 'بروس';
+            } else if (item.originalName.contains('2mm') ||
+                item.originalName.contains('2 ملم')) {
+              keywordFr = '2';
+              keywordAr = '2';
+            } else if (item.originalName.contains('3-4mm') ||
+                item.originalName.contains('3-4 ملم')) {
+              keywordFr = '3';
+              keywordAr = '3';
+            } else if (item.originalName.contains('5-6mm') ||
+                item.originalName.contains('5-6 ملم')) {
+              keywordFr = '5';
+              keywordAr = '5';
+            } else if (item.originalName.contains('7-8mm') ||
+                item.originalName.contains('7-8 ملم')) {
+              keywordFr = '7';
+              keywordAr = '7';
             } else {
-              keywordFr = 'joint'; keywordAr = 'جوان';
+              keywordFr = 'joint';
+              keywordAr = 'جوان';
             }
           } else if (item.category == 'profile') {
             table = 'Sections';
-            if (item.originalName.contains('Batmo') || item.originalName.contains('الباتمو')) {
-              keywordFr = 'batmo'; keywordAr = 'باتمو';
-            } else if (item.originalName.contains('Mullion') || item.originalName.contains('تقسيم الزجاج')) {
+            if (item.originalName.contains('Batmo') ||
+                item.originalName.contains('الباتمو')) {
+              keywordFr = 'batmo';
+              keywordAr = 'باتمو';
+            } else if (item.originalName.contains('Mullion') ||
+                item.originalName.contains('تقسيم الزجاج')) {
               final mullRes = await dbInstance.query(
                 'Sections',
-                where: 'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ? OR type LIKE ?)',
-                whereArgs: [model.activeSeries?.id, '%mullion%', '%mullion%', '%traverse%', '%traverse%', '%تقسيم%', '%تقسيم%'],
+                where:
+                    'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ? OR type LIKE ?)',
+                whereArgs: [
+                  model.activeSeries?.id,
+                  '%mullion%',
+                  '%mullion%',
+                  '%traverse%',
+                  '%traverse%',
+                  '%تقسيم%',
+                  '%تقسيم%',
+                ],
                 limit: 1,
               );
               if (mullRes.isNotEmpty) {
                 final mutableItem = Map<String, dynamic>.from(mullRes.first);
-                double price = await sqlDb.getSectionPrice(mullRes.first['id'], colorId);
+                double price = await sqlDb.getSectionPrice(
+                  mullRes.first['id'],
+                  colorId,
+                );
                 if (price <= 0) {
                   price = _safeDouble(mullRes.first['price']);
                 }
@@ -272,26 +362,41 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 model.componentOverrides[item.originalName] = mutableItem;
               }
               continue;
-            } else if (item.originalName.contains('Plinthe') || item.originalName.contains('بلانت')) {
-              keywordFr = 'plinthe'; keywordAr = 'بلانت';
-            } else if (item.originalName.contains('Traverse') || item.originalName.contains('عرضي')) {
-              keywordFr = 'traverse'; keywordAr = 'عرضي';
-            } else if (item.originalName.contains('Sash Lateral') || item.originalName.contains('قائم جانبي')) {
-              keywordFr = 'sash'; keywordAr = 'جانبي';
-            } else if (item.originalName.contains('Sash Central') || item.originalName.contains('قائم وسطي') || item.originalName.contains('Chicane')) {
-              keywordFr = 'sash'; keywordAr = 'وسطي';
-            } else if (item.originalName.contains('Renfort') || item.originalName.contains('حديد التسليح')) {
-              keywordFr = 'renfort'; keywordAr = 'تسليح';
-            } else if (item.originalName.contains('Rail') || item.originalName.contains('سكة')) {
-              keywordFr = 'rail'; keywordAr = 'سكة';
+            } else if (item.originalName.contains('Plinthe') ||
+                item.originalName.contains('بلانت')) {
+              keywordFr = 'plinthe';
+              keywordAr = 'بلانت';
+            } else if (item.originalName.contains('Traverse') ||
+                item.originalName.contains('عرضي')) {
+              keywordFr = 'traverse';
+              keywordAr = 'عرضي';
+            } else if (item.originalName.contains('Sash Lateral') ||
+                item.originalName.contains('قائم جانبي')) {
+              keywordFr = 'sash';
+              keywordAr = 'جانبي';
+            } else if (item.originalName.contains('Sash Central') ||
+                item.originalName.contains('قائم وسطي') ||
+                item.originalName.contains('Chicane')) {
+              keywordFr = 'sash';
+              keywordAr = 'وسطي';
+            } else if (item.originalName.contains('Renfort') ||
+                item.originalName.contains('حديد التسليح')) {
+              keywordFr = 'renfort';
+              keywordAr = 'تسليح';
+            } else if (item.originalName.contains('Rail') ||
+                item.originalName.contains('سكة')) {
+              keywordFr = 'rail';
+              keywordAr = 'سكة';
             } else if (item.originalName.contains('Réducteur') ||
-                       item.originalName.contains('ريديكتور') ||
-                       item.originalName.contains('reducteur') ||
-                       item.originalName.contains('مخفض')) {
-              keywordFr = '67114'; keywordAr = '67114';
+                item.originalName.contains('ريديكتور') ||
+                item.originalName.contains('reducteur') ||
+                item.originalName.contains('مخفض')) {
+              keywordFr = '67114';
+              keywordAr = '67114';
             } else if (item.originalName.contains('Parclose') ||
-                       item.originalName.contains('باكيت')) {
-              keywordFr = 'parclose'; keywordAr = 'باكيت';
+                item.originalName.contains('باكيت')) {
+              keywordFr = 'parclose';
+              keywordAr = 'باكيت';
             }
           }
 
@@ -299,17 +404,29 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             final matType = model.isPVC ? 'PVC' : 'Aluminium';
             var queryRes = await dbInstance.query(
               table,
-              where: "(LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR name LIKE ? OR type LIKE ? OR code LIKE ?) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
-              whereArgs: ['%$keywordFr%', '%$keywordFr%', '%$keywordAr%', '%$keywordAr%', '%$keywordFr%', matType],
+              where:
+                  "(LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR name LIKE ? OR type LIKE ? OR code LIKE ?) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+              whereArgs: [
+                '%$keywordFr%',
+                '%$keywordFr%',
+                '%$keywordAr%',
+                '%$keywordAr%',
+                '%$keywordFr%',
+                matType,
+              ],
             );
 
             // 🟢 تصفية الجوانات حسب السلسلة الحالية (series_id / series_ids)
             // مهم جداً لضمان أن جوان البروس يخص السلسلة المختارة لا أي سلسلة أخرى
-            if (table == 'Joints' && queryRes.isNotEmpty && model.activeSeries != null) {
+            if (table == 'Joints' &&
+                queryRes.isNotEmpty &&
+                model.activeSeries != null) {
               final sid = model.activeSeries!.id;
               final sidStr = sid.toString();
               // أولاً: تصفية بـ series_id المباشر
-              final exactMatch = queryRes.where((j) => j['series_id'] == sid).toList();
+              final exactMatch = queryRes
+                  .where((j) => j['series_id'] == sid)
+                  .toList();
               if (exactMatch.isNotEmpty) {
                 queryRes = exactMatch;
               } else {
@@ -335,7 +452,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
             if (table == 'Sections' && queryRes.isNotEmpty) {
               if (model.activeSeries != null) {
-                final seriesSections = queryRes.where((s) => s['series_id'] == model.activeSeries!.id).toList();
+                final seriesSections = queryRes
+                    .where((s) => s['series_id'] == model.activeSeries!.id)
+                    .toList();
                 if (seriesSections.isNotEmpty) {
                   queryRes = seriesSections;
                 }
@@ -347,7 +466,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 final railMatches = queryRes.where((s) {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
-                  return (t == 'rail' || t.contains('rail') || n == 'rail' || n.startsWith('rail') || n.contains('سكة')) &&
+                  return (t == 'rail' ||
+                          t.contains('rail') ||
+                          n == 'rail' ||
+                          n.startsWith('rail') ||
+                          n.contains('سكة')) &&
                       !t.contains('frame') &&
                       !t.contains('cadre') &&
                       !n.contains('cadre') &&
@@ -367,31 +490,59 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('67114') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض') || n.contains('ريديكتور')) &&
-                      !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
-                      !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
+                  return (c.contains('67114') ||
+                          t.contains('reduct') ||
+                          n.contains('reduct') ||
+                          n.contains('مخفض') ||
+                          n.contains('ريديكتور')) &&
+                      !t.contains('frame') &&
+                      !t.contains('cadre') &&
+                      !t.contains('rail') &&
+                      !n.contains('cadre') &&
+                      !n.contains('إطار') &&
+                      !n.contains('rail') &&
+                      !n.contains('سكة');
                 }).toList();
                 if (redMatches.isNotEmpty) {
                   queryRes = redMatches;
                 }
-              } else if (origLower.contains('latéral') || origLower.contains('lateral') || origLower.contains('قائم جانبي') || origLower.contains('sash lateral')) {
+              } else if (origLower.contains('latéral') ||
+                  origLower.contains('lateral') ||
+                  origLower.contains('قائم جانبي') ||
+                  origLower.contains('sash lateral')) {
                 // للقائم الجانبي: تصفية القوائم الجانبية فقط بكود 104 أو 108 أو lateral واستبعاد القائم الوسطي / الشيكان / 105
                 final latMatches = queryRes.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('104') || c.contains('108') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
-                      !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
+                  return (c.contains('104') ||
+                          c.contains('108') ||
+                          n.contains('latéral') ||
+                          n.contains('lateral') ||
+                          n.contains('جانبي')) &&
+                      !n.contains('central') &&
+                      !n.contains('وسطي') &&
+                      !n.contains('chicane') &&
+                      !c.contains('105');
                 }).toList();
                 if (latMatches.isNotEmpty) {
                   queryRes = latMatches;
                 }
-              } else if (origLower.contains('sash central') || origLower.contains('central') || origLower.contains('chicane') || origLower.contains('قائم وسطي')) {
+              } else if (origLower.contains('sash central') ||
+                  origLower.contains('central') ||
+                  origLower.contains('chicane') ||
+                  origLower.contains('قائم وسطي')) {
                 // للقائم الوسطي: تصفية القوائم الوسطية بكود 105 أو 107 أو central واستبعاد الجانبي 104
                 final cenMatches = queryRes.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('105') || c.contains('107') || n.contains('central') || n.contains('وسطي') || n.contains('chicane')) &&
-                      !n.contains('latéral') && !n.contains('جانبي') && !c.contains('104');
+                  return (c.contains('105') ||
+                          c.contains('107') ||
+                          n.contains('central') ||
+                          n.contains('وسطي') ||
+                          n.contains('chicane')) &&
+                      !n.contains('latéral') &&
+                      !n.contains('جانبي') &&
+                      !c.contains('104');
                 }).toList();
                 if (cenMatches.isNotEmpty) {
                   queryRes = cenMatches;
@@ -416,10 +567,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     where: 'accessory_id = ? AND color_id = ?',
                     whereArgs: [matched['id'], accessoryColorId],
                   );
-                  if (colorPriceRes.isNotEmpty && _safeDouble(colorPriceRes.first['price']) > 0) {
+                  if (colorPriceRes.isNotEmpty &&
+                      _safeDouble(colorPriceRes.first['price']) > 0) {
                     price = _safeDouble(colorPriceRes.first['price']);
                   } else {
-                    price = _safeDouble(matched['price_dzd'] ?? matched['price']);
+                    price = _safeDouble(
+                      matched['price_dzd'] ?? matched['price'],
+                    );
                   }
                 } else {
                   price = _safeDouble(matched['price_dzd'] ?? matched['price']);
@@ -453,11 +607,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     List<BomItem> items,
   ) async {
     int? seriesId = model.activeSeries?.id;
-    if (seriesId == null && model.loadedSeriesName != null && model.loadedSeriesName!.isNotEmpty) {
+    if (seriesId == null &&
+        model.loadedSeriesName != null &&
+        model.loadedSeriesName!.isNotEmpty) {
       try {
         final dbInstance = await widget.db.db;
         if (dbInstance != null) {
-          final res = await dbInstance.query('Series', where: 'name = ?', whereArgs: [model.loadedSeriesName]);
+          final res = await dbInstance.query(
+            'Series',
+            where: 'name = ?',
+            whereArgs: [model.loadedSeriesName],
+          );
           if (res.isNotEmpty) {
             seriesId = res.first['id'] as int?;
           }
@@ -475,10 +635,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     final allowedAccIds = allowedAccIdsStr.isEmpty
         ? <int>{}
-        : allowedAccIdsStr.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toSet();
+        : allowedAccIdsStr
+              .split(',')
+              .map((e) => int.tryParse(e.trim()))
+              .whereType<int>()
+              .toSet();
     final exclAccIds = exclAccIdsStr.isEmpty
         ? <int>{}
-        : exclAccIdsStr.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toSet();
+        : exclAccIdsStr
+              .split(',')
+              .map((e) => int.tryParse(e.trim()))
+              .whereType<int>()
+              .toSet();
 
     if (allowedAccIds.isEmpty && exclAccIds.isEmpty) return items;
 
@@ -486,14 +654,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     for (var item in items) {
       final origLower = item.originalName.toLowerCase();
       final nameLower = item.name.toLowerCase();
-      final isSideCoverItem = origLower.contains('الغطاء الجانبي') ||
+      final isSideCoverItem =
+          origLower.contains('الغطاء الجانبي') ||
           origLower.contains('side cover') ||
+          origLower.contains('couvre joint') ||
           origLower.contains('couvre-joint') ||
           nameLower.contains('الغطاء الجانبي') ||
           nameLower.contains('couvre-joint');
 
       if (isSideCoverItem) {
-        final bool showSideCover = (model.hasSideCovers || model.isSideCoverAllowed) && !model.isIntegratedFrame;
+        final bool showSideCover =
+            (model.hasSideCovers || model.isSideCoverAllowed) &&
+            !model.isIntegratedFrame;
         if (!showSideCover) {
           continue; // إزالة الغطاء الجانبي إذا كان الإطار مدمجاً أو لا يدعم ولا يحتوي على غطاء جانبي
         }
@@ -505,7 +677,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
         if (accId != null) {
           if (exclAccIds.contains(accId)) continue;
-          if (allowedAccIds.isNotEmpty && !allowedAccIds.contains(accId)) continue;
+          if (allowedAccIds.isNotEmpty && !allowedAccIds.contains(accId))
+            continue;
         }
       }
       filtered.add(item);
@@ -551,8 +724,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           await applyWindowModelAndLoadCatalog(model, modelMap);
 
           // 🟢 استبعاد العناصر المشطوبة أو الملغاة (التي سعرها 0.0) من حساب المواد الخام
-          final isReplaced = model.isReplaced ||
-              (modelMap['isReplaced'] == true || modelMap['isReplaced']?.toString().toLowerCase() == 'true') ||
+          final isReplaced =
+              model.isReplaced ||
+              (modelMap['isReplaced'] == true ||
+                  modelMap['isReplaced']?.toString().toLowerCase() == 'true') ||
               ((item['price'] as num?)?.toDouble() == 0.0);
           if (isReplaced) {
             continue;
@@ -567,8 +742,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               final kitName = kit['name'] as String? ?? '';
               if (kitName.isEmpty) continue;
               final kitId = kit['id'] as int;
-              final details = await widget.db.readKitBundleItemsWithDetails(kitId);
-              final mutableDetails = details.map((e) => Map<String, dynamic>.from(e)).toList();
+              final details = await widget.db.readKitBundleItemsWithDetails(
+                kitId,
+              );
+              final mutableDetails = details
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList();
               kitBundleData[kitName] = mutableDetails;
               kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
             }
@@ -579,13 +758,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           List<Map<String, dynamic>> instances = [];
           if (instancesJson != null && instancesJson.toString().isNotEmpty) {
             try {
-              final decoded = jsonDecode(instancesJson.toString()) as List<dynamic>;
-              instances = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+              final decoded =
+                  jsonDecode(instancesJson.toString()) as List<dynamic>;
+              instances = decoded
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList();
             } catch (_) {}
           }
 
           final List<BomItem> bomItems = [];
-          final productName = item['name']?.toString() ?? 'منتج ${successCount + 1}';
+          final productName =
+              item['name']?.toString() ?? 'منتج ${successCount + 1}';
 
           if (instances.isNotEmpty) {
             final double origW = model.width;
@@ -603,7 +786,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               model.quantity = qty;
 
               // Generate BOM for this specific instance using the new resolver
-              final instBom = await _resolveBomForModel(model, kitBundleData, kitPerLeafMap);
+              final instBom = await _resolveBomForModel(
+                model,
+                kitBundleData,
+                kitPerLeafMap,
+              );
               bomItems.addAll(instBom);
 
               // Create a dedicated instance model for drawing and individual listing
@@ -613,15 +800,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               instanceModel.height = h;
               instanceModel.quantity = qty;
 
-              breakdownsTemp.add(ProductBreakdown(
-                index: successCount + 1,
-                name: '$productName (#$instIdx)',
-                qty: qty,
-                width: w,
-                height: h,
-                model: instanceModel,
-                bomItems: instBom.where((b) => b.isActive && !b.isMissing).toList(),
-              ));
+              breakdownsTemp.add(
+                ProductBreakdown(
+                  index: successCount + 1,
+                  name: '$productName (#$instIdx)',
+                  qty: qty,
+                  width: w,
+                  height: h,
+                  model: instanceModel,
+                  bomItems: instBom
+                      .where((b) => b.isActive && !b.isMissing)
+                      .toList(),
+                ),
+              );
               instIdx++;
             }
 
@@ -633,18 +824,26 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             // Force the window model quantity to match the actual order details quantity
             model.quantity = (item['quantity'] as num?)?.toInt() ?? 1;
 
-            final instBom = await _resolveBomForModel(model, kitBundleData, kitPerLeafMap);
+            final instBom = await _resolveBomForModel(
+              model,
+              kitBundleData,
+              kitPerLeafMap,
+            );
             bomItems.addAll(instBom);
 
-            breakdownsTemp.add(ProductBreakdown(
-              index: successCount + 1,
-              name: productName,
-              qty: model.quantity,
-              width: model.width,
-              height: model.height,
-              model: model,
-              bomItems: instBom.where((b) => b.isActive && !b.isMissing).toList(),
-            ));
+            breakdownsTemp.add(
+              ProductBreakdown(
+                index: successCount + 1,
+                name: productName,
+                qty: model.quantity,
+                width: model.width,
+                height: model.height,
+                model: model,
+                bomItems: instBom
+                    .where((b) => b.isActive && !b.isMissing)
+                    .toList(),
+              ),
+            );
           }
 
           // إضافة وتجميع السلع (مع تجميع عناصر الـ kit تحت اسم واحد)
@@ -670,7 +869,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 agg.totalQuantity += kitQtyToAdd;
                 agg.totalCost += bomCost;
 
-                final existingSubIndex = agg.kitSubItems.indexWhere((sub) => sub.originalName == bom.originalName && sub.unit == bom.unit);
+                final existingSubIndex = agg.kitSubItems.indexWhere(
+                  (sub) =>
+                      sub.originalName == bom.originalName &&
+                      sub.unit == bom.unit,
+                );
                 if (existingSubIndex != -1) {
                   final existing = agg.kitSubItems[existingSubIndex];
                   agg.kitSubItems[existingSubIndex] = BomItem(
@@ -686,14 +889,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     isMissing: existing.isMissing,
                     isActive: existing.isActive,
                     kitGroupName: existing.kitGroupName,
-                    exactQuantity: (existing.exactQuantity ?? existing.quantity) + bomQty,
+                    exactQuantity:
+                        (existing.exactQuantity ?? existing.quantity) + bomQty,
                   );
                 } else {
                   agg.kitSubItems.add(bom);
                 }
               } else {
                 aggregationMap[kitKey] = AggregatedGoodItem(
-                  name: _currentLang == AppLanguage.french ? 'Kit $kitName' : 'كيت ($kitName)',
+                  name: _currentLang == AppLanguage.french
+                      ? 'Kit $kitName'
+                      : 'كيت ($kitName)',
                   originalName: kitName,
                   category: 'accessory',
                   unit: _currentLang == AppLanguage.french ? 'Kit' : 'طقم',
@@ -707,10 +913,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 );
               }
             } else {
-              final String itemIdentifier = (bom.profileCode != null && bom.profileCode!.isNotEmpty)
+              final String itemIdentifier =
+                  (bom.profileCode != null && bom.profileCode!.isNotEmpty)
                   ? '${bom.originalName} (${bom.profileCode})'
                   : bom.originalName;
-              final aggregationKey = '${itemIdentifier}___${bom.colorName ?? ''}___${bom.unit}';
+              final aggregationKey =
+                  '${itemIdentifier}___${bom.colorName ?? ''}___${bom.unit}';
 
               if (aggregationMap.containsKey(aggregationKey)) {
                 aggregationMap[aggregationKey]!.totalQuantity += bomQty;
@@ -744,7 +952,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         if (item.kitGroupName != null && item.totalQuantity > 0) {
           double sumPrice = 0.0;
           for (final sub in item.kitSubItems) {
-            final ratio = (sub.exactQuantity ?? sub.quantity) / item.totalQuantity;
+            final ratio =
+                (sub.exactQuantity ?? sub.quantity) / item.totalQuantity;
             sumPrice += sub.unitPrice * ratio;
           }
           item.unitPrice = sumPrice;
@@ -754,7 +963,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       // ترتيب العناصر: البروفيلات أولاً ثم الملحقات
       final sorted = aggregationMap.values.toList();
       sorted.sort((a, b) {
-        const order = ['frame', 'sash', 'glass', 'shutter', 'accessory', 'misc'];
+        const order = [
+          'frame',
+          'sash',
+          'glass',
+          'shutter',
+          'accessory',
+          'misc',
+        ];
         final ai = order.indexOf(a.category);
         final bi = order.indexOf(b.category);
         if (ai != bi) return ai.compareTo(bi);
@@ -803,8 +1019,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       'كيت حزام (Kit Sangle)': false,
     };
   }
-
-
 
   // ─────────────────────────────────────────────────────────────────
   // حساب مجموع التكاليف الكلية
@@ -866,11 +1080,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final clientDisplay = clientNameJoined.isNotEmpty
         ? clientNameJoined
         : (widget.orderData['client_name']?.toString() ??
-           widget.orderData['client_display']?.toString() ??
-           'عميل غير معروف');
+              widget.orderData['client_display']?.toString() ??
+              'عميل غير معروف');
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF0F4FF),
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF0F4FF),
       appBar: AppBar(
         title: Column(
           children: [
@@ -885,16 +1101,24 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           ],
         ),
         centerTitle: true,
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : const Color(0xFF1A237E),
+        backgroundColor: isDark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : const Color(0xFF1A237E),
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          if (!_isLoading && _errorMessage == null && _productBreakdowns.isNotEmpty)
+          if (!_isLoading &&
+              _errorMessage == null &&
+              _productBreakdowns.isNotEmpty)
             TextButton.icon(
               icon: const Icon(Icons.table_chart_outlined, color: Colors.white),
               label: const Text(
                 'تفاصيل كل منتج',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
               ),
               onPressed: _showProductBreakdownDialog,
             ),
@@ -1113,7 +1337,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
   }
 
-  Future<void> _showSectionSelectionDialog(AggregatedGoodItem item, String category) async {
+  Future<void> _showSectionSelectionDialog(
+    AggregatedGoodItem item,
+    String category,
+  ) async {
     if (_productBreakdowns.isEmpty) return;
     final model = _productBreakdowns.first.model;
     final activeSeries = model.activeSlidingSeries ?? model.activeSeries;
@@ -1124,7 +1351,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     if (dbInstance == null) return;
 
     final origLower = item.originalName.toLowerCase();
-    
+
     // Fetch all active sections for the active series
     final rawSections = await dbInstance.query(
       'Sections',
@@ -1148,44 +1375,82 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         final t = (s['type'] ?? '').toString().toLowerCase();
         final n = (s['name'] ?? '').toString().toLowerCase();
         return (t == 'rail' || t.contains('rail') || n.startsWith('rail')) &&
-            !t.contains('frame') && !t.contains('cadre') && !n.contains('cadre') && !n.contains('إطار');
+            !t.contains('frame') &&
+            !t.contains('cadre') &&
+            !n.contains('cadre') &&
+            !n.contains('إطار');
       }).toList();
-    } else if (origLower.contains('réducteur') || origLower.contains('ريديكتور') || origLower.contains('reducteur') || origLower.contains('مخفض')) {
+    } else if (origLower.contains('réducteur') ||
+        origLower.contains('ريديكتور') ||
+        origLower.contains('reducteur') ||
+        origLower.contains('مخفض')) {
       // 2. الريديكتور Réducteur: جلب كود 67114 أو reducteur واستبعاد الإطارات والسكك
       filteredSections = rawSections.where((s) {
         final t = (s['type'] ?? '').toString().toLowerCase();
         final n = (s['name'] ?? '').toString().toLowerCase();
         final c = (s['code'] ?? '').toString().toLowerCase();
-        return (c.contains('67114') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض') || n.contains('ريديكتور')) &&
-            !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
-            !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
+        return (c.contains('67114') ||
+                t.contains('reduct') ||
+                n.contains('reduct') ||
+                n.contains('مخفض') ||
+                n.contains('ريديكتور')) &&
+            !t.contains('frame') &&
+            !t.contains('cadre') &&
+            !t.contains('rail') &&
+            !n.contains('cadre') &&
+            !n.contains('إطار') &&
+            !n.contains('rail') &&
+            !n.contains('سكة');
       }).toList();
-    } else if (origLower.contains('side cover') || origLower.contains('غطاء جانبي') || origLower.contains('couvre')) {
+    } else if (origLower.contains('side cover') ||
+        origLower.contains('غطاء جانبي') ||
+        origLower.contains('couvre')) {
       // 3. الغطاء الجانبي Couvre-joint
       filteredSections = rawSections.where((s) {
         final t = (s['type'] ?? '').toString().toLowerCase();
         final n = (s['name'] ?? '').toString().toLowerCase();
-        return t.contains('couvre') || t.contains('side_cover') || n.contains('couvre') || n.contains('جانبي') || n.contains('غطاء');
+        return t.contains('couvre') ||
+            t.contains('side_cover') ||
+            n.contains('couvre') ||
+            n.contains('جانبي') ||
+            n.contains('غطاء');
       }).toList();
-    } else if (origLower.contains('sash lateral') || origLower.contains('قائم جانبي')) {
+    } else if (origLower.contains('sash lateral') ||
+        origLower.contains('قائم جانبي')) {
       // 4. القائم الجانبي Ouvrant Latéral: تصفية القوائم الجانبية واستبعاد الوسطي / الشيكان
       filteredSections = rawSections.where((s) {
         final t = (s['type'] ?? '').toString().toLowerCase();
         final n = (s['name'] ?? '').toString().toLowerCase();
         final c = (s['code'] ?? '').toString().toLowerCase();
         return (t.contains('sash') || t.contains('ouvrant')) &&
-            (t.contains('lateral') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('104') || c.contains('108')) &&
-            !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
+            (t.contains('lateral') ||
+                n.contains('latéral') ||
+                n.contains('lateral') ||
+                n.contains('جانبي') ||
+                c.contains('104') ||
+                c.contains('108')) &&
+            !n.contains('central') &&
+            !n.contains('وسطي') &&
+            !n.contains('chicane') &&
+            !c.contains('105');
       }).toList();
-    } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي') || origLower.contains('chicane')) {
+    } else if (origLower.contains('sash central') ||
+        origLower.contains('قائم وسطي') ||
+        origLower.contains('chicane')) {
       // 5. القائم الوسطي Ouvrant Central: تصفية القوائم الوسطية واستبعاد الجانبي
       filteredSections = rawSections.where((s) {
         final t = (s['type'] ?? '').toString().toLowerCase();
         final n = (s['name'] ?? '').toString().toLowerCase();
         final c = (s['code'] ?? '').toString().toLowerCase();
         return (t.contains('sash') || t.contains('ouvrant')) &&
-            (t.contains('central') || n.contains('central') || n.contains('وسطي') || n.contains('chicane') || c.contains('105') || c.contains('107')) &&
-            !n.contains('latéral') && !n.contains('جانبي');
+            (t.contains('central') ||
+                n.contains('central') ||
+                n.contains('وسطي') ||
+                n.contains('chicane') ||
+                c.contains('105') ||
+                c.contains('107')) &&
+            !n.contains('latéral') &&
+            !n.contains('جانبي');
       }).toList();
     } else if (category == 'frame') {
       // الإطار Frame
@@ -1242,7 +1507,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     final secName = sec['name'] ?? 'بدون اسم';
                     final secCode = sec['code'] ?? '';
                     final imagePath = sec['image_path']?.toString();
-                    final displayLabel = secCode.toString().isNotEmpty ? '$secCode - $secName' : secName.toString();
+                    final displayLabel = secCode.toString().isNotEmpty
+                        ? '$secCode - $secName'
+                        : secName.toString();
 
                     return ListTile(
                       leading: SizedBox(
@@ -1276,7 +1543,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
                         double price = 0.0;
                         if (colorId != null && sec['id'] != null) {
-                          price = await sqlDb.getSectionPrice(sec['id'] as int, colorId);
+                          price = await sqlDb.getSectionPrice(
+                            sec['id'] as int,
+                            colorId,
+                          );
                         }
                         if (price <= 0) {
                           price = (sec['price'] as num?)?.toDouble() ?? 0.0;
@@ -1286,11 +1556,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         mutableSec['calculated_price'] = price;
 
                         for (var pb in _productBreakdowns) {
-                          pb.model.componentOverrides[item.originalName] = mutableSec;
+                          pb.model.componentOverrides[item.originalName] =
+                              mutableSec;
                           if (category == 'frame') {
                             pb.model.frameOverride = mutableSec;
                             pb.model.slidingFrameOverride = mutableSec;
-                          } else if (origLower.contains('side cover') || origLower.contains('غطاء جانبي')) {
+                          } else if (origLower.contains('side cover') ||
+                              origLower.contains('غطاء جانبي')) {
                             pb.model.sideCoverOverride = mutableSec;
                           }
                         }
@@ -1345,7 +1617,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               },
               borderRadius: BorderRadius.circular(10),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   children: [
                     // مؤشر الفئة (شريط جانبي ملون)
@@ -1379,7 +1654,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF1A1A2E),
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -1388,7 +1665,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                 ? 'Contient ${item.kitSubItems.length} composants (Cliquez pour afficher)'
                                 : 'يحتوي على ${item.kitSubItems.length} مكونات (انقر للعرض)',
                             style: TextStyle(
-                              color: isDark ? Colors.white60 : Colors.grey.shade500,
+                              color: isDark
+                                  ? Colors.white60
+                                  : Colors.grey.shade500,
                               fontSize: 11,
                             ),
                           ),
@@ -1401,7 +1680,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
@@ -1419,7 +1701,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         Text(
                           '${item.totalCost.toStringAsFixed(2)} دج',
                           style: TextStyle(
-                            color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            color: isDark
+                                ? Colors.white70
+                                : Colors.grey.shade700,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1440,16 +1724,26 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               const Divider(height: 1),
               Container(
                 color: isDark ? const Color(0xFF161616) : Colors.grey.shade50,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   children: item.kitSubItems.map((sub) {
-                    final subRoundedQty = _roundQuantity(sub.quantity, sub.unit);
+                    final subRoundedQty = _roundQuantity(
+                      sub.quantity,
+                      sub.unit,
+                    );
                     final subCost = sub.quantity * sub.unitPrice;
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
-                          Icon(Icons.subdirectory_arrow_left, size: 14, color: Colors.grey.shade400),
+                          Icon(
+                            Icons.subdirectory_arrow_left,
+                            size: 14,
+                            color: Colors.grey.shade400,
+                          ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
@@ -1467,7 +1761,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white60 : Colors.grey.shade700,
+                              color: isDark
+                                  ? Colors.white60
+                                  : Colors.grey.shade700,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1475,7 +1771,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             '${subCost.toStringAsFixed(2)} دج',
                             style: TextStyle(
                               fontSize: 11,
-                              color: isDark ? Colors.white60 : Colors.grey.shade700,
+                              color: isDark
+                                  ? Colors.white60
+                                  : Colors.grey.shade700,
                             ),
                           ),
                         ],
@@ -1484,7 +1782,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   }).toList(),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       );
@@ -1553,7 +1851,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
-                          color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF1A1A2E),
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -1635,7 +1935,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 children: [
                   Text(
                     '${_aggregatedItems.length} صنف من السلع',
-                    style: TextStyle(color: isDark ? Colors.white70 : Colors.grey.shade600, fontSize: 12),
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
                   ),
                   Text(
                     '${_grandTotal.toStringAsFixed(2)} دج',
@@ -1653,16 +1956,24 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('تحديث'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: isDark ? Colors.black : const Color(0xFF1A237E),
+                backgroundColor: isDark
+                    ? Colors.black
+                    : const Color(0xFF1A237E),
                 foregroundColor: Colors.white,
-                side: isDark ? const BorderSide(color: Colors.white, width: 1.5) : BorderSide.none,
+                side: isDark
+                    ? const BorderSide(color: Colors.white, width: 1.5)
+                    : BorderSide.none,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 10,
                 ),
                 shape: isDark
-                    ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-                    : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ? RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      )
+                    : RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
               ),
             ),
           ],
@@ -1695,10 +2006,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => Scaffold(
-          backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF0F4FF),
+          backgroundColor: isDark
+              ? const Color(0xFF121212)
+              : const Color(0xFFF0F4FF),
           appBar: AppBar(
-            title: const Text('تفاصيل حساب كل منتج', style: TextStyle(fontWeight: FontWeight.bold)),
-            backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : const Color(0xFF1A237E),
+            title: const Text(
+              'تفاصيل حساب كل منتج',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: isDark
+                ? Theme.of(context).appBarTheme.backgroundColor
+                : const Color(0xFF1A237E),
             foregroundColor: Colors.white,
           ),
           body: ListView.builder(
@@ -1709,7 +2027,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               return Card(
                 elevation: 3,
                 margin: const EdgeInsets.only(bottom: 24.0),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -1723,9 +2043,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             width: 120,
                             height: 120,
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.grey.shade900 : Colors.white,
+                              color: isDark
+                                  ? Colors.grey.shade900
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(8.0),
-                              border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.grey.shade800
+                                    : Colors.grey.shade300,
+                              ),
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8.0),
@@ -1733,8 +2059,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   ? Image.asset(
                                       'Icon/caisson_tunnel.jpg',
                                       fit: BoxFit.contain,
-                                      errorBuilder: (context, error, stackTrace) =>
-                                          Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
+                                      errorBuilder:
+                                          (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) => Image.asset(
+                                            'assets/Icon/caisson_tunnel.jpg',
+                                            fit: BoxFit.contain,
+                                          ),
                                     )
                                   : CustomPaint(
                                       painter: WindowPainter(model: pb.model),
@@ -1752,7 +2085,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
-                                    color: isDark ? Colors.white : const Color(0xFF1A237E),
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1A237E),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -1760,7 +2095,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   'المقاس: ${pb.width.toStringAsFixed(0)} مم × ${pb.height.toStringAsFixed(0)} مم',
                                   style: TextStyle(
                                     fontSize: 14,
-                                    color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.9)
+                                        : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -1769,7 +2106,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.white : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -1777,7 +2116,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   'السلسلة: ${pb.model.activeSeries?.name ?? pb.model.activeSlidingSeries?.name ?? "غير محدد"}',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: isDark ? Colors.white70 : Colors.grey.shade700,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.grey.shade700,
                                   ),
                                 ),
                               ],
@@ -1799,7 +2140,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       Table(
                         border: TableBorder.symmetric(
                           inside: BorderSide(
-                            color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                            color: isDark
+                                ? Colors.grey.shade800
+                                : Colors.grey.shade300,
                             width: 0.5,
                           ),
                         ),
@@ -1812,7 +2155,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         children: [
                           TableRow(
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+                              color: isDark
+                                  ? Colors.grey.shade900
+                                  : Colors.grey.shade200,
                             ),
                             children: [
                               Padding(
@@ -1822,7 +2167,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
-                                    color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.87)
+                                        : Colors.black87,
                                   ),
                                 ),
                               ),
@@ -1833,7 +2180,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
-                                    color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.87)
+                                        : Colors.black87,
                                   ),
                                 ),
                               ),
@@ -1844,7 +2193,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
-                                    color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.87)
+                                        : Colors.black87,
                                   ),
                                 ),
                               ),
@@ -1855,14 +2206,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
-                                    color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87,
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.87)
+                                        : Colors.black87,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                           ...pb.bomItems.map((bom) {
-                            final double qty = (bom.exactQuantity ?? bom.quantity);
+                            final double qty =
+                                (bom.exactQuantity ?? bom.quantity);
                             final double cost = qty * bom.unitPrice;
                             return TableRow(
                               children: [
@@ -1875,7 +2229,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                         code: bom.profileCode,
                                         imagePath: bom.imagePath,
                                         size: 18.0,
-                                        fallbackIcon: _categoryIcon(bom.category),
+                                        fallbackIcon: _categoryIcon(
+                                          bom.category,
+                                        ),
                                         fallbackColor: Colors.grey,
                                       ),
                                       const SizedBox(width: 6),
@@ -1884,7 +2240,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                           bom.name,
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87,
+                                            color: isDark
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.9,
+                                                  )
+                                                : Colors.black87,
                                           ),
                                         ),
                                       ),
@@ -1897,7 +2257,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                     qty.toStringAsFixed(2),
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.9)
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
@@ -1907,7 +2269,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                     bom.unit,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.9)
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
@@ -1917,7 +2281,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                     '${cost.toStringAsFixed(0)} د.ج',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: isDark ? Colors.white70 : Colors.black87,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
