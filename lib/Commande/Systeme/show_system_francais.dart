@@ -8271,12 +8271,10 @@ class _WindowViewState extends State<WindowView> {
                     final mutableSelected = Map<String, dynamic>.from(item);
                     mutableSelected['calculated_price'] = price;
                     setState(() {
-                      if (isSliding) {
-                        widget.model.slidingFrameOverride = mutableSelected;
-                      } else {
-                        widget.model.frameOverride = mutableSelected;
-                        widget.model.updateProfileThickness();
-                      }
+                      widget.model.frameOverride = mutableSelected;
+                      widget.model.slidingFrameOverride = mutableSelected;
+                      widget.model.selectedFrameCode = mutableSelected['code']?.toString();
+                      widget.model.updateProfileThickness();
                       widget.model.refreshUI();
                     });
                   },
@@ -10337,9 +10335,9 @@ class AppWorkspacePainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: TextStyle(
-          color: Colors.blue,
+          color: Colors.blue.shade900,
           fontWeight: FontWeight.bold,
-          fontSize: isSmall ? 40 : 60,
+          fontSize: isSmall ? 46 : 66,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -10348,16 +10346,6 @@ class AppWorkspacePainter extends CustomPainter {
     canvas.save();
     canvas.translate(center.dx, center.dy);
     if (isVertical) canvas.rotate(-math.pi / 2);
-    final rect = Rect.fromCenter(
-      center: Offset.zero,
-      width: tp.width + 16,
-      height: tp.height + 8,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.95),
-    );
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
   }
@@ -10366,38 +10354,65 @@ class AppWorkspacePainter extends CustomPainter {
       Offset p1,
       Offset p2, {
         bool isVerticalLine = false,
+        double textGap = 100.0,
       }) {
     final p = Paint()
-      ..color = Colors.blueGrey
-      ..strokeWidth = 4.0;
-    canvas.drawLine(p1, p2, p);
-    final Paint tickPaint = Paint()
-      ..color = Colors.blueGrey
-      ..strokeWidth = 4.0
-      ..strokeCap = StrokeCap.round;
+      ..color = Colors.blueGrey.shade700
+      ..strokeWidth = 2.2;
+
     double tickSize = 15.0;
 
     if (isVerticalLine) {
+      final double minY = math.min(p1.dy, p2.dy);
+      final double maxY = math.max(p1.dy, p2.dy);
+      final double midY = (minY + maxY) / 2;
+      final double halfGap = textGap / 2;
+
+      // Segment 1 (Top)
+      if (midY - halfGap > minY) {
+        canvas.drawLine(Offset(p1.dx, minY), Offset(p1.dx, midY - halfGap), p);
+      }
+      // Segment 2 (Bottom)
+      if (maxY > midY + halfGap) {
+        canvas.drawLine(Offset(p1.dx, midY + halfGap), Offset(p1.dx, maxY), p);
+      }
+
+      // End Ticks
       canvas.drawLine(
-        Offset(p1.dx - tickSize, p1.dy),
-        Offset(p1.dx + tickSize, p1.dy),
-        tickPaint,
+        Offset(p1.dx - tickSize, minY),
+        Offset(p1.dx + tickSize, minY),
+        p,
       );
       canvas.drawLine(
-        Offset(p2.dx - tickSize, p2.dy),
-        Offset(p2.dx + tickSize, p2.dy),
-        tickPaint,
+        Offset(p2.dx - tickSize, maxY),
+        Offset(p2.dx + tickSize, maxY),
+        p,
       );
     } else {
+      final double minX = math.min(p1.dx, p2.dx);
+      final double maxX = math.max(p1.dx, p2.dx);
+      final double midX = (minX + maxX) / 2;
+      final double halfGap = textGap / 2;
+
+      // Segment 1 (Left)
+      if (midX - halfGap > minX) {
+        canvas.drawLine(Offset(minX, p1.dy), Offset(midX - halfGap, p1.dy), p);
+      }
+      // Segment 2 (Right)
+      if (maxX > midX + halfGap) {
+        canvas.drawLine(Offset(midX + halfGap, p1.dy), Offset(maxX, p1.dy), p);
+      }
+
+      // End Ticks
       canvas.drawLine(
-        Offset(p1.dx, p1.dy - tickSize),
-        Offset(p1.dx, p1.dy + tickSize),
-        tickPaint,
+        Offset(minX, p1.dy - tickSize),
+        Offset(minX, p1.dy + tickSize),
+        p,
       );
       canvas.drawLine(
-        Offset(p2.dx, p2.dy - tickSize),
-        Offset(p2.dx, p2.dy + tickSize),
-        tickPaint,
+        Offset(maxX, p2.dy - tickSize),
+        Offset(maxX, p2.dy + tickSize),
+        p,
       );
     }
   }

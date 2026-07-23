@@ -1041,7 +1041,7 @@ class ComponentCalculator {
         colorName,
         pieces: framePieces,
         unit: 'قطاع',
-        overrideMap: window.frameOverride,
+        overrideMap: window.slidingFrameOverride ?? window.frameOverride,
       ),
     );
 
@@ -3945,13 +3945,46 @@ class ComponentCalculator {
     }
 
     if (reducteurPieces.isNotEmpty) {
+      Map<String, dynamic>? reducteurOverride = window.componentOverrides['ريديكتور (Réducteur)'] ??
+          window.componentOverrides['مخفض الزجاج (Réducteur)'] ??
+          window.componentOverrides['باكيت الزجاج (Parclose)'];
+
+      if (reducteurOverride == null && activeSeries != null) {
+        // 1. البحث عن قطاع باسم يحتوي صراحة على reducteur أو مخفض أو ريديكتور
+        try {
+          final redSec = activeSeries.sections.firstWhere((s) {
+            final n = s.name.toLowerCase();
+            final t = s.type.toLowerCase();
+            return n.contains('reduct') ||
+                n.contains('مخفض') ||
+                n.contains('ريديكتور') ||
+                t.contains('reduct');
+          });
+          reducteurOverride = redSec.toMap();
+        } catch (_) {
+          // 2. إذا لم يكتب اسمه صراحة، ابحث عن قطاع نوعه parclose بشرط ألا يكون سكة Rail
+          try {
+            final parcloseSec = activeSeries.sections.firstWhere((s) {
+              final n = s.name.toLowerCase();
+              final t = s.type.toLowerCase();
+              return (t.contains('parclose') || t.contains('reduct')) &&
+                  !n.contains('rail') &&
+                  !n.contains('سكة') &&
+                  !n.contains('frame') &&
+                  !n.contains('إطار');
+            });
+            reducteurOverride = parcloseSec.toMap();
+          } catch (_) {}
+        }
+      }
+
       items.add(
         createProfile(
           'ريديكتور (Réducteur)',
           colorName,
           pieces: reducteurPieces,
           unit: 'قطاع',
-          overrideMap: window.componentOverrides['ريديكتور (Réducteur)'],
+          overrideMap: reducteurOverride,
         ),
       );
     }

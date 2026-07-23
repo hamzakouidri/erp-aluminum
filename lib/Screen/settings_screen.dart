@@ -168,6 +168,7 @@ class SettingsScreen extends StatelessWidget {
                               onPressed: () async {
                                 showDialog(
                                   context: context,
+                                  useRootNavigator: true,
                                   barrierDismissible: false,
                                   builder: (dialogContext) => const Center(
                                     child: CircularProgressIndicator(),
@@ -260,6 +261,7 @@ class SettingsScreen extends StatelessWidget {
                                 if (confirm == true) {
                                   showDialog(
                                     context: context,
+                                    useRootNavigator: true,
                                     barrierDismissible: false,
                                     builder: (_) => const Center(
                                       child: CircularProgressIndicator(),
@@ -538,6 +540,7 @@ class SettingsScreen extends StatelessWidget {
                         onPressed: () async {
                           showDialog(
                             context: context,
+                            useRootNavigator: true,
                             barrierDismissible: false,
                             builder: (_) => const Center(
                               child: CircularProgressIndicator(),
@@ -626,6 +629,7 @@ class SettingsScreen extends StatelessWidget {
                         onPressed: () async {
                           showDialog(
                             context: context,
+                            useRootNavigator: true,
                             barrierDismissible: false,
                             builder: (dialogContext) => const Center(
                               child: CircularProgressIndicator(),

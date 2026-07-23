@@ -278,12 +278,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               keywordFr = 'traverse'; keywordAr = 'عرضي';
             } else if (item.originalName.contains('Sash Lateral') || item.originalName.contains('قائم جانبي')) {
               keywordFr = 'sash'; keywordAr = 'جانبي';
-            } else if (item.originalName.contains('Sash Central') || item.originalName.contains('قائم وسطي')) {
+            } else if (item.originalName.contains('Sash Central') || item.originalName.contains('قائم وسطي') || item.originalName.contains('Chicane')) {
               keywordFr = 'sash'; keywordAr = 'وسطي';
             } else if (item.originalName.contains('Renfort') || item.originalName.contains('حديد التسليح')) {
               keywordFr = 'renfort'; keywordAr = 'تسليح';
-            } else if (item.originalName.contains('Parclose') || item.originalName.contains('باكيت')) {
-              keywordFr = 'parclose'; keywordAr = 'باكيت';
+            } else if (item.originalName.contains('Rail') || item.originalName.contains('سكة')) {
+              keywordFr = 'rail'; keywordAr = 'سكة';
+            } else if (item.originalName.contains('Parclose') ||
+                       item.originalName.contains('باكيت') ||
+                       item.originalName.contains('Réducteur') ||
+                       item.originalName.contains('ريديكتور') ||
+                       item.originalName.contains('reducteur') ||
+                       item.originalName.contains('مخفض')) {
+              keywordFr = 'parclose'; keywordAr = 'parclose';
             }
           }
 
@@ -295,10 +302,68 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               whereArgs: ['%$keywordFr%', '%$keywordFr%', '%$keywordAr%', '%$keywordAr%', matType],
             );
 
-            if (table == 'Sections' && queryRes.isNotEmpty && model.activeSeries != null) {
-              final seriesSections = queryRes.where((s) => s['series_id'] == model.activeSeries!.id).toList();
-              if (seriesSections.isNotEmpty) {
-                queryRes = seriesSections;
+            if (table == 'Sections' && queryRes.isNotEmpty) {
+              if (model.activeSeries != null) {
+                final seriesSections = queryRes.where((s) => s['series_id'] == model.activeSeries!.id).toList();
+                if (seriesSections.isNotEmpty) {
+                  queryRes = seriesSections;
+                }
+              }
+
+              final origLower = item.originalName.toLowerCase();
+              if (origLower.contains('rail') || origLower.contains('سكة')) {
+                // استبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail من نتائج السكة Rail
+                queryRes = queryRes.where((s) {
+                  final t = (s['type'] ?? '').toString().toLowerCase();
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  return (t == 'rail' || t.contains('rail') || n == 'rail' || n.startsWith('rail')) &&
+                      !t.contains('frame') &&
+                      !t.contains('cadre') &&
+                      !n.contains('cadre') &&
+                      !n.contains('إطار');
+                }).toList();
+              } else if (origLower.contains('réducteur') ||
+                  origLower.contains('ريديكتور') ||
+                  origLower.contains('reducteur') ||
+                  origLower.contains('مخفض')) {
+                // للريديكتور: البحث بالنوع parclose أو reducteur واستبعاد الإطارات والسكك
+                queryRes = queryRes.where((s) {
+                  final t = (s['type'] ?? '').toString().toLowerCase();
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  return (t.contains('parclose') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض')) &&
+                      !t.contains('frame') &&
+                      !t.contains('cadre') &&
+                      !t.contains('rail') &&
+                      !n.contains('cadre') &&
+                      !n.contains('إطار') &&
+                      !n.contains('rail') &&
+                      !n.contains('سكة');
+                }).toList();
+              } else if (origLower.contains('sash lateral') || origLower.contains('قائم جانبي')) {
+                // للقائم الجانبي: تصفية القوائم الجانبية فقط واستبعاد القائم الوسطي / الشيكان
+                final latMatches = queryRes.where((s) {
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return (n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('lat')) &&
+                      !n.contains('central') &&
+                      !n.contains('وسطي') &&
+                      !n.contains('chicane');
+                }).toList();
+                if (latMatches.isNotEmpty) {
+                  queryRes = latMatches;
+                }
+              } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي') || origLower.contains('chicane')) {
+                // للقائم الوسطي: تصفية القوائم الوسطية واستبعاد الجانبي
+                final cenMatches = queryRes.where((s) {
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return (n.contains('central') || n.contains('وسطي') || n.contains('chicane') || c.contains('cen')) &&
+                      !n.contains('latéral') &&
+                      !n.contains('جانبي');
+                }).toList();
+                if (cenMatches.isNotEmpty) {
+                  queryRes = cenMatches;
+                }
               }
             }
 
@@ -1013,6 +1078,200 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
   }
 
+  Future<void> _showSectionSelectionDialog(AggregatedGoodItem item, String category) async {
+    if (_productBreakdowns.isEmpty) return;
+    final model = _productBreakdowns.first.model;
+    final activeSeries = model.activeSlidingSeries ?? model.activeSeries;
+    if (activeSeries == null) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dbInstance = await widget.db.db;
+    if (dbInstance == null) return;
+
+    final origLower = item.originalName.toLowerCase();
+    
+    // Fetch all active sections for the active series
+    final rawSections = await dbInstance.query(
+      'Sections',
+      where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+      whereArgs: [activeSeries.id],
+    );
+
+    if (rawSections.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد قطاعات متوفرة لهذه السلسلة')),
+      );
+      return;
+    }
+
+    List<Map<String, dynamic>> filteredSections = [];
+
+    if (origLower.contains('rail') || origLower.contains('سكة')) {
+      // 1. السكة Rail: جلب نوع rail فقط واستبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail
+      filteredSections = rawSections.where((s) {
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        final n = (s['name'] ?? '').toString().toLowerCase();
+        return (t == 'rail' || t.contains('rail') || n.startsWith('rail')) &&
+            !t.contains('frame') && !t.contains('cadre') && !n.contains('cadre') && !n.contains('إطار');
+      }).toList();
+    } else if (origLower.contains('réducteur') || origLower.contains('ريديكتور') || origLower.contains('reducteur') || origLower.contains('مخفض')) {
+      // 2. الريديكتور Réducteur: جلب نوع parclose أو reducteur واستبعاد الإطارات والسكك
+      filteredSections = rawSections.where((s) {
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        final n = (s['name'] ?? '').toString().toLowerCase();
+        return (t.contains('parclose') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض')) &&
+            !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
+            !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
+      }).toList();
+    } else if (origLower.contains('side cover') || origLower.contains('غطاء جانبي') || origLower.contains('couvre')) {
+      // 3. الغطاء الجانبي Couvre-joint
+      filteredSections = rawSections.where((s) {
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        final n = (s['name'] ?? '').toString().toLowerCase();
+        return t.contains('couvre') || t.contains('side_cover') || n.contains('couvre') || n.contains('جانبي') || n.contains('غطاء');
+      }).toList();
+    } else if (origLower.contains('sash lateral') || origLower.contains('قائم جانبي')) {
+      // 4. القائم الجانبي Ouvrant Latéral: تصفية القوائم الجانبية واستبعاد الوسطي / الشيكان
+      filteredSections = rawSections.where((s) {
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        final n = (s['name'] ?? '').toString().toLowerCase();
+        final c = (s['code'] ?? '').toString().toLowerCase();
+        return (t.contains('sash') || t.contains('ouvrant')) &&
+            (t.contains('lateral') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('104') || c.contains('108')) &&
+            !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane');
+      }).toList();
+    } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي') || origLower.contains('chicane')) {
+      // 5. القائم الوسطي Ouvrant Central: تصفية القوائم الوسطية واستبعاد الجانبي
+      filteredSections = rawSections.where((s) {
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        final n = (s['name'] ?? '').toString().toLowerCase();
+        final c = (s['code'] ?? '').toString().toLowerCase();
+        return (t.contains('sash') || t.contains('ouvrant')) &&
+            (t.contains('central') || n.contains('central') || n.contains('وسطي') || n.contains('chicane') || c.contains('105') || c.contains('107')) &&
+            !n.contains('latéral') && !n.contains('جانبي');
+      }).toList();
+    } else if (category == 'frame') {
+      // الإطار Frame
+      filteredSections = rawSections.where((s) {
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        return t.contains('frame') || t.contains('cadre') || t.contains('إطار');
+      }).toList();
+    } else {
+      filteredSections = List.from(rawSections);
+    }
+
+    if (filteredSections.isEmpty) {
+      filteredSections = List.from(rawSections);
+    }
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'تغيير قطاع: ${item.name}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: filteredSections.length,
+                  itemBuilder: (context, idx) {
+                    final sec = filteredSections[idx];
+                    final secName = sec['name'] ?? 'بدون اسم';
+                    final secCode = sec['code'] ?? '';
+                    final imagePath = sec['image_path']?.toString();
+                    final displayLabel = secCode.toString().isNotEmpty ? '$secCode - $secName' : secName.toString();
+
+                    return ListTile(
+                      leading: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: SectionImageWidget(
+                          code: secCode.toString(),
+                          imagePath: imagePath,
+                          size: 32,
+                        ),
+                      ),
+                      title: Text(
+                        displayLabel,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+
+                        final sqlDb = SqlDatabase();
+                        int? colorId;
+                        for (var pb in _productBreakdowns) {
+                          if (pb.model.selectedDbColor != null) {
+                            colorId = pb.model.selectedDbColor!['id'] as int?;
+                            break;
+                          }
+                        }
+
+                        double price = 0.0;
+                        if (colorId != null && sec['id'] != null) {
+                          price = await sqlDb.getSectionPrice(sec['id'] as int, colorId);
+                        }
+                        if (price <= 0) {
+                          price = (sec['price'] as num?)?.toDouble() ?? 0.0;
+                        }
+
+                        final mutableSec = Map<String, dynamic>.from(sec);
+                        mutableSec['calculated_price'] = price;
+
+                        for (var pb in _productBreakdowns) {
+                          pb.model.componentOverrides[item.originalName] = mutableSec;
+                          if (category == 'frame') {
+                            pb.model.frameOverride = mutableSec;
+                            pb.model.slidingFrameOverride = mutableSec;
+                          } else if (origLower.contains('side cover') || origLower.contains('غطاء جانبي')) {
+                            pb.model.sideCoverOverride = mutableSec;
+                          }
+                        }
+
+                        _loadAndAggregate();
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildItemCard(AggregatedGoodItem item, String category) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = _categoryColor(category);
@@ -1209,101 +1468,108 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            // مؤشر الفئة (شريط جانبي ملون)
-            Container(
-              width: 4,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            const SizedBox(width: 10),
-            // الصورة أو الأيقونة
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SectionImageWidget(
-                  code: item.profileCode,
-                  imagePath: item.imagePath,
-                  size: 32.0,
-                  fallbackIcon: _categoryIcon(category),
-                  fallbackColor: color,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            // الاسم والتفاصيل
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : const Color(0xFF1A1A2E),
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}',
-                    style: TextStyle(
-                      color: isDark ? Colors.white60 : Colors.grey.shade500,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            // الكمية والتكلفة
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _showSectionSelectionDialog(item, category),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
               children: [
+                // مؤشر الفئة (شريط جانبي ملون)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
+                  width: 4,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
+                    color: color,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(
-                    '$roundedQty ${item.unit}',
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                ),
+                const SizedBox(width: 10),
+                // الصورة أو الأيقونة
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SectionImageWidget(
+                      code: item.profileCode,
+                      imagePath: item.imagePath,
+                      size: 32.0,
+                      fallbackIcon: _categoryIcon(category),
+                      fallbackColor: color,
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${item.totalCost.toStringAsFixed(2)} دج',
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.grey.shade700,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                const SizedBox(width: 10),
+                // الاسم والتفاصيل
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}',
+                        style: TextStyle(
+                          color: isDark ? Colors.white60 : Colors.grey.shade500,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                // الكمية والتكلفة
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '$roundedQty ${item.unit}',
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${item.totalCost.toStringAsFixed(2)} دج',
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.grey.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

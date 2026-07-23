@@ -85,7 +85,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
   // ==========================================
 
   Future<void> _loadProfiles() async {
-    final profiles = await widget.db.readProfile();
+    final profiles = await widget.db.readAllProfiles();
     setState(() {
       _profiles = profiles;
       _selectedProfileId = null;
@@ -96,7 +96,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
   }
 
   Future<void> _loadSeries(int profileId) async {
-    final series = await widget.db.readSeriesByProfile(profileId);
+    final series = await widget.db.readAllSeriesByProfile(profileId);
     setState(() {
       _selectedProfileId = profileId;
       _currentSeries = series;

@@ -41,7 +41,7 @@ class CloudSyncService {
     if (storedId == null) {
       final rnd = Random();
       storedId =
-          'device_${DateTime.now().millisecondsSinceEpoch}_${rnd.nextInt(100000)}';
+      'device_${DateTime.now().millisecondsSinceEpoch}_${rnd.nextInt(100000)}';
       await prefs.setString('device_id', storedId);
     }
     _deviceId = storedId;
@@ -94,35 +94,35 @@ class CloudSyncService {
         .doc('latest')
         .snapshots()
         .listen((doc) async {
-          if (!doc.exists || doc.data() == null) return;
+      if (!doc.exists || doc.data() == null) return;
 
-          Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
-          String sourceDevice = payload['deviceId']?.toString() ?? '';
-          String status = payload['status']?.toString() ?? '';
+      Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
+      String sourceDevice = payload['deviceId']?.toString() ?? '';
+      String status = payload['status']?.toString() ?? '';
 
-          final prefs = await SharedPreferences.getInstance();
-          final isDirty = prefs.getBool('is_local_dirty') ?? false;
+      final prefs = await SharedPreferences.getInstance();
+      final isDirty = prefs.getBool('is_local_dirty') ?? false;
 
-          // نستمع فقط عندما تنتهي عملية الرفع (status == completed)
-          // ولا نسترجع تلقائياً إذا كانت هناك تعديلات محلية لم تُرفع بعد لتفادي مسحها
-          if (sourceDevice != _deviceId &&
-              !_isRestoring &&
-              !isDirty &&
-              status == 'completed') {
-            _isRestoring = true;
-            try {
-              // استدعاء دالة الاستعادة الموحدة
-              await restoreFromCloud();
-              if (onDataRestored != null) {
-                onDataRestored!();
-              }
-            } catch (e) {
-              print('Error auto-restoring from cloud: $e');
-            } finally {
-              _isRestoring = false;
-            }
+      // نستمع فقط عندما تنتهي عملية الرفع (status == completed)
+      // ولا نسترجع تلقائياً إذا كانت هناك تعديلات محلية لم تُرفع بعد لتفادي مسحها
+      if (sourceDevice != _deviceId &&
+          !_isRestoring &&
+          !isDirty &&
+          status == 'completed') {
+        _isRestoring = true;
+        try {
+          // استدعاء دالة الاستعادة الموحدة
+          await restoreFromCloud();
+          if (onDataRestored != null) {
+            onDataRestored!();
           }
-        });
+        } catch (e) {
+          print('Error auto-restoring from cloud: $e');
+        } finally {
+          _isRestoring = false;
+        }
+      }
+    });
   }
 
   /// إيقاف الاستماع
@@ -164,7 +164,17 @@ class CloudSyncService {
   }
 
   /// الرفع اليدوي/الأساسي للسحابة بنظام التجزئة لتجاوز حد الـ 1MB
-  /// الرفع اليدوي/الأساسي للسحابة بنظام التجزئة الدقيق والدفعي (WriteBatch)
+  ///
+  /// [تم الإصلاح]: الإستراتيجية القديمة كانت "اجلب كل الأجزاء القديمة ثم امسحها
+  /// بالكامل ثم ارفع الجديد"، وهذا كان بطيئاً جداً (وأحياناً يتسبب بـ TimeoutException)
+  /// لأن حجم القراءة/الحذف يعتمد على كمية البيانات المتراكمة بالسحابة من رفعات سابقة،
+  /// وليس على حجم البيانات الحالية على الجهاز. كما أن حذف القديم قبل اكتمال رفع
+  /// الجديد كان يعرّض البيانات للضياع لو انقطع الاتصال في المنتصف.
+  ///
+  /// الإستراتيجية الجديدة: نكتب الأجزاء الجديدة مباشرة فوق نفس أسماء المستندات
+  /// (بدون أي قراءة أو حذف مسبق)، فسرعة الرفع تعتمد فقط على حجم بياناتك الحالية.
+  /// تنظيف الأجزاء الزائدة (الفائضة عن الرفعة الجديدة) يتم بعد نجاح الرفع وفي
+  /// الخلفية دون انتظار المستخدم، وبدون التأثير على نجاح/فشل عملية الرفع نفسها.
   Future<void> backupToCloud({bool isSilent = false}) async {
     await init();
 
@@ -195,7 +205,7 @@ class CloudSyncService {
     if (isSilent) {
       // فحص أولي: تجاهل الرفع إذا كانت جميع الجداول فارغة
       final hasAnyData = allData.values.any(
-        (rows) => rows is List && rows.isNotEmpty,
+            (rows) => rows is List && rows.isNotEmpty,
       );
       if (!hasAnyData) return;
 
@@ -205,12 +215,12 @@ class CloudSyncService {
       final commandesDetailsRows = allData['Commandes_details'];
       final hasTransactionalData =
           (commandesRows is List && commandesRows.isNotEmpty) ||
-          (clientRows is List && clientRows.isNotEmpty) ||
-          (commandesDetailsRows is List && commandesDetailsRows.isNotEmpty);
+              (clientRows is List && clientRows.isNotEmpty) ||
+              (commandesDetailsRows is List && commandesDetailsRows.isNotEmpty);
       if (!hasTransactionalData) {
         print(
           'backupToCloud (silent): Aborting — no transactional data on this device. '
-          'Will not overwrite cloud backup with an empty database.',
+              'Will not overwrite cloud backup with an empty database.',
         );
         return;
       }
@@ -222,6 +232,8 @@ class CloudSyncService {
         .collection('backups')
         .doc('latest');
 
+    final chunkRef = latestDocRef.collection('chunks');
+
     try {
       // 1. تغيير الحالة إلى "جاري الرفع"
       await latestDocRef.set({
@@ -230,34 +242,17 @@ class CloudSyncService {
         'status': 'uploading',
       }).timeout(const Duration(seconds: 15));
 
-      final chunkRef = latestDocRef.collection('chunks');
-      
-      // 2. مسح الأجزاء القديمة دفعة واحدة (WriteBatch)
-      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 25));
-      if (existingChunks.docs.isNotEmpty) {
-        WriteBatch deleteBatch = _firestore.batch();
-        int count = 0;
-        for (var doc in existingChunks.docs) {
-          deleteBatch.delete(doc.reference);
-          count++;
-          if (count >= 10) {
-            await deleteBatch.commit().timeout(const Duration(seconds: 25));
-            deleteBatch = _firestore.batch();
-            count = 0;
-          }
-        }
-        if (count > 0) {
-          await deleteBatch.commit().timeout(const Duration(seconds: 25));
-        }
-      }
-
-      // 3. رفع الأجزاء الجديدة دفعة واحدة بأحجام خفيفة وسريعة بدفعات صغرى
+      // 2. رفع الأجزاء الجديدة مباشرة (كتابة فوق نفس الأسماء table_0, table_1...)
+      // بدون أي قراءة أو حذف مسبق للأجزاء القديمة — هذا ما يجعل الرفع سريعاً
+      // ومتناسباً فقط مع حجم بياناتك الحالية.
+      Map<String, int> newChunkCounts = {};
       WriteBatch uploadBatch = _firestore.batch();
       int batchCount = 0;
       for (String table in allData.keys) {
         List<dynamic> rows = allData[table] ?? [];
         final chunks = _partitionRowsIntoChunks(rows);
         int chunksCount = chunks.length;
+        newChunkCounts[table] = chunksCount;
 
         for (int i = 0; i < chunksCount; i++) {
           final docRef = chunkRef.doc('${table}_$i');
@@ -279,12 +274,13 @@ class CloudSyncService {
         await uploadBatch.commit().timeout(const Duration(seconds: 30));
       }
 
-      // 4. إنهاء الرفع وتغيير الحالة إلى "مكتمل"
+      // 3. إنهاء الرفع وتغيير الحالة إلى "مكتمل" — البيانات الجديدة أصبحت
+      // آمنة ومقروءة بالكامل بالسحابة بهذه المرحلة، بغض النظر عمّا سيحدث بعدها.
       await latestDocRef.update({'status': 'completed'}).timeout(const Duration(seconds: 10));
 
       await prefs.setBool('is_local_dirty', false);
 
-      // 5. حفظ نسخة في الـ History
+      // 4. حفظ نسخة في الـ History
       if (!isSilent) {
         try {
           String historyId = DateTime.now().toIso8601String().replaceAll(':', '-');
@@ -294,18 +290,66 @@ class CloudSyncService {
               .collection('backups_history')
               .doc(historyId)
               .set({
-                'timestamp': FieldValue.serverTimestamp(),
-                'note': 'Manual Backup',
-              }).timeout(const Duration(seconds: 10));
+            'timestamp': FieldValue.serverTimestamp(),
+            'note': 'Manual Backup',
+          }).timeout(const Duration(seconds: 10));
         } catch (e) {
           print('History backup failed: $e');
         }
       }
+
+      // 5. تنظيف الأجزاء الزائدة من رفعات سابقة (لو قلّ عدد صفوف جدول ما، أو
+      // اختفى جدول بالكامل). يتم بالخلفية (fire-and-forget) ولا يؤخر إتمام
+      // الرفع للمستخدم، ولا يفشّل عملية الرفع لو حصل به خطأ.
+      unawaited(
+        _cleanupStaleChunks(chunkRef, newChunkCounts).catchError((e) {
+          print('Chunk cleanup warning (non-fatal): $e');
+        }),
+      );
     } catch (e) {
       try {
         await latestDocRef.update({'status': 'failed'});
       } catch (_) {}
       throw Exception('فشل الرفع إلى السحابة: $e');
+    }
+  }
+
+  /// حذف الأجزاء (chunks) الفائضة المتبقية من رفعة سابقة والتي لم تعد مطلوبة
+  /// بعد الرفعة الجديدة الناجحة — إما لأن جدولاً معيناً اختفى بالكامل، أو لأن
+  /// عدد أجزائه أصبح أقل من قبل. لا تُستدعى إلا بعد نجاح رفع البيانات الجديدة.
+  Future<void> _cleanupStaleChunks(
+      CollectionReference<Map<String, dynamic>> chunkRef,
+      Map<String, int> newChunkCounts,
+      ) async {
+    final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 60));
+    if (existingChunks.docs.isEmpty) return;
+
+    WriteBatch deleteBatch = _firestore.batch();
+    int count = 0;
+    for (var doc in existingChunks.docs) {
+      final data = doc.data();
+      final table = data['table']?.toString() ??
+          doc.id.replaceAll(RegExp(r'_\d+$'), '');
+      final chunkIndex = data['chunkIndex'] is int
+          ? data['chunkIndex'] as int
+          : int.tryParse(doc.id.split('_').last) ?? -1;
+      final currentCount = newChunkCounts[table];
+
+      // هذا الجزء فائض إذا: الجدول لم يعد موجوداً بالرفعة الجديدة إطلاقاً،
+      // أو كان مؤشره خارج نطاق عدد أجزاء الرفعة الجديدة لنفس الجدول.
+      final isStale = currentCount == null || chunkIndex >= currentCount;
+      if (isStale) {
+        deleteBatch.delete(doc.reference);
+        count++;
+        if (count >= 10) {
+          await deleteBatch.commit().timeout(const Duration(seconds: 25));
+          deleteBatch = _firestore.batch();
+          count = 0;
+        }
+      }
+    }
+    if (count > 0) {
+      await deleteBatch.commit().timeout(const Duration(seconds: 25));
     }
   }
 
@@ -510,9 +554,9 @@ class CloudSyncService {
     await init();
 
     final user = _auth.currentUser;
-    // [تم الإصلاح]: إزالة التحقق من البريد الإلكتروني الثابت
-    // يجب استخدام نظام صلاحيات صحيح
-    if (user == null) return;
+    if (user == null) {
+      throw Exception('يجب تسجيل الدخول أولاً لرفع الكتالوج العام');
+    }
     // if (!_isGlobalAdmin(user)) return;
 
     Map<String, dynamic> globalData = await _db.exportGlobalCatalog();
@@ -667,14 +711,26 @@ class CloudSyncService {
   }
 
   List<List<dynamic>> _partitionRowsIntoChunks(List<dynamic> rows) {
-    if (rows.isEmpty) return [[]];
+    if (rows.isEmpty) return [];
     // limit size to ~150 KB for instant lightning fast Firestore writes without timeouts
     const int maxChunkCharacters = 150000;
     final List<List<dynamic>> chunks = [];
     List<dynamic> currentChunk = [];
     int currentChunkSize = 0;
 
-    for (var row in rows) {
+    for (var rawRow in rows) {
+      Map<String, dynamic> row = {};
+      if (rawRow is Map) {
+        rawRow.forEach((key, val) {
+          final String k = key.toString();
+          if (val is num || val is String || val is bool || val == null) {
+            row[k] = val;
+          } else {
+            row[k] = val.toString();
+          }
+        });
+      }
+
       int rowSize = 0;
       try {
         rowSize = jsonEncode(row).length;

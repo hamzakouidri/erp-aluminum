@@ -1606,7 +1606,6 @@ class WindowModel extends ChangeNotifier {
           nameLower.contains('intégré') ||
           nameLower.contains('integre') ||
           nameLower.contains('monobloc') ||
-          nameLower.contains('cj') ||
           typeLower.contains('monobloc')) {
         return true;
       }
@@ -1620,7 +1619,6 @@ class WindowModel extends ChangeNotifier {
            nameLower.contains('intégré') ||
            nameLower.contains('integre') ||
            nameLower.contains('monobloc') ||
-           nameLower.contains('cadre cj') ||
            codeLower.contains('103');
   }
 
@@ -2778,18 +2776,12 @@ class WindowModel extends ChangeNotifier {
     final normalizedType = type.toLowerCase();
 
     AluminumSection? result;
-    if (systemMode == 'sliding') {
-      if (normalizedType == 'sash' && slidingSashOverride != null) {
-        result = AluminumSection.fromMap(slidingSashOverride!);
-      } else if (normalizedType == 'frame' && slidingFrameOverride != null) {
-        result = AluminumSection.fromMap(slidingFrameOverride!);
-      }
-    } else {
-      if (normalizedType == 'sash' && sashOverride != null) {
-        result = AluminumSection.fromMap(sashOverride!);
-      } else if (normalizedType == 'frame' && frameOverride != null) {
-        result = AluminumSection.fromMap(frameOverride!);
-      }
+    if (normalizedType == 'sash') {
+      final ov = slidingSashOverride ?? sashOverride;
+      if (ov != null) result = AluminumSection.fromMap(ov);
+    } else if (normalizedType == 'frame') {
+      final ov = slidingFrameOverride ?? frameOverride;
+      if (ov != null) result = AluminumSection.fromMap(ov);
     }
 
     if (result == null) {

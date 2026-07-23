@@ -138,16 +138,29 @@ class SectionImageWidget extends StatelessWidget {
       loadedWidget = buildExactChain(0);
     }
 
-    final Widget finalImage = loadedWidget ?? fallbackWidget;
-
-    // 3. في الوضع الليلي (Dark Mode)، يتم تلوين رسم المقطع باللون الأبيض الناصع (Pure White) ليظهر بوضوح فائق وجذاب
-    if (isDark && invertInDarkMode && loadedWidget != null) {
-      return ColorFiltered(
-        colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-        child: finalImage,
-      );
+    if (loadedWidget != null) {
+      if (isDark) {
+        return Container(
+          width: size + 6,
+          height: size + 6,
+          padding: const EdgeInsets.all(3.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(6.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.25),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: loadedWidget,
+        );
+      }
+      return loadedWidget;
     }
 
-    return finalImage;
+    return fallbackWidget;
   }
 }

@@ -2383,6 +2383,13 @@ class SqlDatabase {
     );
   }
 
+  Future<List<Map<String, dynamic>>> readAllProfiles() async {
+    Database? myDb = await db;
+    return await myDb!.rawQuery(
+      'SELECT * FROM Profile ORDER BY name ASC',
+    );
+  }
+
   Future<int> insertProfile(
     String name,
     String type, {
@@ -2432,6 +2439,15 @@ class SqlDatabase {
     return await myDb!.query(
       'Series',
       where: 'profile_id = ? AND (is_active = 1 OR is_active IS NULL)',
+      whereArgs: [profileId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> readAllSeriesByProfile(int profileId) async {
+    Database? myDb = await db;
+    return await myDb!.query(
+      'Series',
+      where: 'profile_id = ?',
       whereArgs: [profileId],
     );
   }

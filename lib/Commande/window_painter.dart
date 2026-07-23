@@ -1846,7 +1846,7 @@ class WindowPainter extends CustomPainter {
         (r.height >= model.height - model.profileThickness * 2 - 2);
     final textStyle = const TextStyle(
       color: Color(0xFF1565C0),
-      fontSize: 63,
+      fontSize: 69,
       fontWeight: FontWeight.bold,
     );
 
@@ -3537,7 +3537,7 @@ class WindowPainter extends CustomPainter {
     // Cell width and height labels
     final textStyle = const TextStyle(
       color: Color(0xFF1565C0),
-      fontSize: 42,
+      fontSize: 48,
       fontWeight: FontWeight.bold,
     );
 
