@@ -1841,30 +1841,39 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // الاسم والتفاصيل
+                // الاسم والتفاصيل (العنوان الرئيسي عريض والتفاصيل بخط رقيق تحته)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 1. العنوان الرئيسي بخط غليظ عريض (مثلاً: الغطاء الجانبي / Réducteur / القائم الجانبي)
                       Text(
-                        item.name,
+                        item.originalName,
                         style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
                           color: isDark
                               ? Colors.white
                               : const Color(0xFF1A1A2E),
                         ),
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
+                      // 2. اسم وتفاصيل القطاع المختار المجلوبة من قاعدة البيانات أو الـ ShowDialog بخط رقيق تحته
                       Text(
-                        '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}',
+                        item.name != item.originalName
+                            ? '${item.profileCode != null && item.profileCode!.isNotEmpty ? "[${item.profileCode}] " : ""}${item.name} • ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
+                            : (item.profileCode != null && item.profileCode!.isNotEmpty
+                                ? '[${item.profileCode}] ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
+                                : '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'),
                         style: TextStyle(
-                          color: isDark ? Colors.white60 : Colors.grey.shade500,
+                          fontWeight: FontWeight.w400,
+                          color: isDark ? Colors.white60 : Colors.grey.shade700,
                           fontSize: 11,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
