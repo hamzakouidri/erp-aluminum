@@ -9,6 +9,7 @@ class SectionImageWidget extends StatelessWidget {
   final double size;
   final Color? fallbackColor;
   final IconData? fallbackIcon;
+  final bool invertInDarkMode;
 
   const SectionImageWidget({
     super.key,
@@ -17,21 +18,29 @@ class SectionImageWidget extends StatelessWidget {
     this.size = 32.0,
     this.fallbackColor,
     this.fallbackIcon,
+    this.invertInDarkMode = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final String rawCode = (code ?? '').trim();
-    final String cleanCode = rawCode.replaceAll(' ', '').replaceAll('-', '').replaceAll('/', '').toUpperCase();
+    final String cleanCode = rawCode
+        .replaceAll(' ', '')
+        .replaceAll('-', '')
+        .replaceAll('/', '')
+        .toUpperCase();
     final String path = (imagePath ?? '').trim();
 
     Widget fallbackWidget = Icon(
       fallbackIcon ?? Icons.image_not_supported_rounded,
       size: size,
-      color: fallbackColor ?? Colors.grey,
+      color: fallbackColor ?? (isDark ? Colors.grey.shade400 : Colors.grey),
     );
 
-    // 1. If we have a Base64 data URL or local/uploaded path, try to display it
+    Widget? loadedWidget;
+
+    // 1. إحضار الصورة بناءً على المسار المربوط صراحة للمطع
     if (path.isNotEmpty) {
       if (path.startsWith('data:image/')) {
         try {
@@ -40,7 +49,7 @@ class SectionImageWidget extends StatelessWidget {
           if (bytes != null) {
             final isSvg = path.contains('image/svg');
             if (isSvg) {
-              fallbackWidget = SvgPicture.memory(
+              loadedWidget = SvgPicture.memory(
                 bytes,
                 width: size,
                 height: size,
@@ -48,7 +57,7 @@ class SectionImageWidget extends StatelessWidget {
                 placeholderBuilder: (context) => fallbackWidget,
               );
             } else {
-              fallbackWidget = Image.memory(
+              loadedWidget = Image.memory(
                 bytes,
                 width: size,
                 height: size,
@@ -60,11 +69,11 @@ class SectionImageWidget extends StatelessWidget {
         } catch (_) {}
       } else if (kIsWeb) {
         if (path.startsWith('http') || path.startsWith('blob:')) {
-          fallbackWidget = Image.network(
+          loadedWidget = Image.network(
             path,
             width: size,
             height: size,
-            fit: BoxFit.cover,
+            fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) => fallbackWidget,
           );
         }
@@ -72,11 +81,11 @@ class SectionImageWidget extends StatelessWidget {
         try {
           final file = File(path);
           if (file.existsSync()) {
-            fallbackWidget = Image.file(
+            loadedWidget = Image.file(
               file,
               width: size,
               height: size,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) => fallbackWidget,
             );
           }
@@ -84,50 +93,61 @@ class SectionImageWidget extends StatelessWidget {
       }
     }
 
-    // 2. If code is empty, return local file/fallback directly
-    if (cleanCode.isEmpty) {
-      return fallbackWidget;
-    }
+    // 2. إذا لم يكن هناك مسار ملف مرفق ومباشر، نبحث فقط بالرمز التجاري الدقيق والاسم المباشر بدون تخمين
+    if (loadedWidget == null && cleanCode.isNotEmpty) {
+      final List<String> exactAssetPaths = [
+        'assets/sections/$cleanCode.svg',
+        'assets/sections/$rawCode.svg',
+        'assets/images/$cleanCode.svg',
+        'assets/images/$rawCode.svg',
+        'assets/sections/$cleanCode.png',
+        'assets/sections/$rawCode.png',
+        'assets/images/$cleanCode.png',
+        'assets/images/$rawCode.png',
+      ];
 
-    // 3. Try to match by code in assets
-    final List<String> tryAssetPaths = [
-      'assets/images/$cleanCode.svg',
-      'assets/images/$rawCode.svg',
-      'assets/sections/$cleanCode.svg',
-      'assets/images/$cleanCode.png',
-      'assets/images/$rawCode.png',
-      'assets/sections/$cleanCode.png',
-    ];
+      Widget buildExactChain(int index) {
+        if (index >= exactAssetPaths.length) {
+          return fallbackWidget;
+        }
 
-    Widget buildChain(int index) {
-      if (index >= tryAssetPaths.length) {
-        return fallbackWidget;
+        final assetPath = exactAssetPaths[index];
+        if (assetPath.endsWith('.svg')) {
+          return SvgPicture.asset(
+            assetPath,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              return buildExactChain(index + 1);
+            },
+          );
+        } else {
+          return Image.asset(
+            assetPath,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              return buildExactChain(index + 1);
+            },
+          );
+        }
       }
 
-      final assetPath = tryAssetPaths[index];
-      if (assetPath.endsWith('.svg')) {
-        return SvgPicture.asset(
-          assetPath,
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            return buildChain(index + 1);
-          },
-        );
-      } else {
-        return Image.asset(
-          assetPath,
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            return buildChain(index + 1);
-          },
-        );
-      }
+      loadedWidget = buildExactChain(0);
     }
 
-    return buildChain(0);
+    final Widget finalImage = loadedWidget ?? fallbackWidget;
+
+    // 3. في الوضع الليلي (Dark Mode)، يتم تلوين رسم المقطع باللون الأبيض الناصع (Pure White) ليظهر بوضوح فائق وجذاب
+    if (isDark && invertInDarkMode && loadedWidget != null) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        child: finalImage,
+      );
+    }
+
+    return finalImage;
   }
 }
