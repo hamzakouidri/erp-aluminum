@@ -3511,15 +3511,21 @@ class ComponentCalculator {
                 final double mG = (sashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
                 if (mG > 0) maxGlass = mG;
               }
-              double remaining = maxGlass - cellThick - reducteurThick;
+              // 🟢 الفراغ الصافي للزجاج: إذا استعملنا reducteur يصبح مجرى الزجاج 15 مم
+              final double pocketWidth = (reducteurThick > 0) ? 15.0 : (maxGlass - reducteurThick);
+              double remaining = pocketWidth - cellThick;
               if (remaining <= 0) {
                 remaining = 2.0; // fallback to ensure glass gasket is calculated
               }
               if (remaining > 0) {
-                final double targetThick = cellGlass.jointTwoSides ? (remaining / 2.0) : remaining;
-                String jointName = 'جوان الزجاج (Joint Vitrage)';
+                // إذا كان الفراغ المتبقي أكبر من 6 مم (مثلاً 15 مم - 5 مم = 10 مم)، 
+                // لا يوجد جوان سمكه 10 مم، فيلزم إجبارياً استخدام جوان من جهتين (jointTwoSides = true)
+                // ويقسم الفراغ إلى جهتين (10 / 2 = 5 مم لكل جهة)، فيأخذ جوان 5 مم ومحيط × 2.
+                final bool forceTwoSides = cellGlass.jointTwoSides || (remaining > 6.0);
+                final double targetThick = forceTwoSides ? (remaining / 2.0) : remaining;
+                String jointName = 'جوان البوراج (Joint Bourrage)';
                 final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
-                final double qty = perimeter * (cellGlass.jointTwoSides ? 2 : 1) * totalPieces;
+                final double qty = perimeter * (forceTwoSides ? 2 : 1) * totalPieces;
                 slidingGlassJoints[jointName] = (slidingGlassJoints[jointName] ?? 0.0) + qty;
               }
             }
