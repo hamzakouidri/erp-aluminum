@@ -362,26 +362,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   origLower.contains('ريديكتور') ||
                   origLower.contains('reducteur') ||
                   origLower.contains('مخفض')) {
-                // للريديكتور: البحث بـ reducteur أو مخفض أو كود 67114 واستبعاد الإطارات والسكك
+                // للريديكتور: البحث بكود 67114 أو reducteur أو مخفض واستبعاد الإطارات والسكك
                 final redMatches = queryRes.where((s) {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (t.contains('reduct') || n.contains('reduct') || n.contains('مخفض') || n.contains('ريديكتور') || c.contains('67114')) &&
+                  return (c.contains('67114') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض') || n.contains('ريديكتور')) &&
                       !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
                       !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
                 }).toList();
                 if (redMatches.isNotEmpty) {
                   queryRes = redMatches;
-                } else {
-                  // fallback to parclose if no dedicated reducteur profile exists
-                  queryRes = queryRes.where((s) {
-                    final t = (s['type'] ?? '').toString().toLowerCase();
-                    final n = (s['name'] ?? '').toString().toLowerCase();
-                    return (t.contains('parclose') || t.contains('reduct')) &&
-                        !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
-                        !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
-                  }).toList();
                 }
               } else if (origLower.contains('lateral') || origLower.contains('قائم جانبي')) {
                 // للقائم الجانبي: تصفية القوائم الجانبية فقط واستبعاد القائم الوسطي / الشيكان
@@ -1157,11 +1148,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             !t.contains('frame') && !t.contains('cadre') && !n.contains('cadre') && !n.contains('إطار');
       }).toList();
     } else if (origLower.contains('réducteur') || origLower.contains('ريديكتور') || origLower.contains('reducteur') || origLower.contains('مخفض')) {
-      // 2. الريديكتور Réducteur: جلب نوع parclose أو reducteur واستبعاد الإطارات والسكك
+      // 2. الريديكتور Réducteur: جلب كود 67114 أو reducteur واستبعاد الإطارات والسكك
       filteredSections = rawSections.where((s) {
         final t = (s['type'] ?? '').toString().toLowerCase();
         final n = (s['name'] ?? '').toString().toLowerCase();
-        return (t.contains('parclose') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض')) &&
+        final c = (s['code'] ?? '').toString().toLowerCase();
+        return (c.contains('67114') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض') || n.contains('ريديكتور')) &&
             !t.contains('frame') && !t.contains('cadre') && !t.contains('rail') &&
             !n.contains('cadre') && !n.contains('إطار') && !n.contains('rail') && !n.contains('سكة');
       }).toList();

@@ -3956,19 +3956,18 @@ class ComponentCalculator {
 
     if (reducteurPieces.isNotEmpty) {
       Map<String, dynamic>? reducteurOverride = window.componentOverrides['ريديكتور (Réducteur)'] ??
-          window.componentOverrides['مخفض الزجاج (Réducteur)'] ??
-          window.componentOverrides['باكيت الزجاج (Parclose)'];
+          window.componentOverrides['مخفض الزجاج (Réducteur)'];
 
       if (reducteurOverride == null && activeSeries != null) {
         bool isReducteurSection(dynamic s) {
           final n = s.name.toLowerCase();
           final t = s.type.toLowerCase();
           final c = s.code.toLowerCase();
-          return (n.contains('reduct') ||
+          return (c.contains('67114') ||
+                  n.contains('reduct') ||
                   n.contains('مخفض') ||
                   n.contains('ريديكتور') ||
-                  t.contains('reduct') ||
-                  c.contains('67114')) &&
+                  t.contains('reduct')) &&
               !t.contains('rail') &&
               !t.contains('cadre') &&
               !t.contains('frame') &&
@@ -3978,26 +3977,11 @@ class ComponentCalculator {
               !n.contains('إطار');
         }
 
-        // 1. البحث عن قطاع reducteur صريح (استبعاد السكك Rail)
+        // البحث عن قطاع reducteur صريح (كود 67114 أو reducteur) واستبعاد الباركلوز والسكة
         try {
           final redSec = activeSeries.sections.firstWhere(isReducteurSection);
           reducteurOverride = redSec.toMap();
-        } catch (_) {
-          // 2. fallback: parclose بشرط ألا يكون سكة Rail
-          try {
-            final parcloseSec = activeSeries.sections.firstWhere((s) {
-              final n = s.name.toLowerCase();
-              final t = s.type.toLowerCase();
-              return (t.contains('parclose') || t.contains('reduct')) &&
-                  !t.contains('rail') &&
-                  !n.contains('rail') &&
-                  !n.contains('سكة') &&
-                  !n.contains('frame') &&
-                  !n.contains('إطار');
-            });
-            reducteurOverride = parcloseSec.toMap();
-          } catch (_) {}
-        }
+        } catch (_) {}
       }
 
       items.add(
