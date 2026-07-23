@@ -1583,8 +1583,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     : widget.model.activeSeries?.id;
                 final redRes = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(code) LIKE ? OR name LIKE ? OR LOWER(type) LIKE ?)',
-                  whereArgs: [sId, '%reduct%', '%reduct%', '%67114%', '%مخفض%', '%parclose%'],
+                  where: 'series_id = ? AND LOWER(code) LIKE ?',
+                  whereArgs: [sId, '%67114%'],
                   limit: 1,
                 );
                 if (redRes.isNotEmpty) {
@@ -1603,8 +1603,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   if (mounted) setState(() {});
                   continue;
                 } else {
-                  keywordFr = 'reducteur';
-                  keywordAr = 'مخفض';
+                  keywordFr = '67114';
+                  keywordAr = '67114';
                 }
               } else if (item.originalName.contains('Rail') ||
                   item.originalName.contains('سكة')) {
@@ -2126,17 +2126,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final bool isSliding = widget.model.systemMode == 'sliding';
     if (isSliding) {
       String targetKey = 'كيت 67000 (Kit 67000)';
-      if (selectedName.contains('76000')) {
-        targetKey = 'كيت 76000 (Kit 76000)';
-      } else if (selectedName.contains('40000')) {
+       if (selectedName.contains('40000')) {
         targetKey = 'كيت 40000 (Kit 40000)';
       } else if (selectedName.contains('67000')) {
         targetKey = 'كيت 67000 (Kit 67000)';
       } else {
         final String sName = widget.model.activeSlidingSeries?.name.toLowerCase() ?? '';
-        if (sName.contains('76000')) {
-          targetKey = 'كيت 76000 (Kit 76000)';
-        } else if (sName.contains('40000')) {
+         if (sName.contains('40000')) {
           targetKey = 'كيت 40000 (Kit 40000)';
         } else {
           targetKey = 'كيت 67000 (Kit 67000)';
@@ -5021,6 +5017,11 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       } else if (pType.toLowerCase().contains('batmo') ||
           pType.contains('باتمو')) {
         pType = 'batmo';
+      } else if (pType.toLowerCase().contains('reducteur') ||
+          pType.toLowerCase().contains('réducteur') ||
+          pType.contains('ريديكتور') ||
+          pType.contains('مخفض')) {
+        pType = '67114';
       } else if (pType.toLowerCase().contains('parclose') ||
           pType.contains('باكيت') ||
           pType.contains('بيركلوز')) {

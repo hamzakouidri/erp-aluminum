@@ -922,6 +922,11 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 ty.contains('بوشون') ||
                 ty.contains('bochon');
           }
+          // البحث بالكود مباشرة (مثلاً 67114 للريديكتور)
+          final code = (s['code'] ?? '').toString().toLowerCase().trim();
+          if (RegExp(r'^\d+$').hasMatch(t)) {
+            return code.contains(t);
+          }
           return ty.contains(t) || t.contains(ty) || name.contains(t) || t.contains(name);
         }).toList();
       } else {

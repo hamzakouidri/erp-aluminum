@@ -288,7 +288,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                        item.originalName.contains('ريديكتور') ||
                        item.originalName.contains('reducteur') ||
                        item.originalName.contains('مخفض')) {
-              keywordFr = 'reducteur'; keywordAr = 'مخفض';
+              keywordFr = '67114'; keywordAr = '67114';
             } else if (item.originalName.contains('Parclose') ||
                        item.originalName.contains('باكيت')) {
               keywordFr = 'parclose'; keywordAr = 'باكيت';
