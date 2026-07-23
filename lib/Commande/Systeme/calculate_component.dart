@@ -4779,8 +4779,6 @@ class ComponentCalculator {
     try {
       final sec = activeSeries.sections.firstWhere((s) {
         final code = s.code.toLowerCase();
-        final name = s.name.toLowerCase();
-        final type = s.type.toLowerCase();
         if (isCentral) {
           return code.contains('67105') || code.endsWith('105');
         } else {
