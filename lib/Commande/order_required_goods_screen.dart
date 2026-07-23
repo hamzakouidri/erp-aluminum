@@ -374,24 +374,24 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 if (redMatches.isNotEmpty) {
                   queryRes = redMatches;
                 }
-              } else if (origLower.contains('lateral') || origLower.contains('قائم جانبي')) {
-                // للقائم الجانبي: تصفية القوائم الجانبية فقط واستبعاد القائم الوسطي / الشيكان
+              } else if (origLower.contains('latéral') || origLower.contains('lateral') || origLower.contains('قائم جانبي') || origLower.contains('sash lateral')) {
+                // للقائم الجانبي: تصفية القوائم الجانبية فقط بكود 104 أو 108 أو lateral واستبعاد القائم الوسطي / الشيكان / 105
                 final latMatches = queryRes.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('lat'));
+                  return (c.contains('104') || c.contains('108') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
+                      !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
                 }).toList();
                 if (latMatches.isNotEmpty) {
                   queryRes = latMatches;
                 }
-              } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي')) {
-                // للقائم الوسطي: تصفية القوائم الوسطية واستبعاد الجانبي
+              } else if (origLower.contains('sash central') || origLower.contains('central') || origLower.contains('chicane') || origLower.contains('قائم وسطي')) {
+                // للقائم الوسطي: تصفية القوائم الوسطية بكود 105 أو 107 أو central واستبعاد الجانبي 104
                 final cenMatches = queryRes.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (n.contains('central') || n.contains('وسطي') || n.contains('chicane') || c.contains('cen')) &&
-                      !n.contains('latéral') &&
-                      !n.contains('جانبي');
+                  return (c.contains('105') || c.contains('107') || n.contains('central') || n.contains('وسطي') || n.contains('chicane')) &&
+                      !n.contains('latéral') && !n.contains('جانبي') && !c.contains('104');
                 }).toList();
                 if (cenMatches.isNotEmpty) {
                   queryRes = cenMatches;
@@ -484,15 +484,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     final filtered = <BomItem>[];
     for (var item in items) {
-      if (model.isIntegratedFrame) {
-        final origLower = item.originalName.toLowerCase();
-        final nameLower = item.name.toLowerCase();
-        if (origLower.contains('الغطاء الجانبي') ||
-            origLower.contains('side cover') ||
-            origLower.contains('couvre-joint') ||
-            nameLower.contains('الغطاء الجانبي') ||
-            nameLower.contains('couvre-joint')) {
-          continue; // Strictly remove side cover when frame has integrated cover!
+      final origLower = item.originalName.toLowerCase();
+      final nameLower = item.name.toLowerCase();
+      final isSideCoverItem = origLower.contains('الغطاء الجانبي') ||
+          origLower.contains('side cover') ||
+          origLower.contains('couvre-joint') ||
+          nameLower.contains('الغطاء الجانبي') ||
+          nameLower.contains('couvre-joint');
+
+      if (isSideCoverItem) {
+        final bool showSideCover = (model.hasSideCovers || model.isSideCoverAllowed) && !model.isIntegratedFrame;
+        if (!showSideCover) {
+          continue; // إزالة الغطاء الجانبي إذا كان الإطار مدمجاً أو لا يدعم ولا يحتوي على غطاء جانبي
         }
       }
 
@@ -1172,7 +1175,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         final c = (s['code'] ?? '').toString().toLowerCase();
         return (t.contains('sash') || t.contains('ouvrant')) &&
             (t.contains('lateral') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('104') || c.contains('108')) &&
-            !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane');
+            !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
       }).toList();
     } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي') || origLower.contains('chicane')) {
       // 5. القائم الوسطي Ouvrant Central: تصفية القوائم الوسطية واستبعاد الجانبي

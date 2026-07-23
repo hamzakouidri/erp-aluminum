@@ -4755,9 +4755,11 @@ class ComponentCalculator {
       final sec = activeSeries.sections.firstWhere((s) {
         final name = s.name.toLowerCase();
         final type = s.type.toLowerCase();
+        final code = s.code.toLowerCase();
         final isMatch = isCentral
-            ? (name.contains('central') || name.contains('chicane') || name.contains('وسطي'))
-            : (name.contains('lateral') || name.contains('جانبي'));
+            ? (name.contains('central') || name.contains('chicane') || name.contains('وسطي') || code.contains('105') || code.contains('107'))
+            : ((name.contains('lateral') || name.contains('latéral') || name.contains('جانبي') || code.contains('104') || code.contains('108')) &&
+                !name.contains('central') && !name.contains('chicane') && !name.contains('وسطي') && !code.contains('105'));
         final isRenforced = name.contains('renforc') || name.contains('renforcé') || name.contains('معزز') || type.contains('renforc');
         return isMatch && isRenforced;
       });
@@ -4794,9 +4796,11 @@ class ComponentCalculator {
       final sec = activeSeries.sections.firstWhere((s) {
         final name = s.name.toLowerCase();
         final type = s.type.toLowerCase();
+        final code = s.code.toLowerCase();
         final isMatch = isCentral
-            ? (name.contains('central') || name.contains('chicane') || name.contains('وسطي'))
-            : (name.contains('lateral') || name.contains('جانبي'));
+            ? (name.contains('central') || name.contains('chicane') || name.contains('وسطي') || code.contains('105') || code.contains('107'))
+            : ((name.contains('lateral') || name.contains('latéral') || name.contains('جانبي') || code.contains('104') || code.contains('108')) &&
+                !name.contains('central') && !name.contains('chicane') && !name.contains('وسطي') && !code.contains('105'));
         final isNormal = !name.contains('renforc') && !name.contains('renforcé') && !name.contains('معزز') && !type.contains('renforc');
         return isMatch && isNormal;
       });

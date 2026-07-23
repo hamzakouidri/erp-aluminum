@@ -1604,18 +1604,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       !n.contains('cadre') &&
                       !n.contains('إطار');
                 }).toList();
-                final redRes = redMatches.isNotEmpty
-                    ? redMatches
-                    : redResAll.where((s) {
-                        final t = (s['type'] ?? '').toString().toLowerCase();
-                        final n = (s['name'] ?? '').toString().toLowerCase();
-                        return (t.contains('parclose') || t.contains('reduct')) &&
-                            !t.contains('rail') &&
-                            !n.contains('rail') &&
-                            !n.contains('سكة') &&
-                            !n.contains('cadre') &&
-                            !n.contains('إطار');
-                      }).toList();
+                final redRes = redMatches;
                 if (redRes.isNotEmpty) {
                   final mutableItem = Map<String, dynamic>.from(redRes.first);
                   double price = 0.0;
@@ -1632,6 +1621,72 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   if (mounted) setState(() {});
                 }
                 continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات خاطئة مثل السكة Rail
+              } else if (item.originalName.contains('Latéral') ||
+                  item.originalName.contains('lateral') ||
+                  item.originalName.contains('جانبي')) {
+                final sId = widget.model.systemMode == 'sliding'
+                    ? widget.model.activeSlidingSeries?.id
+                    : widget.model.activeSeries?.id;
+                final latResAll = await dbInstance.query(
+                  'Sections',
+                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  whereArgs: [sId],
+                );
+                final latMatches = latResAll.where((s) {
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return (c.contains('104') || c.contains('108') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
+                      !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
+                }).toList();
+                if (latMatches.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(latMatches.first);
+                  double price = 0.0;
+                  if (colorId != null) {
+                    price = await sqlDb.getSectionPrice(
+                      latMatches.first['id'] as int,
+                      colorId,
+                    );
+                  } else {
+                    price = _safeDouble(latMatches.first['price_dzd'] ?? latMatches.first['price']);
+                  }
+                  mutableItem['calculated_price'] = price;
+                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  if (mounted) setState(() {});
+                }
+                continue;
+              } else if (item.originalName.contains('Central') ||
+                  item.originalName.contains('chicane') ||
+                  item.originalName.contains('وسطي')) {
+                final sId = widget.model.systemMode == 'sliding'
+                    ? widget.model.activeSlidingSeries?.id
+                    : widget.model.activeSeries?.id;
+                final cenResAll = await dbInstance.query(
+                  'Sections',
+                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  whereArgs: [sId],
+                );
+                final cenMatches = cenResAll.where((s) {
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return (c.contains('105') || c.contains('107') || n.contains('central') || n.contains('وسطي') || n.contains('chicane')) &&
+                      !n.contains('latéral') && !n.contains('جانبي') && !c.contains('104');
+                }).toList();
+                if (cenMatches.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(cenMatches.first);
+                  double price = 0.0;
+                  if (colorId != null) {
+                    price = await sqlDb.getSectionPrice(
+                      cenMatches.first['id'] as int,
+                      colorId,
+                    );
+                  } else {
+                    price = _safeDouble(cenMatches.first['price_dzd'] ?? cenMatches.first['price']);
+                  }
+                  mutableItem['calculated_price'] = price;
+                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  if (mounted) setState(() {});
+                }
+                continue;
               } else if (item.originalName.contains('Rail') ||
                   item.originalName.contains('سكة')) {
                 final sId = widget.model.systemMode == 'sliding'
