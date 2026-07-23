@@ -233,25 +233,25 @@ class CloudSyncService {
       final chunkRef = latestDocRef.collection('chunks');
       
       // 2. مسح الأجزاء القديمة دفعة واحدة (WriteBatch)
-      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 15));
+      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 25));
       if (existingChunks.docs.isNotEmpty) {
         WriteBatch deleteBatch = _firestore.batch();
         int count = 0;
         for (var doc in existingChunks.docs) {
           deleteBatch.delete(doc.reference);
           count++;
-          if (count >= 15) {
-            await deleteBatch.commit().timeout(const Duration(seconds: 15));
+          if (count >= 10) {
+            await deleteBatch.commit().timeout(const Duration(seconds: 25));
             deleteBatch = _firestore.batch();
             count = 0;
           }
         }
         if (count > 0) {
-          await deleteBatch.commit().timeout(const Duration(seconds: 15));
+          await deleteBatch.commit().timeout(const Duration(seconds: 25));
         }
       }
 
-      // 3. رفع الأجزاء الجديدة دفعة واحدة (WriteBatch) لسرعة فائقة بدون تعليق
+      // 3. رفع الأجزاء الجديدة دفعة واحدة بأحجام خفيفة وسريعة بدفعات صغرى
       WriteBatch uploadBatch = _firestore.batch();
       int batchCount = 0;
       for (String table in allData.keys) {
@@ -268,15 +268,15 @@ class CloudSyncService {
             'data': chunks[i],
           });
           batchCount++;
-          if (batchCount >= 15) {
-            await uploadBatch.commit().timeout(const Duration(seconds: 20));
+          if (batchCount >= 2) {
+            await uploadBatch.commit().timeout(const Duration(seconds: 30));
             uploadBatch = _firestore.batch();
             batchCount = 0;
           }
         }
       }
       if (batchCount > 0) {
-        await uploadBatch.commit().timeout(const Duration(seconds: 20));
+        await uploadBatch.commit().timeout(const Duration(seconds: 30));
       }
 
       // 4. إنهاء الرفع وتغيير الحالة إلى "مكتمل"
@@ -526,21 +526,21 @@ class CloudSyncService {
       }).timeout(const Duration(seconds: 15));
 
       final chunkRef = catalogRef.collection('chunks');
-      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 15));
+      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 25));
       if (existingChunks.docs.isNotEmpty) {
         WriteBatch deleteBatch = _firestore.batch();
         int count = 0;
         for (var doc in existingChunks.docs) {
           deleteBatch.delete(doc.reference);
           count++;
-          if (count >= 15) {
-            await deleteBatch.commit().timeout(const Duration(seconds: 15));
+          if (count >= 10) {
+            await deleteBatch.commit().timeout(const Duration(seconds: 25));
             deleteBatch = _firestore.batch();
             count = 0;
           }
         }
         if (count > 0) {
-          await deleteBatch.commit().timeout(const Duration(seconds: 15));
+          await deleteBatch.commit().timeout(const Duration(seconds: 25));
         }
       }
 
@@ -560,15 +560,15 @@ class CloudSyncService {
             'data': chunks[i],
           });
           batchCount++;
-          if (batchCount >= 15) {
-            await uploadBatch.commit().timeout(const Duration(seconds: 20));
+          if (batchCount >= 2) {
+            await uploadBatch.commit().timeout(const Duration(seconds: 30));
             uploadBatch = _firestore.batch();
             batchCount = 0;
           }
         }
       }
       if (batchCount > 0) {
-        await uploadBatch.commit().timeout(const Duration(seconds: 20));
+        await uploadBatch.commit().timeout(const Duration(seconds: 30));
       }
 
       await catalogRef.update({'status': 'completed'}).timeout(const Duration(seconds: 10));
@@ -668,8 +668,8 @@ class CloudSyncService {
 
   List<List<dynamic>> _partitionRowsIntoChunks(List<dynamic> rows) {
     if (rows.isEmpty) return [[]];
-    // limit size to ~500 KB to fit comfortably within Firestore 1MB document limit
-    const int maxChunkCharacters = 500000;
+    // limit size to ~150 KB for instant lightning fast Firestore writes without timeouts
+    const int maxChunkCharacters = 150000;
     final List<List<dynamic>> chunks = [];
     List<dynamic> currentChunk = [];
     int currentChunkSize = 0;
