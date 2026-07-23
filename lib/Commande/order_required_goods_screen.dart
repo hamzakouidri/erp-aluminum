@@ -1423,23 +1423,21 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         origLower.contains('قائم جانبي') ||
         origLower.contains('latéral') ||
         origLower.contains('lateral')) {
-      // 4. القائم الجانبي Ouvrant Latéral: تصفية القوائم الجانبية واستبعاد الوسطي / الشيكان / 105
+      // 4. القائم الجانبي Ouvrant Latéral: مطابقة الكود 67108 (المدعم) والكود 67104 (غير المدعم)
       filteredSections = rawSections.where((s) {
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        final n = (s['name'] ?? '').toString().toLowerCase();
         final c = (s['code'] ?? '').toString().toLowerCase();
-        return (t.contains('sash') || t.contains('ouvrant')) &&
-            (t.contains('lateral') ||
-                n.contains('latéral') ||
-                n.contains('lateral') ||
-                n.contains('جانبي') ||
-                c.contains('104') ||
-                c.contains('108')) &&
-            !n.contains('central') &&
-            !n.contains('وسطي') &&
-            !n.contains('chicane') &&
-            !c.contains('105') &&
-            !c.contains('107');
+        final n = (s['name'] ?? '').toString().toLowerCase();
+        final t = (s['type'] ?? '').toString().toLowerCase();
+        return c.contains('67108') ||
+            c.contains('67104') ||
+            c.endsWith('108') ||
+            c.endsWith('104') ||
+            ((t.contains('sash') || t.contains('ouvrant')) &&
+                (n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
+                !n.contains('central') &&
+                !n.contains('chicane') &&
+                !c.contains('105') &&
+                !c.contains('107'));
       }).toList();
     } else if (origLower.contains('sash central') ||
         origLower.contains('قائم وسطي') ||

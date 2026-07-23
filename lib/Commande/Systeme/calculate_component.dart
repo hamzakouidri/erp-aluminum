@@ -4753,15 +4753,14 @@ class ComponentCalculator {
 
     try {
       final sec = activeSeries.sections.firstWhere((s) {
+        final code = s.code.toLowerCase();
         final name = s.name.toLowerCase();
         final type = s.type.toLowerCase();
-        final code = s.code.toLowerCase();
-        final isMatch = isCentral
-            ? (name.contains('central') || name.contains('chicane') || name.contains('وسطي') || code.contains('105') || code.contains('107'))
-            : ((name.contains('lateral') || name.contains('latéral') || name.contains('جانبي') || code.contains('104') || code.contains('108')) &&
-                !name.contains('central') && !name.contains('chicane') && !name.contains('وسطي') && !code.contains('105'));
-        final isRenforced = name.contains('renforc') || name.contains('renforcé') || name.contains('معزز') || type.contains('renforc');
-        return isMatch && isRenforced;
+        if (isCentral) {
+          return code.contains('67107') || code.endsWith('107') || name.contains('chicane') || name.contains('central');
+        } else {
+          return code.contains('67108') || code.endsWith('108') || (name.contains('lateral') && (name.contains('renforc') || type.contains('renforc')));
+        }
       });
       return sec.toMap();
     } catch (_) {}
@@ -4776,33 +4775,17 @@ class ComponentCalculator {
   ) {
     final activeSeries = window.activeSlidingSeries ?? window.activeSeries;
     if (activeSeries == null) return null;
-    final String baseCode = baseSection['code']?.toString() ?? '';
-
-    String? targetSuffix;
-    if (isCentral) {
-      if (baseCode.endsWith('107')) targetSuffix = '105';
-    } else {
-      if (baseCode.endsWith('108')) targetSuffix = '104';
-    }
-
-    if (targetSuffix != null) {
-      try {
-        final sec = activeSeries.sections.firstWhere((s) => s.code.endsWith(targetSuffix!));
-        return sec.toMap();
-      } catch (_) {}
-    }
 
     try {
       final sec = activeSeries.sections.firstWhere((s) {
+        final code = s.code.toLowerCase();
         final name = s.name.toLowerCase();
         final type = s.type.toLowerCase();
-        final code = s.code.toLowerCase();
-        final isMatch = isCentral
-            ? (name.contains('central') || name.contains('chicane') || name.contains('وسطي') || code.contains('105') || code.contains('107'))
-            : ((name.contains('lateral') || name.contains('latéral') || name.contains('جانبي') || code.contains('104') || code.contains('108')) &&
-                !name.contains('central') && !name.contains('chicane') && !name.contains('وسطي') && !code.contains('105'));
-        final isNormal = !name.contains('renforc') && !name.contains('renforcé') && !name.contains('معزز') && !type.contains('renforc');
-        return isMatch && isNormal;
+        if (isCentral) {
+          return code.contains('67105') || code.endsWith('105');
+        } else {
+          return code.contains('67104') || code.endsWith('104');
+        }
       });
       return sec.toMap();
     } catch (_) {}
