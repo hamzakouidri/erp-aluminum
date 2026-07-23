@@ -330,29 +330,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 queryRes = queryRes.where((s) {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
-                  return (t.contains('parclose') || t.contains('reduct') || n.contains('reduct') || n.contains('مخفض')) &&
-                      !t.contains('frame') &&
-                      !t.contains('cadre') &&
-                      !t.contains('rail') &&
-                      !n.contains('cadre') &&
-                      !n.contains('إطار') &&
-                      !n.contains('rail') &&
-                      !n.contains('سكة');
+                  return (t.contains('parclose') || n.contains('reducteur'));
                 }).toList();
-              } else if (origLower.contains('sash lateral') || origLower.contains('قائم جانبي')) {
+              } else if (origLower.contains('lateral') || origLower.contains('قائم جانبي')) {
                 // للقائم الجانبي: تصفية القوائم الجانبية فقط واستبعاد القائم الوسطي / الشيكان
                 final latMatches = queryRes.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('lat')) &&
-                      !n.contains('central') &&
-                      !n.contains('وسطي') &&
-                      !n.contains('chicane');
+                  return (n.contains('latéral') || n.contains('lateral') || n.contains('جانبي') || c.contains('lat'));
                 }).toList();
                 if (latMatches.isNotEmpty) {
                   queryRes = latMatches;
                 }
-              } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي') || origLower.contains('chicane')) {
+              } else if (origLower.contains('sash central') || origLower.contains('قائم وسطي')) {
                 // للقائم الوسطي: تصفية القوائم الوسطية واستبعاد الجانبي
                 final cenMatches = queryRes.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();

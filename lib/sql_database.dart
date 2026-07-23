@@ -10,6 +10,7 @@ import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_common;
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,7 +21,10 @@ import 'package:database_data/Commande/capture_image.dart';
 class SqlDatabase {
   static Database? _db;
 
-  DatabaseFactory get _dbFactory {
+  static DatabaseFactory get _dbFactory {
+    if (kIsWeb) {
+      return databaseFactoryFfiWeb;
+    }
     if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       sqflite_common.sqfliteFfiInit();
       return sqflite_common.databaseFactoryFfi;
@@ -67,7 +71,7 @@ class SqlDatabase {
     // Delete SQLite file
     try {
       final dbName = 'test.db';
-      final dataPath = await databaseFactory.getDatabasesPath();
+      final dataPath = await _dbFactory.getDatabasesPath();
       final path = join(dataPath, dbName);
       final file = File(path);
       if (await file.exists()) {

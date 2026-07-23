@@ -2079,14 +2079,18 @@ class ComponentCalculator {
 
         // الصيغة الموحدة لا تحتاج تبديل خاص بـ PVC
 
-        items.add(
-          createJoint(
-            'جوان بروس للظلفة (Joint Brosse Sash)',
-            color: colorName,
-            qty: slidingTotalJointBrosse.ceilToDouble(),
-            unit: 'متر',
-          ),
-        );
+        // 🟢 جوان بروس للظلفة: لا يُضاف تلقائياً لسلاسل الألمنيوم مثل TPR 67000 
+        // إلا إذا كان خيار جوان البروس مخصصاً ومحدداً صراحة لهذه السلسلة أو إذا كان النظام PVC
+        if (window.isPVC || window.componentOverrides.containsKey('جوان بروس للظلفة (Joint Brosse Sash)')) {
+          items.add(
+            createJoint(
+              'جوان بروس للظلفة (Joint Brosse Sash)',
+              color: colorName,
+              qty: slidingTotalJointBrosse.ceilToDouble(),
+              unit: 'متر',
+            ),
+          );
+        }
 
         slidingGlassJoints.forEach((jointName, totalLength) {
           items.add(
