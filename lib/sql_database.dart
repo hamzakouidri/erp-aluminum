@@ -116,7 +116,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 48,
+          version: 49,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -127,7 +127,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 48,
+      version: 49,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -189,6 +189,11 @@ class SqlDatabase {
         try {
           await db.execute(
             "ALTER TABLE Sections ADD COLUMN couvre_joint_thickness REAL NOT NULL DEFAULT 0.0;",
+          );
+        } catch (_) {}
+        try {
+          await db.execute(
+            "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
           );
         } catch (_) {}
 
@@ -2698,6 +2703,11 @@ class SqlDatabase {
 
   Future<int> updateSection(int id, Map<String, dynamic> data) async {
     Database? myDb = await db;
+    try {
+      await myDb!.execute(
+        "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
+      );
+    } catch (_) {}
     var res = await myDb!.update(
       'Sections',
       data,
