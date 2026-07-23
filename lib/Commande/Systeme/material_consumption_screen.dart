@@ -2145,7 +2145,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final slidingKeys = [
         'كيت 67000 (Kit 67000)',
         'كيت 40000 (Kit 40000)',
-        'كيت 76000 (Kit 76000)',
       ];
       for (final k in slidingKeys) {
         widget.model.componentOverrides.remove(k);

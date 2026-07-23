@@ -303,6 +303,36 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               whereArgs: ['%$keywordFr%', '%$keywordFr%', '%$keywordAr%', '%$keywordAr%', '%$keywordFr%', matType],
             );
 
+            // 🟢 تصفية الجوانات حسب السلسلة الحالية (series_id / series_ids)
+            // مهم جداً لضمان أن جوان البروس يخص السلسلة المختارة لا أي سلسلة أخرى
+            if (table == 'Joints' && queryRes.isNotEmpty && model.activeSeries != null) {
+              final sid = model.activeSeries!.id;
+              final sidStr = sid.toString();
+              // أولاً: تصفية بـ series_id المباشر
+              final exactMatch = queryRes.where((j) => j['series_id'] == sid).toList();
+              if (exactMatch.isNotEmpty) {
+                queryRes = exactMatch;
+              } else {
+                // ثانياً: تصفية بـ series_ids (قائمة مفصولة بفاصلة)
+                final idsMatch = queryRes.where((j) {
+                  final ids = (j['series_ids'] ?? '').toString();
+                  return ids.split(',').map((e) => e.trim()).contains(sidStr);
+                }).toList();
+                if (idsMatch.isNotEmpty) {
+                  queryRes = idsMatch;
+                }
+                // إذا لم يوجد تطابق بالسلسلة → نأخذ الجوانات العامة (series_id = null)
+                else {
+                  final globalJoints = queryRes.where((j) {
+                    final s = j['series_id'];
+                    final ids = (j['series_ids'] ?? '').toString().trim();
+                    return s == null && ids.isEmpty;
+                  }).toList();
+                  if (globalJoints.isNotEmpty) queryRes = globalJoints;
+                }
+              }
+            }
+
             if (table == 'Sections' && queryRes.isNotEmpty) {
               if (model.activeSeries != null) {
                 final seriesSections = queryRes.where((s) => s['series_id'] == model.activeSeries!.id).toList();
