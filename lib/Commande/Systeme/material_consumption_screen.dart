@@ -1621,6 +1621,40 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   if (mounted) setState(() {});
                 }
                 continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات خاطئة مثل السكة Rail
+              } else if (item.originalName.contains('Couvre') ||
+                  item.originalName.contains('couvre') ||
+                  item.originalName.contains('الغطاء الجانبي') ||
+                  item.originalName.contains('Side Cover')) {
+                final sId = widget.model.systemMode == 'sliding'
+                    ? widget.model.activeSlidingSeries?.id
+                    : widget.model.activeSeries?.id;
+                final cjResAll = await dbInstance.query(
+                  'Sections',
+                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  whereArgs: [sId],
+                );
+                final cjMatches = cjResAll.where((s) {
+                  final t = (s['type'] ?? '').toString().toLowerCase();
+                  final n = (s['name'] ?? '').toString().toLowerCase();
+                  return t.contains('couvre') || n.contains('couvre') || n.contains('غطاء') || t.contains('side_cover');
+                }).toList();
+                if (cjMatches.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(cjMatches.first);
+                  double price = 0.0;
+                  if (colorId != null) {
+                    price = await sqlDb.getSectionPrice(
+                      cjMatches.first['id'] as int,
+                      colorId,
+                    );
+                  } else {
+                    price = _safeDouble(cjMatches.first['price_dzd'] ?? cjMatches.first['price']);
+                  }
+                  mutableItem['calculated_price'] = price;
+                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.sideCoverOverride = mutableItem;
+                  if (mounted) setState(() {});
+                }
+                continue;
               } else if (item.originalName.contains('Latéral') ||
                   item.originalName.contains('lateral') ||
                   item.originalName.contains('جانبي')) {
@@ -1632,22 +1666,35 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
                   whereArgs: [sId],
                 );
+                final bool isRenf = item.originalName.contains('معزز') || item.originalName.contains('Renforcé') ||
+                    widget.model.zones.any((z) => z.slidingMontantReinforced.entries.any((e) => e.key.startsWith('lateral_') && e.value == true));
+                final targetCode = isRenf ? '67108' : '67104';
+                final targetSuffix = isRenf ? '108' : '104';
+
                 final latMatches = latResAll.where((s) {
+                  final c = (s['code'] ?? '').toString().toLowerCase();
+                  return c.contains(targetCode) || c.endsWith(targetSuffix);
+                }).toList();
+
+                final fallbackMatches = latResAll.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
                   return (c.contains('104') || c.contains('108') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
                       !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
                 }).toList();
-                if (latMatches.isNotEmpty) {
-                  final mutableItem = Map<String, dynamic>.from(latMatches.first);
+
+                final finalMatches = latMatches.isNotEmpty ? latMatches : fallbackMatches;
+
+                if (finalMatches.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(finalMatches.first);
                   double price = 0.0;
                   if (colorId != null) {
                     price = await sqlDb.getSectionPrice(
-                      latMatches.first['id'] as int,
+                      finalMatches.first['id'] as int,
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(latMatches.first['price_dzd'] ?? latMatches.first['price']);
+                    price = _safeDouble(finalMatches.first['price_dzd'] ?? finalMatches.first['price']);
                   }
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] = mutableItem;
