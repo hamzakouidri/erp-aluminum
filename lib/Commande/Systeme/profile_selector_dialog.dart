@@ -883,23 +883,24 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           } else if (t.contains('lateral') || t.contains('جانبي')) {
             final lowerName = name.toLowerCase();
             final lowerType = ty.toLowerCase();
-            return lowerType.contains('lateral') ||
-                lowerType.contains('جانبي') ||
-                lowerName.contains('lateral') ||
-                lowerName.contains('جانبي') ||
-                lowerType.contains('montant') ||
-                lowerName.contains('montant');
-          } else if (t.contains('central') || t.contains('وسطي')) {
+            final code = (s['code'] ?? '').toString().toLowerCase();
+            return (code.contains('67108') || code.contains('67104') || code.endsWith('108') || code.endsWith('104') ||
+                    lowerType.contains('lateral') || lowerName.contains('latéral') || lowerName.contains('lateral') || lowerName.contains('جانبي')) &&
+                !lowerName.contains('central') && !lowerName.contains('وسطي') && !lowerName.contains('chicane') &&
+                !code.contains('105') && !code.contains('107');
+          } else if (t.contains('central') || t.contains('وسطي') || t.contains('chicane')) {
             final lowerName = name.toLowerCase();
             final lowerType = ty.toLowerCase();
-            return lowerType.contains('central') ||
-                lowerType.contains('وسطي') ||
-                lowerName.contains('central') ||
-                lowerName.contains('وسطي') ||
-                lowerType.contains('chicane') ||
-                lowerName.contains('chicane') ||
-                lowerType.contains('renfort') ||
-                lowerName.contains('renfort');
+            final code = (s['code'] ?? '').toString().toLowerCase();
+            return (code.contains('67107') || code.contains('67105') || code.endsWith('107') || code.endsWith('105') ||
+                    lowerType.contains('central') || lowerName.contains('central') || lowerName.contains('وسطي') || lowerName.contains('chicane')) &&
+                !lowerName.contains('latéral') && !lowerName.contains('lateral') && !lowerName.contains('جانبي') &&
+                !code.contains('104') && !code.contains('108');
+          } else if (t.contains('couvre') || t.contains('side cover') || t.contains('غطاء جانبي') || t.contains('كافر')) {
+            final lowerName = name.toLowerCase();
+            final lowerType = ty.toLowerCase();
+            final code = (s['code'] ?? '').toString().toLowerCase();
+            return lowerType.contains('couvre') || lowerName.contains('couvre') || lowerName.contains('غطاء') || lowerType.contains('side_cover') || code.contains('couvre');
           } else if (t == 'renfort') {
             return ty.contains('renfort') ||
                 ty.contains('رنفور') ||
