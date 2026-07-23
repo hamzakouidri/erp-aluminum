@@ -1068,7 +1068,7 @@ class ComponentCalculator {
       );
     }
 
-    bool showSideCover = window.hasSideCovers && window.isSideCoverAllowed && !window.isIntegratedFrame && !hasIntegratedSideCover;
+    bool showSideCover = !window.isIntegratedFrame && !hasIntegratedSideCover;
 
     if (showSideCover) {
       double w = window.sideCoverWidth; // cover visible width in mm
