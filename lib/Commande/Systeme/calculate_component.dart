@@ -3532,7 +3532,7 @@ class ComponentCalculator {
                 // إذا كان الفراغ المتبقي أكبر من 6 مم (مثلاً 15 مم - 5 مم = 10 مم)، 
                 // لا يوجد جوان سمكه 10 مم، فيلزم إجبارياً استخدام جوان من جهتين (jointTwoSides = true)
                 // ويقسم الفراغ إلى جهتين (10 / 2 = 5 مم لكل جهة)، فيأخذ جوان 5 مم ومحيط × 2.
-                final bool forceTwoSides = cellGlass.jointTwoSides || (remaining > 6.0);
+                final bool forceTwoSides = cellGlass.jointTwoSides;
                 final double targetThick = forceTwoSides ? (remaining / 2.0) : remaining;
                 String jointName = 'جوان البوراج (Joint Bourrage)';
                 final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
