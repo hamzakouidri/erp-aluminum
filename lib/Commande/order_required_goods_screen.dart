@@ -401,8 +401,35 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 item.originalName.contains('Side Cover') ||
                 item.originalName.contains('Couvre') ||
                 item.originalName.contains('couvre')) {
-              keywordFr = 'couvre';
-              keywordAr = 'جانبي';
+              final sId = model.systemMode == 'sliding'
+                  ? model.activeSlidingSeries?.id
+                  : model.activeSeries?.id;
+              final cjRes = await dbInstance.query(
+                'Sections',
+                where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                whereArgs: [sId],
+              );
+              final cjMatches = cjRes.where((s) {
+                final t = (s['type'] ?? '').toString().toLowerCase();
+                final n = (s['name'] ?? '').toString().toLowerCase();
+                return t.contains('couvre') || n.contains('couvre') || n.contains('غطاء') || t.contains('side_cover');
+              }).toList();
+              if (cjMatches.isNotEmpty) {
+                final mutableItem = Map<String, dynamic>.from(cjMatches.first);
+                double price = 0.0;
+                if (colorId != null) {
+                  price = await sqlDb.getSectionPrice(
+                    cjMatches.first['id'] as int,
+                    colorId,
+                  );
+                } else {
+                  price = _safeDouble(cjMatches.first['price_dzd'] ?? cjMatches.first['price']);
+                }
+                mutableItem['calculated_price'] = price;
+                model.componentOverrides[item.originalName] = mutableItem;
+                model.sideCoverOverride = mutableItem;
+              }
+              continue;
             }
           }
 
