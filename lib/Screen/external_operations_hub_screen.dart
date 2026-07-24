@@ -762,9 +762,12 @@ class _ExternalOperationsHubScreenState
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
                                 if (isManager) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                    SnackBar(
+                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
                                       backgroundColor: Colors.orange,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                   );
                                   return;
@@ -778,6 +781,9 @@ class _ExternalOperationsHubScreenState
                                     SnackBar(
                                       content: Text(newVal == 1 ? 'تم تسجيل خروج وتوزيع النافذة للميدان 🚚✅' : 'تم إلغاء حالة التوزيع', style: const TextStyle(fontFamily: 'Cairo')),
                                       duration: const Duration(seconds: 1),
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                   );
                                 }
@@ -803,9 +809,12 @@ class _ExternalOperationsHubScreenState
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
                                 if (isManager) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                    SnackBar(
+                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
                                       backgroundColor: Colors.orange,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                   );
                                   return;
@@ -819,6 +828,9 @@ class _ExternalOperationsHubScreenState
                                     SnackBar(
                                       content: Text(newVal == 1 ? 'تم تسجيل تركيب النافذة بالموقع 🛠️✅' : 'تم إلغاء حالة التركيب', style: const TextStyle(fontFamily: 'Cairo')),
                                       duration: const Duration(seconds: 1),
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                   );
                                 }
@@ -838,19 +850,41 @@ class _ExternalOperationsHubScreenState
                               ),
                             ),
 
-                            // 3. زر تم الانتهاء (يظهر أبيض في البداية، وتفعل علامة النايك والخلفية الخضراء عند الضغط والإنهاء)
+                            // 3. زر تم الانتهاء (يمنع الإنهاء إذا كانت هناك تحفظات مسجلة)
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
                                 if (isManager) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                    SnackBar(
+                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
                                       backgroundColor: Colors.orange,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                   );
                                   return;
                                 }
+
+                                final hasReserve = t['has_reserve'] == 1;
+                                if (hasReserve) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text(
+                                        '🛑 لا يمكن إنهاء هذا العنصر لوجود تحفظات ونقائص مسجلة! يجب رفع وإلغاء التحفظ أولاً من صفحة إدارة التحفظات (Réserve).',
+                                        style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                      ),
+                                      backgroundColor: Colors.red.shade800,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      duration: const Duration(seconds: 4),
+                                    ),
+                                  );
+                                  return;
+                                }
+
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
@@ -881,9 +915,12 @@ class _ExternalOperationsHubScreenState
                                   await _loadDataQuietly();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('تم الانتهاء بنجاح، إلغاء التحفظ آلياً وتحويل النافذة للأرشيف 📦✅', style: TextStyle(fontFamily: 'Cairo')),
+                                      SnackBar(
+                                        content: const Text('تم الانتهاء بنجاح وتحويل النافذة للأرشيف 📦✅', style: TextStyle(fontFamily: 'Cairo')),
                                         backgroundColor: Colors.green,
+                                        behavior: SnackBarBehavior.floating,
+                                        margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                       ),
                                     );
                                   }
@@ -917,9 +954,12 @@ class _ExternalOperationsHubScreenState
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
                                 if (isManager) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                    SnackBar(
+                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
                                       backgroundColor: Colors.orange,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                   );
                                   return;
@@ -957,7 +997,7 @@ class _ExternalOperationsHubScreenState
                                           onPressed: () async {
                                             Navigator.pop(ctx, false);
                                             await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
-                                            await _loadData();
+                                            await _loadDataQuietly();
                                           },
                                           child: const Text('إلغاء التحفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.red)),
                                         ),
@@ -978,12 +1018,15 @@ class _ExternalOperationsHubScreenState
                                   final txt = notesCtrl.text.trim();
                                   if (txt.isNotEmpty) {
                                     await widget.db.updateWorkerAllocationReserve(allocId, 1, txt);
-                                    await _loadData();
+                                    await _loadDataQuietly();
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('تم تسجيل النقائص والتحفظ بنجاح ونقله لصفحة إدارة التحفظات ⚠️✅', style: TextStyle(fontFamily: 'Cairo')),
+                                        SnackBar(
+                                          content: const Text('تم تسجيل النقائص والتحفظ بنجاح ونقله لصفحة إدارة التحفظات ⚠️✅', style: TextStyle(fontFamily: 'Cairo')),
                                           backgroundColor: Colors.orange,
+                                          behavior: SnackBarBehavior.floating,
+                                          margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                         ),
                                       );
                                     }
