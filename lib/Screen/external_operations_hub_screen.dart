@@ -146,6 +146,8 @@ class _ExternalOperationsHubScreenState
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF0F172A) : Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
         title: Text(
           _tr('المهمات والأعمال الخارجية', 'Tâches & Opérations Externe', 'External Tasks & Operations', lang),
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
@@ -793,7 +795,9 @@ class _ExternalOperationsHubScreenState
                                 size: 16,
                               ),
                               label: Text(
-                                isDistributed ? 'تم التوزيع ✅' : 'تم التوزيع 🚚',
+                                isDistributed
+                                    ? _tr('تم التوزيع ✅', 'Distribué ✅', 'Distributed ✅', lang)
+                                    : _tr('تم التوزيع 🚚', 'Distribué 🚚', 'Distributed 🚚', lang),
                                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                               style: ElevatedButton.styleFrom(
@@ -840,7 +844,9 @@ class _ExternalOperationsHubScreenState
                                 size: 16,
                               ),
                               label: Text(
-                                isInstalled ? 'تم التركيب ✅' : 'تم التركيب 🛠️',
+                                isInstalled
+                                    ? _tr('تم التركيب ✅', 'Installé ✅', 'Installed ✅', lang)
+                                    : _tr('تم التركيب 🛠️', 'Installé 🛠️', 'Installed 🛠️', lang),
                                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                               style: ElevatedButton.styleFrom(
@@ -888,20 +894,20 @@ class _ExternalOperationsHubScreenState
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
-                                    title: const Text('إتمام العمل والتحويل للأرشيف', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                                    content: const Text(
-                                      'هل تم الانتهاء كلياً من تركيب هذا العنصر والتخلص من تحفظاته ونقله نهائياً للأرشيف؟',
-                                      style: TextStyle(fontFamily: 'Cairo'),
+                                    title: Text(_tr('إتمام العمل والتحويل للأرشيف', 'Terminer et archiver', 'Complete and archive', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    content: Text(
+                                      _tr('هل تم الانتهاء كلياً من تركيب هذا العنصر والتخلص من تحفظاته ونقله نهائياً للأرشيف؟', 'Voulez-vous vraiment terminer et archiver cet élément ?', 'Are you sure you want to complete and archive this item?', lang),
+                                      style: const TextStyle(fontFamily: 'Cairo'),
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.pop(ctx, false),
-                                        child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+                                        child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
                                       ),
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                                         onPressed: () => Navigator.pop(ctx, true),
-                                        child: const Text('تأكيد الانتهاء', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                                        child: Text(_tr('تأكيد الانتهاء', 'Confirmer', 'Confirm', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.white)),
                                       ),
                                     ],
                                   ),
@@ -932,7 +938,9 @@ class _ExternalOperationsHubScreenState
                                 color: isCompleted ? Colors.white : (isDark ? Colors.grey.shade300 : Colors.grey.shade700),
                               ),
                               label: Text(
-                                isCompleted ? 'تم الانتهاء ✅' : 'تم الانتهاء',
+                                isCompleted
+                                    ? _tr('تم الانتهاء ✅', 'Terminé ✅', 'Completed ✅', lang)
+                                    : _tr('تم الانتهاء', 'Terminé', 'Completed', lang),
                                 style: TextStyle(
                                   fontFamily: 'Cairo',
                                   fontSize: 11,
@@ -972,21 +980,23 @@ class _ExternalOperationsHubScreenState
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     title: Text(
-                                      hasReserve ? 'تعديل أو إلغاء التحفظ (Réserve)' : 'تسجيل نقائص النافذة / تحفظ ⚠️',
+                                      hasReserve
+                                          ? _tr('تعديل أو إلغاء التحفظ (Réserve)', 'Modifier ou annuler réserve', 'Edit or cancel reserve', lang)
+                                          : _tr('تسجيل نقائص النافذة / تحفظ ⚠️', 'Saisir les réserves ⚠️', 'Log window reserve ⚠️', lang),
                                       style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                                     ),
                                     content: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        const Text('ما هي النقائص والتفاصيل الميدانية لهاته النافذة؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                                        Text(_tr('ما هي النقائص والتفاصيل الميدانية لهاته النافذة؟', 'Quels sont les détails des réserves ?', 'What are the details of the reserves?', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
                                         const SizedBox(height: 8),
                                         TextField(
                                           controller: notesCtrl,
                                           maxLines: 3,
-                                          decoration: const InputDecoration(
-                                            hintText: 'أدخل النقائص: مثال: ناقص مقبض، زجاج مكسور...',
-                                            border: OutlineInputBorder(),
+                                          decoration: InputDecoration(
+                                            hintText: _tr('أدخل النقائص: مثال: ناقص مقبض، زجاج مكسور...', 'Saisir les réserves...', 'Enter reserve details...', lang),
+                                            border: const OutlineInputBorder(),
                                           ),
                                         ),
                                       ],
@@ -999,16 +1009,16 @@ class _ExternalOperationsHubScreenState
                                             await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
                                             await _loadDataQuietly();
                                           },
-                                          child: const Text('إلغاء التحفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.red)),
+                                          child: Text(_tr('إلغاء التحفظ', 'Annuler réserve', 'Cancel reserve', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.red)),
                                         ),
                                       TextButton(
                                         onPressed: () => Navigator.pop(ctx, null),
-                                        child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+                                        child: Text(_tr('إغلاق', 'Fermer', 'Close', lang), style: const TextStyle(fontFamily: 'Cairo')),
                                       ),
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                                         onPressed: () => Navigator.pop(ctx, true),
-                                        child: const Text('حفظ التحفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                                        child: Text(_tr('حفظ التحفظ', 'Enregistrer', 'Save reserve', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.white)),
                                       ),
                                     ],
                                   ),
@@ -1038,7 +1048,9 @@ class _ExternalOperationsHubScreenState
                                 size: 16,
                               ),
                               label: Text(
-                                t['has_reserve'] == 1 ? 'تحفظ مسجّل ⚠️' : 'تحفظ ⚠️',
+                                t['has_reserve'] == 1
+                                    ? _tr('تحفظ مسجّل ⚠️', 'Réserve Inscrite ⚠️', 'Reserve Logged ⚠️', lang)
+                                    : _tr('تحفظ ⚠️', 'Réserve ⚠️', 'Reserve ⚠️', lang),
                                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                               style: ElevatedButton.styleFrom(
@@ -1201,9 +1213,15 @@ class _ExternalOperationsHubScreenState
                       final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
                       if (isManager) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('⚠️ أزرار رفع وإلغاء التحفظ مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                          SnackBar(
+                            content: Text(
+                              _tr('⚠️ أزرار رفع وإلغاء التحفظ مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️', '⚠️ Seul l\'ouvrier peut lever les réserves ! Compte gérant en lecture seule 👁️', '⚠️ Only worker can clear reserves! Manager account is read-only 👁️', lang),
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
                             backgroundColor: Colors.orange,
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         );
                         return;
@@ -1212,9 +1230,12 @@ class _ExternalOperationsHubScreenState
                       await _loadDataQuietly();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('تم رفع وإلغاء التحفظ بنجاح 🔄✅', style: TextStyle(fontFamily: 'Cairo')),
+                          SnackBar(
+                            content: Text(_tr('تم رفع وإلغاء التحفظ بنجاح 🔄✅', 'Réserve levée avec succès 🔄✅', 'Reserve cleared successfully 🔄✅', lang), style: const TextStyle(fontFamily: 'Cairo')),
                             backgroundColor: Colors.green,
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         );
                       }

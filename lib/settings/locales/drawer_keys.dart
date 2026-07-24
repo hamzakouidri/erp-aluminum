@@ -356,4 +356,44 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Modifier les systèmes actifs',
     AppLanguage.english: 'Edit Active Systems',
   },
+  'كود انضمام العمال': {
+    AppLanguage.arabic: 'كود انضمام العمال',
+    AppLanguage.french: 'Code d\'adhésion des ouvriers',
+    AppLanguage.english: 'Worker Joining Code',
+  },
+  'مهامي وتصنيعاتي': {
+    AppLanguage.arabic: 'مهامي وتصنيعاتي',
+    AppLanguage.french: 'Mes Tâches & Fabrications',
+    AppLanguage.english: 'My Tasks & Manufacturing',
+  },
+  'صفحة مهامي': {
+    AppLanguage.arabic: 'مهامي وتصنيعاتي',
+    AppLanguage.french: 'Mes Tâches & Fabrications',
+    AppLanguage.english: 'My Tasks & Manufacturing',
+  },
+  'تم التوزيع': {
+    AppLanguage.arabic: 'تم التوزيع',
+    AppLanguage.french: 'Distribué',
+    AppLanguage.english: 'Distributed',
+  },
+  'تم التركيب': {
+    AppLanguage.arabic: 'تم التركيب',
+    AppLanguage.french: 'Installé',
+    AppLanguage.english: 'Installed',
+  },
+  'تحفظ': {
+    AppLanguage.arabic: 'تحفظ',
+    AppLanguage.french: 'Réserve',
+    AppLanguage.english: 'Reserve',
+  },
+  'تم الانتهاء': {
+    AppLanguage.arabic: 'تم الانتهاء',
+    AppLanguage.french: 'Terminé',
+    AppLanguage.english: 'Completed',
+  },
+  'بطاقة مهامي': {
+    AppLanguage.arabic: 'بطاقة مهامي وتصنيعاتي',
+    AppLanguage.french: 'Carte Mes Tâches',
+    AppLanguage.english: 'My Tasks Card',
+  },
 };

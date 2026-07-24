@@ -1,6 +1,7 @@
 import 'package:database_data/Screen/workers_management_screen.dart';
 import 'package:database_data/Screen/treasury_screen.dart';
 import 'package:database_data/Screen/worker_finances_screen.dart';
+import '../services/cloud_sync_service.dart';
 import '../items_produits/products_menu_screen.dart';
 import 'admin_users_screen.dart';
 import 'projects_screen.dart';
@@ -32,6 +33,7 @@ import '../settings/localization.dart';
 import 'dart:convert';
 import 'worker_tasks_screen.dart';
 import 'worker_weekly_settlement_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 class AppDrawer extends StatefulWidget {
@@ -43,6 +45,24 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   SqlDatabase db = SqlDatabase();
+  String? _savedLogoBase64;
+  String? _savedWorkshopName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalWorkshopInfo();
+  }
+
+  Future<void> _loadLocalWorkshopInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _savedLogoBase64 = prefs.getString('workshop_logo_base64');
+        _savedWorkshopName = prefs.getString('workshop_name');
+      });
+    }
+  }
 
   void _openScreen(String title, IconData icon, Widget screen, {String? titleKey}) {
     Navigator.pop(context);
@@ -138,8 +158,12 @@ class _AppDrawerState extends State<AppDrawer> {
 
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                workshopName = data['workshopName'] ?? workshopName;
-                logoBase64 = data['workshopLogoUrl'];
+                workshopName = (data['workshopName'] as String?)?.isNotEmpty == true
+                    ? data['workshopName']
+                    : (_savedWorkshopName?.isNotEmpty == true ? _savedWorkshopName! : workshopName);
+                logoBase64 = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+                    ? data['workshopLogoUrl']
+                    : _savedLogoBase64;
                 joinCode = data['joinCode'];
                 role = data['role'];
                 displayName =
@@ -179,14 +203,28 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 currentAccountPicture: Builder(
                   builder: (ctx) {
-                    final hasLogo = logoBase64 != null && logoBase64.isNotEmpty;
+                    ImageProvider? imageProvider;
+                    final logo = logoBase64;
+                    if (logo != null && logo.isNotEmpty) {
+                      if (logo.startsWith('http')) {
+                        imageProvider = NetworkImage(logo);
+                      } else {
+                        try {
+                          final bytes = base64Decode(logo);
+                          if (bytes.isNotEmpty) {
+                            imageProvider = MemoryImage(bytes);
+                          }
+                        } catch (e) {
+                          debugPrint('Error decoding drawer logo base64: $e');
+                        }
+                      }
+                    }
+
                     return CircleAvatar(
                       radius: 40,
                       backgroundColor: Theme.of(context).cardColor,
-                      backgroundImage: hasLogo
-                          ? MemoryImage(base64Decode(logoBase64 ?? ''))
-                          : null,
-                      child: !hasLogo
+                      backgroundImage: imageProvider,
+                      child: imageProvider == null
                           ? const Icon(
                               Icons.storefront,
                               size: 40,
@@ -214,27 +252,29 @@ class _AppDrawerState extends State<AppDrawer> {
 
                 if (role == 'manager' || role == 'admin') {
                   if (joinCode != null && joinCode.isNotEmpty) {
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
                     return Container(
-                      color: Colors.blue.shade50,
+                      color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
                       child: ListTile(
-                        leading: const Icon(Icons.qr_code, color: Colors.blue),
+                        leading: Icon(Icons.qr_code, color: isDark ? Colors.lightBlue.shade300 : Colors.blue),
                         title: Text(
                           Localization.translate('كود انضمام العمال', lang),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: isDark ? Colors.lightBlue.shade300 : Colors.blue,
                           ),
                         ),
                         subtitle: Text(
                           joinCode,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             letterSpacing: 2,
                             fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
                           ),
                         ),
                         trailing: IconButton(
-                          icon: const Icon(Icons.copy, color: Colors.blue),
+                          icon: Icon(Icons.copy, color: isDark ? Colors.lightBlue.shade300 : Colors.blue),
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: joinCode));
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -306,33 +346,34 @@ class _AppDrawerState extends State<AppDrawer> {
               return const SizedBox.shrink();
             },
           ),
-          if (settings.userRole == 'worker' || settings.isManager)
+          if (settings.canViewMyTasks())
             ListTile(
               leading: const Icon(Icons.engineering_rounded, color: Colors.indigo),
-              title: Text(lang == AppLanguage.arabic ? 'مهامي وتصنيعاتي' : 'Mes Tâches'),
+              title: Text(Localization.translate('مهامي وتصنيعاتي', lang)),
               onTap: () {
                 _openScreen(
-                  lang == AppLanguage.arabic ? 'مهامي وتصنيعاتي' : 'Mes Tâches',
+                  Localization.translate('مهامي وتصنيعاتي', lang),
                   Icons.engineering_rounded,
                   WorkerTasksScreen(db: db),
-                  titleKey: lang == AppLanguage.arabic ? 'مهامي وتصنيعاتي' : 'Mes Tâches',
+                  titleKey: 'مهامي وتصنيعاتي',
                 );
               },
             ),
-          ListTile(
-            leading: const Icon(Icons.construction_rounded, color: Colors.teal),
-            title: Text(lang == AppLanguage.arabic
-                ? 'الأعمال والمهمات الخارجية'
-                : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations')),
-            onTap: () {
-              _openScreen(
-                lang == AppLanguage.arabic ? 'الأعمال والمهمات الخارجية' : 'Opérations Externe',
-                Icons.construction_rounded,
-                ExternalOperationsHubScreen(db: db),
-                titleKey: 'external_operations',
-              );
-            },
-          ),
+          if (settings.canAccessExternalOperations())
+            ListTile(
+              leading: const Icon(Icons.construction_rounded, color: Colors.teal),
+              title: Text(lang == AppLanguage.arabic
+                  ? 'الأعمال والمهمات الخارجية'
+                  : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations')),
+              onTap: () {
+                _openScreen(
+                  lang == AppLanguage.arabic ? 'الأعمال والمهمات الخارجية' : 'Opérations Externe',
+                  Icons.construction_rounded,
+                  ExternalOperationsHubScreen(db: db),
+                  titleKey: 'external_operations',
+                );
+              },
+            ),
           if (settings.canViewOrders())
             ListTile(
               leading: const Icon(Icons.list),
@@ -347,7 +388,7 @@ class _AppDrawerState extends State<AppDrawer> {
               },
             ),
 
-          if (settings.canViewOrders())
+          if (settings.canViewProjects())
             ListTile(
               leading: const Icon(Icons.folder_shared_rounded),
               title: Text(Localization.translate('المشاريع', lang)),
@@ -374,7 +415,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.canViewClients())
+          if (settings.canViewClientLedger())
             ListTile(
               leading: const Icon(Icons.history_edu_rounded, color: Colors.blue),
               title: Text(Localization.translate('كشف حساب الزبائن', lang)),
@@ -387,7 +428,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.canViewOrders())
+          if (settings.canAccessDistributionTracking())
             ListTile(
               leading: const Icon(Icons.delivery_dining_rounded, color: Colors.blue),
               title: Text(Localization.translate('خطط التوزيع والتتبع', lang)),
@@ -413,8 +454,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          // Vente might be orders creation or just another view, assuming viewOrders
-          if (settings.canViewOrders())
+          if (settings.canViewSales())
             ListTile(
               leading: const Icon(Icons.monetization_on_rounded, color: Colors.teal),
               title: Text(Localization.translate('vente', lang)),
@@ -427,7 +467,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.isManager)
+          if (settings.canViewMyAccreditations())
             ListTile(
               leading: const Icon(Icons.production_quantity_limits),
               title: Text(Localization.translate('produits', lang)),
@@ -440,7 +480,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.isManager)
+          if (settings.canAccessInventory())
             ListTile(
               leading: const Icon(
                 Icons.warehouse_rounded,
@@ -484,7 +524,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.canViewStatistics())
+          if (settings.canViewGlobalConsumption())
             ListTile(
               leading: const Icon(Icons.inventory_2, color: Colors.indigo),
               title: Text(
@@ -503,7 +543,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.canViewStatistics())
+          if (settings.canViewWorkerFinances())
             ListTile(
               leading: const Icon(Icons.people_alt),
               title: Text(
@@ -519,7 +559,7 @@ class _AppDrawerState extends State<AppDrawer> {
               },
             ),
 
-          if (settings.canViewStatistics())
+          if (settings.canViewWorkerWeeklySettlement())
             ListTile(
               leading: const Icon(Icons.calculate_rounded),
               title: Text(
@@ -549,18 +589,19 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          ListTile(
-            leading: const Icon(Icons.dashboard_customize_rounded, color: Colors.teal),
-            title: Text(Localization.translate('تحديد الأنظمة المستعملة', lang)),
-            onTap: () {
-              _openScreen(
-                Localization.translate('تحديد الأنظمة المستعملة', lang),
-                Icons.dashboard_customize_rounded,
-                const SelectedSystemsScreen(),
-                titleKey: 'تحديد الأنظمة المستعملة',
-              );
-            },
-          ),
+          if (settings.canSelectSystems())
+            ListTile(
+              leading: const Icon(Icons.dashboard_customize_rounded, color: Colors.teal),
+              title: Text(Localization.translate('تحديد الأنظمة المستعملة', lang)),
+              onTap: () {
+                _openScreen(
+                  Localization.translate('تحديد الأنظمة المستعملة', lang),
+                  Icons.dashboard_customize_rounded,
+                  const SelectedSystemsScreen(),
+                  titleKey: 'تحديد الأنظمة المستعملة',
+                );
+              },
+            ),
           if (isAdmin)
             ListTile(
               leading: const Icon(
@@ -583,7 +624,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 );
               },
             ),
-          if (settings.isManager)
+          if (settings.canAccessSettings())
             ListTile(
               leading: const Icon(Icons.settings),
               title: Text(Localization.translate('settings', lang)),
@@ -617,6 +658,7 @@ class _AppDrawerState extends State<AppDrawer> {
               Navigator.pop(context);
               // تسجيل الخروج من Firebase و Google
               try {
+                CloudSyncService().reset();
                 await FirebaseAuth.instance.signOut();
                 await GoogleSignIn().signOut();
                 await SqlDatabase.clearAllLocalData();

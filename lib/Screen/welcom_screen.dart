@@ -323,22 +323,42 @@ class _WelcomScreenState extends State<WelcomScreen> {
           .listen((doc) {
             if (doc.exists && mounted) {
               final data = doc.data() as Map<String, dynamic>;
-              setState(() {
-                _workshopName = data['workshopName'] ?? 'ورشة النجارة';
-                _workshopPhone = data['phone'] ?? data['phoneNumber'] ?? '';
-                if (data['email'] != null) {
-                  _userEmail = data['email'];
-                }
-                _logoUrl = data['workshopLogoUrl'];
+              SharedPreferences.getInstance().then((prefs) {
+                if (!mounted) return;
+                final savedName = prefs.getString('workshop_name');
+                final savedLogo = prefs.getString('workshop_logo_base64');
+                setState(() {
+                  _workshopName = (data['workshopName'] as String?)?.isNotEmpty == true
+                      ? data['workshopName']
+                      : (savedName?.isNotEmpty == true ? savedName! : 'ورشة النجارة');
+                  _workshopPhone = data['phone'] ?? data['phoneNumber'] ?? '';
+                  if (data['email'] != null) {
+                    _userEmail = data['email'];
+                  }
+                  _logoUrl = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+                      ? data['workshopLogoUrl']
+                      : savedLogo;
+                });
               });
             }
           });
 
-      // بدء الاستماع لتحديثات الأجهزة الأخرى (المزامنة التلقائية)
+      // بدء الاستماع لتحديثات الأجهزة الأخرى (المزامنة التلقائية والإنعاش التلقائي)
       await CloudSyncService().init();
-      CloudSyncService().startListeningForUpdates(() {
+      _autoSyncData();
+
+      CloudSyncService().dbUpdateStream.listen((_) {
         if (mounted) {
+          Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
           _loadStats();
+        }
+      });
+
+      CloudSyncService().startListeningForUpdates(() async {
+        if (mounted) {
+          await Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
+          await _loadStats();
+          if (!mounted) return;
           setState(() {});
           final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -350,6 +370,42 @@ class _WelcomScreenState extends State<WelcomScreen> {
           );
         }
       });
+    }
+  }
+
+  bool _isManualSyncing = false;
+
+  Future<void> _autoSyncData({bool showSnackBar = false}) async {
+    if (_isManualSyncing) return;
+    if (mounted) setState(() => _isManualSyncing = true);
+    if (showSnackBar && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('جاري تنزيل وتحديث كافة بيانات الورشة والطلبات من السحابة... ⏳', style: TextStyle(fontFamily: 'Cairo')),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    }
+    try {
+      await CloudSyncService().fullRecoverySync();
+      if (mounted) {
+        await Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
+        await _loadStats();
+        if (showSnackBar) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم تنزيل وتحديث البيانات والطلبات من السحابة بنجاح 🔄', style: TextStyle(fontFamily: 'Cairo')),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Auto sync data error: $e');
+    } finally {
+      if (mounted) setState(() => _isManualSyncing = false);
     }
   }
 
@@ -428,8 +484,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
             Positioned.fill(
               child: _WaterWaveBackground(enabled: settings.enablePremiumAnimations),
             ),
-          CustomScrollView(
-            slivers: [
+          RefreshIndicator(
+            onRefresh: _autoSyncData,
+            color: Colors.blue,
+            child: CustomScrollView(
+              slivers: [
               _buildSliverHeader(context),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -462,6 +521,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
               ),
             ],
           ),
+          ),
         ],
       ),
     ), // end Scaffold
@@ -484,25 +544,20 @@ class _WelcomScreenState extends State<WelcomScreen> {
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-          tooltip: 'تحديث البيانات والرسوم البيانية',
-          onPressed: () async {
-            await _loadStats();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'تم تحديث بيانات الزبائن والطلبات بنجاح',
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                  duration: Duration(seconds: 2),
-                  backgroundColor: Colors.blue,
+        _isManualSyncing
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                 ),
-              );
-            }
-          },
-        ),
+              )
+            : IconButton(
+                icon: const Icon(Icons.sync_rounded, color: Colors.white),
+                tooltip: 'تحديث ومزامنة البيانات والمهام من السحابة',
+                onPressed: () => _autoSyncData(showSnackBar: true),
+              ),
         Stack(
           alignment: Alignment.center,
           children: [
@@ -592,36 +647,59 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     // أفاتار الشركة
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [_blue, _cyan], begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        image: (_logoUrl != null && _logoUrl!.isNotEmpty)
-                            ? DecorationImage(
-                                image: MemoryImage(base64Decode(_logoUrl!)),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                        boxShadow: [
-                          BoxShadow(
-                            color: _blue.withValues(alpha: 0.4),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
+                    Builder(
+                      builder: (context) {
+                        ImageProvider? logoImageProvider;
+                        if (_logoUrl != null && _logoUrl!.isNotEmpty) {
+                          if (_logoUrl!.startsWith('http')) {
+                            logoImageProvider = NetworkImage(_logoUrl!);
+                          } else {
+                            try {
+                              final bytes = base64Decode(_logoUrl!);
+                              if (bytes.isNotEmpty) {
+                                logoImageProvider = MemoryImage(bytes);
+                              }
+                            } catch (e) {
+                              debugPrint('Error decoding welcome screen logo base64: $e');
+                            }
+                          }
+                        }
+
+                        return Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: Theme.of(context).brightness == Brightness.dark
+                                  ? [Color(0xFF111827), Color(0xFF070E1D)]
+                                  : [_blue, _cyan],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            image: logoImageProvider != null
+                                ? DecorationImage(
+                                    image: logoImageProvider,
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                            boxShadow: [
+                              BoxShadow(
+                                color: _blue.withValues(alpha: 0.4),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: (_logoUrl == null || _logoUrl!.isEmpty)
-                          ? const Icon(
-                              Icons.carpenter_rounded,
-                              color: Colors.white,
-                              size: 28,
-                            )
-                          : null,
+                          child: logoImageProvider == null
+                              ? const Icon(
+                                  Icons.carpenter_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                )
+                              : null,
+                        );
+                      },
                     ),
                     const SizedBox(width: 14),
                     Column(
@@ -797,6 +875,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
   // ── بطاقة رفع القياسات الذكية كاملة العرض ─────────────────────────────────────
   Widget _buildMeasurementCard(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.canAccessMeasurements()) {
+      return const SizedBox.shrink();
+    }
     final lang = settings.language;
     
     return Container(
@@ -913,7 +994,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             }
           },
         ),
-      if (settings.canViewOrders())
+      if (settings.canViewProjects())
         _NavItem(
           icon: Icons.folder_shared_rounded,
           label: Localization.translate('المشاريع', lang),
@@ -937,7 +1018,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: const Customers(),
           ),
         ),
-      if (settings.isManager)
+      if (settings.canViewMyAccreditations())
         _NavItem(
           icon: Icons.inventory_2_rounded,
           label: Localization.translate('produits', lang),
@@ -947,6 +1028,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
             title: Localization.translate('produits', lang),
             icon: Icons.inventory_2_rounded,
             screen: ProductsMenuScreen(db: db),
+          ),
+        ),
+      if (settings.canViewMyTasks())
+        _NavItem(
+          icon: Icons.assignment_turned_in_rounded,
+          label: Localization.translate('مهامي وتصنيعاتي', lang),
+          color: const Color(0xFF14B8A6), // Teal
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('مهامي وتصنيعاتي', lang),
+            icon: Icons.assignment_turned_in_rounded,
+            screen: WorkerTasksScreen(db: db),
           ),
         ),
       if (settings.canViewSuppliers())
@@ -961,7 +1054,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: SuppliersScreen(db: db),
           ),
         ),
-      if (settings.isManager)
+      if (settings.canAccessInventory())
         _NavItem(
           icon: Icons.warehouse_rounded,
           label: Localization.translate('المخزون', lang),
@@ -985,17 +1078,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: AchatScreen(db: db),
           ),
         ),
-      _NavItem(
-        icon: Icons.settings_rounded,
-        label: Localization.translate('settings', lang),
-        color: const Color(0xFF64748B), // Slate Indigo
-        onTap: () => openAdaptiveScreen(
-          context,
-          title: Localization.translate('settings', lang),
+      if (settings.canAccessSettings())
+        _NavItem(
           icon: Icons.settings_rounded,
-          screen: const SettingsScreen(),
+          label: Localization.translate('settings', lang),
+          color: const Color(0xFF64748B), // Slate Indigo
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('settings', lang),
+            icon: Icons.settings_rounded,
+            screen: const SettingsScreen(),
+          ),
         ),
-      ),
       if (settings.canViewStatistics())
         _NavItem(
           icon: Icons.bar_chart_rounded,
@@ -1020,33 +1114,22 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: TreasuryScreen(db: db),
           ),
         ),
-      if (settings.userRole == 'worker' || settings.isManager)
+      if (settings.canAccessExternalOperations())
         _NavItem(
-          icon: Icons.assignment_turned_in_rounded,
-          label: lang == AppLanguage.arabic ? 'مهامي وتصنيعاتي' : 'Mes tâches',
-          color: const Color(0xFFD97706), // Vivid Amber Orange
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: lang == AppLanguage.arabic ? 'مهامي وتصنيعاتي' : 'Mes tâches',
-            icon: Icons.assignment_turned_in_rounded,
-            screen: WorkerTasksScreen(db: db),
-          ),
-        ),
-      _NavItem(
-        icon: Icons.engineering_rounded,
-        label: lang == AppLanguage.arabic
-            ? 'الأعمال والمهمات الخارجية'
-            : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations'),
-        color: const Color(0xFF0D9488), // Luminous Teal
-        onTap: () => openAdaptiveScreen(
-          context,
-          title: lang == AppLanguage.arabic
+          icon: Icons.engineering_rounded,
+          label: lang == AppLanguage.arabic
               ? 'الأعمال والمهمات الخارجية'
               : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations'),
-          icon: Icons.engineering_rounded,
-          screen: ExternalOperationsHubScreen(db: db),
+          color: const Color(0xFF0D9488), // Luminous Teal
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: lang == AppLanguage.arabic
+                ? 'الأعمال والمهمات الخارجية'
+                : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations'),
+            icon: Icons.engineering_rounded,
+            screen: ExternalOperationsHubScreen(db: db),
+          ),
         ),
-      ),
     ];
 
     return GridView.builder(

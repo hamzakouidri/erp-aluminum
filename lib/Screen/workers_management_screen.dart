@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../settings/app_settings.dart';
 import '../sql_database.dart';
 
 class WorkersManagementScreen extends StatefulWidget {
@@ -18,6 +21,24 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
   List<Map<String, dynamic>> _workers = [];
   bool _isLoading = false;
   String _joinCode = 'جاري التحميل...';
+
+  /// هل المستخدم الحالي نائب مدير (عامل بصلاحية manage_workers) وليس المدير الأصلي؟
+  bool get _isDeputyManager {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    return !settings.isManager && settings.canManageWorkers();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    // إغلاق الصفحة فوراً إذا سُحبت صلاحية إدارة الفريق
+    if (!settings.isManager && !settings.canManageWorkers()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -37,19 +58,26 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
 
       // Remove manager if accidentally added to local DB
       if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final managerUid = (prefs.getString('workshop_code')?.isNotEmpty == true)
+            ? prefs.getString('workshop_code')!
+            : user.uid;
+
         final doc = await FirebaseFirestore.instance
             .collection('users')
-            .doc(user.uid)
+            .doc(managerUid)
             .get();
         if (doc.exists && doc.data() != null) {
-          _joinCode = doc.data()!['joinCode'] ?? user.uid;
+          _joinCode = doc.data()!['joinCode'] ?? managerUid;
+        } else {
+          _joinCode = managerUid;
         }
 
-        final managerInDb = data.where((w) => w['uid'] == user.uid).toList();
+        final managerInDb = data.where((w) => w['uid'] == managerUid).toList();
         for (var m in managerInDb) {
           await widget.db.deleteEmployee(m['uid']);
         }
-        data.removeWhere((w) => w['uid'] == user.uid);
+        data.removeWhere((w) => w['uid'] == managerUid || w['uid'] == user.uid);
       }
 
       // ✅ فلترة وتصفية القائمة: لا نعرض العمال المحليين (local_worker_) ولا من ليس لديهم إيميل حقيقي
@@ -76,9 +104,14 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
+      final prefs = await SharedPreferences.getInstance();
+      final targetWorkshopId = (prefs.getString('workshop_code')?.isNotEmpty == true)
+          ? prefs.getString('workshop_code')!
+          : user.uid;
+
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
-          .where('workshopId', isEqualTo: user.uid)
+          .where('workshopId', isEqualTo: targetWorkshopId)
           .get();
 
       final existingWorkers = await widget.db.readEmployees();
@@ -87,7 +120,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
           .toSet();
 
       for (var doc in snapshot.docs) {
-        if (doc.id == user.uid) continue; // Exclude the manager
+        if (doc.id == targetWorkshopId || doc.id == user.uid) continue; // Exclude manager & self
 
         final data = doc.data();
         if (!existingUids.contains(doc.id)) {
@@ -112,32 +145,61 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
               data['email'] ?? 'No Email',
             );
           } else {
-            // New worker found in cloud, insert
-            final defaultPermissions = jsonEncode({
-              'view_clients': false,
-              'create_clients': false,
-              'view_orders': false,
-              'create_orders': false,
-              'view_client_details': false,
-              'view_order_details': false,
-              'change_prices': false,
-              'treasury': false,
-              'manage_workers': false,
-              'purchases': false,
-              'add_purchases': false,
-              'edit_purchases': false,
-              'delete_purchases': false,
-              'delete_orders': false,
-              'statistics': false,
-              'isBlocked': false,
-              'view_suppliers': false,
-            });
+            // New worker found in cloud, preserve their cloud permissions if present, else use default
+            String workerPermissionsJson;
+            if (data['permissions_json'] is String && (data['permissions_json'] as String).isNotEmpty) {
+              workerPermissionsJson = data['permissions_json'];
+            } else if (data['permissions'] is Map) {
+              workerPermissionsJson = jsonEncode(data['permissions']);
+            } else {
+              workerPermissionsJson = jsonEncode({
+                'view_clients': true,
+                'create_clients': false,
+                'view_orders': true,
+                'create_orders': false,
+                'view_client_details': true,
+                'view_order_details': true,
+                'view_my_tasks': true,
+                'view_my_accreditations': true,
+                'isBlocked': false,
+              });
+            }
+
             await widget.db.insertEmployee(
               doc.id,
               data['email'] ?? 'No Email',
-              data['name'] ?? 'عامل جديد',
-              defaultPermissions,
+              (data['displayName'] as String?)?.trim().isNotEmpty == true
+                  ? data['displayName'].toString().trim()
+                  : (data['name'] as String?)?.trim().isNotEmpty == true
+                      ? data['name'].toString().trim()
+                      : 'عامل جديد',
+              workerPermissionsJson,
             );
+          }
+        } else {
+          // ✅ العامل موجود مسبقاً — نحدّث اسمه إذا كان "عامل جديد" أو فارغاً
+          final cloudDisplayName = (data['displayName'] as String?)?.trim() ?? '';
+          final cloudName = (data['name'] as String?)?.trim() ?? '';
+          final resolvedName = cloudDisplayName.isNotEmpty
+              ? cloudDisplayName
+              : cloudName.isNotEmpty
+                  ? cloudName
+                  : '';
+          if (resolvedName.isNotEmpty) {
+            final existingWorker = existingWorkers.firstWhere(
+              (w) => w['uid'].toString() == doc.id,
+              orElse: () => {},
+            );
+            final currentName = (existingWorker['name'] ?? '').toString().trim();
+            if (currentName.isEmpty || currentName == 'عامل جديد') {
+              final dbInstance = await widget.db.db;
+              await dbInstance?.update(
+                'Employees',
+                {'name': resolvedName},
+                where: 'uid = ?',
+                whereArgs: [doc.id],
+              );
+            }
           }
         }
       }
@@ -163,6 +225,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDeputy = _isDeputyManager;
     return Scaffold(
       appBar: AppBar(
         title: const Text('إدارة صلاحيات الفريق'),
@@ -171,7 +234,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
             : Colors.blue,
         actions: [
           IconButton(
-            icon: Icon(Icons.cloud_download),
+            icon: const Icon(Icons.cloud_download),
             onPressed: _fetchWorkersFromCloud,
             tooltip: 'تحديث من السحابة',
           ),
@@ -211,6 +274,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
                       return WorkerCard(
                         worker: worker,
                         db: widget.db,
+                        isDeputyManager: isDeputy,
                         onRefresh: _loadWorkers,
                         onDelete: () async {
                           bool? confirm = await showDialog<bool>(
@@ -285,6 +349,8 @@ class WorkerCard extends StatefulWidget {
   final SqlDatabase db;
   final VoidCallback onDelete;
   final VoidCallback onRefresh;
+  /// إذا كان true، فالمستخدم الحالي نائب مدير (صلاحية محدودة)
+  final bool isDeputyManager;
 
   const WorkerCard({
     super.key,
@@ -292,6 +358,7 @@ class WorkerCard extends StatefulWidget {
     required this.db,
     required this.onDelete,
     required this.onRefresh,
+    this.isDeputyManager = false,
   });
 
   @override
@@ -323,19 +390,54 @@ class _WorkerCardState extends State<WorkerCard> {
     }
     final defaults = {
       'view_clients': false,
+      'view_client_ledger': false,
       'create_clients': false,
+      'edit_clients': false,
+      'delete_clients': false,
       'view_orders': false,
+      'view_projects': false,
+      'distribution_tracking': false,
+      'sales': false,
+      'inventory': false,
+      'global_consumption': false,
+      'worker_finances': false,
+      'worker_settlement': false,
       'create_orders': false,
+      'edit_orders': false,
+      'delete_orders': false,
       'view_client_details': false,
       'view_order_details': false,
+      'view_order_documents': false,
+      'fiche_de_coupe': false,
+      'view_order_materials': false,
+      'confirm_measurements': false,
+      'measurements_card': false,
+      'change_order_status': false,
+      'pass_to_next_stage': false,
+      'duplicate_orders': false,
+      'view_my_tasks': false,
+      'view_my_accreditations': false,
+      'view_profiles': false,
+      'view_glass': false,
+      'view_shutters': false,
+      'view_colors': false,
+      'view_accessories': false,
+      'view_series_accessories': false,
+      'view_joints': false,
+      'view_kit_bundles': false,
+      'external_operations': false,
+      'order_allocation': false,
+      'settings': false,
+      'select_systems': false,
       'change_prices': false,
       'treasury': false,
       'manage_workers': false,
+      'edit_worker': false,
+      'delete_worker': false,
       'purchases': false,
       'add_purchases': false,
       'edit_purchases': false,
       'delete_purchases': false,
-      'delete_orders': false,
       'statistics': false,
       'isBlocked': false,
       'view_suppliers': false,
@@ -354,16 +456,18 @@ class _WorkerCardState extends State<WorkerCard> {
       jsonEncode(perms),
     );
 
-    // Update Firebase immediately for instant blocking/unblocking
-    if (key == 'isBlocked') {
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.worker['uid'])
-            .update({'isBlocked': val});
-      } catch (e) {
-        debugPrint('Error updating isBlocked in Firebase: $e');
-      }
+    // ✅ تحديث الفايربيس فوراً لجميع الصلاحيات (الحظر، رؤية الزبائن، الطلبيات، الخزينة...)
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.worker['uid'])
+          .set({
+            'isBlocked': perms['isBlocked'] ?? false,
+            'permissions': perms,
+            'permissions_json': jsonEncode(perms),
+          }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating permissions in Firebase: $e');
     }
   }
 
@@ -534,13 +638,20 @@ class _WorkerCardState extends State<WorkerCard> {
     }
   }
 
-  bool _expanded = true;
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final phone = widget.worker['phone']?.toString() ?? '';
     final role  = widget.worker['job_role']?.toString() ?? '';
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final blueDivider = Divider(
+      height: 1,
+      color: isDark
+          ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
+          : const Color(0xFF2563EB).withValues(alpha: 0.3),
+    );
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -573,49 +684,66 @@ class _WorkerCardState extends State<WorkerCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.worker['name'] ?? widget.worker['email'] ?? '',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
-                          Text(
-                            widget.worker['email'] ?? '',
-                            style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                            widget.worker['name'] ?? 'بدون اسم',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              fontFamily: 'Cairo',
+                            ),
                           ),
                           if (phone.isNotEmpty)
-                            Row(children: [
-                              const Icon(Icons.phone, size: 12, color: Colors.green),
-                              const SizedBox(width: 3),
-                              Text(phone, style: const TextStyle(fontSize: 12, color: Colors.green)),
-                            ]),
+                            Text(
+                              phone,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
                           if (role.isNotEmpty)
-                            Text(role, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                            Text(
+                              'المنصب: $role',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
                         ],
                       ),
                     ),
                   ),
-                  // ── زر التعديل ─────────────────────────────────────
+                  // ── زر تعديل بيانات العامل ────────────────────────
+                  // للمدير الأصلي دائما، أو للنائب إذا منحت صلاحية edit_worker
+                  if (!widget.isDeputyManager || (perms['edit_worker'] ?? false))
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, color: Colors.blue),
+                      tooltip: 'تعديل بيانات العامل',
+                      onPressed: _showEditDialog,
+                    ),
+                  // ── زر طي / سدل القائمة ────────────────────────────
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: Color(0xFF2563EB), size: 22),
-                    tooltip: 'تعديل البيانات',
-                    onPressed: _showEditDialog,
+                    icon: Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                    ),
+                    onPressed: () => setState(() => _expanded = !_expanded),
                   ),
                   // ── زر الحذف ───────────────────────────────────────
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                    tooltip: 'حذف العامل',
-                    onPressed: widget.onDelete,
-                  ),
-                  // ── سهم التوسيع ────────────────────────────────────
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    color: Colors.grey,
-                  ),
+                  // للمدير الأصلي دائما، أو للنائب إذا منحت صلاحية delete_worker
+                  if (!widget.isDeputyManager || (perms['delete_worker'] ?? false))
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: widget.onDelete,
+                    ),
                 ],
               ),
             ),
           ),
           // ── قسم الصلاحيات (قابل للإخفاء) ───────────────────────
           if (_expanded) ...[
-            const Divider(height: 1),
+            blueDivider,
             Container(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.red.withOpacity(0.15)
@@ -630,96 +758,413 @@ class _WorkerCardState extends State<WorkerCard> {
                 onChanged: (val) => _updatePermission('isBlocked', val),
               ),
             ),
-            const Divider(height: 1),
-            SwitchListTile(
-              title: const Text('رؤية الزبائن'),
-              value: perms['view_clients'] ?? false,
-              onChanged: (val) => _updatePermission('view_clients', val),
+            blueDivider,
+
+            // 1️⃣ تصنيف صلاحيات الزبائن
+            ExpansionTile(
+              leading: const Icon(Icons.people_alt_rounded, color: Color(0xFF7C3AED)),
+              title: const Text('صلاحيات الزبائن (Clients)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('رؤية قائمة الزبائن'),
+                  value: perms['view_clients'] ?? false,
+                  onChanged: (val) => _updatePermission('view_clients', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية كشف حساب الزبائن التفصيلي (Chrono)'),
+                  value: perms['view_client_ledger'] ?? false,
+                  onChanged: (val) => _updatePermission('view_client_ledger', val),
+                ),
+                SwitchListTile(
+                  title: const Text('إنشاء زبون جديد'),
+                  value: perms['create_clients'] ?? false,
+                  onChanged: (val) => _updatePermission('create_clients', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تعديل بيانات الزبائن'),
+                  value: perms['edit_clients'] ?? false,
+                  onChanged: (val) => _updatePermission('edit_clients', val),
+                ),
+                SwitchListTile(
+                  title: const Text('مسح / حذف الزبائن'),
+                  value: perms['delete_clients'] ?? false,
+                  onChanged: (val) => _updatePermission('delete_clients', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية تفاصيل الزبون'),
+                  value: perms['view_client_details'] ?? false,
+                  onChanged: (val) => _updatePermission('view_client_details', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('إنشاء الزبائن'),
-              value: perms['create_clients'] ?? false,
-              onChanged: (val) => _updatePermission('create_clients', val),
+            blueDivider,
+
+            // 2️⃣ تصنيف صلاحيات الطلبيات والمشاريع
+            ExpansionTile(
+              leading: const Icon(Icons.receipt_long_rounded, color: Color(0xFF2563EB)),
+              title: const Text('صلاحيات الطلبيات والمشاريع (Commandes & Projets)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('رؤية قائمة الطلبيات'),
+                  value: perms['view_orders'] ?? false,
+                  onChanged: (val) => _updatePermission('view_orders', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية قائمة المشاريع (Projets)'),
+                  value: perms['view_projects'] ?? false,
+                  onChanged: (val) => _updatePermission('view_projects', val),
+                ),
+                SwitchListTile(
+                  title: const Text('خطط التوزيع والتتبع'),
+                  value: perms['distribution_tracking'] ?? false,
+                  onChanged: (val) => _updatePermission('distribution_tracking', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية سجل المبيعات (Vente)'),
+                  value: perms['sales'] ?? false,
+                  onChanged: (val) => _updatePermission('sales', val),
+                ),
+                SwitchListTile(
+                  title: const Text('إنشاء طلبيات جديدة'),
+                  value: perms['create_orders'] ?? false,
+                  onChanged: (val) => _updatePermission('create_orders', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تعديل الطلبيات'),
+                  value: perms['edit_orders'] ?? false,
+                  onChanged: (val) => _updatePermission('edit_orders', val),
+                ),
+                SwitchListTile(
+                  title: const Text('حذف الطلبيات'),
+                  subtitle: const Text('خطير: يسمح للعامل بحذف الطلبيات', style: TextStyle(color: Colors.orange, fontSize: 11)),
+                  value: perms['delete_orders'] ?? false,
+                  onChanged: (val) => _updatePermission('delete_orders', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية تفاصيل الطلبية وخياراتها'),
+                  value: perms['view_order_details'] ?? false,
+                  onChanged: (val) => _updatePermission('view_order_details', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية وطباعة وثائق الطلبية (الفواتير، Devis...)'),
+                  value: perms['view_order_documents'] ?? false,
+                  onChanged: (val) => _updatePermission('view_order_documents', val),
+                ),
+                SwitchListTile(
+                  title: const Text('استخراج ورقة التقطيع (Fiche de Coupe)'),
+                  value: perms['fiche_de_coupe'] ?? false,
+                  onChanged: (val) => _updatePermission('fiche_de_coupe', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية سلع ومواد الطلبية وتقارير النواقص'),
+                  value: perms['view_order_materials'] ?? false,
+                  onChanged: (val) => _updatePermission('view_order_materials', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تغيير حالة الطلبية (يدوياً)'),
+                  value: perms['change_order_status'] ?? false,
+                  onChanged: (val) => _updatePermission('change_order_status', val),
+                ),
+                SwitchListTile(
+                  title: const Text('النقل للمرحلة التالية (Passer à l\'étape suivante)'),
+                  value: perms['pass_to_next_stage'] ?? false,
+                  onChanged: (val) => _updatePermission('pass_to_next_stage', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تكرار / نسخ الطلبية (Duplicate)'),
+                  value: perms['duplicate_orders'] ?? false,
+                  onChanged: (val) => _updatePermission('duplicate_orders', val),
+                ),
+                SwitchListTile(
+                  title: const Text('توزيع المهام وإسناد العمل للعمال'),
+                  value: perms['order_allocation'] ?? false,
+                  onChanged: (val) => _updatePermission('order_allocation', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('رؤية الطلبيات (Commandes)'),
-              value: perms['view_orders'] ?? false,
-              onChanged: (val) => _updatePermission('view_orders', val),
+            blueDivider,
+
+            // 📐 بطاقة جديدة مستقلة: رفع القياسات الذكية (الموقع)
+            ExpansionTile(
+              leading: const Icon(Icons.architecture_rounded, color: Color(0xFF0EA5E9)),
+              title: const Text('رفع القياسات الذكية (الموقع)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('دخول بطاقة رفع القياسات الذكية (الموقع)'),
+                  value: perms['measurements_card'] ?? false,
+                  onChanged: (val) => _updatePermission('measurements_card', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تأكيد قياسات الموقع وتوليد ملصقات الباركود'),
+                  value: perms['confirm_measurements'] ?? false,
+                  onChanged: (val) => _updatePermission('confirm_measurements', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('إنشاء طلبيات'),
-              value: perms['create_orders'] ?? false,
-              onChanged: (val) => _updatePermission('create_orders', val),
+            blueDivider,
+
+            // 3️⃣ تصنيف مهامي وتصنيع اعتماداتي والمهام الخارجية
+            ExpansionTile(
+              leading: const Icon(Icons.assignment_turned_in_rounded, color: Color(0xFF14B8A6)),
+              title: const Text('مهامي وتصنيع اعتماداتي والمهام الخارجية', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('مهامي وتصنيعاتي (مهام العمل المسندة)'),
+                  value: perms['view_my_tasks'] ?? false,
+                  onChanged: (val) => _updatePermission('view_my_tasks', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تصنيع اعتماداتي (شاشة المنتجات والكتالوج)'),
+                  value: perms['view_my_accreditations'] ?? false,
+                  onChanged: (val) => _updatePermission('view_my_accreditations', val),
+                ),
+                // صلاحيات فرعية: تظهر فقط إذا كانت view_my_accreditations مفعّلة
+                if (perms['view_my_accreditations'] ?? false) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Column(
+                      children: [
+                        SwitchListTile(
+                          title: const Text('• البروفيلات والأنظمة'),
+                          dense: true,
+                          value: perms['view_profiles'] ?? false,
+                          onChanged: (val) => _updatePermission('view_profiles', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• صفحة الزجاج'),
+                          dense: true,
+                          value: perms['view_glass'] ?? false,
+                          onChanged: (val) => _updatePermission('view_glass', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• صفحة الستائر'),
+                          dense: true,
+                          value: perms['view_shutters'] ?? false,
+                          onChanged: (val) => _updatePermission('view_shutters', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• صفحة الألوان'),
+                          dense: true,
+                          value: perms['view_colors'] ?? false,
+                          onChanged: (val) => _updatePermission('view_colors', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• صفحة الإكسسوارات'),
+                          dense: true,
+                          value: perms['view_accessories'] ?? false,
+                          onChanged: (val) => _updatePermission('view_accessories', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• إكسسوارات السلاسل'),
+                          dense: true,
+                          value: perms['view_series_accessories'] ?? false,
+                          onChanged: (val) => _updatePermission('view_series_accessories', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• صفحة الجوانات'),
+                          dense: true,
+                          value: perms['view_joints'] ?? false,
+                          onChanged: (val) => _updatePermission('view_joints', val),
+                        ),
+                        SwitchListTile(
+                          title: const Text('• مجموعات الكيت (Kit)'),
+                          dense: true,
+                          value: perms['view_kit_bundles'] ?? false,
+                          onChanged: (val) => _updatePermission('view_kit_bundles', val),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                SwitchListTile(
+                  title: const Text('الأعمال والمهمات الخارجية (Opérations Externe)'),
+                  value: perms['external_operations'] ?? false,
+                  onChanged: (val) => _updatePermission('external_operations', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('رؤية تفاصيل الزبون'),
-              value: perms['view_client_details'] ?? false,
-              onChanged: (val) => _updatePermission('view_client_details', val),
+            blueDivider,
+
+            // 🛡️ بطاقة جديدة مستقلة: إدارة صلاحيات الفريق (نائب المدير)
+            ExpansionTile(
+              leading: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFFD97706)),
+              title: const Text('إدارة صلاحيات الفريق (نائب المدير)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                // صلاحية تفويض إدارة الفريق: يمنحها المدير الأصلي فقط
+                if (!widget.isDeputyManager)
+                  SwitchListTile(
+                    title: const Text('تفويض إدارة صلاحيات الفريق (نائب المدير)'),
+                    subtitle: const Text(
+                      'يسمح لهذا العامل بإدارة صلاحيات بقية الفريق بدلاً من المدير',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    value: perms['manage_workers'] ?? false,
+                    onChanged: (val) => _updatePermission('manage_workers', val),
+                  ),
+                // صلاحية تعديل بيانات العامل
+                if (!widget.isDeputyManager || (perms['manage_workers'] ?? false))
+                  SwitchListTile(
+                    title: const Text('تعديل بيانات العامل'),
+                    subtitle: const Text(
+                      'السماح بتعديل اسم العامل وبريده وهاتفه ومنصبه',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    value: perms['edit_worker'] ?? false,
+                    onChanged: (val) => _updatePermission('edit_worker', val),
+                  ),
+                // صلاحية حذف / طرد العامل
+                if (!widget.isDeputyManager || (perms['manage_workers'] ?? false))
+                  SwitchListTile(
+                    title: const Text('حذف / طرد العامل من الورشة'),
+                    subtitle: const Text(
+                      'السماح بحذف العامل نهائياً من قائمة الفريق',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    value: perms['delete_worker'] ?? false,
+                    onChanged: (val) => _updatePermission('delete_worker', val),
+                  ),
+                // صلاحية النسخ الاحتياطي على السحابة
+                SwitchListTile(
+                  title: const Text('النسخ الاحتياطي على السحابة'),
+                  subtitle: const Text(
+                    'السماح برفع وحفظ نسخة احتياطية من الورشة للسحابة',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: perms['cloud_backup'] ?? false,
+                  onChanged: (val) => _updatePermission('cloud_backup', val),
+                ),
+                // صلاحية مزامنة واستيراد الكتالوج العالمي
+                SwitchListTile(
+                  title: const Text('مزامنة واستيراد الكتالوج العالمي'),
+                  subtitle: const Text(
+                    'السماح بمزامنة الأنظمة والكتالوج العالمي من السحابة',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: perms['sync_global_catalog'] ?? false,
+                  onChanged: (val) => _updatePermission('sync_global_catalog', val),
+                ),
+                // صلاحية النسخ الاحتياطي المحلي والتصدير كملف JSON
+                SwitchListTile(
+                  title: const Text('النسخ الاحتياطي المحلي (ملف JSON)'),
+                  subtitle: const Text(
+                    'السماح بتصدير واستيراد ملفات النسخ الاحتياطي بصيغة JSON على الهاتف',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: perms['local_json_backup'] ?? false,
+                  onChanged: (val) => _updatePermission('local_json_backup', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('رؤية تفاصيل الطلبية'),
-              value: perms['view_order_details'] ?? false,
-              onChanged: (val) => _updatePermission('view_order_details', val),
+            blueDivider,
+
+            // 4️⃣ تصنيف الإعدادات وأنظمة الورشة
+            ExpansionTile(
+              leading: const Icon(Icons.settings_rounded, color: Color(0xFF64748B)),
+              title: const Text('الإعدادات وأنظمة الورشة (Paramètres & Systèmes)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('الدخول لصفحة الإعدادات'),
+                  value: perms['settings'] ?? false,
+                  onChanged: (val) => _updatePermission('settings', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تحديد الأنظمة المستعملة بالورشة'),
+                  value: perms['select_systems'] ?? false,
+                  onChanged: (val) => _updatePermission('select_systems', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('تغيير الأسعار (في الإعدادات)'),
-              value: perms['change_prices'] ?? false,
-              onChanged: (val) => _updatePermission('change_prices', val),
+            blueDivider,
+
+            // 5️⃣ تصنيف المالية والصناديق والأجور
+            ExpansionTile(
+              leading: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF059669)),
+              title: const Text('المالية والصناديق والأسعار والأجور (Trésorerie & Paie)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('تغيير وتحديث الأسعار'),
+                  value: perms['change_prices'] ?? false,
+                  onChanged: (val) => _updatePermission('change_prices', val),
+                ),
+                SwitchListTile(
+                  title: const Text('التعامل مع الصندوق (الخزينة)'),
+                  value: perms['treasury'] ?? false,
+                  onChanged: (val) => _updatePermission('treasury', val),
+                ),
+                SwitchListTile(
+                  title: const Text('إدارة شؤون وأجور العمال'),
+                  value: perms['worker_finances'] ?? false,
+                  onChanged: (val) => _updatePermission('worker_finances', val),
+                ),
+                SwitchListTile(
+                  title: const Text('المحاسبة الأسبوعية للعمال'),
+                  value: perms['worker_settlement'] ?? false,
+                  onChanged: (val) => _updatePermission('worker_settlement', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('التعامل مع الصندوق (الخزينة)'),
-              value: perms['treasury'] ?? false,
-              onChanged: (val) => _updatePermission('treasury', val),
+            blueDivider,
+
+            // 6️⃣ تصنيف المخزون والمشتريات والموردين
+            ExpansionTile(
+              leading: const Icon(Icons.local_shipping_rounded, color: Color(0xFFE11D48)),
+              title: const Text('المخزون والمشتريات والموردين (Stock, Achats & Fournisseurs)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('دخول ورؤية وإدارة المخزون (Stock)'),
+                  value: perms['inventory'] ?? false,
+                  onChanged: (val) => _updatePermission('inventory', val),
+                ),
+                SwitchListTile(
+                  title: const Text('إدارة ورؤية الموردين'),
+                  value: perms['view_suppliers'] ?? false,
+                  onChanged: (val) => _updatePermission('view_suppliers', val),
+                ),
+                SwitchListTile(
+                  title: const Text('رؤية المشتريات'),
+                  value: perms['purchases'] ?? false,
+                  onChanged: (val) => _updatePermission('purchases', val),
+                ),
+                SwitchListTile(
+                  title: const Text('إضافة فواتير مشتريات جديدة'),
+                  value: perms['add_purchases'] ?? false,
+                  onChanged: (val) => _updatePermission('add_purchases', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تعديل فواتير المشتريات'),
+                  value: perms['edit_purchases'] ?? false,
+                  onChanged: (val) => _updatePermission('edit_purchases', val),
+                ),
+                SwitchListTile(
+                  title: const Text('مسح / حذف فواتير المشتريات'),
+                  value: perms['delete_purchases'] ?? false,
+                  onChanged: (val) => _updatePermission('delete_purchases', val),
+                ),
+                SwitchListTile(
+                  title: const Text('تقرير النواقص والاستهلاك الشامل'),
+                  value: perms['global_consumption'] ?? false,
+                  onChanged: (val) => _updatePermission('global_consumption', val),
+                ),
+              ],
             ),
-            SwitchListTile(
-              title: const Text('إدارة العمال والصلاحيات'),
-              value: perms['manage_workers'] ?? false,
-              onChanged: (val) => _updatePermission('manage_workers', val),
-            ),
-            SwitchListTile(
-              title: const Text('رؤية المشتريات'),
-              value: perms['purchases'] ?? false,
-              onChanged: (val) => _updatePermission('purchases', val),
-            ),
-            SwitchListTile(
-              title: const Text('إضافة فواتير مشتريات'),
-              value: perms['add_purchases'] ?? false,
-              onChanged: (val) => _updatePermission('add_purchases', val),
-            ),
-            SwitchListTile(
-              title: const Text('تعديل الفواتير'),
-              value: perms['edit_purchases'] ?? false,
-              onChanged: (val) => _updatePermission('edit_purchases', val),
-            ),
-            SwitchListTile(
-              title: const Text('مسح الفواتير (الشراء)'),
-              value: perms['delete_purchases'] ?? false,
-              onChanged: (val) => _updatePermission('delete_purchases', val),
-            ),
-            SwitchListTile(
-              title: const Text('حذف طلبيات البيع (Commandes)'),
-              subtitle: const Text(
-                'خطير: يسمح للعامل بحذف الطلبيات',
-                style: TextStyle(color: Colors.orange, fontSize: 12),
-              ),
-              value: perms['delete_orders'] ?? false,
-              onChanged: (val) => _updatePermission('delete_orders', val),
-            ),
-            SwitchListTile(
-              title: const Text('إسراع الفواتير المؤكدة'),
-              value: perms['accelerate_confirmed_invoices'] ?? false,
-              onChanged: (val) =>
-                  _updatePermission('accelerate_confirmed_invoices', val),
-            ),
-            SwitchListTile(
-              title: const Text('دخول الإحصائيات'),
-              value: perms['statistics'] ?? false,
-              onChanged: (val) => _updatePermission('statistics', val),
-            ),
-            SwitchListTile(
-              title: const Text('إدارة الموردين'),
-              value: perms['view_suppliers'] ?? false,
-              onChanged: (val) => _updatePermission('view_suppliers', val),
+            blueDivider,
+
+            // 7️⃣ تصنيف الإحصائيات والتقارير
+            ExpansionTile(
+              leading: const Icon(Icons.bar_chart_rounded, color: Color(0xFF06B6D4)),
+              title: const Text('الإحصائيات والتقارير (Statistiques & Rapports)', style: TextStyle(fontWeight: FontWeight.bold)),
+              children: [
+                SwitchListTile(
+                  title: const Text('دخول الإحصائيات والتقارير'),
+                  value: perms['statistics'] ?? false,
+                  onChanged: (val) => _updatePermission('statistics', val),
+                ),
+                SwitchListTile(
+                  title: const Text('إسراع الفواتير المؤكدة'),
+                  value: perms['accelerate_confirmed_invoices'] ?? false,
+                  onChanged: (val) => _updatePermission('accelerate_confirmed_invoices', val),
+                ),
+              ],
             ),
           ],
         ],
