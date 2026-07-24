@@ -137,6 +137,16 @@ class _ExternalOperationsHubScreenState
     }
   }
 
+  String _formatDate(String? isoStr) {
+    if (isoStr == null || isoStr.trim().isEmpty) return '';
+    try {
+      final dt = DateTime.parse(isoStr).toLocal();
+      return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return isoStr;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -746,6 +756,33 @@ class _ExternalOperationsHubScreenState
                                       style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blue),
                                     ),
                                   ],
+                                  
+                                  // 🕒 إظهار تواريخ الإسناد والتوزيع والتركيب الميدانية
+                                  Builder(builder: (ctx) {
+                                    final assignedAtStr = _formatDate(t['assigned_at']?.toString());
+                                    final distributedAtStr = _formatDate(t['distributed_at']?.toString());
+                                    final installedAtStr = _formatDate(t['installed_at']?.toString());
+
+                                    if (assignedAtStr.isEmpty && distributedAtStr.isEmpty && installedAtStr.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Wrap(
+                                        spacing: 8,
+                                        runSpacing: 4,
+                                        children: [
+                                          if (assignedAtStr.isNotEmpty)
+                                            Text('📅 ${_tr("إسناد:", "Assigné:", "Assigned:", lang)} $assignedAtStr', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey)),
+                                          if (distributedAtStr.isNotEmpty)
+                                            Text('🚚 ${_tr("توزيع:", "Distribué:", "Distributed:", lang)} $distributedAtStr', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.indigo, fontWeight: FontWeight.bold)),
+                                          if (installedAtStr.isNotEmpty)
+                                            Text('🛠️ ${_tr("تركيب:", "Installé:", "Installed:", lang)} $installedAtStr', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                    );
+                                  }),
                                 ],
                               ),
                             ),
@@ -775,7 +812,11 @@ class _ExternalOperationsHubScreenState
                                   return;
                                 }
                                 final newVal = isDistributed ? 0 : 1;
-                                setState(() => t['is_distributed'] = newVal);
+                                final nowIso = DateTime.now().toIso8601String();
+                                setState(() {
+                                  t['is_distributed'] = newVal;
+                                  t['distributed_at'] = newVal == 1 ? nowIso : null;
+                                });
                                 await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
                                 await _loadDataQuietly();
                                 if (mounted) {
@@ -846,7 +887,11 @@ class _ExternalOperationsHubScreenState
                                 }
 
                                 final newVal = isInstalled ? 0 : 1;
-                                setState(() => t['is_installed'] = newVal);
+                                final nowIso = DateTime.now().toIso8601String();
+                                setState(() {
+                                  t['is_installed'] = newVal;
+                                  t['installed_at'] = newVal == 1 ? nowIso : null;
+                                });
                                 await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
                                 await _loadDataQuietly();
                                 if (mounted) {
