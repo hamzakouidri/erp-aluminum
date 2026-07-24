@@ -807,7 +807,7 @@ class _ExternalOperationsHubScreenState
                               ),
                             ),
 
-                            // 2. زر تم التركيب
+                            // 2. زر تم التركيب (يتطلب تم التوزيع أولاً)
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
@@ -823,6 +823,28 @@ class _ExternalOperationsHubScreenState
                                   );
                                   return;
                                 }
+
+                                if (!isDistributed) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        _tr(
+                                          '⚠️ يجب تسجيل وتأكيد [تم التوزيع 🚚] أولاً قبل التركيب بالموقع!',
+                                          '⚠️ Veuillez d\'abord valider la distribution [Distribué 🚚] !',
+                                          '⚠️ Please validate distribution [Distributed 🚚] first!',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                      ),
+                                      backgroundColor: Colors.orange.shade800,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  );
+                                  return;
+                                }
+
                                 final newVal = isInstalled ? 0 : 1;
                                 setState(() => t['is_installed'] = newVal);
                                 await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
@@ -856,7 +878,7 @@ class _ExternalOperationsHubScreenState
                               ),
                             ),
 
-                            // 3. زر تم الانتهاء (يمنع الإنهاء إذا كانت هناك تحفظات مسجلة)
+                            // 3. زر تم الانتهاء (يتطلب تم التركيب أولاً ورصد خلو العناصر من أي تحفظ)
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
@@ -873,13 +895,39 @@ class _ExternalOperationsHubScreenState
                                   return;
                                 }
 
+                                if (!isInstalled) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        _tr(
+                                          '⚠️ يجب تسجيل وتأكيد [تم التركيب 🛠️] بالموقع أولاً قبل الانتهاء كلياً والأرشفة!',
+                                          '⚠️ Veuillez d\'abord valider l\'installation [Installé 🛠️] avant de terminer !',
+                                          '⚠️ Please validate installation [Installed 🛠️] first before completion!',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                      ),
+                                      backgroundColor: Colors.orange.shade800,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  );
+                                  return;
+                                }
+
                                 final hasReserve = t['has_reserve'] == 1;
                                 if (hasReserve) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: const Text(
-                                        '🛑 لا يمكن إنهاء هذا العنصر لوجود تحفظات ونقائص مسجلة! يجب رفع وإلغاء التحفظ أولاً من صفحة إدارة التحفظات (Réserve).',
-                                        style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                      content: Text(
+                                        _tr(
+                                          '🛑 لا يمكن إنهاء هذا العنصر لوجود تحفظات ونقائص مسجلة! يجب رفع وإلغاء التحفظ أولاً من صفحة إدارة التحفظات (Réserve).',
+                                          '🛑 Impossible de terminer : des réserves sont actives. Veuillez lever les réserves d\'abord.',
+                                          '🛑 Cannot complete: active reserves exist. Please clear reserves first.',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                                       ),
                                       backgroundColor: Colors.red.shade800,
                                       behavior: SnackBarBehavior.floating,
@@ -956,7 +1004,7 @@ class _ExternalOperationsHubScreenState
                               ),
                             ),
 
-                            // 4. زر تحفظ (Réserve) - كتابة وإظهار النقائص
+                            // 4. زر تحفظ (Réserve) - يتطلب تم التوزيع أولاً
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
@@ -965,6 +1013,27 @@ class _ExternalOperationsHubScreenState
                                     SnackBar(
                                       content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
                                       backgroundColor: Colors.orange,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                if (!isDistributed) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        _tr(
+                                          '⚠️ لا يمكن تسجيل تحفظ إلا بعد توزيع ونقل النافذة للميدان [تم التوزيع 🚚]!',
+                                          '⚠️ Les réserves sont possibles uniquement après distribution [Distribué 🚚] !',
+                                          '⚠️ Reserves can only be logged after distribution [Distributed 🚚]!',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                      ),
+                                      backgroundColor: Colors.orange.shade800,
                                       behavior: SnackBarBehavior.floating,
                                       margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
