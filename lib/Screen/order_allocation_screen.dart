@@ -1,15 +1,12 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../widgets/lazy_window_image.dart';
+import '../services/cloud_sync_service.dart';
 
 class OrderAllocationScreen extends StatefulWidget {
   final Map<String, dynamic> orderData;
@@ -444,16 +441,21 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     try {
       await widget.db.insertWorkerAllocation(detailId, workerUid, quantity, price);
       await _loadData();
+      try {
+        await CloudSyncService().backupToCloud();
+      } catch (syncErr) {
+        debugPrint('Allocation cloud sync error: $syncErr');
+      }
       if (mounted) {
         final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              lang == AppLanguage.arabic ? 'تم إسناد العمل بنجاح' : 'Affectation réussie',
+              lang == AppLanguage.arabic ? 'تم إسناد العمل بنجاح والمزامنة مع السحابة ✅' : 'Affectation réussie et synchronisée ✅',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 1),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -470,16 +472,21 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     try {
       await widget.db.deleteWorkerAllocation(allocationId);
       await _loadData();
+      try {
+        await CloudSyncService().backupToCloud();
+      } catch (syncErr) {
+        debugPrint('Allocation cloud sync error: $syncErr');
+      }
       if (mounted) {
         final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              lang == AppLanguage.arabic ? 'تم إلغاء الإسناد' : 'Affectation annulée',
+              lang == AppLanguage.arabic ? 'تم إلغاء الإسناد وتحديث السحابة' : 'Affectation annulée et مسار حُدّث',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 1),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -496,16 +503,21 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     try {
       await widget.db.updateWorkerAllocationDetails(allocationId, workerUid, quantity, price);
       await _loadData();
+      try {
+        await CloudSyncService().backupToCloud();
+      } catch (syncErr) {
+        debugPrint('Allocation cloud sync error: $syncErr');
+      }
       if (mounted) {
         final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              lang == AppLanguage.arabic ? 'تم تعديل الإسناد بنجاح' : 'Modification réussie',
+              lang == AppLanguage.arabic ? 'تم تعديل الإسناد بنجاح والمزامنة ✅' : 'Modification réussie et synchronisée ✅',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 1),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -587,13 +599,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     controller: priceCtrl,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'سعر تصنيع القطعة الواحدة للعامل (د.ج) - اختياري',
+                      labelText: 'سعر تصنيع القطعة الواحدة للعامل (د.ج) - إجباري',
                       border: OutlineInputBorder(),
                     ),
                     validator: (val) {
-                      if (val == null || val.trim().isEmpty) return null; // اختياري
+                      if (val == null || val.trim().isEmpty) return 'يرجى إدخال سعر/أجرة التصنيع لا محالة';
                       final p = double.tryParse(val.trim());
-                      if (p == null || p < 0) return 'الرجاء إدخال رقم صحيح أو تركه فارغاً';
+                      if (p == null || p <= 0) return 'الرجاء إدخال مبلغ صحيح أكبر من 0';
                       return null;
                     },
                   ),
@@ -682,13 +694,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     controller: priceCtrl,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'سعر تصنيع القطعة الواحدة للعامل (د.ج) - اختياري',
+                      labelText: 'سعر تصنيع القطعة الواحدة للعامل (د.ج) - إجباري',
                       border: OutlineInputBorder(),
                     ),
                     validator: (val) {
-                      if (val == null || val.trim().isEmpty) return null; // اختياري
+                      if (val == null || val.trim().isEmpty) return 'يرجى إدخال سعر/أجرة التصنيع لا محالة';
                       final p = double.tryParse(val.trim());
-                      if (p == null || p < 0) return 'الرجاء إدخال رقم صحيح أو تركه فارغاً';
+                      if (p == null || p <= 0) return 'الرجاء إدخال مبلغ صحيح أكبر من 0';
                       return null;
                     },
                   ),

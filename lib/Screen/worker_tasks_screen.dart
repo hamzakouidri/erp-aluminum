@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,6 +8,7 @@ import '../settings/localization.dart';
 import '../Commande/add_commande.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/lazy_window_image.dart';
+import 'worker_archive_screen.dart';
 
 class WorkerTasksScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -29,6 +29,19 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   String _searchQuery = '';
   String _debugInfo = ''; // 🔍 تشخيص مؤقت
   bool _isLocalChangePending = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canViewMyTasks()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -58,10 +71,16 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       final settings = Provider.of<AppSettingsProvider>(context, listen: false);
       if (!settings.isManager) {
         try {
-          await CloudSyncService().restoreFromCloud();
+          final svc = CloudSyncService();
+          await svc.init(); // ✅ ضروري لتهيئة workshopId قبل الاستعادة
+          await svc.restoreFromCloud();
+          // ✅ ربط الإسنادات بـ UID الصحيح للعامل بعد الاستعادة
+          await widget.db.relinkCurrentWorkerAllocations();
         } catch (e) {
           debugPrint('Worker cloud restore failed: $e');
           restoreError = '❌ خطأ مزامنة السحابة: $e\n';
+          // حتى لو فشلت السحابة، نحاول ربط الإسنادات بالبيانات المحلية
+          await widget.db.relinkCurrentWorkerAllocations();
         }
       } else {
         try {
@@ -101,16 +120,21 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
               final allEmps = await db.rawQuery('SELECT uid, email, name FROM Employees');
               final info = StringBuffer();
               info.writeln('🔑 UID الحالي: ${user.uid}');
+              info.writeln('📧 البريد: ${user.email ?? "—"}');
+              info.writeln('👤 الاسم: ${user.displayName ?? "—"}');
               info.writeln('🏢 كود الورشة: ${CloudSyncService().workshopId}');
               info.writeln('☁️ حالة الاسترجاع: ${CloudSyncService().lastRestoreSummary}');
-              info.writeln('📋 الإسنادات في القاعدة:');
+              info.writeln('📋 الإسنادات في القاعدة (${allAllocs.length}):');
               for (final a in allAllocs) {
-                info.writeln('  uid=${a['worker_uid']} (${a['cnt']} مهمة)');
+                final uid = a['worker_uid']?.toString() ?? '';
+                final match = uid == user.uid ? ' ✅ مطابق' : '';
+                info.writeln('  uid=$uid (${a['cnt']} مهمة)$match');
               }
-              info.writeln('👷 العمال في القاعدة:');
+              info.writeln('👷 العمال في القاعدة (${allEmps.length}):');
               for (final e in allEmps) {
-                info.writeln('  uid=${e['uid']} email=${e['email']}');
+                info.writeln('  uid=${e['uid']} email=${e['email']} name=${e['name']}');
               }
+              info.writeln('📊 مهام محمّلة: ${rawTasks.length}');
               setState(() { _debugInfo = info.toString(); });
               debugPrint(_debugInfo);
             }
@@ -167,13 +191,16 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     _visibleTasks = tasks;
   }
 
-  Future<void> _toggleFinish(int allocationId, int currentMfg, int currentGlass) async {
+  Future<void> _toggleManufactured(int allocationId, int currentMfg) async {
     _isLocalChangePending = true;
-    final isDone = (currentMfg == 1 && currentGlass == 1);
-    final newVal = isDone ? 0 : 1;
+    final newVal = currentMfg == 1 ? 0 : 1;
     await widget.db.updateWorkerAllocationManufacturing(allocationId, newVal);
-    await widget.db.updateWorkerAllocationGlass(allocationId, newVal);
     
+    // إذا تم إلغاء الصنع، يتم إلغاء تركيب الزجاج تلقائياً
+    if (newVal == 0) {
+      await widget.db.updateWorkerAllocationGlass(allocationId, 0);
+    }
+
     // Update local state lists in place
     setState(() {
       for (var list in [_allTasks, _visibleTasks]) {
@@ -182,8 +209,10 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
             final mutable = Map<String, dynamic>.from(list[i]);
             mutable['is_manufactured'] = newVal;
             mutable['manufactured_at'] = newVal == 1 ? DateTime.now().toIso8601String() : null;
-            mutable['is_glass_installed'] = newVal;
-            mutable['glass_installed_at'] = newVal == 1 ? DateTime.now().toIso8601String() : null;
+            if (newVal == 0) {
+              mutable['is_glass_installed'] = 0;
+              mutable['glass_installed_at'] = null;
+            }
             list[i] = mutable;
           }
         }
@@ -194,7 +223,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            newVal == 1 ? 'تم تسجيل الانتهاء بنجاح ✅' : 'تم إلغاء حالة الانتهاء',
+            newVal == 1 ? 'تم تسجيل صنع النافذة بنجاح 🛠️' : 'تم إلغاء حالة الصنع',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: newVal == 1 ? Colors.green : Colors.orange,
@@ -207,10 +236,10 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     _isLocalChangePending = false;
   }
 
-  Future<void> _toggleDistribution(int allocationId, int currentDist) async {
+  Future<void> _toggleGlassInstalled(int allocationId, int currentGlass) async {
     _isLocalChangePending = true;
-    final newVal = currentDist == 1 ? 0 : 1;
-    await widget.db.updateWorkerAllocationDistribution(allocationId, newVal);
+    final newVal = currentGlass == 1 ? 0 : 1;
+    await widget.db.updateWorkerAllocationGlass(allocationId, newVal);
     
     // Update local state lists in place
     setState(() {
@@ -218,8 +247,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         for (var i = 0; i < list.length; i++) {
           if (list[i]['id'] == allocationId) {
             final mutable = Map<String, dynamic>.from(list[i]);
-            mutable['is_distributed'] = newVal;
-            mutable['distributed_at'] = newVal == 1 ? DateTime.now().toIso8601String() : null;
+            mutable['is_glass_installed'] = newVal;
+            mutable['glass_installed_at'] = newVal == 1 ? DateTime.now().toIso8601String() : null;
             list[i] = mutable;
           }
         }
@@ -230,11 +259,37 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            newVal == 1 ? 'تم تسجيل التوزيع بنجاح 🚚' : 'تم إلغاء حالة التوزيع',
+            newVal == 1 ? 'تم تسجيل تركيب الزجاج بنجاح 🪟' : 'تم إلغاء حالة تركيب الزجاج',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: newVal == 1 ? Colors.teal : Colors.orange,
           duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+
+    await Future.delayed(const Duration(milliseconds: 350));
+    _isLocalChangePending = false;
+  }
+
+  Future<void> _transferToDistribution(int allocationId) async {
+    _isLocalChangePending = true;
+    await widget.db.updateWorkerAllocationTransfer(allocationId, 1);
+
+    setState(() {
+      _allTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
+      _visibleTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تم تحويل النافذة إلى التوزيع والأرشيف بنجاح 🚚',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.indigo,
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -268,6 +323,18 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.archive_outlined),
+            tooltip: lang == AppLanguage.arabic ? 'الأرشيف' : 'Archives',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => WorkerArchiveScreen(db: widget.db),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshTasks,
@@ -532,9 +599,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
   Widget _buildTaskCard(Map<String, dynamic> t, AppLanguage lang, bool isDark, AppSettingsProvider settings) {
     final windowType = t['window_type']?.toString() ?? 'Window';
-    final largeur = t['largeur'] as int;
-    final hauteur = t['hauteur'] as int;
-    final qty = t['quantity'] as int;
+    final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
+    final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
+    final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
     final price = (t['worker_price'] as num?)?.toDouble() ?? 0.0;
     final total = qty * price;
     final assignedAt = _formatDateTime(t['assigned_at']);
@@ -545,6 +612,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
     final isManufactured = t['is_manufactured'] == 1;
     final isGlassInstalled = t['is_glass_installed'] == 1;
+
+    final commandeId = (t['id_commandes'] as num?)?.toInt() ?? 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -562,12 +631,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
               children: [
                 GestureDetector(
                   onTap: () {
-                    if (settings.canViewOrderDetails()) {
+                    if (settings.canViewOrderDetails() && commandeId > 0) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => CommandePage(
-                            editCommandeId: t['id_commandes'] as int,
+                            editCommandeId: commandeId,
                             db: widget.db,
                           ),
                         ),
@@ -681,7 +750,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                   padding: const EdgeInsets.all(8),
                   child: LazyWindowImage(
                     db: widget.db,
-                    detailId: t['commande_detail_id'] as int,
+                    detailId: (t['commande_detail_id'] as num?)?.toInt() ?? (t['id'] as num?)?.toInt() ?? 0,
                     initialImagePath: t['drawing_image_path']?.toString() ?? '',
                     partitionsJson: t['partitions_json'],
                     drawingImageBase64: t['drawing_image_base64']?.toString(),
@@ -717,29 +786,40 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
             const SizedBox(height: 14),
 
-            // ── أزرار العمليات (زر الانتهاء وزر التوزيع) ──────────────────────────
+            // ── أزرار العمليات (تم الصنع - تم تركيب الزجاج) ──────────────────────────
             Row(
               children: [
-                // 1. زر الانتهاء (تصنيع + تركيب زجاج)
+                // 1️⃣ زر "تم الصنع" (تصنيع النافذة) — حصري للعامل فقط
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _toggleFinish(
-                      t['id'] as int,
-                      t['is_manufactured'] as int? ?? 0,
-                      t['is_glass_installed'] as int? ?? 0,
+                    onPressed: settings.isManager
+                        ? null // 🚫 المدير لا يمكنه الضغط على الزر (عرض الحالة فقط)
+                        : () {
+                            final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                            if (allocId > 0) {
+                              _toggleManufactured(
+                                allocId,
+                                (t['is_manufactured'] as num?)?.toInt() ?? 0,
+                              );
+                            }
+                          },
+                    icon: Icon(
+                      isManufactured ? Icons.check_circle_rounded : Icons.build_circle_outlined,
+                      size: 18,
                     ),
-                    icon: Icon(isGlassInstalled && isManufactured ? Icons.check_circle : Icons.task_alt, size: 18),
                     label: Text(
-                      isGlassInstalled && isManufactured
-                          ? (lang == AppLanguage.arabic ? 'تم الانتهاء ✅' : 'Terminé ✅')
-                          : (lang == AppLanguage.arabic ? 'زر انتهاء' : 'Marquer Terminé'),
+                      isManufactured
+                          ? (lang == AppLanguage.arabic ? 'تم الصنع ✅' : 'Fabriqué ✅')
+                          : (lang == AppLanguage.arabic ? 'تم الصنع' : 'Fabriquer'),
                       style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isGlassInstalled && isManufactured
+                      backgroundColor: isManufactured
                           ? Colors.green.shade600
                           : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                      foregroundColor: isGlassInstalled && isManufactured ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      foregroundColor: isManufactured ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      disabledBackgroundColor: isManufactured ? Colors.green.shade700 : Colors.grey.shade400,
+                      disabledForegroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -747,25 +827,60 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 ),
                 const SizedBox(width: 8),
 
-                // 2. زر التوزيع
+                // 2️⃣ زر "تم تركيب الزجاج" (تركيب الزجاج) — حصري للعامل فقط
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _toggleDistribution(
-                      t['id'] as int,
-                      t['is_distributed'] as int? ?? 0,
+                    onPressed: settings.isManager
+                        ? null // 🚫 المدير لا يمكنه الضغط على الزر (عرض الحالة فقط)
+                        : () {
+                            if (!isManufactured) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    lang == AppLanguage.arabic
+                                        ? '⚠️ لا يمكن تركيب الزجاج! يجب إتمام "تم الصنع" أولاً.'
+                                        : '⚠️ Pose du vitrage impossible ! Marquez "Fabriqué" d\'abord.',
+                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                  ),
+                                  backgroundColor: Colors.amber.shade900,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                              return;
+                            }
+                            final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                            if (allocId > 0) {
+                              _toggleGlassInstalled(
+                                allocId,
+                                (t['is_glass_installed'] as num?)?.toInt() ?? 0,
+                              );
+                            }
+                          },
+                    icon: Icon(
+                      isGlassInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                      size: 20,
+                      color: !isManufactured && !settings.isManager ? Colors.grey : null,
                     ),
-                    icon: Icon(t['is_distributed'] == 1 ? Icons.local_shipping : Icons.local_shipping_outlined, size: 18),
                     label: Text(
-                      t['is_distributed'] == 1
-                          ? (lang == AppLanguage.arabic ? 'تم التوزيع 🚚' : 'Distribué 🚚')
-                          : (lang == AppLanguage.arabic ? 'زر توزيع' : 'Distribuer'),
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                      isGlassInstalled
+                          ? (lang == AppLanguage.arabic ? 'تم تركيب الزجاج ✅' : 'Vitré ✅')
+                          : (lang == AppLanguage.arabic ? 'تم تركيب الزجاج' : 'Poser Vitrage'),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: !isManufactured && !settings.isManager ? Colors.grey : null,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: t['is_distributed'] == 1
+                      backgroundColor: isGlassInstalled
                           ? Colors.teal.shade600
-                          : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                      foregroundColor: t['is_distributed'] == 1 ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                          : (!isManufactured && !settings.isManager
+                              ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
+                              : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))),
+                      foregroundColor: isGlassInstalled ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      disabledBackgroundColor: isGlassInstalled ? Colors.teal.shade700 : Colors.grey.shade400,
+                      disabledForegroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -773,6 +888,51 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 ),
               ],
             ),
+
+            if (!settings.isManager) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    if (!isManufactured || !isGlassInstalled) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            lang == AppLanguage.arabic
+                                ? '⚠️ يجب إتمام "تم الصنع" و "تركيب الزجاج" أولاً قبل التحويل للتوزيع!'
+                                : '⚠️ Terminez la fabrication et la pose du vitrage d\'abord !',
+                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                          ),
+                          backgroundColor: Colors.amber.shade900,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                      return;
+                    }
+                    final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                    if (allocId > 0) {
+                      _transferToDistribution(allocId);
+                    }
+                  },
+                  icon: const Icon(Icons.local_shipping_rounded, size: 18),
+                  label: Text(
+                    lang == AppLanguage.arabic ? 'تحويل للتوزيع والأرشيف 🚚' : 'Transférer pour Distribution 🚚',
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: (isManufactured && isGlassInstalled)
+                        ? Colors.indigo.shade600
+                        : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                    foregroundColor: (isManufactured && isGlassInstalled)
+                        ? Colors.white
+                        : Colors.grey,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

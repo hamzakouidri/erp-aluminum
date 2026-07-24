@@ -113,10 +113,19 @@ class _LazyWindowImageState extends State<LazyWindowImage> {
         modelMap = jsonRaw;
       } else if (jsonRaw is Map) {
         modelMap = Map<String, dynamic>.from(jsonRaw);
-      } else {
+      } else if (jsonRaw != null) {
         final str = jsonRaw.toString().trim();
         if (str.length >= 5) {
-          modelMap = jsonDecode(str) as Map<String, dynamic>;
+          try {
+            final decoded = jsonDecode(str);
+            if (decoded is Map<String, dynamic>) {
+              modelMap = decoded;
+            } else if (decoded is Map) {
+              modelMap = Map<String, dynamic>.from(decoded);
+            } else if (decoded is List && decoded.isNotEmpty && decoded.first is Map) {
+              modelMap = Map<String, dynamic>.from(decoded.first as Map);
+            }
+          } catch (_) {}
         }
       }
 

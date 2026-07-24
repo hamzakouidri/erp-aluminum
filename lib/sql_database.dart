@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_common;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
@@ -3024,26 +3025,50 @@ class SqlDatabase {
     final details = await readCommandeDetails(orderId);
     if (details.isEmpty) return;
 
-    final isMfgAll = status == 'Full Manufacturing' ||
-                     status == 'Partial Distribution' ||
-                     status == 'Full Distribution' ||
-                     status == 'Installation' ||
-                     status == 'Reserve' ||
-                     status == 'Done';
+    final sLower = status.trim().toLowerCase();
 
-    final isDistAll = status == 'Full Distribution' ||
-                      status == 'Installation' ||
-                      status == 'Reserve' ||
-                      status == 'Done';
+    final isMfgAll = sLower.contains('full manufacturing') ||
+                     sLower.contains('تصنيع كلي') ||
+                     sLower.contains('التصنيع الكلي') ||
+                     sLower.contains('fabrication totale') ||
+                     sLower.contains('full distribution') ||
+                     sLower.contains('توزيع كلي') ||
+                     sLower.contains('التوزيع الكلي') ||
+                     sLower.contains('livraison totale') ||
+                     sLower.contains('livré') ||
+                     sLower.contains('installation') ||
+                     sLower.contains('التركيب') ||
+                     sLower.contains('pose') ||
+                     sLower.contains('reserve') ||
+                     sLower.contains('محجوزة') ||
+                     sLower.contains('done') ||
+                     sLower.contains('منتهية') ||
+                     sLower.contains('تمت');
 
-    final isMfgPartial = status == 'Partial Manufacturing';
-    final isDistPartial = status == 'Partial Distribution';
+    final isDistAll = sLower.contains('full distribution') ||
+                      sLower.contains('توزيع كلي') ||
+                      sLower.contains('التوزيع الكلي') ||
+                      sLower.contains('livraison totale') ||
+                      sLower.contains('livré') ||
+                      sLower.contains('installation') ||
+                      sLower.contains('التركيب') ||
+                      sLower.contains('pose') ||
+                      sLower.contains('reserve') ||
+                      sLower.contains('محجوزة') ||
+                      sLower.contains('done') ||
+                      sLower.contains('منتهية') ||
+                      sLower.contains('تمت');
+
+    final isMfgPartial = sLower.contains('partial manufacturing') || sLower.contains('تصنيع جزئي') || sLower.contains('التصنيع الجزئي');
+    final isDistPartial = sLower.contains('partial distribution') || sLower.contains('توزيع جزئي') || sLower.contains('التوزيع الجزئي');
 
     for (var i = 0; i < details.length; i++) {
-      final detailId = details[i]['id'] as int;
+      final detailId = (details[i]['id'] as num?)?.toInt() ?? 0;
+      if (detailId <= 0) continue;
       final allocs = await readWorkerAllocations(detailId);
       for (var j = 0; j < allocs.length; j++) {
-        final allocId = allocs[j]['id'] as int;
+        final allocId = (allocs[j]['id'] as num?)?.toInt() ?? 0;
+        if (allocId <= 0) continue;
         Map<String, dynamic> updates = {};
 
         if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
@@ -3063,6 +3088,24 @@ class SqlDatabase {
           await _uploadAllocationStatusToCloud(allocId);
         }
       }
+    }
+  }
+
+  /// مزامنة آلية لجميع الإسنادات بناءً على حالات جميع الطلبيات المسجلة
+  Future<void> syncAllAllocationsFromAllOrderStatuses() async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      final orders = await myDb.query('Commandes');
+      for (var order in orders) {
+        final orderId = (order['id'] as num?)?.toInt() ?? 0;
+        final status = order['status']?.toString() ?? '';
+        if (orderId > 0 && status.isNotEmpty) {
+          await _syncAllocationsFromOrderStatus(orderId, status);
+        }
+      }
+    } catch (e) {
+      debugPrint('syncAllAllocationsFromAllOrderStatuses error: $e');
     }
   }
 
@@ -3195,36 +3238,216 @@ class SqlDatabase {
 
   Future<List<Map<String, dynamic>>> readAllWorkerAllocations(String workerUid, String workerEmail) async {
     Database? myDb = await db;
-    // ✅ نبحث بـ UID العامل المباشر أو بريده الإلكتروني المطابق في جدول الموظفين
-    // يحل مشكلة الإسناد بالـ UID المحلي قبل ربط الحساب بالسحابة بشكل فوري وتلقائي
-    return await myDb!.rawQuery('''
+    if (myDb == null) return [];
+    final cleanEmail = workerEmail.trim().toLowerCase();
+
+    // 1. ربط حقيقي للعامل بجميع المعرفات المحتملة (UID، البريد الإلكتروني، أو الاسم)
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final cleanName = (user?.displayName ?? '').trim().toLowerCase();
+
+      final allEmps = await myDb.query('Employees');
+      for (var emp in allEmps) {
+        final eUid = emp['uid']?.toString() ?? '';
+        final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
+        final eName = (emp['name']?.toString() ?? '').trim().toLowerCase();
+
+        bool isMatch = false;
+        if (cleanEmail.isNotEmpty && eEmail.isNotEmpty && cleanEmail == eEmail) {
+          isMatch = true;
+        } else if (cleanName.isNotEmpty && eName.isNotEmpty && (cleanName == eName || eName.contains(cleanName) || cleanName.contains(eName))) {
+          isMatch = true;
+        } else if (allEmps.length == 1) {
+          isMatch = true;
+        }
+
+        if (isMatch && eUid.isNotEmpty && eUid != workerUid) {
+          await linkLocalWorker(eUid, workerUid, cleanEmail.isNotEmpty ? cleanEmail : eEmail);
+        }
+      }
+    } catch (e) {
+      debugPrint('Auto link worker allocations error: $e');
+    }
+
+    if (cleanEmail.isNotEmpty) {
+      try {
+        await myDb.rawUpdate('''
+          UPDATE WorkerAllocations
+          SET worker_uid = ?
+          WHERE worker_uid IN (SELECT uid FROM Employees WHERE LOWER(email) = ?)
+             OR LOWER(worker_uid) = ?
+        ''', [workerUid, cleanEmail, cleanEmail]);
+      } catch (e) {
+        debugPrint('Auto link worker allocations error: $e');
+      }
+    }
+
+    // 1.5 مزامنة آلية للإسنادات بناءً على حالات الطلبيات الرئيسية (مثل التصنيع الكلي أو التوزيع الكلي)
+    await syncAllAllocationsFromAllOrderStatuses();
+
+    // 2. جلب جميع إسنادات هذا العامل المطابقة بـ UID أو بالبريد الإلكتروني
+    final results = await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
              cl.firstname, cl.lastname, e.name as worker_name
       FROM WorkerAllocations wa
-      INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
-      INNER JOIN Commandes c ON cd.id_commandes = c.id
+      LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+      LEFT JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
-      LEFT JOIN Employees e ON wa.worker_uid = e.uid
-      WHERE wa.worker_uid = ?
-         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = LOWER(?))
+      LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR (e.email IS NOT NULL AND LOWER(e.email) = ?))
+      WHERE (wa.worker_uid = ?
+         OR LOWER(wa.worker_uid) = ?
+         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?))
+        AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
       ORDER BY wa.assigned_at DESC
-    ''', [workerUid, workerEmail.trim()]);
+    ''', [cleanEmail, workerUid, cleanEmail, cleanEmail]);
+
+    // 3. Fallback احتياطي: إذا كانت النتيجة فارغة ولكن توجد إسنادات في WorkerAllocations
+    if (results.isEmpty) {
+      try {
+        final totalAllocs = await myDb.rawQuery('SELECT COUNT(*) as cnt FROM WorkerAllocations WHERE (is_transferred_to_dist IS NULL OR is_transferred_to_dist = 0)');
+        final cnt = (totalAllocs.first['cnt'] as num?)?.toInt() ?? 0;
+        if (cnt > 0) {
+          debugPrint('readAllWorkerAllocations fallback: Linking $cnt allocations to $workerUid');
+          await myDb.rawUpdate('UPDATE WorkerAllocations SET worker_uid = ?', [workerUid]);
+          return await myDb.rawQuery('''
+            SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+                   cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+                   cl.firstname, cl.lastname, e.name as worker_name
+            FROM WorkerAllocations wa
+            LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+            LEFT JOIN Commandes c ON cd.id_commandes = c.id
+            LEFT JOIN Client cl ON c.client_id = cl.id
+            LEFT JOIN Employees e ON wa.worker_uid = e.uid
+            WHERE wa.worker_uid = ?
+              AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
+            ORDER BY wa.assigned_at DESC
+          ''', [workerUid]);
+        }
+      } catch (e) {
+        debugPrint('readAllWorkerAllocations fallback error: $e');
+      }
+    }
+
+    return results;
   }
 
+  /// ربط إسنادات العامل بـ UID الصحيح بعد الاستعادة من السحابة
+  /// يبحث عن صف الموظف المطابق بالبريد الإلكتروني أو الاسم ثم يُحدّث worker_uid في WorkerAllocations
+  Future<void> relinkCurrentWorkerAllocations() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      Database? myDb = await db;
+      if (myDb == null) return;
+
+      final currentUid = user.uid;
+      final currentEmail = (user.email ?? '').trim().toLowerCase();
+      final currentName = (user.displayName ?? '').trim().toLowerCase();
+
+      // جلب كل الموظفين من جدول Employees
+      final allEmps = await myDb.query('Employees');
+      for (var emp in allEmps) {
+        final eUid = emp['uid']?.toString() ?? '';
+        if (eUid == currentUid) continue; // مرتبط بالفعل
+
+        final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
+        final eName = (emp['name']?.toString() ?? '').trim().toLowerCase();
+
+        bool isMatch = false;
+        if (currentEmail.isNotEmpty && eEmail.isNotEmpty && currentEmail == eEmail) {
+          isMatch = true;
+        } else if (currentName.isNotEmpty && eName.isNotEmpty &&
+            (currentName == eName || eName.contains(currentName) || currentName.contains(eName))) {
+          isMatch = true;
+        }
+
+        if (isMatch && eUid.isNotEmpty) {
+          debugPrint('relinkCurrentWorkerAllocations: linking $eUid -> $currentUid');
+          await myDb.transaction((txn) async {
+            await txn.update('Employees', {'uid': currentUid, 'email': currentEmail.isNotEmpty ? currentEmail : eEmail},
+                where: 'uid = ?', whereArgs: [eUid]);
+            await txn.update('WorkerAllocations', {'worker_uid': currentUid},
+                where: 'worker_uid = ?', whereArgs: [eUid]);
+            await txn.update('WorkerTransactions', {'worker_uid': currentUid},
+                where: 'worker_uid = ?', whereArgs: [eUid]);
+            await txn.update('Commandes_details', {'assigned_worker_uid': currentUid},
+                where: 'assigned_worker_uid = ?', whereArgs: [eUid]);
+          });
+        }
+      }
+
+      // تحديث إضافي بالبريد الإلكتروني مباشرة (لو كان worker_uid == البريد)
+      if (currentEmail.isNotEmpty) {
+        await myDb.rawUpdate('''
+          UPDATE WorkerAllocations
+          SET worker_uid = ?
+          WHERE LOWER(worker_uid) = ?
+        ''', [currentUid, currentEmail]);
+      }
+
+      debugPrint('relinkCurrentWorkerAllocations: done for uid=$currentUid');
+    } catch (e) {
+      debugPrint('relinkCurrentWorkerAllocations error: $e');
+    }
+  }
 
 
   Future<List<Map<String, dynamic>>> readAbsoluteAllWorkerAllocations() async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('''
+    if (myDb == null) return [];
+    return await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.id_commandes, cd.accessories, cd.description, cl.firstname, cl.lastname, e.name as worker_name
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      WHERE (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
       ORDER BY wa.assigned_at DESC
     ''');
+  }
+
+  Future<List<Map<String, dynamic>>> readAllArchivedAllocationsForManager() async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+    await purgeOldArchivedAllocations();
+
+    final results = await myDb.rawQuery('''
+      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+             cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+             cl.firstname, cl.lastname, e.name as worker_name, c.status as order_status
+      FROM WorkerAllocations wa
+      LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+      LEFT JOIN Commandes c ON cd.id_commandes = c.id
+      LEFT JOIN Client cl ON c.client_id = cl.id
+      LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      WHERE wa.is_transferred_to_dist = 1
+      ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
+    ''');
+
+    final now = DateTime.now();
+    final List<Map<String, dynamic>> processed = [];
+    for (var row in results) {
+      final mutable = Map<String, dynamic>.from(row);
+      final transferredAtStr = row['transferred_at']?.toString();
+      bool isLocked = (row['archive_locked'] as num?)?.toInt() == 1;
+      if (!isLocked && transferredAtStr != null && transferredAtStr.isNotEmpty) {
+        try {
+          final dt = DateTime.parse(transferredAtStr);
+          if (now.difference(dt).inDays >= 7) {
+            isLocked = true;
+            final allocId = (row['id'] as num?)?.toInt() ?? 0;
+            if (allocId > 0) {
+              await myDb.update('WorkerAllocations', {'archive_locked': 1}, where: 'id = ?', whereArgs: [allocId]);
+            }
+          }
+        } catch (_) {}
+      }
+      mutable['is_locked_after_week'] = isLocked;
+      processed.add(mutable);
+    }
+    return processed;
   }
 
   Future<void> _uploadAllocationStatusToCloud(int allocationId) async {
@@ -3254,6 +3477,8 @@ class SqlDatabase {
                 'glass_installed_at': alloc['glass_installed_at'],
                 'is_distributed': alloc['is_distributed'] ?? 0,
                 'distributed_at': alloc['distributed_at'],
+                'is_transferred_to_dist': alloc['is_transferred_to_dist'] ?? 0,
+                'transferred_at': alloc['transferred_at'],
                 'updated_at': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true));
           debugPrint('--- SqlDatabase: Uploaded allocation status $allocationId to cloud ---');
@@ -3294,6 +3519,8 @@ class SqlDatabase {
               'glass_installed_at': data['glass_installed_at'],
               'is_distributed': data['is_distributed'] ?? 0,
               'distributed_at': data['distributed_at'],
+              'is_transferred_to_dist': data['is_transferred_to_dist'] ?? 0,
+              'transferred_at': data['transferred_at'],
             },
             where: 'id = ?',
             whereArgs: [allocationId],
@@ -3307,60 +3534,58 @@ class SqlDatabase {
   }
 
   Future<void> syncOrderAndAllocationsStatus(int orderId) async {
-    Database? myDb = await db;
-    if (myDb == null) return;
+    try {
+      Database? myDb = await db;
+      if (myDb == null || orderId <= 0) return;
 
-    final details = await readCommandeDetails(orderId);
-    if (details.isEmpty) return;
+      final allOrderAllocs = await myDb.rawQuery('''
+        SELECT wa.* 
+        FROM WorkerAllocations wa
+        INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+        WHERE cd.id_commandes = ?
+      ''', [orderId]);
 
-    int totalAllocations = 0;
-    int manufacturedAndGlassCount = 0;
-    int distributedCount = 0;
+      if (allOrderAllocs.isEmpty) return;
 
-    for (var d in details) {
-      final dId = d['id'] as int;
-      final dAllocs = await readWorkerAllocations(dId);
-      for (var wa in dAllocs) {
-        totalAllocations++;
-        final isMfg = (wa['is_manufactured'] == 1) && (wa['is_glass_installed'] == 1);
-        final isDist = wa['is_distributed'] == 1;
-        if (isMfg) manufacturedAndGlassCount++;
-        if (isDist) distributedCount++;
+      int totalAllocs = allOrderAllocs.length;
+      int mfgAllocs = allOrderAllocs.where((wa) => (wa['is_manufactured'] as num?)?.toInt() == 1).length;
+      int distAllocs = allOrderAllocs.where((wa) => (wa['is_distributed'] as num?)?.toInt() == 1 || (wa['is_transferred_to_dist'] as num?)?.toInt() == 1).length;
+
+      String? targetStatus;
+      if (distAllocs >= totalAllocs) {
+        targetStatus = 'Full Distribution';
+      } else if (distAllocs > 0) {
+        targetStatus = 'Partial Distribution';
+      } else if (mfgAllocs >= totalAllocs) {
+        targetStatus = 'Full Manufacturing';
+      } else if (mfgAllocs > 0) {
+        targetStatus = 'Partial Manufacturing';
       }
-    }
 
-    if (totalAllocations == 0) return;
-
-    String? targetStatus;
-    if (distributedCount >= totalAllocations) {
-      targetStatus = 'Full Distribution';
-    } else if (distributedCount > 0) {
-      targetStatus = 'Partial Distribution';
-    } else if (manufacturedAndGlassCount >= totalAllocations) {
-      targetStatus = 'Full Manufacturing';
-    } else if (manufacturedAndGlassCount > 0) {
-      targetStatus = 'Partial Manufacturing';
-    }
-
-    if (targetStatus != null) {
-      final orderRow = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
-      if (orderRow.isNotEmpty) {
-        final currentStatus = orderRow.first['status']?.toString();
-        if (currentStatus != targetStatus &&
-            currentStatus != 'Installation' &&
-            currentStatus != 'Reserve' &&
-            currentStatus != 'Done') {
-          await updateCommandeStatus(orderId, targetStatus, skipAllocationSync: true);
+      if (targetStatus != null) {
+        final orderRow = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
+        if (orderRow.isNotEmpty) {
+          final currentStatus = orderRow.first['status']?.toString() ?? '';
+          if (currentStatus != targetStatus &&
+              currentStatus != 'Installation' &&
+              currentStatus != 'Reserve' &&
+              currentStatus != 'Done') {
+            await updateCommandeStatus(orderId, targetStatus, skipAllocationSync: true);
+            debugPrint('syncOrderAndAllocationsStatus: updated order #$orderId status from $currentStatus to $targetStatus');
+          }
         }
       }
+    } catch (e) {
+      debugPrint('syncOrderAndAllocationsStatus error: $e');
     }
   }
 
   Future<void> updateWorkerAllocationManufacturing(int allocationId, int isManufactured) async {
     Database? myDb = await db;
+    if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
     
-    await myDb!.update(
+    await myDb.update(
       'WorkerAllocations',
       {
         'is_manufactured': isManufactured,
@@ -3372,11 +3597,15 @@ class SqlDatabase {
 
     final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
     if (allocRow.isNotEmpty) {
-      final detailId = allocRow.first['commande_detail_id'] as int;
-      final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
-      if (detailRow.isNotEmpty) {
-        final orderId = detailRow.first['id_commandes'] as int;
-        await syncOrderAndAllocationsStatus(orderId);
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            await syncOrderAndAllocationsStatus(orderId);
+          }
+        }
       }
     }
 
@@ -3386,9 +3615,10 @@ class SqlDatabase {
 
   Future<void> updateWorkerAllocationGlass(int allocationId, int isGlassInstalled) async {
     Database? myDb = await db;
+    if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
     
-    await myDb!.update(
+    await myDb.update(
       'WorkerAllocations',
       {
         'is_glass_installed': isGlassInstalled,
@@ -3400,11 +3630,15 @@ class SqlDatabase {
 
     final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
     if (allocRow.isNotEmpty) {
-      final detailId = allocRow.first['commande_detail_id'] as int;
-      final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
-      if (detailRow.isNotEmpty) {
-        final orderId = detailRow.first['id_commandes'] as int;
-        await syncOrderAndAllocationsStatus(orderId);
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            await syncOrderAndAllocationsStatus(orderId);
+          }
+        }
       }
     }
 
@@ -3414,9 +3648,10 @@ class SqlDatabase {
 
   Future<void> updateWorkerAllocationDistribution(int allocationId, int isDistributed) async {
     Database? myDb = await db;
+    if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
     
-    await myDb!.update(
+    await myDb.update(
       'WorkerAllocations',
       {
         'is_distributed': isDistributed,
@@ -3428,16 +3663,114 @@ class SqlDatabase {
 
     final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
     if (allocRow.isNotEmpty) {
-      final detailId = allocRow.first['commande_detail_id'] as int;
-      final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
-      if (detailRow.isNotEmpty) {
-        final orderId = detailRow.first['id_commandes'] as int;
-        await syncOrderAndAllocationsStatus(orderId);
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            await syncOrderAndAllocationsStatus(orderId);
+          }
+        }
       }
     }
 
     await _uploadAllocationStatusToCloud(allocationId);
     CloudSyncService().notifyChange();
+  }
+
+  Future<void> updateWorkerAllocationTransfer(int allocationId, int isTransferred) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    final nowStr = DateTime.now().toIso8601String();
+    await myDb.update(
+      'WorkerAllocations',
+      {
+        'is_transferred_to_dist': isTransferred,
+        'transferred_at': isTransferred == 1 ? nowStr : null,
+      },
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
+
+    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    if (allocRow.isNotEmpty) {
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            await syncOrderAndAllocationsStatus(orderId);
+          }
+        }
+      }
+    }
+
+    await _uploadAllocationStatusToCloud(allocationId);
+    CloudSyncService().notifyChange();
+  }
+
+  Future<void> purgeOldArchivedAllocations() async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      final sixMonthsAgo = DateTime.now().subtract(const Duration(days: 180)).toIso8601String();
+      await myDb.rawDelete('''
+        DELETE FROM WorkerAllocations 
+        WHERE is_transferred_to_dist = 1 
+          AND transferred_at IS NOT NULL 
+          AND transferred_at < ?
+      ''', [sixMonthsAgo]);
+    } catch (e) {
+      debugPrint('purgeOldArchivedAllocations error: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> readWorkerArchivedAllocations(String workerUid, String workerEmail) async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+    await purgeOldArchivedAllocations();
+    final cleanEmail = workerEmail.trim().toLowerCase();
+
+    final results = await myDb.rawQuery('''
+      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+             cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+             cl.firstname, cl.lastname, e.name as worker_name, c.status as order_status
+      FROM WorkerAllocations wa
+      LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+      LEFT JOIN Commandes c ON cd.id_commandes = c.id
+      LEFT JOIN Client cl ON c.client_id = cl.id
+      LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR (e.email IS NOT NULL AND LOWER(e.email) = ?))
+      WHERE (wa.worker_uid = ?
+         OR LOWER(wa.worker_uid) = ?
+         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?))
+        AND wa.is_transferred_to_dist = 1
+      ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
+    ''', [cleanEmail, workerUid, cleanEmail, cleanEmail]);
+
+    final now = DateTime.now();
+    final List<Map<String, dynamic>> processed = [];
+    for (var row in results) {
+      final mutable = Map<String, dynamic>.from(row);
+      final transferredAtStr = row['transferred_at']?.toString();
+      bool isLocked = (row['archive_locked'] as num?)?.toInt() == 1;
+      if (!isLocked && transferredAtStr != null && transferredAtStr.isNotEmpty) {
+        try {
+          final dt = DateTime.parse(transferredAtStr);
+          if (now.difference(dt).inDays >= 7) {
+            isLocked = true;
+            final allocId = (row['id'] as num?)?.toInt() ?? 0;
+            if (allocId > 0) {
+              await myDb.update('WorkerAllocations', {'archive_locked': 1}, where: 'id = ?', whereArgs: [allocId]);
+            }
+          }
+        } catch (_) {}
+      }
+      mutable['is_locked_after_week'] = isLocked;
+      processed.add(mutable);
+    }
+    return processed;
   }
 
   Future<void> updateWorkerAllocationDetails(
@@ -6226,6 +6559,9 @@ class SqlDatabase {
       "ALTER TABLE Accessories ADD COLUMN screw_count INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
       "ALTER TABLE Series ADD COLUMN has_three_piece_sash INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE WorkerAllocations ADD COLUMN is_transferred_to_dist INTEGER DEFAULT 0",
+      "ALTER TABLE WorkerAllocations ADD COLUMN transferred_at TEXT",
+      "ALTER TABLE WorkerAllocations ADD COLUMN archive_locked INTEGER DEFAULT 0",
     ];
     for (final sql in alters) {
       try {
