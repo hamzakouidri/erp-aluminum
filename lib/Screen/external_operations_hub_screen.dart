@@ -68,13 +68,25 @@ class _ExternalOperationsHubScreenState
     }
   }
 
+  String _formatDateStr(dynamic str) {
+    if (str == null || str.toString().trim().isEmpty) return '-';
+    try {
+      final dt = DateTime.parse(str.toString());
+      return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return str.toString();
+    }
+  }
+
   List<Map<String, dynamic>> _fieldInstallationAllocations = [];
+  List<Map<String, dynamic>> _reserveAllocations = [];
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final orders = await widget.db.readCommandesWithClients();
       final fieldAllocs = await widget.db.readFieldInstallationAllocations();
+      final reserveAllocs = await widget.db.readReserveAllocations();
       final Map<int, List<Map<String, dynamic>>> detailsMap = {};
       final Map<int, List<Map<String, dynamic>>> allocsMap = {};
 
@@ -96,6 +108,7 @@ class _ExternalOperationsHubScreenState
         setState(() {
           _allOrders = orders;
           _fieldInstallationAllocations = fieldAllocs;
+          _reserveAllocations = reserveAllocs;
           _orderDetailsMap = detailsMap;
           _orderAllocationsMap = allocsMap;
           _isLoading = false;
@@ -785,7 +798,7 @@ class _ExternalOperationsHubScreenState
                               ),
                             ),
 
-                            // 3. زر تم الانتهاء (يتحول مباشرة للأرشيف بنفس السجل)
+                            // 3. زر تم الانتهاء (يتحول مباشرة للأرشيف بنفس السجل وتلغى تحفظاته آلياً)
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final confirm = await showDialog<bool>(
@@ -793,7 +806,7 @@ class _ExternalOperationsHubScreenState
                                   builder: (ctx) => AlertDialog(
                                     title: const Text('إتمام العمل والتحويل للأرشيف', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                                     content: const Text(
-                                      'هل تم الانتهاء كلياً من تركيب هذا العنصر ونقله نهائياً للأرشيف؟',
+                                      'هل تم الانتهاء كلياً من تركيب هذا العنصر والتخلص من تحفظاته ونقله نهائياً للأرشيف؟',
                                       style: TextStyle(fontFamily: 'Cairo'),
                                     ),
                                     actions: [
@@ -812,11 +825,11 @@ class _ExternalOperationsHubScreenState
 
                                 if (confirm == true) {
                                   await widget.db.updateWorkerAllocationCompletion(allocId, 1);
-                                  _loadData();
+                                  await _loadData();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('تم الانتهاء بنجاح وتحويل النافذة للأرشيف 📦✅', style: TextStyle(fontFamily: 'Cairo')),
+                                        content: Text('تم الانتهاء بنجاح، إلغاء التحفظ آلياً وتحويل النافذة للأرشيف 📦✅', style: TextStyle(fontFamily: 'Cairo')),
                                         backgroundColor: Colors.green,
                                       ),
                                     );
@@ -832,6 +845,90 @@ class _ExternalOperationsHubScreenState
                                 backgroundColor: Colors.green.shade700,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              ),
+                            ),
+
+                            // 4. زر تحفظ (Réserve) - كتابة وإظهار النقائص
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                final hasReserve = t['has_reserve'] == 1;
+                                final currentNotes = t['reserve_notes']?.toString() ?? '';
+                                final notesCtrl = TextEditingController(text: currentNotes);
+
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: Text(
+                                      hasReserve ? 'تعديل أو إلغاء التحفظ (Réserve)' : 'تسجيل نقائص النافذة / تحفظ ⚠️',
+                                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                    ),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('ما هي النقائص والتفاصيل الميدانية لهاته النافذة؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                          controller: notesCtrl,
+                                          maxLines: 3,
+                                          decoration: const InputDecoration(
+                                            hintText: 'أدخل النقائص: مثال: ناقص مقبض، زجاج مكسور...',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      if (hasReserve)
+                                        TextButton(
+                                          onPressed: () async {
+                                            Navigator.pop(ctx, false);
+                                            await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
+                                            await _loadData();
+                                          },
+                                          child: const Text('إلغاء التحفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.red)),
+                                        ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, null),
+                                        child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+                                      ),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('حفظ التحفظ', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirm == true) {
+                                  final txt = notesCtrl.text.trim();
+                                  if (txt.isNotEmpty) {
+                                    await widget.db.updateWorkerAllocationReserve(allocId, 1, txt);
+                                    await _loadData();
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('تم تسجيل النقائص والتحفظ بنجاح ونقله لصفحة إدارة التحفظات ⚠️✅', style: TextStyle(fontFamily: 'Cairo')),
+                                          backgroundColor: Colors.orange,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              icon: Icon(
+                                t['has_reserve'] == 1 ? Icons.warning_rounded : Icons.warning_amber_rounded,
+                                size: 16,
+                              ),
+                              label: Text(
+                                t['has_reserve'] == 1 ? 'تحفظ مسجّل ⚠️' : 'تحفظ ⚠️',
+                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: t['has_reserve'] == 1 ? Colors.orange.shade800 : Colors.grey.shade400,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                               ),
                             ),
                           ],
@@ -852,24 +949,38 @@ class _ExternalOperationsHubScreenState
   // TAB 4: إدارة وتصفية التحفظات (Reserve Clearance - Réserve)
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildReservesTab(AppLanguage lang, bool isDark) {
-    final reserveOrders = _allOrders.where((o) => o['status'] == 'Reserve' || o['status'] == 'تحت التحفظ' || o['status'] == 'Réserve').toList();
+    final filtered = _reserveAllocations.where((t) {
+      if (_searchQuery.isEmpty) return true;
+      final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
+      final workerName = (t['worker_name'] ?? '').toString().toLowerCase();
+      final wType = (t['window_type'] ?? '').toString().toLowerCase();
+      final notes = (t['reserve_notes'] ?? '').toString().toLowerCase();
+      return clientName.contains(_searchQuery) || workerName.contains(_searchQuery) || wType.contains(_searchQuery) || notes.contains(_searchQuery);
+    }).toList();
 
-    if (reserveOrders.isEmpty) {
-      return _emptyState(_tr('لا توجد طلبات في حالة تحفظ حالياً (Réserve)', 'Aucune réserve en cours', 'No current reserve orders', lang));
+    if (filtered.isEmpty) {
+      return _emptyState(_tr('لا توجد نوافذ بها تحفظات مسجلة حالياً (Réserve)', 'Aucune réserve en cours', 'No active window reserves', lang));
     }
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: reserveOrders.length,
+      itemCount: filtered.length,
       itemBuilder: (context, index) {
-        final o = reserveOrders[index];
-        final oId = o['id'] as int;
-        final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'.trim();
-        final details = _orderDetailsMap[oId] ?? [];
+        final t = filtered[index];
+        final allocId = (t['id'] as num?)?.toInt() ?? 0;
+        final orderId = (t['id_commandes'] as num?)?.toInt() ?? 0;
+        final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.trim();
+        final windowType = t['window_type']?.toString() ?? 'Window';
+        final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
+        final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
+        final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
+        final workerName = (t['worker_name'] ?? '').toString().trim();
+        final notes = t['reserve_notes']?.toString() ?? '';
+        final reserveAt = _formatDateStr(t['reserve_at']);
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(14.0),
@@ -879,56 +990,104 @@ class _ExternalOperationsHubScreenState
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.report_problem, color: Colors.orange, size: 20),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_tr("تحفظ طلبية", "Réserve Commande", "Reserve Order", lang)} #$oId',
-                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.orange),
-                        ),
-                      ],
+                    Expanded(
+                      child: Text(
+                        '${_tr("تحفظ نافذة طلبية", "Réserve Commande", "Window Reserve", lang)} #$orderId',
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: Colors.orange),
+                      ),
                     ),
                     Text(
-                      clientName.isNotEmpty ? clientName : _tr('عميل غير مسمى', 'Client non spécifié', 'Unnamed Client', lang),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      clientName.isNotEmpty ? clientName : _tr('زبون غير محدد', 'Client Inconnu', 'Unknown Client', lang),
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
                 const Divider(height: 16),
-                Text(
-                  _tr('ملاحظات عدم الاقتناع أو تعديلات الموقع المطلوب تسويتها:', 'Remarques ou réserves à lever :', 'Reserve notes to resolve:', lang),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                ),
-                const SizedBox(height: 8),
 
-                ...details.map((d) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 75,
+                      height: 75,
+                      child: LazyWindowImage(
+                        db: widget.db,
+                        detailId: (t['commande_detail_id'] as num?)?.toInt() ?? 0,
+                        initialImagePath: t['drawing_image_path'] ?? '',
+                        drawingImageBase64: t['drawing_image_base64'],
+                        partitionsJson: t['partitions_json'],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.build_circle_outlined, size: 14, color: Colors.orange),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${Localization.translate(d['window_type']?.toString() ?? 'Window', lang)} (${d['largeur']} × ${d['hauteur']} مم)',
-                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                          Text(
+                            windowType,
+                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${largeur}cm × ${hauteur}cm | ${_tr("الكمية:", "Qté:", "Qty:", lang)} $qty',
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                          ),
+                          if (workerName.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              '👷 ${_tr("العامل الصانع:", "Ouvrier:", "Worker:", lang)} $workerName',
+                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blue),
                             ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // صندوق النقائص والتفاصيل
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.report_problem_rounded, size: 16, color: Colors.orange),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${_tr("تفاصيل النقائص والتحفظات الميدانية:", "Détails des réserves :", "Reserve details:", lang)} ($reserveAt)',
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange),
                           ),
                         ],
                       ),
-                    )),
+                      const SizedBox(height: 4),
+                      Text(
+                        notes.isNotEmpty ? notes : _tr('لم تسجل تفاصيل', 'Pas de détails', 'No details', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      await widget.db.updateCommandeStatus(oId, 'Done');
+                      await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
                       await _loadData();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(_tr('تمت تصفية جميع التحفظات ونقل الطلبية إلى منتهية (Done) ✅', 'Toutes les réserves levées. Commande terminée (Done) ✅', 'All reserves cleared. Order completed (Done) ✅', lang)),
+                          const SnackBar(
+                            content: Text('تم رفع وإلغاء التحفظ بنجاح 🔄✅', style: TextStyle(fontFamily: 'Cairo')),
                             backgroundColor: Colors.green,
                           ),
                         );
@@ -936,7 +1095,7 @@ class _ExternalOperationsHubScreenState
                     },
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: Text(
-                      _tr('إلغاء التحفظ وإنهاء الطلبية ✅', 'Lever la réserve & Terminer ✅', 'Clear Reserve & Complete ✅', lang),
+                      _tr('إلغاء التحفظ (Réserve Levée) ✅', 'Lever la réserve ✅', 'Clear Reserve ✅', lang),
                       style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     style: ElevatedButton.styleFrom(

@@ -417,6 +417,24 @@ class SqlDatabase {
            );
          } catch (_) {}
 
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN has_reserve INTEGER DEFAULT 0;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN reserve_notes TEXT;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN reserve_at TEXT;",
+           );
+         } catch (_) {}
+
         // Auto purge settled data older than 6 months
         try {
           await db.execute('''
@@ -3783,6 +3801,8 @@ class SqlDatabase {
         'completed_at': isCompleted == 1 ? nowStr : null,
         'is_transferred_to_dist': 1,
         'transferred_at': nowStr,
+        if (isCompleted == 1) 'has_reserve': 0,
+        if (isCompleted == 1) 'reserve_notes': null,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -3804,6 +3824,63 @@ class SqlDatabase {
 
     await _uploadAllocationStatusToCloud(allocationId);
     CloudSyncService().notifyChange();
+  }
+
+  Future<void> updateWorkerAllocationReserve(int allocationId, int hasReserve, String? reserveNotes) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    final nowStr = DateTime.now().toIso8601String();
+    await myDb.update(
+      'WorkerAllocations',
+      {
+        'has_reserve': hasReserve,
+        'reserve_notes': hasReserve == 1 ? reserveNotes : null,
+        'reserve_at': hasReserve == 1 ? nowStr : null,
+      },
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
+
+    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    if (allocRow.isNotEmpty) {
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            if (hasReserve == 1) {
+              await updateCommandeStatus(orderId, 'Reserve', skipAllocationSync: true);
+            } else {
+              await syncOrderAndAllocationsStatus(orderId);
+            }
+          }
+        }
+      }
+    }
+
+    await _uploadAllocationStatusToCloud(allocationId);
+    CloudSyncService().notifyChange();
+  }
+
+  Future<List<Map<String, dynamic>>> readReserveAllocations() async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+
+    final results = await myDb.rawQuery('''
+      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+             cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+             cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name, c.status as order_status
+      FROM WorkerAllocations wa
+      INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+      INNER JOIN Commandes c ON cd.id_commandes = c.id
+      LEFT JOIN Client cl ON c.client_id = cl.id
+      LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      WHERE wa.has_reserve = 1
+        AND (wa.is_completed IS NULL OR wa.is_completed = 0)
+      ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
+    ''');
+    return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
   Future<void> purgeOldArchivedAllocations() async {
