@@ -120,6 +120,23 @@ class _ExternalOperationsHubScreenState
     }
   }
 
+  Future<void> _loadDataQuietly() async {
+    try {
+      final orders = await widget.db.readCommandesWithClients();
+      final fieldAllocs = await widget.db.readFieldInstallationAllocations();
+      final reserveAllocs = await widget.db.readReserveAllocations();
+      if (mounted) {
+        setState(() {
+          _allOrders = orders;
+          _fieldInstallationAllocations = fieldAllocs;
+          _reserveAllocations = reserveAllocs;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading data quietly: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -679,6 +696,7 @@ class _ExternalOperationsHubScreenState
 
                   final isDistributed = t['is_distributed'] == 1;
                   final isInstalled = t['is_installed'] == 1;
+                  final isCompleted = t['is_completed'] == 1;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -733,7 +751,7 @@ class _ExternalOperationsHubScreenState
                         ),
                         const SizedBox(height: 10),
 
-                        // 3️⃣ الأزرار الثلاثة (تم التوزيع - تم التركيب - تم الانتهاء)
+                        // 3️⃣ الأزرار (تم التوزيع - تم التركيب - تم الانتهاء - تحفظ)
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
@@ -752,8 +770,9 @@ class _ExternalOperationsHubScreenState
                                   return;
                                 }
                                 final newVal = isDistributed ? 0 : 1;
+                                setState(() => t['is_distributed'] = newVal);
                                 await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
-                                await _loadData();
+                                await _loadDataQuietly();
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -792,8 +811,9 @@ class _ExternalOperationsHubScreenState
                                   return;
                                 }
                                 final newVal = isInstalled ? 0 : 1;
+                                setState(() => t['is_installed'] = newVal);
                                 await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
-                                await _loadData();
+                                await _loadDataQuietly();
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -818,7 +838,7 @@ class _ExternalOperationsHubScreenState
                               ),
                             ),
 
-                            // 3. زر تم الانتهاء (يتحول مباشرة للأرشيف بنفس السجل وتلغى تحفظاته آلياً)
+                            // 3. زر تم الانتهاء (يظهر أبيض في البداية، وتفعل علامة النايك والخلفية الخضراء عند الضغط والإنهاء)
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
@@ -854,8 +874,11 @@ class _ExternalOperationsHubScreenState
                                 );
 
                                 if (confirm == true) {
+                                  setState(() {
+                                    t['is_completed'] = 1;
+                                  });
                                   await widget.db.updateWorkerAllocationCompletion(allocId, 1);
-                                  await _loadData();
+                                  await _loadDataQuietly();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
@@ -866,14 +889,24 @@ class _ExternalOperationsHubScreenState
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.task_alt_rounded, size: 16),
-                              label: const Text(
-                                'تم الانتهاء ✅',
-                                style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                              icon: Icon(
+                                isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                size: 16,
+                                color: isCompleted ? Colors.white : (isDark ? Colors.grey.shade300 : Colors.grey.shade700),
+                              ),
+                              label: Text(
+                                isCompleted ? 'تم الانتهاء ✅' : 'تم الانتهاء',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isCompleted ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                ),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green.shade700,
-                                foregroundColor: Colors.white,
+                                backgroundColor: isCompleted ? Colors.green.shade600 : (isDark ? const Color(0xFF334155) : Colors.white),
+                                foregroundColor: isCompleted ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                side: isCompleted ? BorderSide.none : BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade400),
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               ),
                             ),
@@ -1133,7 +1166,7 @@ class _ExternalOperationsHubScreenState
                         return;
                       }
                       await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
-                      await _loadData();
+                      await _loadDataQuietly();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
