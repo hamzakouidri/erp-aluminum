@@ -393,6 +393,30 @@ class SqlDatabase {
            );
          } catch (_) {}
 
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN is_installed INTEGER DEFAULT 0;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN installed_at TEXT;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN is_completed INTEGER DEFAULT 0;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN completed_at TEXT;",
+           );
+         } catch (_) {}
+
         // Auto purge settled data older than 6 months
         try {
           await db.execute('''
@@ -3688,6 +3712,76 @@ class SqlDatabase {
       {
         'is_transferred_to_dist': isTransferred,
         'transferred_at': isTransferred == 1 ? nowStr : null,
+      },
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
+
+    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    if (allocRow.isNotEmpty) {
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            await syncOrderAndAllocationsStatus(orderId);
+          }
+        }
+      }
+    }
+
+    await _uploadAllocationStatusToCloud(allocationId);
+    CloudSyncService().notifyChange();
+  }
+
+  Future<List<Map<String, dynamic>>> readFieldInstallationAllocations() async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+
+    return await myDb.rawQuery('''
+      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+             cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
+             cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name, c.status as order_status
+      FROM WorkerAllocations wa
+      INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+      INNER JOIN Commandes c ON cd.id_commandes = c.id
+      LEFT JOIN Client cl ON c.client_id = cl.id
+      LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      WHERE wa.is_transferred_to_dist = 1
+        AND (wa.is_completed IS NULL OR wa.is_completed = 0)
+      ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
+    ''');
+  }
+
+  Future<void> updateWorkerAllocationInstallation(int allocationId, int isInstalled) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    final nowStr = DateTime.now().toIso8601String();
+    await myDb.update(
+      'WorkerAllocations',
+      {
+        'is_installed': isInstalled,
+        'installed_at': isInstalled == 1 ? nowStr : null,
+      },
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
+    await _uploadAllocationStatusToCloud(allocationId);
+    CloudSyncService().notifyChange();
+  }
+
+  Future<void> updateWorkerAllocationCompletion(int allocationId, int isCompleted) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    final nowStr = DateTime.now().toIso8601String();
+    await myDb.update(
+      'WorkerAllocations',
+      {
+        'is_completed': isCompleted,
+        'completed_at': isCompleted == 1 ? nowStr : null,
+        'is_transferred_to_dist': 1,
+        'transferred_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],

@@ -5,6 +5,7 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import 'glass_order_reception_screen.dart';
 import 'achat_screen.dart';
+import '../widgets/lazy_window_image.dart';
 
 class ExternalOperationsHubScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -31,6 +32,19 @@ class _ExternalOperationsHubScreenState
   final Map<int, String> _glassStatusMap = {}; // orderId -> status
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canAccessExternalOperations()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadData();
@@ -54,10 +68,13 @@ class _ExternalOperationsHubScreenState
     }
   }
 
+  List<Map<String, dynamic>> _fieldInstallationAllocations = [];
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final orders = await widget.db.readCommandesWithClients();
+      final fieldAllocs = await widget.db.readFieldInstallationAllocations();
       final Map<int, List<Map<String, dynamic>>> detailsMap = {};
       final Map<int, List<Map<String, dynamic>>> allocsMap = {};
 
@@ -78,6 +95,7 @@ class _ExternalOperationsHubScreenState
       if (mounted) {
         setState(() {
           _allOrders = orders;
+          _fieldInstallationAllocations = fieldAllocs;
           _orderDetailsMap = detailsMap;
           _orderAllocationsMap = allocsMap;
           _isLoading = false;
@@ -563,122 +581,251 @@ class _ExternalOperationsHubScreenState
   // TAB 3: التركيبات الميدانية (Site Installations - Window by Window)
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildInstallationsTab(AppLanguage lang, bool isDark) {
-    final installationOrders = _allOrders.where((o) {
-      final status = o['status']?.toString() ?? '';
-      final isRelevant = status == 'Partial Distribution' ||
-          status == 'Full Distribution' ||
-          status == 'Installation' ||
-          status == 'توزيع جزئي' ||
-          status == 'توزيع كلي' ||
-          status == 'تركيب';
-      if (!isRelevant) return false;
-      if (_searchQuery.isNotEmpty) {
-        final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''} ${o['id']}'.toLowerCase();
-        return clientName.contains(_searchQuery);
-      }
-      return true;
+    final filtered = _fieldInstallationAllocations.where((t) {
+      if (_searchQuery.isEmpty) return true;
+      final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
+      final workerName = (t['worker_name'] ?? '').toString().toLowerCase();
+      final wType = (t['window_type'] ?? '').toString().toLowerCase();
+      final oId = (t['id_commandes'] ?? '').toString();
+      return clientName.contains(_searchQuery) || workerName.contains(_searchQuery) || wType.contains(_searchQuery) || oId.contains(_searchQuery);
     }).toList();
 
-    if (installationOrders.isEmpty) {
-      return _emptyState(_tr('لا توجد نوافذ جاهزة للتركيب الميداني حالياً', 'Aucune fenêtre prête à la pose', 'No windows pending site installation', lang));
+    if (filtered.isEmpty) {
+      return _emptyState(_tr('لا توجد نوافذ محولة للتركيبات الميدانية حالياً', 'Aucune fenêtre en pose sur site', 'No windows pending site installation', lang));
+    }
+
+    // تجميع العناصر مرتبة حسب الزبون
+    final Map<int, List<Map<String, dynamic>>> clientGroupedMap = {};
+    for (var item in filtered) {
+      final clientId = (item['client_id'] as num?)?.toInt() ?? 0;
+      clientGroupedMap.putIfAbsent(clientId, () => []).add(item);
     }
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: installationOrders.length,
+      itemCount: clientGroupedMap.keys.length,
       itemBuilder: (context, index) {
-        final o = installationOrders[index];
-        final oId = o['id'] as int;
-        final details = _orderDetailsMap[oId] ?? [];
-        final allocs = _orderAllocationsMap[oId] ?? [];
-        final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'.trim();
+        final clientId = clientGroupedMap.keys.elementAt(index);
+        final clientItems = clientGroupedMap[clientId]!;
+        final firstItem = clientItems.first;
+        final clientName = '${firstItem['firstname'] ?? ''} ${firstItem['lastname'] ?? ''}'.trim();
+        final displayClientName = clientName.isNotEmpty ? clientName : _tr('زبون غير محدد', 'Client Inconnu', 'Unknown Client', lang);
 
         return Card(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 14),
+          elevation: 3,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
-          child: ExpansionTile(
-            title: Row(
+          child: Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.construction, color: Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${_tr("تركيب طلبية", "Pose Commande", "Site Installation", lang)} #$oId - ${clientName.isNotEmpty ? clientName : "Client"}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-            subtitle: Text(
-              '${_tr("الحالة:", "Statut :", "Status :", lang)} ${o['status']} (${details.length} ${_tr("عنصر", "éléments", "items", lang)})',
-              style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
-            ),
-            children: [
-              const Divider(height: 1),
-              ...allocs.map((t) {
-                final allocId = t['id'] as int;
-                final isInstalled = t['is_installed'] == 1;
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isInstalled ? Icons.check_circle : Icons.build_circle_outlined,
-                        color: isInstalled ? Colors.green : Colors.blue,
-                        size: 22,
+                // 1️⃣ رأس بطاقة الزبون
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
+                      child: const Icon(Icons.person_rounded, color: Colors.blue, size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${_tr("الزبون:", "Client :", "Client:", lang)} $displayClientName',
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${clientItems.length} ${_tr("عناصر", "éléments", "items", lang)}',
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
+
+                // 2️⃣ قائمة عناصر الزبون مرتبة
+                ...clientItems.map((t) {
+                  final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                  final orderId = (t['id_commandes'] as num?)?.toInt() ?? 0;
+                  final windowType = t['window_type']?.toString() ?? 'Window';
+                  final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
+                  final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
+                  final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
+                  final workerName = (t['worker_name'] ?? '').toString().trim();
+
+                  final isDistributed = t['is_distributed'] == 1;
+                  final isInstalled = t['is_installed'] == 1;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${Localization.translate(t['window_type']?.toString() ?? 'Window', lang)} (${t['largeur']} × ${t['hauteur']} مم)',
-                              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                            SizedBox(
+                              width: 75,
+                              height: 75,
+                              child: LazyWindowImage(
+                                db: widget.db,
+                                detailId: (t['commande_detail_id'] as num?)?.toInt() ?? 0,
+                                initialImagePath: t['drawing_image_path'] ?? '',
+                                drawingImageBase64: t['drawing_image_base64'],
+                                partitionsJson: t['partitions_json'],
+                              ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              isInstalled
-                                  ? _tr('تم التركيب والمصادقة الميدانية ✅', 'Posé & Validé sur site ✅', 'Installed on site ✅', lang)
-                                  : _tr('جاهز للتركيب بالموقع 🏗️', 'Prêt pour la pose 🏗️', 'Ready for site installation 🏗️', lang),
-                              style: TextStyle(fontSize: 11, color: isInstalled ? Colors.green : Colors.orange),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${_tr("طلبية", "Commande", "Order", lang)} #$orderId | $windowType',
+                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${largeur}cm × ${hauteur}cm | ${_tr("الكمية:", "Qté:", "Qty:", lang)} $qty',
+                                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                                  ),
+                                  if (workerName.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '👷 ${_tr("العامل الصانع:", "Ouvrier:", "Worker:", lang)} $workerName',
+                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blue),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final newVal = isInstalled ? 0 : 1;
-                          setState(() {
-                            t['is_installed'] = newVal;
-                          });
-                          await widget.db.syncOrderAndAllocationsStatus(oId);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(newVal == 1
-                                  ? _tr('تم تسجيل تركيب النافذة بالموقع ✅', 'Pose de fenêtre enregistrée sur site ✅', 'Site window installation recorded ✅', lang)
-                                  : _tr('تم إلغاء حالة التركيب', 'Statut de pose annulé', 'Installation status reset', lang)),
-                              duration: const Duration(seconds: 1),
+                        const SizedBox(height: 10),
+
+                        // 3️⃣ الأزرار الثلاثة (تم التوزيع - تم التركيب - تم الانتهاء)
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            // 1. زر تم التوزيع
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                final newVal = isDistributed ? 0 : 1;
+                                setState(() => t['is_distributed'] = newVal);
+                                await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
+                              },
+                              icon: Icon(
+                                isDistributed ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                size: 16,
+                              ),
+                              label: Text(
+                                isDistributed ? 'تم التوزيع ✅' : 'تم التوزيع 🚚',
+                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDistributed ? Colors.indigo : Colors.grey.shade400,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              ),
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isInstalled ? Colors.green.shade600 : Colors.blue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+
+                            // 2. زر تم التركيب
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                final newVal = isInstalled ? 0 : 1;
+                                setState(() => t['is_installed'] = newVal);
+                                await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
+                              },
+                              icon: Icon(
+                                isInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                size: 16,
+                              ),
+                              label: Text(
+                                isInstalled ? 'تم التركيب ✅' : 'تم التركيب 🛠️',
+                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isInstalled ? Colors.teal : Colors.grey.shade400,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              ),
+                            ),
+
+                            // 3. زر تم الانتهاء (يتحول مباشرة للأرشيف بنفس السجل)
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('إتمام العمل والتحويل للأرشيف', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    content: const Text(
+                                      'هل تم الانتهاء كلياً من تركيب هذا العنصر ونقله نهائياً للأرشيف؟',
+                                      style: TextStyle(fontFamily: 'Cairo'),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+                                      ),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('تأكيد الانتهاء', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirm == true) {
+                                  await widget.db.updateWorkerAllocationCompletion(allocId, 1);
+                                  _loadData();
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('تم الانتهاء بنجاح وتحويل النافذة للأرشيف 📦✅', style: TextStyle(fontFamily: 'Cairo')),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.task_alt_rounded, size: 16),
+                              label: const Text(
+                                'تم الانتهاء ✅',
+                                style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green.shade700,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          isInstalled ? _tr('تم التركيب ✅', 'Posé ✅', 'Installed ✅', lang) : _tr('زر تركيب', 'Poser', 'Install', lang),
-                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
         );
       },

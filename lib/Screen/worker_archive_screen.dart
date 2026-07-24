@@ -228,7 +228,8 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
     final assignedAt = _formatDateTime(t['assigned_at']);
     final mfgAt = _formatDateTime(t['manufactured_at']);
     final glassAt = _formatDateTime(t['glass_installed_at']);
-    final transferredAt = _formatDateTime(t['transferred_at']);
+    final transferredAt = _formatDateTime(t['transferred_at'] ?? t['distributed_at']);
+    final installedAt = _formatDateTime(t['completed_at'] ?? t['installed_at']);
 
     final isLocked = t['is_locked_after_week'] == true;
     final allocId = (t['id'] as num?)?.toInt() ?? 0;
@@ -299,7 +300,7 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
             ),
             const Divider(height: 16),
 
-            // 3️⃣ التواريخ الأربعة المطلوبة (الإسناد - الصنع - تركيب الزجاج - الأرشفة)
+            // 3️⃣ التواريخ الإسناد - الصنع - تركيب الزجاج - التوزيع - التركيب والانتهاء
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -312,9 +313,13 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                   const SizedBox(height: 4),
                   _dateRow(Icons.build_circle_outlined, 'تاريخ الصنع:', mfgAt, Colors.green),
                   const SizedBox(height: 4),
-                  _dateRow(Icons.check_box_rounded, 'تاريخ تركيب الزجاج:', glassAt, Colors.teal),
+                  _dateRow(Icons.check_box_rounded, 'تاريخ تركيب الزجاج بالورشة:', glassAt, Colors.teal),
                   const SizedBox(height: 4),
-                  _dateRow(Icons.local_shipping_rounded, 'تاريخ الأرشفة والتوزيع:', transferredAt, Colors.indigo),
+                  _dateRow(Icons.local_shipping_rounded, 'تاريخ التوزيع والخروج للميدان:', transferredAt, Colors.indigo),
+                  if (t['is_completed'] == 1 || t['completed_at'] != null || t['installed_at'] != null) ...[
+                    const SizedBox(height: 4),
+                    _dateRow(Icons.task_alt_rounded, 'تاريخ التركيب والانتهاء بالموقع:', installedAt, Colors.purple),
+                  ],
                 ],
               ),
             ),
