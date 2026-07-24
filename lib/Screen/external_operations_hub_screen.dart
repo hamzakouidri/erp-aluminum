@@ -729,14 +729,16 @@ class _ExternalOperationsHubScreenState
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final newVal = isDistributed ? 0 : 1;
-                                setState(() => t['is_distributed'] = newVal);
                                 await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(newVal == 1 ? 'تم تسجيل خروج وتوزيع النافذة للميدان 🚚✅' : 'تم إلغاء حالة التوزيع'),
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
+                                await _loadData();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(newVal == 1 ? 'تم تسجيل خروج وتوزيع النافذة للميدان 🚚✅' : 'تم إلغاء حالة التوزيع', style: const TextStyle(fontFamily: 'Cairo')),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
                               },
                               icon: Icon(
                                 isDistributed ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
@@ -757,14 +759,16 @@ class _ExternalOperationsHubScreenState
                             ElevatedButton.icon(
                               onPressed: () async {
                                 final newVal = isInstalled ? 0 : 1;
-                                setState(() => t['is_installed'] = newVal);
                                 await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(newVal == 1 ? 'تم تسجيل تركيب النافذة بالموقع 🛠️✅' : 'تم إلغاء حالة التركيب'),
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
+                                await _loadData();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(newVal == 1 ? 'تم تسجيل تركيب النافذة بالموقع 🛠️✅' : 'تم إلغاء حالة التركيب', style: const TextStyle(fontFamily: 'Cairo')),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
                               },
                               icon: Icon(
                                 isInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,

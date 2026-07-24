@@ -3739,7 +3739,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return [];
 
-    return await myDb.rawQuery('''
+    final results = await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
              cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name, c.status as order_status
@@ -3752,6 +3752,7 @@ class SqlDatabase {
         AND (wa.is_completed IS NULL OR wa.is_completed = 0)
       ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
     ''');
+    return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
   Future<void> updateWorkerAllocationInstallation(int allocationId, int isInstalled) async {
