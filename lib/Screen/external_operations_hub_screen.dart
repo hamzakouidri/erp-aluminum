@@ -720,7 +720,7 @@ class _ExternalOperationsHubScreenState
                         ),
                         const SizedBox(height: 10),
 
-                        // 3️⃣ الأزرار الثلاثة (تم التوزيع - تم التركيب - تم الانتهاء)
+                        // 3️⃣ الأزرار الثلاثة (تم التوزيع - تم التركيب - تم الانتهاء) - مخصصة للعامل فقط
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
@@ -728,6 +728,16 @@ class _ExternalOperationsHubScreenState
                             // 1. زر تم التوزيع
                             ElevatedButton.icon(
                               onPressed: () async {
+                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
+                                if (isManager) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('⚠️ هذه الأزرار مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
+                                }
                                 final newVal = isDistributed ? 0 : 1;
                                 setState(() => t['is_distributed'] = newVal);
                                 await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
@@ -750,6 +760,16 @@ class _ExternalOperationsHubScreenState
                             // 2. زر تم التركيب
                             ElevatedButton.icon(
                               onPressed: () async {
+                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
+                                if (isManager) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('⚠️ هذه الأزرار مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
+                                }
                                 final newVal = isInstalled ? 0 : 1;
                                 setState(() => t['is_installed'] = newVal);
                                 await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
@@ -772,6 +792,16 @@ class _ExternalOperationsHubScreenState
                             // 3. زر تم الانتهاء (يتحول مباشرة للأرشيف بنفس السجل)
                             ElevatedButton.icon(
                               onPressed: () async {
+                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
+                                if (isManager) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('⚠️ هذه الأزرار مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️', style: TextStyle(fontFamily: 'Cairo')),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
+                                }
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
