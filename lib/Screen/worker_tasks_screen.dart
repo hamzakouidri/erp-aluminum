@@ -202,14 +202,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   Future<void> _toggleManufactured(int allocationId, int currentMfg) async {
     _isLocalChangePending = true;
     final newVal = currentMfg == 1 ? 0 : 1;
-    await widget.db.updateWorkerAllocationManufacturing(allocationId, newVal);
-    
-    // إذا تم إلغاء الصنع، يتم إلغاء تركيب الزجاج تلقائياً
-    if (newVal == 0) {
-      await widget.db.updateWorkerAllocationGlass(allocationId, 0);
-    }
 
-    // Update local state lists in place
+    // ⚡ 1. التحديث الفوري للواجهة بدون أي تأخير (Zero latency)
     setState(() {
       for (var list in [_allTasks, _visibleTasks]) {
         for (var i = 0; i < list.length; i++) {
@@ -228,6 +222,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     });
 
     if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -235,21 +230,31 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: newVal == 1 ? Colors.green : Colors.orange,
-          duration: const Duration(seconds: 1),
+          duration: const Duration(milliseconds: 800),
         ),
       );
     }
 
-    await Future.delayed(const Duration(milliseconds: 350));
+    // ⚡ 2. حفظ البيانات في السحابة والقاعدة المحلية في الخلفية
+    try {
+      await widget.db.updateWorkerAllocationManufacturing(allocationId, newVal);
+      if (newVal == 0) {
+        await widget.db.updateWorkerAllocationGlass(allocationId, 0);
+      }
+    } catch (e) {
+      debugPrint('Error toggling manufactured status: $e');
+    }
+
+    // الحفاظ على الحماية لمدة ثانيتين لمنع تضارب أحداث البث السحابية
+    await Future.delayed(const Duration(seconds: 2));
     _isLocalChangePending = false;
   }
 
   Future<void> _toggleGlassInstalled(int allocationId, int currentGlass) async {
     _isLocalChangePending = true;
     final newVal = currentGlass == 1 ? 0 : 1;
-    await widget.db.updateWorkerAllocationGlass(allocationId, newVal);
-    
-    // Update local state lists in place
+
+    // ⚡ 1. التحديث الفوري للواجهة
     setState(() {
       for (var list in [_allTasks, _visibleTasks]) {
         for (var i = 0; i < list.length; i++) {
@@ -264,6 +269,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     });
 
     if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -271,12 +277,19 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: newVal == 1 ? Colors.teal : Colors.orange,
-          duration: const Duration(seconds: 1),
+          duration: const Duration(milliseconds: 800),
         ),
       );
     }
 
-    await Future.delayed(const Duration(milliseconds: 350));
+    // ⚡ 2. تحديث في الخلفية
+    try {
+      await widget.db.updateWorkerAllocationGlass(allocationId, newVal);
+    } catch (e) {
+      debugPrint('Error toggling glass status: $e');
+    }
+
+    await Future.delayed(const Duration(seconds: 2));
     _isLocalChangePending = false;
   }
 
@@ -698,24 +711,27 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
     final commandeId = (t['id_commandes'] as num?)?.toInt() ?? 0;
 
-    int finalW = (t['largeur'] as num?)?.toInt() ?? 0;
-    int finalH = (t['hauteur'] as num?)?.toInt() ?? 0;
+    int finalW = (t['unit_width'] as num?)?.toInt() ?? 0;
+    int finalH = (t['unit_height'] as num?)?.toInt() ?? 0;
+    if (finalW == 0) finalW = (t['largeur'] as num?)?.toInt() ?? 0;
+    if (finalH == 0) finalH = (t['hauteur'] as num?)?.toInt() ?? 0;
+
     String unitPos = t['unit_position']?.toString() ?? '';
     final unitIndex = t['unit_index'];
 
-    if (t['confirmed_mesures_json'] != null && t['confirmed_mesures_json'].toString().trim().isNotEmpty) {
+    if ((t['unit_width'] == null || t['unit_height'] == null) && t['confirmed_mesures_json'] != null && t['confirmed_mesures_json'].toString().trim().isNotEmpty) {
       try {
         final List parsed = jsonDecode(t['confirmed_mesures_json'].toString());
         final uIdx = (unitIndex as num?)?.toInt() ?? 1;
         final arrayIdx = uIdx - 1;
         if (arrayIdx >= 0 && arrayIdx < parsed.length) {
           final unitMap = parsed[arrayIdx];
-          final cw = (unitMap['largeur'] as num?)?.toInt();
-          final ch = (unitMap['hauteur'] as num?)?.toInt();
+          final cw = (unitMap['largeur'] as num?)?.toInt() ?? (unitMap['width'] as num?)?.toInt();
+          final ch = (unitMap['hauteur'] as num?)?.toInt() ?? (unitMap['height'] as num?)?.toInt();
           final pos = unitMap['position']?.toString() ?? '';
-          if (cw != null && cw > 0) finalW = cw;
-          if (ch != null && ch > 0) finalH = ch;
-          if (pos.isNotEmpty) unitPos = pos;
+          if (cw != null && cw > 0 && finalW == 0) finalW = cw;
+          if (ch != null && ch > 0 && finalH == 0) finalH = ch;
+          if (pos.isNotEmpty && unitPos.isEmpty) unitPos = pos;
         }
       } catch (_) {}
     }

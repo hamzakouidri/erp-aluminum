@@ -447,6 +447,18 @@ class SqlDatabase {
            );
          } catch (_) {}
 
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN unit_width INTEGER;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN unit_height INTEGER;",
+           );
+         } catch (_) {}
+
         // Auto purge settled data older than 6 months
         try {
           await db.execute('''
@@ -3392,6 +3404,8 @@ class SqlDatabase {
     double workerPrice, {
     int? unitIndex,
     String? unitPosition,
+    int? unitWidth,
+    int? unitHeight,
   }) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
@@ -3438,6 +3452,8 @@ class SqlDatabase {
     };
     if (unitIndex != null) row['unit_index'] = unitIndex;
     if (unitPosition != null && unitPosition.isNotEmpty) row['unit_position'] = unitPosition;
+    if (unitWidth != null && unitWidth > 0) row['unit_width'] = unitWidth;
+    if (unitHeight != null && unitHeight > 0) row['unit_height'] = unitHeight;
 
     final res = await myDb.insert('WorkerAllocations', row);
     await _uploadAllocationStatusToCloud(res);
@@ -4129,19 +4145,18 @@ class SqlDatabase {
 
   Future<void> _uploadAllocationStatusToCloud(int allocationId) async {
     try {
-      Database? myDb = await db;
-      if (myDb == null) return;
-      
-      final row = await myDb.query(
-        'WorkerAllocations',
-        where: 'id = ?',
-        whereArgs: [allocationId],
-      );
-      if (row.isNotEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        final workshopId = prefs.getString('workshop_code');
-        if (workshopId != null && workshopId.isNotEmpty) {
-          final alloc = row.first;
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        final myDb = await db;
+        if (myDb == null) return;
+        final allocs = await myDb.query(
+          'WorkerAllocations',
+          where: 'id = ?',
+          whereArgs: [allocationId],
+        );
+        if (allocs.isNotEmpty) {
+          final alloc = allocs.first;
           await FirebaseFirestore.instance
               .collection('workshops')
               .doc(workshopId)
@@ -4156,6 +4171,8 @@ class SqlDatabase {
                 'assigned_at': alloc['assigned_at'],
                 'unit_index': alloc['unit_index'],
                 'unit_position': alloc['unit_position'],
+                'unit_width': alloc['unit_width'],
+                'unit_height': alloc['unit_height'],
                 'is_manufactured': alloc['is_manufactured'] ?? 0,
                 'manufactured_at': alloc['manufactured_at'],
                 'is_glass_installed': alloc['is_glass_installed'] ?? 0,
@@ -4197,22 +4214,25 @@ class SqlDatabase {
 
           final existing = await txn.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
           if (existing.isNotEmpty) {
+            final old = existing.first;
             await txn.update(
               'WorkerAllocations',
               {
-                'worker_uid': data['worker_uid'] ?? existing.first['worker_uid'],
-                'quantity': data['quantity'] ?? existing.first['quantity'],
-                'worker_price': data['worker_price'] ?? existing.first['worker_price'],
-                'unit_index': data['unit_index'] ?? existing.first['unit_index'],
-                'unit_position': data['unit_position'] ?? existing.first['unit_position'],
-                'is_manufactured': data['is_manufactured'] ?? 0,
-                'manufactured_at': data['manufactured_at'],
-                'is_glass_installed': data['is_glass_installed'] ?? 0,
-                'glass_installed_at': data['glass_installed_at'],
-                'is_distributed': data['is_distributed'] ?? 0,
-                'distributed_at': data['distributed_at'],
-                'is_transferred_to_dist': data['is_transferred_to_dist'] ?? 0,
-                'transferred_at': data['transferred_at'],
+                'worker_uid': data['worker_uid'] ?? old['worker_uid'],
+                'quantity': data['quantity'] ?? old['quantity'],
+                'worker_price': data['worker_price'] ?? old['worker_price'],
+                'unit_index': data['unit_index'] ?? old['unit_index'],
+                'unit_position': data['unit_position'] ?? old['unit_position'],
+                'unit_width': data['unit_width'] ?? old['unit_width'],
+                'unit_height': data['unit_height'] ?? old['unit_height'],
+                'is_manufactured': data['is_manufactured'] ?? old['is_manufactured'] ?? 0,
+                'manufactured_at': data.containsKey('manufactured_at') ? data['manufactured_at'] : old['manufactured_at'],
+                'is_glass_installed': data['is_glass_installed'] ?? old['is_glass_installed'] ?? 0,
+                'glass_installed_at': data.containsKey('glass_installed_at') ? data['glass_installed_at'] : old['glass_installed_at'],
+                'is_distributed': data['is_distributed'] ?? old['is_distributed'] ?? 0,
+                'distributed_at': data.containsKey('distributed_at') ? data['distributed_at'] : old['distributed_at'],
+                'is_transferred_to_dist': data['is_transferred_to_dist'] ?? old['is_transferred_to_dist'] ?? 0,
+                'transferred_at': data.containsKey('transferred_at') ? data['transferred_at'] : old['transferred_at'],
               },
               where: 'id = ?',
               whereArgs: [allocationId],

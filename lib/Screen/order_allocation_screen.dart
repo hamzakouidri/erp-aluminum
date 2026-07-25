@@ -573,6 +573,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     double price, {
     int? unitIndex,
     String? unitPosition,
+    int? unitWidth,
+    int? unitHeight,
   }) async {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
 
@@ -607,6 +609,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         price,
         unitIndex: unitIndex,
         unitPosition: unitPosition,
+        unitWidth: unitWidth,
+        unitHeight: unitHeight,
       );
       CloudSyncService().notifyChange(); // ⚡ رفع في الخلفية
       await _refreshAllocationsOnly();  // لا يعود للأعلى
@@ -968,6 +972,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     p,
                     unitIndex: item['unit_index'] as int?,
                     unitPosition: item['position']?.toString(),
+                    unitWidth: (item['largeur'] as num?)?.toInt(),
+                    unitHeight: (item['hauteur'] as num?)?.toInt(),
                   );
                 }
               },
