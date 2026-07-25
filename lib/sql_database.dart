@@ -4023,42 +4023,51 @@ class SqlDatabase {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      final prefs = await SharedPreferences.getInstance();
-      final role = prefs.getString('user_role') ?? 'worker';
-      if (role == 'manager' || role == 'admin') return;
-
       Database? myDb = await db;
       if (myDb == null) return;
 
       final currentUid = user.uid;
       final currentEmail = (user.email ?? '').trim().toLowerCase();
-      if (currentEmail.isEmpty) return;
 
       final allEmps = await myDb.query('Employees');
       for (var emp in allEmps) {
+        final empIdStr = emp['id']?.toString() ?? '';
         final eUid = emp['uid']?.toString() ?? '';
-        if (eUid == currentUid) continue;
-
         final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
 
-        if (eEmail.isNotEmpty && currentEmail == eEmail) {
-          debugPrint('relinkCurrentWorkerAllocations: linking $eUid -> $currentUid for email $currentEmail');
+        bool isMe = false;
+        if (currentUid.isNotEmpty && eUid.isNotEmpty && eUid == currentUid) {
+          isMe = true;
+        } else if (currentEmail.isNotEmpty && eEmail.isNotEmpty && eEmail == currentEmail) {
+          isMe = true;
+        }
+
+        if (isMe) {
+          debugPrint('relinkCurrentWorkerAllocations: linking empId=$empIdStr, eUid=$eUid -> $currentUid');
           await myDb.transaction((txn) async {
-            await txn.update('Employees', {'uid': currentUid},
-                where: 'uid = ?', whereArgs: [eUid]);
-            await txn.update('WorkerAllocations', {'worker_uid': currentUid},
-                where: 'worker_uid = ?', whereArgs: [eUid]);
-            await txn.update('WorkerTransactions', {'worker_uid': currentUid},
-                where: 'worker_uid = ?', whereArgs: [eUid]);
+            if (eUid != currentUid && eUid.isNotEmpty) {
+              await txn.update('Employees', {'uid': currentUid}, where: 'uid = ?', whereArgs: [eUid]);
+            }
+            if (empIdStr.isNotEmpty) {
+              await txn.update('WorkerAllocations', {'worker_uid': currentUid}, where: 'worker_uid = ?', whereArgs: [empIdStr]);
+            }
+            if (eEmail.isNotEmpty) {
+              await txn.update('WorkerAllocations', {'worker_uid': currentUid}, where: 'LOWER(worker_uid) = ?', whereArgs: [eEmail]);
+            }
+            if (eUid.isNotEmpty && eUid != currentUid) {
+              await txn.update('WorkerAllocations', {'worker_uid': currentUid}, where: 'worker_uid = ?', whereArgs: [eUid]);
+            }
           });
         }
       }
 
-      await myDb.rawUpdate('''
-        UPDATE WorkerAllocations
-        SET worker_uid = ?
-        WHERE LOWER(worker_uid) = ?
-      ''', [currentUid, currentEmail]);
+      if (currentEmail.isNotEmpty) {
+        await myDb.rawUpdate('''
+          UPDATE WorkerAllocations
+          SET worker_uid = ?
+          WHERE LOWER(worker_uid) = ?
+        ''', [currentUid, currentEmail]);
+      }
 
       debugPrint('relinkCurrentWorkerAllocations: done for uid=$currentUid');
     } catch (e) {
