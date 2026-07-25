@@ -215,7 +215,14 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     
     for (var item in _detailsList) {
       final detailId = item['id'] as int;
-      final list = _allocations[detailId] ?? [];
+      final itemUnitIndex = item['unit_index'];
+      final rawList = _allocations[detailId] ?? [];
+      final list = rawList.where((a) {
+        if (itemUnitIndex != null) {
+          return a['unit_index'] == itemUnitIndex;
+        }
+        return true;
+      }).toList();
       
       buffer.writeln('*عنصر / Produit:* ${Localization.translate(item['window_type'] ?? 'Window', lang)} (${item['largeur']}x${item['hauteur']})');
       buffer.writeln('*الكمية الإجمالية / Qté Totale:* ${item['quantity']}');
@@ -1109,7 +1116,14 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                     // ── قائمة التوزيعات الحالية لهذا العنصر ──
                                     Builder(
                                       builder: (context) {
-                                        final allocs = _allocations[detailId] ?? [];
+                                        final itemUnitIndex = item['unit_index'];
+                                        final rawAllocs = _allocations[detailId] ?? [];
+                                        final allocs = rawAllocs.where((a) {
+                                          if (itemUnitIndex != null) {
+                                            return a['unit_index'] == itemUnitIndex;
+                                          }
+                                          return true;
+                                        }).toList();
                                         final int allocatedQty = allocs.fold(0, (sum, a) => sum + (a['quantity'] as int));
                                         final int remainingQty = qty - allocatedQty;
 
