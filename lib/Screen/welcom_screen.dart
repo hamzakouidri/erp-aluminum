@@ -64,7 +64,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
   String _userEmail = 'جاري التحميل...';
   String _workshopPhone = '';
   String? _logoUrl;
+  ImageProvider? _cachedLogoProvider; // الصورة المحسوبة مرة واحدة لتجنب الترميش
   StreamSubscription? _userSub;
+  Timer? _statsDebounce; // debounce لمنع تكرار _loadStats خلال ms قصيرة
 
   // إحصائيات
   String _commandesCount = '—';
@@ -102,6 +104,23 @@ class _WelcomScreenState extends State<WelcomScreen> {
     super.initState();
     _loadUserData();
     _loadStats();
+  }
+
+  /// تحديث صورة الشعار فقط عند تغيير فعلي لتجنب إعادة فك التشفير في كل rebuild
+  void _updateLogo(String? newUrl) {
+    if (newUrl == _logoUrl) return; // لم يتغير شيء → لا نعيد البناء
+    _logoUrl = newUrl;
+    _cachedLogoProvider = null;
+    if (newUrl != null && newUrl.isNotEmpty) {
+      if (newUrl.startsWith('http')) {
+        _cachedLogoProvider = NetworkImage(newUrl);
+      } else {
+        try {
+          final bytes = base64Decode(newUrl);
+          if (bytes.isNotEmpty) _cachedLogoProvider = MemoryImage(bytes);
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _checkLowStock() async {
@@ -327,6 +346,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 if (!mounted) return;
                 final savedName = prefs.getString('workshop_name');
                 final savedLogo = prefs.getString('workshop_logo_base64');
+                final newLogoUrl = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+                    ? data['workshopLogoUrl']
+                    : savedLogo;
                 setState(() {
                   _workshopName = (data['workshopName'] as String?)?.isNotEmpty == true
                       ? data['workshopName']
@@ -335,9 +357,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   if (data['email'] != null) {
                     _userEmail = data['email'];
                   }
-                  _logoUrl = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
-                      ? data['workshopLogoUrl']
-                      : savedLogo;
+                  _updateLogo(newLogoUrl); // تحديث مخبأ فقط عند تغيير فعلي
                 });
               });
             }
@@ -347,13 +367,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
       await CloudSyncService().init();
       _autoSyncData();
 
+      // استماع التحديثات المحلية مع debounce لمنع تكرار البناء خلال مليسثانية فقيرة
       CloudSyncService().dbUpdateStream.listen((_) {
-        if (mounted) {
-          Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
-          _loadStats();
-        }
+        if (!mounted) return;
+        _statsDebounce?.cancel();
+        _statsDebounce = Timer(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
+            _loadStats();
+          }
+        });
       });
 
+      // استماع التحديثات الكاملة من السحابة (فقط restore كامل)
       CloudSyncService().startListeningForUpdates(() async {
         if (mounted) {
           await Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
@@ -404,6 +430,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   @override
   void dispose() {
     _userSub?.cancel();
+    _statsDebounce?.cancel();
     CloudSyncService().stopListening();
     super.dispose();
   }
@@ -639,59 +666,39 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     // أفاتار الشركة
-                    Builder(
-                      builder: (context) {
-                        ImageProvider? logoImageProvider;
-                        if (_logoUrl != null && _logoUrl!.isNotEmpty) {
-                          if (_logoUrl!.startsWith('http')) {
-                            logoImageProvider = NetworkImage(_logoUrl!);
-                          } else {
-                            try {
-                              final bytes = base64Decode(_logoUrl!);
-                              if (bytes.isNotEmpty) {
-                                logoImageProvider = MemoryImage(bytes);
-                              }
-                            } catch (e) {
-                              debugPrint('Error decoding welcome screen logo base64: $e');
-                            }
-                          }
-                        }
-
-                        return Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: Theme.of(context).brightness == Brightness.dark
-                                  ? [Color(0xFF111827), Color(0xFF070E1D)]
-                                  : [_blue, _cyan],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            image: logoImageProvider != null
-                                ? DecorationImage(
-                                    image: logoImageProvider,
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            boxShadow: [
-                              BoxShadow(
-                                color: _blue.withValues(alpha: 0.4),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: Theme.of(context).brightness == Brightness.dark
+                              ? [Color(0xFF111827), Color(0xFF070E1D)]
+                              : [_blue, _cyan],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        image: _cachedLogoProvider != null
+                            ? DecorationImage(
+                                image: _cachedLogoProvider!,
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                        boxShadow: [
+                          BoxShadow(
+                            color: _blue.withValues(alpha: 0.4),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
                           ),
-                          child: logoImageProvider == null
-                              ? const Icon(
-                                  Icons.carpenter_rounded,
-                                  color: Colors.white,
-                                  size: 28,
-                                )
-                              : null,
-                        );
-                      },
+                        ],
+                      ),
+                      child: _cachedLogoProvider == null
+                          ? const Icon(
+                              Icons.carpenter_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            )
+                          : null,
                     ),
                     const SizedBox(width: 14),
                     Column(

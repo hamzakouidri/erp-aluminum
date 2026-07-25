@@ -156,9 +156,8 @@ class CloudSyncService {
       try {
         await _db.syncWorkerAllocationsStatusFromCloud();
         _dbUpdateController.add('status_updated');
-        if (onDataRestored != null) {
-          onDataRestored!();
-        }
+        // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش وإعادة البناء الثقيلة.
+        // واجهات المستخدم تستمع لـ dbUpdateStream مباشرةً.
       } catch (e) {
         print('Error syncing allocation status real-time: $e');
       }
@@ -176,9 +175,7 @@ class CloudSyncService {
       try {
         await _db.syncOrdersStatusFromCloud();
         _dbUpdateController.add('order_status_updated');
-        if (onDataRestored != null) {
-          onDataRestored!();
-        }
+        // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
       } catch (e) {
         print('Error syncing order status real-time: $e');
       }
@@ -196,9 +193,7 @@ class CloudSyncService {
       try {
         await _db.syncConfirmedMeasurementsFromCloud();
         _dbUpdateController.add('measurements_updated');
-        if (onDataRestored != null) {
-          onDataRestored!();
-        }
+        // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
       } catch (e) {
         print('Error syncing confirmed measurements real-time: $e');
       }
