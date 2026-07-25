@@ -4178,9 +4178,16 @@ class SqlDatabase {
                 'distributed_at': alloc['distributed_at'],
                 'is_transferred_to_dist': alloc['is_transferred_to_dist'] ?? 0,
                 'transferred_at': alloc['transferred_at'],
+                'is_installed': alloc['is_installed'] ?? 0,
+                'installed_at': alloc['installed_at'],
+                'is_completed': alloc['is_completed'] ?? 0,
+                'completed_at': alloc['completed_at'],
+                'has_reserve': alloc['has_reserve'] ?? 0,
+                'reserve_notes': alloc['reserve_notes'],
+                'reserve_at': alloc['reserve_at'],
                 'updated_at': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true));
-          debugPrint('--- SqlDatabase: Uploaded allocation status $allocationId to cloud ---');
+          debugPrint('--- SqlDatabase: Uploaded allocation status $allocationId (reserves & installation) to cloud ---');
         }
       }
     } catch (e) {
@@ -4230,6 +4237,13 @@ class SqlDatabase {
                 'distributed_at': data.containsKey('distributed_at') ? data['distributed_at'] : old['distributed_at'],
                 'is_transferred_to_dist': data['is_transferred_to_dist'] ?? old['is_transferred_to_dist'] ?? 0,
                 'transferred_at': data.containsKey('transferred_at') ? data['transferred_at'] : old['transferred_at'],
+                'is_installed': data['is_installed'] ?? old['is_installed'] ?? 0,
+                'installed_at': data.containsKey('installed_at') ? data['installed_at'] : old['installed_at'],
+                'is_completed': data['is_completed'] ?? old['is_completed'] ?? 0,
+                'completed_at': data.containsKey('completed_at') ? data['completed_at'] : old['completed_at'],
+                'has_reserve': data['has_reserve'] ?? old['has_reserve'] ?? 0,
+                'reserve_notes': data.containsKey('reserve_notes') ? data['reserve_notes'] : old['reserve_notes'],
+                'reserve_at': data.containsKey('reserve_at') ? data['reserve_at'] : old['reserve_at'],
               },
               where: 'id = ?',
               whereArgs: [allocationId],
@@ -4253,11 +4267,18 @@ class SqlDatabase {
               'distributed_at': data['distributed_at'],
               'is_transferred_to_dist': data['is_transferred_to_dist'] ?? 0,
               'transferred_at': data['transferred_at'],
+              'is_installed': data['is_installed'] ?? 0,
+              'installed_at': data['installed_at'],
+              'is_completed': data['is_completed'] ?? 0,
+              'completed_at': data['completed_at'],
+              'has_reserve': data['has_reserve'] ?? 0,
+              'reserve_notes': data['reserve_notes'],
+              'reserve_at': data['reserve_at'],
             });
           }
         }
       });
-      debugPrint('--- SqlDatabase: Synced allocations status from cloud successfully ---');
+      debugPrint('--- SqlDatabase: Synced allocations status (including reserves and installation) from cloud successfully ---');
     } catch (e) {
       debugPrint('Error syncing worker allocations status: $e');
     }

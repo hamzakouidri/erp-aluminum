@@ -6,6 +6,9 @@ import 'glass_order_reception_screen.dart';
 import 'achat_screen.dart';
 import '../widgets/lazy_window_image.dart';
 
+import 'dart:async';
+import '../services/cloud_sync_service.dart';
+
 class ExternalOperationsHubScreen extends StatefulWidget {
   final SqlDatabase db;
 
@@ -28,6 +31,7 @@ class _ExternalOperationsHubScreenState
 
   // خريطة لتأكيدات طلبات الزجاج
   final Map<int, String> _glassStatusMap = {}; // orderId -> status
+  StreamSubscription? _syncSub;
 
   @override
   void didChangeDependencies() {
@@ -46,10 +50,16 @@ class _ExternalOperationsHubScreenState
   void initState() {
     super.initState();
     _loadData();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadDataQuietly();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -202,7 +212,10 @@ class _ExternalOperationsHubScreenState
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
+            onPressed: () async {
+              await widget.db.syncWorkerAllocationsStatusFromCloud();
+              await _loadData();
+            },
           ),
         ],
       ),
