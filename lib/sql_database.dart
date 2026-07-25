@@ -5868,12 +5868,27 @@ class SqlDatabase {
     String workerUid,
   ) async {
     Database? myDb = await db;
-    return await myDb!.query(
-      'WorkerTransactions',
-      where: 'worker_uid = ?',
-      whereArgs: [workerUid],
-      orderBy: 'created_at DESC',
-    );
+    if (myDb == null) return [];
+
+    final cleanKey = workerUid.trim().toLowerCase();
+    if (cleanKey.isEmpty) return [];
+
+    return await myDb.rawQuery('''
+      SELECT wt.*
+      FROM WorkerTransactions wt
+      WHERE wt.worker_uid = ?
+        OR LOWER(wt.worker_uid) = ?
+        OR wt.worker_uid IN (
+          SELECT CAST(id AS TEXT) FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wt.worker_uid IN (
+          SELECT uid FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wt.worker_uid IN (
+          SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+      ORDER BY wt.created_at DESC
+    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
   }
 
   Future<void> updateWorkerTransaction(

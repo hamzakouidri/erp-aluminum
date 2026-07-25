@@ -439,27 +439,50 @@ class _WorkerSettlementDetailScreenState
   List<Map<String, dynamic>> _settledAllocs = [];
   List<Map<String, dynamic>> _settledTxs = [];
 
+  StreamSubscription? _syncSub;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadDetails();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadDetails(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadDetails() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadDetails({bool silent = false}) async {
+    if (!silent && _unsettledAllocs.isEmpty && _unsettledTxs.isEmpty) {
+      setState(() => _isLoading = true);
+    }
     try {
       final uid = widget.worker['uid']?.toString() ?? '';
+      final empIdStr = widget.worker['id']?.toString() ?? '';
+      final empEmail = widget.worker['email']?.toString() ?? '';
 
-      // Unsettled
-      final uAllocs = await widget.db.readWorkerUnsettledAllocations(uid);
-      final rawTxs = await widget.db.readWorkerTransactions(uid);
+      final targetKey = uid.isNotEmpty ? uid : (empEmail.isNotEmpty ? empEmail : empIdStr);
+
+      // Unsettled allocations
+      List<Map<String, dynamic>> uAllocs = [];
+      if (targetKey.isNotEmpty) {
+        uAllocs = await widget.db.readWorkerUnsettledAllocations(targetKey);
+      }
+
+      // Transactions
+      List<Map<String, dynamic>> rawTxs = [];
+      if (targetKey.isNotEmpty) {
+        rawTxs = await widget.db.readWorkerTransactions(targetKey);
+      }
+
       final List<Map<String, dynamic>> uTxs = [];
       for (var t in rawTxs) {
         if (t['is_settled'] == 0 || t['is_settled'] == '0') {
@@ -468,19 +491,25 @@ class _WorkerSettlementDetailScreenState
       }
 
       // Settled
-      final sAllocs = await widget.db.readWorkerSettledAllocations(uid);
-      final sTxs = await widget.db.readWorkerSettledTransactions(uid);
+      List<Map<String, dynamic>> sAllocs = [];
+      List<Map<String, dynamic>> sTxs = [];
+      if (targetKey.isNotEmpty) {
+        sAllocs = await widget.db.readWorkerSettledAllocations(targetKey);
+        sTxs = await widget.db.readWorkerSettledTransactions(targetKey);
+      }
 
-      setState(() {
-        _unsettledAllocs = uAllocs;
-        _unsettledTxs = uTxs;
-        _settledAllocs = sAllocs;
-        _settledTxs = sTxs;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _unsettledAllocs = uAllocs;
+          _unsettledTxs = uTxs;
+          _settledAllocs = sAllocs;
+          _settledTxs = sTxs;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error loading worker accounting details: $e');
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
