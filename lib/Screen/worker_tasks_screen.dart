@@ -895,7 +895,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
 
                 bool isMyTask = false;
-                if (currentUid.isNotEmpty && taskWorkerUid == currentUid) {
+                if (settings.isManager) {
+                  isMyTask = true; // ✅ المدير ونائب المدير لديهما كامل الصلاحية للتحكم وتفعيل كل المهام
+                } else if (currentUid.isNotEmpty && taskWorkerUid == currentUid) {
                   isMyTask = true;
                 } else if (currentEmail.isNotEmpty && (taskWorkerUid == currentEmail || taskWorkerEmail == currentEmail)) {
                   isMyTask = true;
