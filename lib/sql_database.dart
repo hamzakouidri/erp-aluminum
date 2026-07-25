@@ -3224,13 +3224,58 @@ class SqlDatabase {
     return res;
   }
 
+  Future<void> _deleteAllocationFromCloud(int allocationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('worker_allocations_status')
+            .doc(allocationId.toString())
+            .delete();
+        debugPrint('--- SqlDatabase: Deleted allocation $allocationId from cloud ---');
+      }
+    } catch (e) {
+      debugPrint('Error deleting allocation from cloud: $e');
+    }
+  }
+
   Future<int> deleteWorkerAllocation(int allocationId) async {
     Database? myDb = await db;
-    final res = await myDb!.delete(
+    if (myDb == null) return 0;
+
+    int orderId = 0;
+    try {
+      final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+      if (allocRow.isNotEmpty) {
+        final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+        if (detailId > 0) {
+          final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+          if (detailRow.isNotEmpty) {
+            orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          }
+        }
+      }
+    } catch (_) {}
+
+    final res = await myDb.delete(
       'WorkerAllocations',
       where: 'id = ?',
       whereArgs: [allocationId],
     );
+
+    await _deleteAllocationFromCloud(allocationId);
+
+    if (orderId > 0) {
+      await syncOrderAndAllocationsStatus(orderId);
+    }
+
+    try {
+      await CloudSyncService().backupToCloud();
+    } catch (_) {}
+
     CloudSyncService().notifyChange();
     return res;
   }
