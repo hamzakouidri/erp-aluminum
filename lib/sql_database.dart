@@ -435,6 +435,18 @@ class SqlDatabase {
            );
          } catch (_) {}
 
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN unit_index INTEGER;",
+           );
+         } catch (_) {}
+
+         try {
+           await db.execute(
+             "ALTER TABLE WorkerAllocations ADD COLUMN unit_position TEXT;",
+           );
+         } catch (_) {}
+
         // Auto purge settled data older than 6 months
         try {
           await db.execute('''
@@ -3235,17 +3247,23 @@ class SqlDatabase {
     int detailId,
     String workerUid,
     int quantity,
-    double workerPrice,
-  ) async {
+    double workerPrice, {
+    int? unitIndex,
+    String? unitPosition,
+  }) async {
     Database? myDb = await db;
-    final res = await myDb!.insert('WorkerAllocations', {
+    final Map<String, dynamic> row = {
       'commande_detail_id': detailId,
       'worker_uid': workerUid,
       'quantity': quantity,
       'worker_price': workerPrice,
       'assigned_at': DateTime.now().toIso8601String(),
       'is_settled': 0,
-    });
+    };
+    if (unitIndex != null) row['unit_index'] = unitIndex;
+    if (unitPosition != null && unitPosition.isNotEmpty) row['unit_position'] = unitPosition;
+
+    final res = await myDb!.insert('WorkerAllocations', row);
     CloudSyncService().notifyChange();
     return res;
   }

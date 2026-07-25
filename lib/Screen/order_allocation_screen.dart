@@ -538,9 +538,23 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     );
   }
 
-  Future<void> _addWorkerAllocation(int detailId, String workerUid, int quantity, double price) async {
+  Future<void> _addWorkerAllocation(
+    int detailId,
+    String workerUid,
+    int quantity,
+    double price, {
+    int? unitIndex,
+    String? unitPosition,
+  }) async {
     try {
-      await widget.db.insertWorkerAllocation(detailId, workerUid, quantity, price);
+      await widget.db.insertWorkerAllocation(
+        detailId,
+        workerUid,
+        quantity,
+        price,
+        unitIndex: unitIndex,
+        unitPosition: unitPosition,
+      );
       await _loadData();
       try {
         await CloudSyncService().backupToCloud();
@@ -634,8 +648,17 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   void _showEditAssignDialog(Map<String, dynamic> alloc, Map<String, dynamic> item) {
     final isManufactured = alloc['is_manufactured'] == 1;
     final detailId = item['id'] as int;
+    final itemUnitIndex = item['unit_index'];
     final qty = item['quantity'] as int;
-    final allocs = _allocations[detailId] ?? [];
+    final rawAllocs = _allocations[detailId] ?? [];
+    final allocs = rawAllocs.where((a) {
+      final aUnitIndex = a['unit_index'];
+      if (itemUnitIndex != null) {
+        return aUnitIndex == itemUnitIndex;
+      } else {
+        return true;
+      }
+    }).toList();
     final int allocatedQty = allocs.fold(0, (sum, a) => sum + (a['quantity'] as int));
     final int remainingQty = qty - allocatedQty;
     final int currentAllocQty = alloc['quantity'] as int;
@@ -845,7 +868,14 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                   final q = int.parse(qtyCtrl.text.trim());
                   final p = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
                   Navigator.pop(context);
-                  _addWorkerAllocation(item['id'] as int, selectedWorkerUid!, q, p);
+                  _addWorkerAllocation(
+                    item['id'] as int,
+                    selectedWorkerUid!,
+                    q,
+                    p,
+                    unitIndex: item['unit_index'] as int?,
+                    unitPosition: item['position']?.toString(),
+                  );
                 }
               },
               child: const Text('إسناد', style: TextStyle(fontFamily: 'Cairo')),
