@@ -3695,8 +3695,6 @@ class SqlDatabase {
           isMatch = true;
         } else if (cleanName.isNotEmpty && eName.isNotEmpty && (cleanName == eName || eName.contains(cleanName) || cleanName.contains(eName))) {
           isMatch = true;
-        } else if (allEmps.length == 1) {
-          isMatch = true;
         }
 
         if (isMatch && eUid.isNotEmpty && eUid != workerUid) {
@@ -3740,89 +3738,51 @@ class SqlDatabase {
       ORDER BY wa.assigned_at DESC
     ''', [cleanEmail, workerUid, cleanEmail, cleanEmail]);
 
-    // 3. Fallback احتياطي: إذا كانت النتيجة فارغة ولكن توجد إسنادات في WorkerAllocations
-    if (results.isEmpty) {
-      try {
-        final totalAllocs = await myDb.rawQuery('SELECT COUNT(*) as cnt FROM WorkerAllocations WHERE (is_transferred_to_dist IS NULL OR is_transferred_to_dist = 0)');
-        final cnt = (totalAllocs.first['cnt'] as num?)?.toInt() ?? 0;
-        if (cnt > 0) {
-          debugPrint('readAllWorkerAllocations fallback: Linking $cnt allocations to $workerUid');
-          await myDb.rawUpdate('UPDATE WorkerAllocations SET worker_uid = ?', [workerUid]);
-          return await myDb.rawQuery('''
-            SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
-                   cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
-                   cl.firstname, cl.lastname, e.name as worker_name
-            FROM WorkerAllocations wa
-            LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
-            LEFT JOIN Commandes c ON cd.id_commandes = c.id
-            LEFT JOIN Client cl ON c.client_id = cl.id
-            LEFT JOIN Employees e ON wa.worker_uid = e.uid
-            WHERE wa.worker_uid = ?
-              AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
-            ORDER BY wa.assigned_at DESC
-          ''', [workerUid]);
-        }
-      } catch (e) {
-        debugPrint('readAllWorkerAllocations fallback error: $e');
-      }
-    }
-
     return results;
   }
 
   /// ربط إسنادات العامل بـ UID الصحيح بعد الاستعادة من السحابة
-  /// يبحث عن صف الموظف المطابق بالبريد الإلكتروني أو الاسم ثم يُحدّث worker_uid في WorkerAllocations
   Future<void> relinkCurrentWorkerAllocations() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('user_role') ?? 'worker';
+      if (role == 'manager' || role == 'admin') return;
+
       Database? myDb = await db;
       if (myDb == null) return;
 
       final currentUid = user.uid;
       final currentEmail = (user.email ?? '').trim().toLowerCase();
-      final currentName = (user.displayName ?? '').trim().toLowerCase();
+      if (currentEmail.isEmpty) return;
 
-      // جلب كل الموظفين من جدول Employees
       final allEmps = await myDb.query('Employees');
       for (var emp in allEmps) {
         final eUid = emp['uid']?.toString() ?? '';
-        if (eUid == currentUid) continue; // مرتبط بالفعل
+        if (eUid == currentUid) continue;
 
         final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
-        final eName = (emp['name']?.toString() ?? '').trim().toLowerCase();
 
-        bool isMatch = false;
-        if (currentEmail.isNotEmpty && eEmail.isNotEmpty && currentEmail == eEmail) {
-          isMatch = true;
-        } else if (currentName.isNotEmpty && eName.isNotEmpty &&
-            (currentName == eName || eName.contains(currentName) || currentName.contains(eName))) {
-          isMatch = true;
-        }
-
-        if (isMatch && eUid.isNotEmpty) {
-          debugPrint('relinkCurrentWorkerAllocations: linking $eUid -> $currentUid');
+        if (eEmail.isNotEmpty && currentEmail == eEmail) {
+          debugPrint('relinkCurrentWorkerAllocations: linking $eUid -> $currentUid for email $currentEmail');
           await myDb.transaction((txn) async {
-            await txn.update('Employees', {'uid': currentUid, 'email': currentEmail.isNotEmpty ? currentEmail : eEmail},
+            await txn.update('Employees', {'uid': currentUid},
                 where: 'uid = ?', whereArgs: [eUid]);
             await txn.update('WorkerAllocations', {'worker_uid': currentUid},
                 where: 'worker_uid = ?', whereArgs: [eUid]);
             await txn.update('WorkerTransactions', {'worker_uid': currentUid},
                 where: 'worker_uid = ?', whereArgs: [eUid]);
-            await txn.update('Commandes_details', {'assigned_worker_uid': currentUid},
-                where: 'assigned_worker_uid = ?', whereArgs: [eUid]);
           });
         }
       }
 
-      // تحديث إضافي بالبريد الإلكتروني مباشرة (لو كان worker_uid == البريد)
-      if (currentEmail.isNotEmpty) {
-        await myDb.rawUpdate('''
-          UPDATE WorkerAllocations
-          SET worker_uid = ?
-          WHERE LOWER(worker_uid) = ?
-        ''', [currentUid, currentEmail]);
-      }
+      await myDb.rawUpdate('''
+        UPDATE WorkerAllocations
+        SET worker_uid = ?
+        WHERE LOWER(worker_uid) = ?
+      ''', [currentUid, currentEmail]);
 
       debugPrint('relinkCurrentWorkerAllocations: done for uid=$currentUid');
     } catch (e) {
