@@ -894,16 +894,28 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 final taskWorkerUid = (t['worker_uid'] ?? '').toString().trim().toLowerCase();
                 final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
 
-                bool isMyTask = false;
-                if (settings.isManager) {
-                  isMyTask = true; // ✅ المدير ونائب المدير لديهما كامل الصلاحية للتحكم وتفعيل كل المهام
-                } else if (currentUid.isNotEmpty && taskWorkerUid == currentUid) {
-                  isMyTask = true;
+                // فحص هل هذه المهمة مسندة لهذا العامل شخصياً
+                bool isMyAssignedTask = false;
+                if (currentUid.isNotEmpty && taskWorkerUid == currentUid) {
+                  isMyAssignedTask = true;
                 } else if (currentEmail.isNotEmpty && (taskWorkerUid == currentEmail || taskWorkerEmail == currentEmail)) {
-                  isMyTask = true;
+                  isMyAssignedTask = true;
                 } else if (!settings.canViewAllWorkerTasks()) {
-                  isMyTask = true;
+                  isMyAssignedTask = true;
                 }
+
+                // 1️⃣ زر "تم الصنع" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
+                final bool canClickManufactured = !settings.isManager && isMyAssignedTask;
+
+                // 2️⃣ زر "تم تركيب الزجاج" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
+                final bool canClickGlass = !settings.isManager && isMyAssignedTask;
+
+                // 3️⃣ زر "تحويل للتوزيع والأرشيف" — يظهر ومتاح للمدير وللعامل المسند بشرط إتمام "تم الصنع" و "تم تركيب الزجاج"
+                final bool isBothCompleted = isManufactured && isGlassInstalled;
+                final bool canTransfer = isBothCompleted && (settings.isManager || isMyAssignedTask);
+
+                // 🔒 شارة القفل "مسندة لعامل آخر (للعرض فقط)" — تظهر فقط للعمال الآخرين وليس للمدير وليس للعامل المسند له
+                final bool showLockBadge = !settings.isManager && !isMyAssignedTask;
 
                 return Column(
                   children: [
@@ -913,7 +925,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                         // 1️⃣ زر "تم الصنع" (تصنيع النافذة)
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: isMyTask
+                            onPressed: canClickManufactured
                                 ? () {
                                     final allocId = (t['id'] as num?)?.toInt() ?? 0;
                                     if (allocId > 0) {
@@ -923,7 +935,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                       );
                                     }
                                   }
-                                : null, // 🚫 معطّل إذا كانت المهمة مسندة لعامل آخر
+                                : null, // 🚫 معطّل للمدير وللعمال غير المسند لهم
                             icon: Icon(
                               isManufactured ? Icons.check_circle_rounded : Icons.build_circle_outlined,
                               size: 18,
@@ -951,7 +963,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                         // 2️⃣ زر "تم تركيب الزجاج" (تركيب الزجاج)
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: isMyTask
+                            onPressed: canClickGlass
                                 ? () {
                                     if (!isManufactured) {
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -976,11 +988,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                       );
                                     }
                                   }
-                                : null, // 🚫 معطّل إذا كانت المهمة مسندة لعامل آخر
+                                : null, // 🚫 معطّل للمدير وللعمال غير المسند لهم
                             icon: Icon(
                               isGlassInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
                               size: 20,
-                              color: (!isManufactured && isMyTask) ? Colors.grey : null,
+                              color: (!isManufactured && canClickGlass) ? Colors.grey : null,
                             ),
                             label: Text(
                               isGlassInstalled
@@ -990,7 +1002,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                 fontFamily: 'Cairo',
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
-                                color: (!isManufactured && isMyTask) ? Colors.grey : null,
+                                color: (!isManufactured && canClickGlass) ? Colors.grey : null,
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
@@ -1016,14 +1028,14 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: (isMyTask && isManufactured && isGlassInstalled)
+                        onPressed: canTransfer
                             ? () {
                                 final allocId = (t['id'] as num?)?.toInt() ?? 0;
                                 if (allocId > 0) {
                                   _transferToDistribution(allocId);
                                 }
                               }
-                            : (isMyTask && (!isManufactured || !isGlassInstalled))
+                            : (!settings.isManager && isMyAssignedTask && !isBothCompleted)
                                 ? () {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
@@ -1038,17 +1050,32 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                       ),
                                     );
                                   }
-                                : null, // 🚫 معطّل إذا كانت المهمة مسندة لعامل آخر
+                                : (settings.isManager && !isBothCompleted)
+                                    ? () {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              lang == AppLanguage.arabic
+                                                  ? '⚠️ لا يمكنك كمدير تحويل النافذة للتوزيع والأرشيف حتى يُكمل العامل "تم الصنع" و "تركيب الزجاج" أولاً!'
+                                                  : '⚠️ En tant que manager, le transfert exige que l\'ouvrier termine la fabrication et le vitrage d\'abord !',
+                                              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                            ),
+                                            backgroundColor: Colors.amber.shade900,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    : null, // 🚫 معطّل للعمال غير المسند لهم
                         icon: const Icon(Icons.local_shipping_rounded, size: 18),
                         label: Text(
                           lang == AppLanguage.arabic ? 'تحويل للتوزيع والأرشيف 🚚' : 'Transférer pour Distribution 🚚',
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: (isManufactured && isGlassInstalled && isMyTask)
+                          backgroundColor: canTransfer
                               ? Colors.indigo.shade600
                               : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-                          foregroundColor: (isManufactured && isGlassInstalled && isMyTask)
+                          foregroundColor: canTransfer
                               ? Colors.white
                               : Colors.grey,
                           disabledBackgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade300,
@@ -1059,8 +1086,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                       ),
                     ),
 
-                    // 🔒 تنبيه قفل العرض فقط إذا كانت مسندة لعامل آخر
-                    if (!isMyTask) ...[
+                    // 🔒 تنبيه قفل العرض فقط (يظهر فقط لباقي العمال على العناصر غير المسندة لهم، ولا يظهر للمدير ولا للعامل المسند له)
+                    if (showLockBadge) ...[
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
