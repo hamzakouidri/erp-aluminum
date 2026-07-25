@@ -22,6 +22,7 @@ class CloudSyncService {
   String _deviceId = '';
   Timer? _debounceTimer;
   StreamSubscription<DocumentSnapshot>? _listener;
+  StreamSubscription<QuerySnapshot>? _statusListener;
   bool _isRestoring = false;
 
   final StreamController<String> _dbUpdateController = StreamController<String>.broadcast();
@@ -50,29 +51,31 @@ class CloudSyncService {
     final user = _auth.currentUser;
     print("--- CloudSyncService: currentUser = ${user?.uid} ---");
     if (user != null) {
-      final savedCode = prefs.getString('workshop_code');
-      if (savedCode != null && savedCode.isNotEmpty) {
-        _workshopId = savedCode;
-        print("--- CloudSyncService: Loaded workshopId from SharedPreferences: $_workshopId ---");
-      } else {
-        try {
-          print("--- CloudSyncService: Fetching user doc from Firestore... ---");
-          final doc = await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .get()
-              .timeout(const Duration(seconds: 10));
-          print("--- CloudSyncService: User doc fetched! ---");
-          if (doc.exists && doc.data()?['workshopId'] != null) {
-            _workshopId = doc.data()?['workshopId']?.toString();
-            await prefs.setString('workshop_code', _workshopId!);
+      try {
+        final doc = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .get()
+            .timeout(const Duration(seconds: 10));
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          final role = data['role']?.toString() ?? 'worker';
+          final wId = data['workshopId']?.toString() ?? '';
+          if (role == 'worker' && wId.isNotEmpty && wId != user.uid) {
+            _workshopId = wId;
+          } else if (wId.isNotEmpty) {
+            _workshopId = wId;
           } else {
-            _workshopId = user.uid; // Fallback to user UID if not explicitly set
+            _workshopId = user.uid;
           }
-        } catch (e) {
-          print('Error fetching workshopId: $e');
-          _workshopId = user.uid; // Fallback on error
+          await prefs.setString('workshop_code', _workshopId!);
+          await prefs.setString('user_role', role);
+        } else {
+          _workshopId = prefs.getString('workshop_code') ?? user.uid;
         }
+      } catch (e) {
+        print('Error fetching workshopId: $e');
+        _workshopId = prefs.getString('workshop_code') ?? user.uid;
       }
     }
     print(
@@ -80,12 +83,21 @@ class CloudSyncService {
     );
   }
 
-  /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية
+  void reset() {
+    _workshopId = null;
+    _listener?.cancel();
+    _statusListener?.cancel();
+    _listener = null;
+    _statusListener = null;
+  }
+
+  /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
   void startListeningForUpdates(Function() onUpdateCallback) {
     onDataRestored = onUpdateCallback;
     final user = _auth.currentUser;
     if (user == null || _workshopId == null) return;
 
+    // 1. الاستماع لتغييرات نسخة السحابة الكاملة (Latest Backup)
     _listener?.cancel();
     _listener = _firestore
         .collection('workshops')
@@ -101,17 +113,19 @@ class CloudSyncService {
       String status = payload['status']?.toString() ?? '';
 
       final prefs = await SharedPreferences.getInstance();
-      final isDirty = prefs.getBool('is_local_dirty') ?? false;
+      final userRole = prefs.getString('user_role') ?? 'worker';
+      final isWorker = (userRole == 'worker');
 
-      // نستمع فقط عندما تنتهي عملية الرفع (status == completed)
-      // ولا نسترجع تلقائياً إذا كانت هناك تعديلات محلية لم تُرفع بعد لتفادي مسحها
-      if (sourceDevice != _deviceId &&
-          !_isRestoring &&
-          !isDirty &&
-          status == 'completed') {
+      bool shouldAutoRestore = false;
+      if (isWorker) {
+        shouldAutoRestore = (status == 'completed' && !_isRestoring);
+      } else {
+        shouldAutoRestore = (sourceDevice != _deviceId && !_isRestoring && status == 'completed');
+      }
+
+      if (shouldAutoRestore) {
         _isRestoring = true;
         try {
-          // استدعاء دالة الاستعادة الموحدة
           await restoreFromCloud();
           if (onDataRestored != null) {
             onDataRestored!();
@@ -123,11 +137,34 @@ class CloudSyncService {
         }
       }
     });
+
+    // 2. ⚡ الاستماع الفوري واللحظي لتحديثات حالات الإسناد من أي هاتف في الورشة
+    _statusListener?.cancel();
+    _statusListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('worker_allocations_status')
+        .snapshots()
+        .listen((snapshot) async {
+      if (_isRestoring) return;
+      try {
+        await _db.syncWorkerAllocationsStatusFromCloud();
+        _dbUpdateController.add('status_updated');
+        if (onDataRestored != null) {
+          onDataRestored!();
+        }
+      } catch (e) {
+        print('Error syncing allocation status real-time: $e');
+      }
+    });
   }
 
   /// إيقاف الاستماع
   void stopListening() {
     _listener?.cancel();
+    _statusListener?.cancel();
+    _listener = null;
+    _statusListener = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
@@ -137,13 +174,18 @@ class CloudSyncService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      final userRole = prefs.getString('user_role') ?? 'worker';
+      if (userRole == 'worker') {
+        // 🛑 العامل لا يعلم علامة "is_local_dirty" كي لا يمنع المزامنة التلقائية للمهام الواردة من المدير
+        return;
+      }
       await prefs.setBool('is_local_dirty', true);
     } catch (e) {
       print('Failed to set local dirty flag: $e');
     }
 
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 3), () {
+    _debounceTimer = Timer(const Duration(seconds: 1), () {
       _silentBackup();
     });
   }
@@ -151,13 +193,13 @@ class CloudSyncService {
   /// الرفع الصامت للسحابة
   Future<void> _silentBackup() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final userRole = prefs.getString('user_role') ?? 'worker';
+      if (userRole == 'worker') {
+        // 🛑 منع العامل من الكتابة الصامتة فوق نسخة الورشة السحابية الخاضعة للمدير
+        return;
+      }
       await backupToCloud(isSilent: true);
-      // [تم الإصلاح]: إزالة التحقق من البريد الإلكتروني الثابت
-      // يجب استخدام نظام صلاحيات صحيح بدلاً من ذلك
-      // final user = _auth.currentUser;
-      // if (user != null && _isGlobalAdmin(user)) {
-      //   await backupGlobalCatalog();
-      // }
     } catch (e) {
       print('Auto-sync backup failed: $e');
     }
@@ -191,13 +233,28 @@ class CloudSyncService {
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('user_role') ?? '';
 
-    // إذا كان الحساب مسجلاً صراحة كـ "عامل" وليس مديراً أو مالكاً
     final bool isWorker = (role == 'worker');
     if (isWorker) {
-      if (!isSilent) {
-        throw Exception('حسابك كعامل لا يملك صلاحية الرفع إلى السحابة. يلزم حساب المدير.');
+      bool hasBackupPerm = false;
+      try {
+        final userDoc = await _firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists && userDoc.data() != null) {
+          final pData = userDoc.data()!['permissions'];
+          final pJson = userDoc.data()!['permissions_json'];
+          if (pData is Map && pData['cloud_backup'] == true) {
+            hasBackupPerm = true;
+          } else if (pJson is String && pJson.contains('"cloud_backup":true')) {
+            hasBackupPerm = true;
+          }
+        }
+      } catch (_) {}
+
+      if (!hasBackupPerm) {
+        if (!isSilent) {
+          throw Exception('حسابك لا يملك صلاحية الرفع إلى السحابة. يلزم مفتاح الصلاحية من المدير.');
+        }
+        return;
       }
-      return;
     }
 
     Map<String, dynamic> allData = await _db.exportAllData();
@@ -213,10 +270,12 @@ class CloudSyncService {
       final commandesRows = allData['Commandes'];
       final clientRows = allData['Client'];
       final commandesDetailsRows = allData['Commandes_details'];
+      final workerAllocationsRows = allData['WorkerAllocations'];
       final hasTransactionalData =
           (commandesRows is List && commandesRows.isNotEmpty) ||
               (clientRows is List && clientRows.isNotEmpty) ||
-              (commandesDetailsRows is List && commandesDetailsRows.isNotEmpty);
+              (commandesDetailsRows is List && commandesDetailsRows.isNotEmpty) ||
+              (workerAllocationsRows is List && workerAllocationsRows.isNotEmpty);
       if (!hasTransactionalData) {
         print(
           'backupToCloud (silent): Aborting — no transactional data on this device. '
@@ -263,7 +322,7 @@ class CloudSyncService {
             'data': chunks[i],
           });
           batchCount++;
-          if (batchCount >= 2) {
+          if (batchCount >= 300) {
             await uploadBatch.commit().timeout(const Duration(seconds: 30));
             uploadBatch = _firestore.batch();
             batchCount = 0;
@@ -368,20 +427,25 @@ class CloudSyncService {
         print('New chunk sync failed: $e');
       }
 
-      // 2. جلب البيانات من المجلد العام (Global Catalog) (يمسح ويعيد مركبات الستار)
-      // نقوم بتحميل الكتالوج العام فقط إذا لم ننجح في استعادة النسخة الاحتياطية للورشة (مثلاً ورشة جديدة)
+      // 2. جلب البيانات من المجلد العام (Global Catalog) فقط إذا كانت قاعدة البيانات فارغة تماماً من الكتالوج
       if (!restoreSuccess) {
         try {
-          await downloadGlobalCatalog();
+          final myDb = await _db.db;
+          if (myDb != null) {
+            final profiles = await myDb.query('Profile', limit: 1);
+            final series = await myDb.query('Series', limit: 1);
+            if (profiles.isEmpty && series.isEmpty) {
+              await downloadGlobalCatalog();
+            }
+          }
         } catch (e) {
-          print('Global catalog sync failed: $e');
+          print('Global catalog fallback check failed: $e');
         }
       }
 
       // 3. استرجاع البيانات القديمة (الزبائن والطلبيات) بطريقة الدمج الذكي لتفادي الحذف
       await _legacySync();
-
-      notifyChange();
+      _dbUpdateController.add('');
     } finally {
       _isRestoring = false;
     }
@@ -391,7 +455,8 @@ class CloudSyncService {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        final userDoc = _firestore.collection('users').doc(user.uid);
+        final targetUid = (_workshopId != null && _workshopId!.isNotEmpty) ? _workshopId! : user.uid;
+        final userDoc = _firestore.collection('users').doc(targetUid);
 
         var clientsSnapshot = await userDoc.collection('Client').get();
         for (var doc in clientsSnapshot.docs) {
@@ -484,7 +549,7 @@ class CloudSyncService {
 
     print("--- CloudSyncService: Fetching workshop/backups/latest... ---");
     DocumentSnapshot doc = await latestDocRef.get().timeout(
-      const Duration(seconds: 15),
+      const Duration(seconds: 20),
     );
     print("--- CloudSyncService: backups/latest fetched! ---");
 
@@ -501,6 +566,7 @@ class CloudSyncService {
         Map<String, dynamic> data = payload['data'] as Map<String, dynamic>;
         print("--- CloudSyncService: importing legacy data ---");
         await _db.importAllData(data);
+        await _db.relinkCurrentWorkerAllocations();
         print("--- CloudSyncService: Legacy data imported! ---");
         lastRestoreSummary = 'تم استرجاع النظام القديم (${data.length} جدول)';
       } else {
@@ -509,7 +575,7 @@ class CloudSyncService {
         var snapshot = await latestDocRef
             .collection('chunks')
             .get()
-            .timeout(const Duration(seconds: 30));
+            .timeout(const Duration(seconds: 35));
         print(
           "--- CloudSyncService: backup chunks fetched (${snapshot.docs.length}) ---",
         );
@@ -530,6 +596,7 @@ class CloudSyncService {
           }
         }
         await _db.importAllData(assembledData);
+        await _db.relinkCurrentWorkerAllocations();
         await _db.syncWorkerAllocationsStatusFromCloud();
         final summaryList = assembledData.entries
             .where((e) => e.value.isNotEmpty)
@@ -538,6 +605,7 @@ class CloudSyncService {
         lastRestoreSummary = 'مسترجع:\n' + summaryList.join('\n');
       }
       _dbUpdateController.add('');
+      onDataRestored?.call();
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_local_dirty', false);
@@ -752,5 +820,96 @@ class CloudSyncService {
       chunks.add(currentChunk);
     }
     return chunks;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // إعدادات الورشة — الأنظمة
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// يحفظ إعدادات الأنظمة في Firestore تحت:
+  /// workshops/{workshopId}/settings  →  { systems: {...}, active_profiles: [...] }
+  Future<void> saveWorkshopSystems({
+    required Map<String, bool> systemModes,
+    required List<int> activeProfileIds,
+  }) async {
+    if (_workshopId == null || _workshopId!.isEmpty) return;
+    try {
+      await _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .set({
+        'settings': {
+          'systems': systemModes,
+          'active_profiles': activeProfileIds,
+          'updated_at': FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+      print('--- CloudSyncService: Workshop systems saved to Firestore ---');
+    } catch (e) {
+      print('Error saving workshop systems: $e');
+    }
+  }
+
+  /// يجلب إعدادات الأنظمة من Firestore ويكتبها في SharedPreferences المحلي
+  /// يُستدعى عند init() لكل مستخدم (مدير أو عامل)
+  Future<void> loadAndApplyWorkshopSystems() async {
+    if (_workshopId == null || _workshopId!.isEmpty) return;
+    try {
+      final doc = await _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .get()
+          .timeout(const Duration(seconds: 8));
+
+      if (!doc.exists) return;
+      final data = doc.data();
+      if (data == null) return;
+
+      final settings = data['settings'] as Map<String, dynamic>?;
+      if (settings == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. تطبيق System Modes
+      final systemsMap = settings['systems'] as Map<String, dynamic>?;
+      if (systemsMap != null) {
+        for (var entry in systemsMap.entries) {
+          await prefs.setBool('system_active_${entry.key}', entry.value as bool? ?? true);
+        }
+        print('--- CloudSyncService: Workshop system modes applied from Firestore ---');
+      }
+
+      // 2. تطبيق Active Profiles على SQLite
+      final activeProfiles = settings['active_profiles'];
+      if (activeProfiles != null) {
+        final List<int> activeIds = (activeProfiles as List)
+            .map((e) => (e as num).toInt())
+            .toList();
+        final dbInstance = await _db.db;
+        if (dbInstance != null) {
+          // أوقف الكل أولاً
+          await dbInstance.update('Profile', {'is_active': 0});
+          await dbInstance.update('Series', {'is_active': 0});
+          // فعّل المختارين
+          for (final id in activeIds) {
+            await dbInstance.update(
+              'Profile',
+              {'is_active': 1},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+            await dbInstance.update(
+              'Series',
+              {'is_active': 1},
+              where: 'profile_id = ? OR id = ?',
+              whereArgs: [id, id],
+            );
+          }
+          print('--- CloudSyncService: Workshop active profiles applied (${activeIds.length} active) ---');
+        }
+      }
+    } catch (e) {
+      print('Error loading workshop systems: $e');
+    }
   }
 }

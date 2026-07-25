@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
-import '../settings/localization.dart';
 import 'glass_order_reception_screen.dart';
 import 'achat_screen.dart';
 import '../widgets/lazy_window_image.dart';
-import '../services/cloud_sync_service.dart';
 
 class ExternalOperationsHubScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -25,7 +23,6 @@ class _ExternalOperationsHubScreenState
 
   List<Map<String, dynamic>> _allOrders = [];
   Map<int, List<Map<String, dynamic>>> _orderDetailsMap = {};
-  Map<int, List<Map<String, dynamic>>> _orderAllocationsMap = {};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -111,7 +108,6 @@ class _ExternalOperationsHubScreenState
           _fieldInstallationAllocations = fieldAllocs;
           _reserveAllocations = reserveAllocs;
           _orderDetailsMap = detailsMap;
-          _orderAllocationsMap = allocsMap;
           _isLoading = false;
         });
       }
@@ -152,8 +148,8 @@ class _ExternalOperationsHubScreenState
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_tr('تأكيد المسح الكلي للتركيبات', 'Confirmation de réinitialisation', 'Confirm Reset', lang), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
-        content: Text(_tr('هل أنت تأكد من تصفير ومسح جميع بيانات التركيبات والتحفظات الميدانية بالتطوير؟', 'Voulez-vous réinitialiser toutes les données d\'installation ?', 'Do you want to reset all installation data?', lang), style: const TextStyle(fontFamily: 'Cairo')),
+        title: Text(_tr('تأكيد المسح الكلي للعمليات الخارجية', 'Confirmation de réinitialisation', 'Confirm Reset', lang), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+        content: Text(_tr('هل أنت تأكد من تصفير ومسح جميع بيانات طلبات الزجاج، الشراء والنواقص، والتركيبات والتحفظات الميدانية بالتطوير؟', 'Voulez-vous réinitialiser toutes les données d\'opérations externes ?', 'Do you want to reset all external operations data?', lang), style: const TextStyle(fontFamily: 'Cairo')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -174,7 +170,7 @@ class _ExternalOperationsHubScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_tr('تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹', 'Données d\'installation réinitialisées 🧹', 'Installation data cleared 🧹', lang)),
+            content: Text(_tr('تم مسح وتصفير كافة بيانات العمليات الخارجية (الزجاج، الشراء والنواقص، التركيبات، والتحفظات) بنجاح 🧹', 'Données d\'opérations externes réinitialisées 🧹', 'External operations data cleared 🧹', lang)),
             backgroundColor: Colors.red,
           ),
         );
@@ -201,7 +197,7 @@ class _ExternalOperationsHubScreenState
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-            tooltip: _tr('تصفير تتبع التركيبات (للتطوير)', 'Vider les données d\'installation (Dev)', 'Clear Installation Data (Dev)', lang),
+            tooltip: _tr('تصفير العمليات الخارجية والزجاج والمشتريات (للتطوير)', 'Vider les données d\'opérations (Dev)', 'Clear Operations Data (Dev)', lang),
             onPressed: () => _confirmResetInstallationData(context, lang),
           ),
           IconButton(
@@ -220,7 +216,7 @@ class _ExternalOperationsHubScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _tr('🧪 تصفير التركيبات (للتطوير)', '🧪 Réinitialiser (Dev)', '🧪 Reset (Dev)', lang),
+                  _tr('🧪 تصفير العمليات والزجاج والمشتريات (للتطوير)', '🧪 Réinitialiser Opérations (Dev)', '🧪 Reset Operations (Dev)', lang),
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
                 ),
                 ElevatedButton.icon(
@@ -232,7 +228,7 @@ class _ExternalOperationsHubScreenState
                   onPressed: () => _confirmResetInstallationData(context, lang),
                   icon: const Icon(Icons.delete_sweep, size: 18),
                   label: Text(
-                    _tr('تصفير التركيبات 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang),
+                    _tr('تصفير الكل 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
                   ),
                 ),
@@ -423,7 +419,6 @@ class _ExternalOperationsHubScreenState
         final oId = o['id'] as int;
         final details = _orderDetailsMap[oId] ?? [];
         final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'.trim();
-        final currentGlassStatus = _glassStatusMap[oId] ?? 'pending';
 
         // تجميع أنواع ومساحات الزجاج
         final Map<String, double> glassSurfaceMap = {};

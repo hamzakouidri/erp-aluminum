@@ -3444,18 +3444,34 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  /// 🧹 تصفير بيانات التركيبات محلياً وفي السحابة للتطوير
+  /// 🧹 تصفير بيانات التركيبات والعمليات الخارجية محلياً وفي السحابة للتطوير
   Future<void> clearAllInstallationDataFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
+      // 1. تصفير حالات التركيب والتحفظ والزجاج بالكامل في WorkerAllocations
       await myDb.rawUpdate('''
         UPDATE WorkerAllocations 
         SET is_transferred_to_dist = 0, transferred_at = NULL,
             is_distributed = 0, distributed_at = NULL,
             is_installed = 0, installed_at = NULL,
+            is_glass_installed = 0, glass_installed_at = NULL,
             is_completed = 0, completed_at = NULL,
             has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
       ''');
+
+      // 2. تصفير بيانات استلام الزجاج والمشتريات والنواقص في Commandes_details
+      try {
+        await myDb.rawUpdate('''
+          UPDATE Commandes_details 
+          SET glass_status = NULL, glass_received_qty = 0, glass_received_at = NULL,
+              glass_supplier = NULL, is_purchased = 0, purchase_status = NULL
+        ''');
+      } catch (_) {}
+
+      // 3. حذف أي سجلات مستقلة للزجاج والمشتريات
+      try { await myDb.rawDelete('DELETE FROM GlassOrders'); } catch (_) {}
+      try { await myDb.rawDelete('DELETE FROM Achats'); } catch (_) {}
+      try { await myDb.rawDelete('DELETE FROM Commandes_achat'); } catch (_) {}
     }
 
     try {
@@ -3468,7 +3484,7 @@ class SqlDatabase {
             .collection('backups')
             .doc('latest');
 
-        final latestSnap = await latestRef.get();
+        final latestSnap = await latestRef.get().timeout(const Duration(seconds: 5));
         if (latestSnap.exists && latestSnap.data() != null) {
           final map = latestSnap.data()!;
           if (map.containsKey('data_json')) {
@@ -3485,6 +3501,8 @@ class SqlDatabase {
                     a['distributed_at'] = null;
                     a['is_installed'] = 0;
                     a['installed_at'] = null;
+                    a['is_glass_installed'] = 0;
+                    a['glass_installed_at'] = null;
                     a['is_completed'] = 0;
                     a['completed_at'] = null;
                     a['has_reserve'] = 0;
@@ -3493,11 +3511,29 @@ class SqlDatabase {
                   }
                 }
                 allData['WorkerAllocations'] = allocs;
-                await latestRef.set({
-                  'data_json': jsonEncode(allData),
-                  'updated_at': FieldValue.serverTimestamp(),
-                }, SetOptions(merge: true));
               }
+              if (allData.containsKey('Commandes_details') && allData['Commandes_details'] is List) {
+                final List details = allData['Commandes_details'];
+                for (var d in details) {
+                  if (d is Map) {
+                    d['glass_status'] = null;
+                    d['glass_received_qty'] = 0;
+                    d['glass_received_at'] = null;
+                    d['glass_supplier'] = null;
+                    d['is_purchased'] = 0;
+                    d['purchase_status'] = null;
+                  }
+                }
+                allData['Commandes_details'] = details;
+              }
+              allData['GlassOrders'] = [];
+              allData['Achats'] = [];
+              allData['Commandes_achat'] = [];
+
+              await latestRef.set({
+                'data_json': jsonEncode(allData),
+                'updated_at': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
             } catch (e) {
               debugPrint('Error updating cloud backup json: $e');
             }
