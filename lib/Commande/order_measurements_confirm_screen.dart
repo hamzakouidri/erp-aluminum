@@ -1078,111 +1078,125 @@ class _OrderMeasurementsConfirmScreenState
                   color: theme.brightness == Brightness.dark ? const Color(0xFF1E293B) : Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, -2),
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 10,
+                      offset: const Offset(0, -3),
                     ),
                   ],
                 ),
                 child: SafeArea(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 3,
-                    ),
-                    icon: const Icon(Icons.check_circle_rounded, size: 22),
-                    label: Text(
-                      _tr(
-                        '✅ تأكيد جميع القياسات والانتقال المباشر لإسناد المهام 🚀',
-                        '✅ Valider les mesures et passer à l\'affectation 🚀',
-                        '✅ Confirm All Measurements & Go to Task Allocation 🚀',
-                        lang,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 4,
                       ),
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                      icon: const Icon(Icons.check_circle_rounded, size: 24),
+                      label: Text(
+                        _tr(
+                          'تم حفظ كل القياسات 💾',
+                          'Toutes les mesures sont enregistrées 💾',
+                          'All measurements saved 💾',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    onPressed: () async {
-                      // 1. Validate sums
-                      bool allValid = true;
-                      for (final detail in _detailsList) {
-                        final detailId = detail['id'] as int;
-                        final totalQty = detail['quantity'] as int;
-                        final sum = _getSumQty(detailId);
-                        if (sum != totalQty) {
-                          allValid = false;
+                      onPressed: () async {
+                        // 1. Validate sums
+                        bool allValid = true;
+                        for (final detail in _detailsList) {
+                          final detailId = detail['id'] as int;
+                          final totalQty = detail['quantity'] as int;
+                          final sum = _getSumQty(detailId);
+                          if (sum != totalQty) {
+                            allValid = false;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: Colors.redAccent,
+                                content: Text(
+                                  _tr(
+                                    'مجموع كميات القياسات للعنصر #$detailId ($sum) يجب أن يساوي الكمية الإجمالية ($totalQty)!',
+                                    'La somme des quantités (#$detailId: $sum) doit être égale au total ($totalQty) !',
+                                    'Total quantity sum (#$detailId: $sum) must equal ($totalQty)!',
+                                    lang,
+                                  ),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            );
+                            break;
+                          }
+                        }
+
+                        if (!allValid) return;
+
+                        // 2. Save details to DB
+                        for (final detail in _detailsList) {
+                          final detailId = detail['id'] as int;
+                          final list = _editors[detailId] ?? [];
+                          final List<Map<String, dynamic>> data = [];
+                          for (final ed in list) {
+                            final w = int.tryParse(ed.widthCtrl.text) ?? 0;
+                            final h = int.tryParse(ed.heightCtrl.text) ?? 0;
+                            final q = int.tryParse(ed.qtyCtrl.text) ?? 0;
+                            final pos = ed.positionCtrl.text.trim();
+                            data.add({
+                              'width': w,
+                              'height': h,
+                              'qty': q,
+                              'position': pos,
+                            });
+                          }
+                          final jsonStr = jsonEncode(data);
+                          final myDb = await widget.db.db;
+                          if (myDb != null) {
+                            await myDb.update(
+                              'Commandes_details',
+                              {'instances_json': jsonStr},
+                              where: 'id = ?',
+                              whereArgs: [detailId],
+                            );
+                          }
+                        }
+
+                        if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              backgroundColor: Colors.redAccent,
                               content: Text(
-                                'مجموع كميات القياسات للعنصر #$detailId ($sum) يجب أن يساوي الكمية الإجمالية ($totalQty)!',
+                                _tr(
+                                  '✅ تم حفظ القياسات',
+                                  '✅ Les mesures ont été enregistrées avec succès',
+                                  '✅ All measurements saved',
+                                  lang,
+                                ),
                                 style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                              ),
+                              backgroundColor: Colors.teal,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderAllocationScreen(
+                                orderData: widget.orderData,
+                                db: widget.db,
                               ),
                             ),
                           );
-                          break;
                         }
-                      }
-
-                      if (!allValid) return;
-
-                      // 2. Save details to DB
-                      for (final detail in _detailsList) {
-                        final detailId = detail['id'] as int;
-                        final list = _editors[detailId] ?? [];
-                        final List<Map<String, dynamic>> data = [];
-                        for (final ed in list) {
-                          final w = int.tryParse(ed.widthCtrl.text) ?? 0;
-                          final h = int.tryParse(ed.heightCtrl.text) ?? 0;
-                          final q = int.tryParse(ed.qtyCtrl.text) ?? 0;
-                          final pos = ed.positionCtrl.text.trim();
-                          data.add({
-                            'width': w,
-                            'height': h,
-                            'qty': q,
-                            'position': pos,
-                          });
-                        }
-                        final jsonStr = jsonEncode(data);
-                        final myDb = await widget.db.db;
-                        if (myDb != null) {
-                          await myDb.update(
-                            'Commandes_details',
-                            {'instances_json': jsonStr},
-                            where: 'id = ?',
-                            whereArgs: [detailId],
-                          );
-                        }
-                      }
-
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              '✅ تم حفظ وتأكيد القياسات بنجاح! الانتقال لإسناد المهام... 🚀',
-                              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                            ),
-                            backgroundColor: Colors.teal,
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => OrderAllocationScreen(
-                              orderData: widget.orderData,
-                              db: widget.db,
-                            ),
-                          ),
-                        );
-                      }
-                    },
+                      },
+                    ),
                   ),
                 ),
               ),
