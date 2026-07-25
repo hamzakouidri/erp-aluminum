@@ -3628,6 +3628,29 @@ class SqlDatabase {
     }
   }
 
+  /// حذف Achat وعناصره محلياً فقط (لا يُشغّل backup) — يُستخدم بعد restore
+  Future<void> deleteAchatLocalOnly(int id) async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      await myDb.delete('Achat_items', where: 'achat_id = ?', whereArgs: [id]);
+      await myDb.delete('Achats', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      debugPrint('deleteAchatLocalOnly error: $e');
+    }
+  }
+
+  /// تعطيل سجل زجاج محلياً فقط (is_active=0) — يُستخدم بعد restore
+  Future<void> setGlassInactiveLocalOnly(int id) async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      await myDb.update('Glass', {'is_active': 0}, where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      debugPrint('setGlassInactiveLocalOnly error: $e');
+    }
+  }
+
   /// 🧹 تصفير وحذف جميع المهام والإسنادات محلياً وفي السحابة للتطوير
   Future<void> clearAllWorkerAllocationsFromCloudAndLocal() async {
     Database? myDb = await db;
@@ -5514,6 +5537,32 @@ class SqlDatabase {
     });
 
     CloudSyncService().notifyChange();
+
+    // ??? ??? Achat ??? Firestore ??????? (???? ??? ???? legacy sync)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        final wsRef = FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId);
+        // ??? ??? legacy path
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(workshopId)
+            .collection('Achats')
+            .doc('$id')
+            .delete();
+        // ??? tombstone ????? ??? ?????? ???
+        await wsRef.collection('deleted_achats').doc('$id').set({
+          'id': id,
+          'deleted_at': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to delete Achat from Firestore legacy: $e');
+    }
+
     return 1;
   }
 
@@ -6382,6 +6431,26 @@ class SqlDatabase {
       whereArgs: [id],
     );
     CloudSyncService().notifyChange();
+
+    // ??? tombstone ????? ??? ??? ?????? ???
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('deleted_glass_ids')
+            .doc('$id')
+            .set({
+          'id': id,
+          'deleted_at': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to write glass tombstone: $e');
+    }
+
     return res;
   }
 

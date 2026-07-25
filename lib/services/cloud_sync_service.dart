@@ -555,10 +555,30 @@ class CloudSyncService {
           }
         }
 
+        // جلب قائمة Achats المحذوفة (tombstones) قبل الاستيراد
+        final Set<int> deletedAchatIds = {};
+        if (_workshopId != null) {
+          try {
+            final delSnap = await _firestore
+                .collection('workshops')
+                .doc(_workshopId)
+                .collection('deleted_achats')
+                .get()
+                .timeout(const Duration(seconds: 5));
+            for (final d in delSnap.docs) {
+              final id = (d.data()['id'] as num?)?.toInt() ?? int.tryParse(d.id) ?? 0;
+              if (id > 0) deletedAchatIds.add(id);
+            }
+          } catch (_) {}
+        }
+
         var achatsSnapshot = await userDoc.collection('Achats').get();
         for (var doc in achatsSnapshot.docs) {
           try {
             final data = doc.data();
+            final achatId = (data['id'] as num?)?.toInt() ?? int.tryParse(doc.id) ?? 0;
+            // تخطي Achats المحذوفة (tombstoned)
+            if (deletedAchatIds.contains(achatId)) continue;
             await _db.insertOrUpdateSafeLegacy('Achats', data, 'id');
           } catch (e) {
             print('Failed to sync legacy Achats doc: $e');
@@ -585,6 +605,9 @@ class CloudSyncService {
         for (var doc in achatItemsSnapshot.docs) {
           try {
             final data = doc.data();
+            // تخطي Achat_items لـ Achats محذوفة
+            final achatId = (data['achat_id'] as num?)?.toInt() ?? 0;
+            if (deletedAchatIds.contains(achatId)) continue;
             await _db.insertOrUpdateSafeLegacy('Achat_items', data, 'id');
           } catch (e) {
             print('Failed to sync legacy Achat_items doc: $e');
@@ -676,8 +699,10 @@ class CloudSyncService {
         await _db.relinkCurrentWorkerAllocations();
         await _db.syncWorkerAllocationsStatusFromCloud();
         await _db.syncOrdersStatusFromCloud();
-        // ⚠️ تطبيق علامات الحذف الدائمة بعد الاستيراد مباشرة لمنع عودة الإسنادات المحذوفة
+        // ⚠️ تطبيق علامات الحذف الدائمة بعد الاستيراد مباشرة
         await _applyDeletedAllocationsTombstones();
+        await _applyDeletedAchatsTombstones();  // منع عودة المشتريات المحذوفة
+        await _applyDeletedGlassTombstones();   // منع ظهور الزجاج المحذوف
         final summaryList = assembledData.entries
             .where((e) => e.value.isNotEmpty)
             .map((e) => '${e.key}: ${e.value.length}')
@@ -697,10 +722,9 @@ class CloudSyncService {
     }
   }
 
-  // ==================== Global Catalog ====================
+  // ==================== Tombstone Helpers ====================
 
-  /// ⚠️ حذف الإسنادات التي تم وضع علامة حذف دائمة لها (tombstones) من قاعدة البيانات المحلية
-  /// يُستدعى بعد كل restoreFromCloud() لمنع عودة الإسنادات المحذوفة
+  /// حذف الإسنادات المحذوفة (tombstones) من SQLite بعد كل restore
   Future<void> _applyDeletedAllocationsTombstones() async {
     try {
       if (_workshopId == null) return;
@@ -722,7 +746,48 @@ class CloudSyncService {
     }
   }
 
-  // ==================== Global Catalog ====================
+  /// حذف المشتريات المحذوفة (tombstones) من SQLite بعد كل restore
+  Future<void> _applyDeletedAchatsTombstones() async {
+    try {
+      if (_workshopId == null) return;
+      final snap = await _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .collection('deleted_achats')
+          .get()
+          .timeout(const Duration(seconds: 8));
+      for (final doc in snap.docs) {
+        final id = (doc.data()['id'] as num?)?.toInt() ?? int.tryParse(doc.id) ?? 0;
+        if (id > 0) {
+          await _db.deleteAchatLocalOnly(id);
+        }
+      }
+    } catch (e) {
+      print('Error applying deleted_achats tombstones: $e');
+    }
+  }
+
+  /// تعطيل سجلات الزجاج المحذوفة (tombstones) من SQLite بعد كل restore
+  Future<void> _applyDeletedGlassTombstones() async {
+    try {
+      if (_workshopId == null) return;
+      final snap = await _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .collection('deleted_glass_ids')
+          .get()
+          .timeout(const Duration(seconds: 8));
+      for (final doc in snap.docs) {
+        final id = (doc.data()['id'] as num?)?.toInt() ?? int.tryParse(doc.id) ?? 0;
+        if (id > 0) {
+          await _db.setGlassInactiveLocalOnly(id);
+        }
+      }
+    } catch (e) {
+      print('Error applying deleted_glass tombstones: $e');
+    }
+  }
+
   Future<void> backupGlobalCatalog() async {
     await init();
 
