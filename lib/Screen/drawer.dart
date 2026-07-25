@@ -25,8 +25,8 @@ import 'client_chrono_search_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../login_screen.dart';
 import 'inventory_screen.dart';
+import 'worker_archive_screen.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -356,6 +356,21 @@ class _AppDrawerState extends State<AppDrawer> {
                   Icons.engineering_rounded,
                   WorkerTasksScreen(db: db),
                   titleKey: 'مهامي وتصنيعاتي',
+                );
+              },
+            ),
+          if (settings.canViewMyTasks())
+            ListTile(
+              leading: const Icon(Icons.archive_rounded, color: Colors.deepOrange),
+              title: Text(lang == AppLanguage.arabic
+                  ? 'أرشيف التوزيع والمهام'
+                  : (lang == AppLanguage.french ? 'Archives & Live' : 'Archive & Distribution')),
+              onTap: () {
+                _openScreen(
+                  lang == AppLanguage.arabic ? 'أرشيف التوزيع والمهام' : 'Archives & Live',
+                  Icons.archive_rounded,
+                  WorkerArchiveScreen(db: db),
+                  titleKey: 'worker_archive',
                 );
               },
             ),

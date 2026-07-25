@@ -27,6 +27,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
 
+import 'worker_archive_screen.dart';
+
 class WelcomScreen extends StatefulWidget {
   final bool embeddedInWorkspace;
 
@@ -980,7 +982,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.receipt_long_rounded,
           label: Localization.translate('commandes', lang),
-          color: const Color(0xFF2563EB), // Luminous Royal Blue
+          color: const Color(0xFF2563EB), // Deep Royal Blue
           onTap: () async {
             await _markOrdersAsRead();
             if (context.mounted) {
@@ -997,7 +999,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.folder_shared_rounded,
           label: Localization.translate('المشاريع', lang),
-          color: const Color(0xFF0284C7), // Bright Sky Cyan
+          color: const Color(0xFF0284C7), // Sky Cyan
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('المشاريع', lang),
@@ -1009,7 +1011,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.people_alt_rounded,
           label: Localization.translate('clients', lang),
-          color: const Color(0xFF7C3AED), // Electric Purple
+          color: const Color(0xFF8B5CF6), // Amethyst Violet
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('clients', lang),
@@ -1033,7 +1035,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.assignment_turned_in_rounded,
           label: Localization.translate('مهامي وتصنيعاتي', lang),
-          color: const Color(0xFF14B8A6), // Teal
+          color: const Color(0xFF10B981), // Emerald Green
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('مهامي وتصنيعاتي', lang),
@@ -1041,11 +1043,27 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: WorkerTasksScreen(db: db),
           ),
         ),
+      if (settings.canViewMyTasks())
+        _NavItem(
+          icon: Icons.archive_rounded,
+          label: lang == AppLanguage.arabic
+              ? 'أرشيف التوزيع والمهام'
+              : (lang == AppLanguage.french ? 'Archives & Live' : 'Archive & Distribution'),
+          color: const Color(0xFFEA580C), // Vivid Burnt Orange
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: lang == AppLanguage.arabic
+                ? 'أرشيف التوزيع والمهام'
+                : (lang == AppLanguage.french ? 'Archives & Live' : 'Archive & Distribution'),
+            icon: Icons.archive_rounded,
+            screen: WorkerArchiveScreen(db: db),
+          ),
+        ),
       if (settings.canViewSuppliers())
         _NavItem(
           icon: Icons.local_shipping_rounded,
           label: Localization.translate('الموردين', lang),
-          color: const Color(0xFFE11D48), // Vivid Coral Rose
+          color: const Color(0xFFE11D48), // Rose Crimson
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('الموردين', lang),
@@ -1057,7 +1075,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.warehouse_rounded,
           label: Localization.translate('المخزون', lang),
-          color: const Color(0xFF9333EA), // Vivid Violet
+          color: const Color(0xFFD946EF), // Neon Fuchsia Magenta
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('المخزون', lang),
@@ -1069,7 +1087,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.shopping_bag_rounded,
           label: Localization.translate('المشتريات', lang),
-          color: const Color(0xFF10B981), // Emerald Green
+          color: const Color(0xFF06B6D4), // Bright Turquoise
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('المشتريات', lang),
@@ -1081,7 +1099,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.settings_rounded,
           label: Localization.translate('settings', lang),
-          color: const Color(0xFF64748B), // Slate Indigo
+          color: const Color(0xFF475569), // Dark Slate Graphite
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('settings', lang),
@@ -1093,7 +1111,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.bar_chart_rounded,
           label: Localization.translate('rapports', lang),
-          color: const Color(0xFF06B6D4), // Neon Turquoise
+          color: const Color(0xFF6366F1), // Vivid Indigo Blue
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('rapports', lang),
@@ -1105,7 +1123,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _NavItem(
           icon: Icons.account_balance_wallet_rounded,
           label: Localization.translate('الخزينة', lang),
-          color: const Color(0xFF059669), // Mint Green
+          color: const Color(0xFF15803D), // Forest Green
           onTap: () => openAdaptiveScreen(
             context,
             title: Localization.translate('الخزينة', lang),
@@ -1119,7 +1137,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           label: lang == AppLanguage.arabic
               ? 'الأعمال والمهمات الخارجية'
               : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations'),
-          color: const Color(0xFF0D9488), // Luminous Teal
+          color: const Color(0xFF0891B2), // Deep Ocean Cyan
           onTap: () => openAdaptiveScreen(
             context,
             title: lang == AppLanguage.arabic
