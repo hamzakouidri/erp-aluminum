@@ -28,6 +28,12 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   List<Map<String, dynamic>> _workers = [];
   Map<int, List<Map<String, dynamic>>> _allocations = {}; // detailId -> list of allocations
 
+  String _tr(String ar, String fr, String en, AppLanguage lang) {
+    if (lang == AppLanguage.french) return fr;
+    if (lang == AppLanguage.english) return en;
+    return ar;
+  }
+
   /// تحويل الرقم إلى الصيغة الدولية E.164 (بدون +)
   /// يدعم: الجزائر (0 → 213), المغرب (0 → 212), تونس (0 → 216),
   ///       فرنسا (0 → 33), مصر (0 → 20), السعودية (05→ 966)
@@ -531,6 +537,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   void _showEditAssignDialog(Map<String, dynamic> alloc, Map<String, dynamic> item) {
+    final isManufactured = alloc['is_manufactured'] == 1;
     final detailId = item['id'] as int;
     final qty = item['quantity'] as int;
     final allocs = _allocations[detailId] ?? [];
@@ -550,9 +557,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) => AlertDialog(
-          title: const Text(
-            'تعديل إسناد العمل',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+          title: Text(
+            isManufactured ? 'تعديل سعر التصنيع (مقفول للعامل)' : 'تعديل إسناد العمل',
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
           ),
           content: Form(
             key: formKey,
@@ -560,11 +567,34 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (isManufactured) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.lock_rounded, color: Colors.orange, size: 20),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '⚠️ تم تصنيع هذه النافذة بالفعل! تَم قفل تعيين العامل والكمية، يمكنك فقط تعديل سعر/أجرة التصنيع.',
+                              style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   DropdownButtonFormField<String>(
                     value: selectedWorkerUid,
-                    decoration: const InputDecoration(
-                      labelText: 'اختر العامل',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: isManufactured ? 'العامل الصانع (مقفول)' : 'اختر العامل',
+                      border: const OutlineInputBorder(),
                     ),
                     items: _workers.map((w) {
                       return DropdownMenuItem<String>(
@@ -575,15 +605,16 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                         ),
                       );
                     }).toList(),
-                    onChanged: (val) => setStateDialog(() => selectedWorkerUid = val),
+                    onChanged: isManufactured ? null : (val) => setStateDialog(() => selectedWorkerUid = val),
                     validator: (val) => val == null ? 'يرجى اختيار عامل' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: qtyCtrl,
+                    enabled: !isManufactured,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: 'الكمية المسندة (الأقصى $maxAllowedQty)',
+                      labelText: isManufactured ? 'الكمية المصنوعة (مقفول)' : 'الكمية المسندة (الأقصى $maxAllowedQty)',
                       border: const OutlineInputBorder(),
                     ),
                     validator: (val) {
@@ -953,6 +984,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                   (w) => w['uid'].toString() == alloc['worker_uid'],
                                                   orElse: () => {},
                                                 )['phone']?.toString();
+                                                final workerPrice = (alloc['worker_price'] as num?)?.toDouble() ?? 0.0;
+                                                final totalWorkerPrice = workerPrice * (alloc['quantity'] as int);
+                                                final isManufactured = alloc['is_manufactured'] == 1;
 
                                                 return Container(
                                                   margin: const EdgeInsets.symmetric(vertical: 4),
@@ -973,6 +1007,11 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                               '$workerName : ${alloc['quantity']} ${lang == AppLanguage.arabic ? "قطع" : "pcs"}',
                                                               style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
                                                             ),
+                                                            const SizedBox(height: 2),
+                                                            Text(
+                                                              '💵 ${_tr("أجرة التصنيع:", "Prix fab.:", "Mfg price:", lang)} ${workerPrice.toStringAsFixed(0)} د.ج / ${_tr("قطعة", "pc", "pc", lang)} (${_tr("الإجمالي:", "Total:", "Total:", lang)} ${totalWorkerPrice.toStringAsFixed(0)} د.ج)',
+                                                              style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.teal.shade700, fontWeight: FontWeight.bold),
+                                                            ),
                                                             const SizedBox(height: 4),
                                                             Wrap(
                                                               spacing: 6,
@@ -981,13 +1020,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                                 Container(
                                                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                                   decoration: BoxDecoration(
-                                                                    color: alloc['is_manufactured'] == 1 ? Colors.green.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+                                                                    color: isManufactured ? Colors.green.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
                                                                     borderRadius: BorderRadius.circular(6),
                                                                   ),
                                                                   child: Text(
-                                                                    alloc['is_manufactured'] == 1 ? 'تم الصنع ✅' : 'لم يصنع بعد ⏳',
+                                                                    isManufactured ? 'تم الصنع ✅' : 'لم يصنع بعد ⏳',
                                                                     style: TextStyle(
-                                                                      color: alloc['is_manufactured'] == 1 ? Colors.green : Colors.orange,
+                                                                      color: isManufactured ? Colors.green : Colors.orange,
                                                                       fontSize: 10,
                                                                       fontWeight: FontWeight.bold,
                                                                       fontFamily: 'Cairo',
