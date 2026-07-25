@@ -24,6 +24,7 @@ class CloudSyncService {
   StreamSubscription<DocumentSnapshot>? _listener;
   StreamSubscription<QuerySnapshot>? _statusListener;
   StreamSubscription<QuerySnapshot>? _orderStatusListener;
+  StreamSubscription<QuerySnapshot>? _measurementsListener;
   bool _isRestoring = false;
 
   final StreamController<String> _dbUpdateController = StreamController<String>.broadcast();
@@ -89,9 +90,11 @@ class CloudSyncService {
     _listener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
+    _measurementsListener?.cancel();
     _listener = null;
     _statusListener = null;
     _orderStatusListener = null;
+    _measurementsListener = null;
   }
 
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
@@ -180,6 +183,26 @@ class CloudSyncService {
         print('Error syncing order status real-time: $e');
       }
     });
+
+    // 4. ⚡ الاستماع الفوري واللحظي لتأكيد قياسات الموقع من أي هاتف في الورشة
+    _measurementsListener?.cancel();
+    _measurementsListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('confirmed_measurements')
+        .snapshots()
+        .listen((snapshot) async {
+      if (_isRestoring) return;
+      try {
+        await _db.syncConfirmedMeasurementsFromCloud();
+        _dbUpdateController.add('measurements_updated');
+        if (onDataRestored != null) {
+          onDataRestored!();
+        }
+      } catch (e) {
+        print('Error syncing confirmed measurements real-time: $e');
+      }
+    });
   }
 
   /// إيقاف الاستماع
@@ -187,9 +210,11 @@ class CloudSyncService {
     _listener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
+    _measurementsListener?.cancel();
     _listener = null;
     _statusListener = null;
     _orderStatusListener = null;
+    _measurementsListener = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)

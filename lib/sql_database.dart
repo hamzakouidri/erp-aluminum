@@ -3131,6 +3131,88 @@ class SqlDatabase {
     }
   }
 
+  Future<void> _uploadConfirmedMeasurementsToCloud(int detailId, String instancesJson, String confirmedJson) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('confirmed_measurements')
+            .doc(detailId.toString())
+            .set({
+              'id': detailId,
+              'instances_json': instancesJson,
+              'confirmed_mesures_json': confirmedJson,
+              'updated_at': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+        debugPrint('--- SqlDatabase: Uploaded confirmed measurements for detail $detailId to cloud ---');
+      }
+    } catch (e) {
+      debugPrint('Error uploading confirmed measurements to cloud: $e');
+    }
+  }
+
+  Future<void> syncConfirmedMeasurementsFromCloud() async {
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = prefs.getString('workshop_code');
+    if (workshopId == null || workshopId.isEmpty) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(workshopId)
+          .collection('confirmed_measurements')
+          .get();
+
+      Database? myDb = await db;
+      if (myDb == null) return;
+
+      for (var doc in snapshot.docs) {
+        final detailId = int.tryParse(doc.id);
+        if (detailId == null) continue;
+        final data = doc.data();
+        final instancesStr = data['instances_json']?.toString() ?? '';
+        final confirmedStr = data['confirmed_mesures_json']?.toString() ?? '';
+        if (instancesStr.isEmpty && confirmedStr.isEmpty) continue;
+
+        final existing = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (existing.isNotEmpty) {
+          Map<String, dynamic> updates = {};
+          if (instancesStr.isNotEmpty) updates['instances_json'] = instancesStr;
+          if (confirmedStr.isNotEmpty) updates['confirmed_mesures_json'] = confirmedStr;
+
+          if (updates.isNotEmpty) {
+            await myDb.update('Commandes_details', updates, where: 'id = ?', whereArgs: [detailId]);
+          }
+        }
+      }
+      debugPrint('--- SqlDatabase: Synced confirmed measurements from cloud successfully ---');
+    } catch (e) {
+      debugPrint('Error syncing confirmed measurements from cloud: $e');
+    }
+  }
+
+  Future<int> updateCommandeDetailConfirmedMesures(int detailId, String instancesJson, String confirmedJson) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+
+    var res = await myDb.update(
+      'Commandes_details',
+      {
+        'instances_json': instancesJson,
+        'confirmed_mesures_json': confirmedJson,
+      },
+      where: 'id = ?',
+      whereArgs: [detailId],
+    );
+
+    await _uploadConfirmedMeasurementsToCloud(detailId, instancesJson, confirmedJson);
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
   Future<void> _syncAllocationsFromOrderStatus(int orderId, String status) async {
     Database? myDb = await db;
     if (myDb == null) return;

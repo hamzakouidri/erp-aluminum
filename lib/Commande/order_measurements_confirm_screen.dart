@@ -209,15 +209,7 @@ class _OrderMeasurementsConfirmScreenState
         final instancesStr = jsonEncode(instancesData);
         final confirmedStr = jsonEncode(confirmedData);
 
-        await myDb.update(
-          'Commandes_details',
-          {
-            'instances_json': instancesStr,
-            'confirmed_mesures_json': confirmedStr,
-          },
-          where: 'id = ?',
-          whereArgs: [detailId],
-        );
+        await widget.db.updateCommandeDetailConfirmedMesures(detailId, instancesStr, confirmedStr);
       }
 
       CloudSyncService().notifyChange();
