@@ -294,36 +294,66 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   }
 
   Future<void> _transferToDistribution(int allocationId) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+
+    // ⚡ 1. إظهار مؤشر تقدم فوري
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  lang == AppLanguage.arabic
+                      ? 'جاري تحويل النافذة للتوزيع والأرشيف…'
+                      : 'Transfert vers la distribution…',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     _isLocalChangePending = true;
 
-    // ⚡ 1. إزالة النافذة فوراً من الشاشة بدون أي تأخير (Zero latency)
-    setState(() {
-      _allTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
-      _visibleTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'تم تحويل النافذة إلى التوزيع والأرشيف بنجاح 🚚',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: Colors.indigo,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
-    // ⚡ 2. تحديث الحسابات والدبابيس في الخلفية
+    // ⚡ 2. تحديث الحسابات والدبابيس والقواعد السحابية في الخلفية
     try {
       await widget.db.updateWorkerAllocationTransfer(allocationId, 1);
     } catch (e) {
       debugPrint('Error transferring to distribution: $e');
     }
 
-    // الحفاظ على حظر التحديث اللحظي لمدة ثانيتين لحين المزامنة السحابية
+    // ⚡ 3. إزالة النافذة فوراً من قائمة الشاشة
+    setState(() {
+      _allTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
+      _visibleTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
+    });
+
+    if (mounted) Navigator.of(context, rootNavigator: true).pop(); // إغلاق مؤشر التقدم
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            lang == AppLanguage.arabic
+                ? 'تم تحويل النافذة إلى التوزيع والأرشيف بنجاح 🚚'
+                : 'Transféré vers la distribution avec succès 🚚',
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.indigo,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
     await Future.delayed(const Duration(seconds: 2));
     _isLocalChangePending = false;
   }
@@ -370,8 +400,37 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     );
 
     if (confirm == true) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => PopScope(
+            canPop: false,
+            child: AlertDialog(
+              content: Row(
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      lang == AppLanguage.arabic
+                          ? 'جاري تصفير ومسح جميع المهام…'
+                          : 'Réinitialisation des tâches…',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
       await widget.db.clearAllWorkerAllocationsFromCloudAndLocal();
       await _loadTasks();
+
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
