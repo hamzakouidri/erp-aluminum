@@ -25,7 +25,6 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   List<Map<String, dynamic>> _visibleTasks = [];
   String _selectedFilter = 'all'; // 'all', 'pending', 'manufactured', 'glass'
   StreamSubscription? _syncSub;
-  String _searchType = 'none'; // 'none', 'client', 'worker', 'date'
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _debugInfo = ''; // 🔍 تشخيص مؤقت
@@ -144,25 +143,30 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       tasks = tasks.where((t) => t['is_glass_installed'] == 1).toList();
     }
 
-    // Second, filter by search query if searchType is active
+    // Second, universal radical search across ALL fields simultaneously
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase().trim();
-      if (_searchType == 'client') {
-        tasks = tasks.where((t) {
-          final cName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
-          return cName.contains(query);
-        }).toList();
-      } else if (_searchType == 'worker') {
-        tasks = tasks.where((t) {
-          final wName = (t['worker_name'] ?? '').toString().toLowerCase();
-          return wName.contains(query);
-        }).toList();
-      } else if (_searchType == 'date') {
-        tasks = tasks.where((t) {
-          final dateStr = _formatDateTime(t['assigned_at']).toLowerCase();
-          return dateStr.contains(query);
-        }).toList();
-      }
+      tasks = tasks.where((t) {
+        final cName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
+        final wName = (t['worker_name'] ?? '').toString().toLowerCase();
+        final dateStr = _formatDateTime(t['assigned_at']).toLowerCase();
+        final orderId = (t['id_commandes'] ?? '').toString().toLowerCase();
+        final allocId = (t['id'] ?? '').toString().toLowerCase();
+        final windowType = (t['window_type'] ?? '').toString().toLowerCase();
+        final color = (t['color'] ?? '').toString().toLowerCase();
+        final glass = (t['glass'] ?? '').toString().toLowerCase();
+        final pos = (t['unit_position'] ?? '').toString().toLowerCase();
+
+        return cName.contains(query) ||
+               wName.contains(query) ||
+               dateStr.contains(query) ||
+               orderId.contains(query) ||
+               allocId.contains(query) ||
+               windowType.contains(query) ||
+               color.contains(query) ||
+               glass.contains(query) ||
+               pos.contains(query);
+      }).toList();
     }
 
     _visibleTasks = tasks;
@@ -499,135 +503,49 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
           ),
           const Divider(height: 1),
 
-          // ── فلترة متقدمة (اسم العامل / اسم الزبون / التاريخ) ─────────────────
+          // ── بحث شامل وباشر (اسم الزبون / العامل / التاريخ / رقم الطلبية / النافذة) ──
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: isDark ? const Color(0xFF1E293B) : Colors.white,
-            child: Row(
-              children: [
-                // اختيار نوع الفلترة
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-                    ),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _searchType,
-                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'none',
-                          child: Text(lang == AppLanguage.arabic ? 'بدون بحث' : 'Pas de recherche'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'client',
-                          child: Text(lang == AppLanguage.arabic ? 'اسم الزبون' : 'Nom Client'),
-                        ),
-                        if (settings.isManager) // اسم العامل يظهر للمدير فقط
-                          DropdownMenuItem(
-                            value: 'worker',
-                            child: Text(lang == AppLanguage.arabic ? 'اسم العامل' : 'Nom Ouvrier'),
-                          ),
-                        DropdownMenuItem(
-                          value: 'date',
-                          child: Text(lang == AppLanguage.arabic ? 'التاريخ' : 'Date'),
-                        ),
-                      ],
-                      onChanged: (val) {
-                        setState(() {
-                          _searchType = val ?? 'none';
-                          _searchController.clear();
-                          _searchQuery = '';
-                          _applyFilters();
-                        });
-                      },
-                    ),
-                  ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val;
+                  _applyFilters();
+                });
+              },
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              decoration: InputDecoration(
+                hintText: lang == AppLanguage.arabic
+                    ? 'بحث شامل (اسم الزبون، العامل، رقم الطلبية، النافذة، اللون...)'
+                    : 'Recherche globale (Client, Ouvrier, Commande, Fenêtre...)',
+                hintStyle: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
                 ),
-                const SizedBox(width: 8),
-                // حقل الإدخال
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    enabled: _searchType != 'none',
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                        _applyFilters();
-                      });
-                    },
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: _searchType == 'none'
-                          ? (lang == AppLanguage.arabic ? 'اختر نوع الفلترة أولاً' : 'Sélectionnez un type')
-                          : _searchType == 'client'
-                              ? (lang == AppLanguage.arabic ? 'أدخل اسم الزبون...' : 'Nom client...')
-                              : _searchType == 'worker'
-                                  ? (lang == AppLanguage.arabic ? 'أدخل اسم العامل...' : 'Nom ouvrier...')
-                                  : (lang == AppLanguage.arabic ? 'أدخل التاريخ (يوم/شهر/سنة)...' : 'Date (jj/mm/aaaa)...'),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      filled: true,
-                      fillColor: _searchType == 'none'
-                          ? (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC))
-                          : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
-                      suffixIcon: _searchType == 'none'
-                          ? null
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_searchType == 'date')
-                                  IconButton(
-                                    icon: const Icon(Icons.calendar_today, size: 18),
-                                    onPressed: () async {
-                                      final picked = await showDatePicker(
-                                        context: context,
-                                        initialDate: DateTime.now(),
-                                        firstDate: DateTime(2020),
-                                        lastDate: DateTime(2030),
-                                        locale: const Locale('ar'),
-                                      );
-                                      if (picked != null) {
-                                        final formatted = '${picked.day}/${picked.month}/${picked.year}';
-                                        setState(() {
-                                          _searchController.text = formatted;
-                                          _searchQuery = formatted;
-                                          _applyFilters();
-                                        });
-                                      }
-                                    },
-                                  ),
-                                if (_searchController.text.isNotEmpty)
-                                  IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      setState(() {
-                                        _searchController.clear();
-                                        _searchQuery = '';
-                                        _applyFilters();
-                                      });
-                                    },
-                                  ),
-                              ],
-                            ),
-                    ),
-                  ),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF3B82F6)),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                            _applyFilters();
+                          });
+                        },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
                 ),
-              ],
+              ),
             ),
           ),
           const Divider(height: 1),
@@ -966,153 +884,214 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
             const SizedBox(height: 14),
 
-            // ── أزرار العمليات (تم الصنع - تم تركيب الزجاج) ──────────────────────────
-            Row(
-              children: [
-                // 1️⃣ زر "تم الصنع" (تصنيع النافذة) — حصري للعامل فقط
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: settings.isManager
-                        ? null // 🚫 المدير لا يمكنه الضغط على الزر (عرض الحالة فقط)
-                        : () {
-                            final allocId = (t['id'] as num?)?.toInt() ?? 0;
-                            if (allocId > 0) {
-                              _toggleManufactured(
-                                allocId,
-                                (t['is_manufactured'] as num?)?.toInt() ?? 0,
-                              );
-                            }
-                          },
-                    icon: Icon(
-                      isManufactured ? Icons.check_circle_rounded : Icons.build_circle_outlined,
-                      size: 18,
-                    ),
-                    label: Text(
-                      isManufactured
-                          ? (lang == AppLanguage.arabic ? 'تم الصنع ✅' : 'Fabriqué ✅')
-                          : (lang == AppLanguage.arabic ? 'تم الصنع' : 'Fabriquer'),
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isManufactured
-                          ? Colors.green.shade600
-                          : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                      foregroundColor: isManufactured ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                      disabledBackgroundColor: isManufactured ? Colors.green.shade700 : Colors.grey.shade400,
-                      disabledForegroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
+            // ── فحص صلاحية التحكم بهذه المهمة ────────────────────────────
+            Builder(
+              builder: (ctx) {
+                final currentUser = FirebaseAuth.instance.currentUser;
+                final currentUid = (currentUser?.uid ?? '').trim().toLowerCase();
+                final currentEmail = (currentUser?.email ?? '').trim().toLowerCase();
 
-                // 2️⃣ زر "تم تركيب الزجاج" (تركيب الزجاج) — حصري للعامل فقط
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: settings.isManager
-                        ? null // 🚫 المدير لا يمكنه الضغط على الزر (عرض الحالة فقط)
-                        : () {
-                            if (!isManufactured) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    lang == AppLanguage.arabic
-                                        ? '⚠️ لا يمكن تركيب الزجاج! يجب إتمام "تم الصنع" أولاً.'
-                                        : '⚠️ Pose du vitrage impossible ! Marquez "Fabriqué" d\'abord.',
-                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                  ),
-                                  backgroundColor: Colors.amber.shade900,
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                              return;
-                            }
-                            final allocId = (t['id'] as num?)?.toInt() ?? 0;
-                            if (allocId > 0) {
-                              _toggleGlassInstalled(
-                                allocId,
-                                (t['is_glass_installed'] as num?)?.toInt() ?? 0,
-                              );
-                            }
-                          },
-                    icon: Icon(
-                      isGlassInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                      size: 20,
-                      color: !isManufactured && !settings.isManager ? Colors.grey : null,
+                final taskWorkerUid = (t['worker_uid'] ?? '').toString().trim().toLowerCase();
+                final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
+
+                bool isMyTask = false;
+                if (currentUid.isNotEmpty && taskWorkerUid == currentUid) {
+                  isMyTask = true;
+                } else if (currentEmail.isNotEmpty && (taskWorkerUid == currentEmail || taskWorkerEmail == currentEmail)) {
+                  isMyTask = true;
+                } else if (!settings.canViewAllWorkerTasks()) {
+                  isMyTask = true;
+                }
+
+                return Column(
+                  children: [
+                    // ── أزرار العمليات (تم الصنع - تم تركيب الزجاج) ──────────────────────────
+                    Row(
+                      children: [
+                        // 1️⃣ زر "تم الصنع" (تصنيع النافذة)
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: isMyTask
+                                ? () {
+                                    final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                                    if (allocId > 0) {
+                                      _toggleManufactured(
+                                        allocId,
+                                        (t['is_manufactured'] as num?)?.toInt() ?? 0,
+                                      );
+                                    }
+                                  }
+                                : null, // 🚫 معطّل إذا كانت المهمة مسندة لعامل آخر
+                            icon: Icon(
+                              isManufactured ? Icons.check_circle_rounded : Icons.build_circle_outlined,
+                              size: 18,
+                            ),
+                            label: Text(
+                              isManufactured
+                                  ? (lang == AppLanguage.arabic ? 'تم الصنع ✅' : 'Fabriqué ✅')
+                                  : (lang == AppLanguage.arabic ? 'تم الصنع' : 'Fabriquer'),
+                              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isManufactured
+                                  ? Colors.green.shade600
+                                  : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                              foregroundColor: isManufactured ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                              disabledBackgroundColor: isManufactured ? Colors.green.shade700 : (isDark ? const Color(0xFF1E293B) : Colors.grey.shade300),
+                              disabledForegroundColor: isManufactured ? Colors.white70 : Colors.grey.shade600,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // 2️⃣ زر "تم تركيب الزجاج" (تركيب الزجاج)
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: isMyTask
+                                ? () {
+                                    if (!isManufactured) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            lang == AppLanguage.arabic
+                                                ? '⚠️ لا يمكن تركيب الزجاج! يجب إتمام "تم الصنع" أولاً.'
+                                                : '⚠️ Pose du vitrage impossible ! Marquez "Fabriqué" d\'abord.',
+                                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                          ),
+                                          backgroundColor: Colors.amber.shade900,
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                                    if (allocId > 0) {
+                                      _toggleGlassInstalled(
+                                        allocId,
+                                        (t['is_glass_installed'] as num?)?.toInt() ?? 0,
+                                      );
+                                    }
+                                  }
+                                : null, // 🚫 معطّل إذا كانت المهمة مسندة لعامل آخر
+                            icon: Icon(
+                              isGlassInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                              size: 20,
+                              color: (!isManufactured && isMyTask) ? Colors.grey : null,
+                            ),
+                            label: Text(
+                              isGlassInstalled
+                                  ? (lang == AppLanguage.arabic ? 'تم تركيب الزجاج ✅' : 'Vitré ✅')
+                                  : (lang == AppLanguage.arabic ? 'تم تركيب الزجاج' : 'Poser Vitrage'),
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: (!isManufactured && isMyTask) ? Colors.grey : null,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isGlassInstalled
+                                  ? Colors.teal.shade600
+                                  : (!isManufactured
+                                      ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
+                                      : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))),
+                              foregroundColor: isGlassInstalled ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                              disabledBackgroundColor: isGlassInstalled ? Colors.teal.shade700 : (isDark ? const Color(0xFF1E293B) : Colors.grey.shade300),
+                              disabledForegroundColor: isGlassInstalled ? Colors.white70 : Colors.grey.shade600,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    label: Text(
-                      isGlassInstalled
-                          ? (lang == AppLanguage.arabic ? 'تم تركيب الزجاج ✅' : 'Vitré ✅')
-                          : (lang == AppLanguage.arabic ? 'تم تركيب الزجاج' : 'Poser Vitrage'),
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: !isManufactured && !settings.isManager ? Colors.grey : null,
+
+                    const SizedBox(height: 10),
+
+                    // 3️⃣ زر "تحويل للتوزيع والأرشيف"
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: (isMyTask && isManufactured && isGlassInstalled)
+                            ? () {
+                                final allocId = (t['id'] as num?)?.toInt() ?? 0;
+                                if (allocId > 0) {
+                                  _transferToDistribution(allocId);
+                                }
+                              }
+                            : (isMyTask && (!isManufactured || !isGlassInstalled))
+                                ? () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          lang == AppLanguage.arabic
+                                              ? '⚠️ يجب إتمام "تم الصنع" و "تركيب الزجاج" أولاً قبل التحويل للتوزيع!'
+                                              : '⚠️ Terminez la fabrication et la pose du vitrage d\'abord !',
+                                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                        ),
+                                        backgroundColor: Colors.amber.shade900,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                : null, // 🚫 معطّل إذا كانت المهمة مسندة لعامل آخر
+                        icon: const Icon(Icons.local_shipping_rounded, size: 18),
+                        label: Text(
+                          lang == AppLanguage.arabic ? 'تحويل للتوزيع والأرشيف 🚚' : 'Transférer pour Distribution 🚚',
+                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: (isManufactured && isGlassInstalled && isMyTask)
+                              ? Colors.indigo.shade600
+                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                          foregroundColor: (isManufactured && isGlassInstalled && isMyTask)
+                              ? Colors.white
+                              : Colors.grey,
+                          disabledBackgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade300,
+                          disabledForegroundColor: Colors.grey.shade600,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isGlassInstalled
-                          ? Colors.teal.shade600
-                          : (!isManufactured && !settings.isManager
-                              ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
-                              : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0))),
-                      foregroundColor: isGlassInstalled ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                      disabledBackgroundColor: isGlassInstalled ? Colors.teal.shade700 : Colors.grey.shade400,
-                      disabledForegroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
 
-            if (!settings.isManager) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    if (!isManufactured || !isGlassInstalled) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            lang == AppLanguage.arabic
-                                ? '⚠️ يجب إتمام "تم الصنع" و "تركيب الزجاج" أولاً قبل التحويل للتوزيع!'
-                                : '⚠️ Terminez la fabrication et la pose du vitrage d\'abord !',
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                          ),
-                          backgroundColor: Colors.amber.shade900,
-                          duration: const Duration(seconds: 2),
+                    // 🔒 تنبيه قفل العرض فقط إذا كانت مسندة لعامل آخر
+                    if (!isMyTask) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade900.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.amber.shade700, width: 0.8),
                         ),
-                      );
-                      return;
-                    }
-                    final allocId = (t['id'] as num?)?.toInt() ?? 0;
-                    if (allocId > 0) {
-                      _transferToDistribution(allocId);
-                    }
-                  },
-                  icon: const Icon(Icons.local_shipping_rounded, size: 18),
-                  label: Text(
-                    lang == AppLanguage.arabic ? 'تحويل للتوزيع والأرشيف 🚚' : 'Transférer pour Distribution 🚚',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: (isManufactured && isGlassInstalled)
-                        ? Colors.indigo.shade600
-                        : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-                    foregroundColor: (isManufactured && isGlassInstalled)
-                        ? Colors.white
-                        : Colors.grey,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-            ],
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lock_outline_rounded, size: 14, color: Colors.amber.shade800),
+                            const SizedBox(width: 6),
+                            Text(
+                              lang == AppLanguage.arabic
+                                  ? 'مسندة لعامل آخر (للعرض فقط — لا يمكن تعديلها)'
+                                  : 'Affectée à un autre ouvrier (Lecture seule)',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
