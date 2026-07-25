@@ -1741,17 +1741,18 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   int _selectedTab = 0; // 0 = Donut (حسب الحالة), 1 = Bar (شهري)
 
   static const _statusColors = {
-    'New':                  Color(0xFF64748B),
-    'Pending':              Color(0xFFF59E0B),
-    'Confirmed':            Color(0xFF3B82F6),
-    'In Progress':          Color(0xFF06B6D4),
-    'Partial Manufacturing':Color(0xFFEC4899),
-    'Full Manufacturing':   Color(0xFF8B5CF6),
-    'Partial Distribution': Color(0xFFF97316),
-    'Full Distribution':    Color(0xFF14B8A6),
-    'Installation':         Color(0xFF6366F1),
-    'Done':                 Color(0xFF10B981),
-    'Unknown':              Color(0xFFCBD5E1),
+    'New':                   Color(0xFF546E7A), // رمادي مزرق
+    'Pending':               Color(0xFFE65100), // برتقالي محروق
+    'Confirmed':             Color(0xFF2E7D32), // أخضر داكن
+    'In Progress':           Color(0xFF1565C0), // أزرق داكن
+    'Partial Manufacturing': Color(0xFF0288D1), // أزرق فاتح
+    'Full Manufacturing':    Color(0xFF00796B), // تيل داكن
+    'Partial Distribution':  Color(0xFFF57C00), // برتقالي داكن
+    'Full Distribution':     Color(0xFF388E3C), // أخضر
+    'Installation':          Color(0xFF6A1B9A), // بنفسجي
+    'Reserve':               Color(0xFFD84315), // أحمر برتقالي - التحفظ
+    'Done':                  Color(0xFF00695C), // تيل/أخضر مائل
+    'Unknown':               Color(0xFF78909C), // رمادي
   };
 
   static const _statusAr = {
@@ -1764,6 +1765,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
     'Partial Distribution': 'توزيع جزئي',
     'Full Distribution':    'توزيع كامل',
     'Installation':         'تركيب',
+    'Reserve':              'تحت التحفظ',
     'Done':                 'منتهية',
     'Unknown':              'أخرى',
   };
