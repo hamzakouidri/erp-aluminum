@@ -270,23 +270,65 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         }
 
         if (parsedInstances.isNotEmpty) {
-          int indexCounter = 1;
-          for (var inst in parsedInstances) {
-            final w = inst['width'] ?? inst['largeur'] ?? row['largeur'];
-            final h = inst['height'] ?? inst['hauteur'] ?? row['hauteur'];
-            final q = (inst['qty'] ?? 1) as int;
-            final pos = inst['position']?.toString() ?? '';
+          // فحص هل جميع النوافذ بنفس القياسات أم اختلفت
+          bool isUnifiedMeasurement = true;
+          int? firstW;
+          int? firstH;
 
-            for (int k = 0; k < q; k++) {
-              final itemCopy = Map<String, dynamic>.from(row);
-              itemCopy['largeur'] = w;
-              itemCopy['hauteur'] = h;
-              itemCopy['position'] = pos;
-              itemCopy['quantity'] = 1;
-              itemCopy['orig_quantity'] = qty;
-              itemCopy['unit_index'] = indexCounter;
-              expandedDetails.add(itemCopy);
-              indexCounter++;
+          for (var inst in parsedInstances) {
+            final w = (inst['width'] ?? inst['largeur'] ?? row['largeur'] as num?)?.toInt();
+            final h = (inst['height'] ?? inst['hauteur'] ?? row['hauteur'] as num?)?.toInt();
+            if (firstW == null) {
+              firstW = w;
+              firstH = h;
+            } else if (w != firstW || h != firstH) {
+              isUnifiedMeasurement = false;
+              break;
+            }
+          }
+
+          if (isUnifiedMeasurement) {
+            // 🟢 النوافذ بنفس القياسات تماماً: تعطيها مجمعة بالكمية دون تقسيم
+            final itemCopy = Map<String, dynamic>.from(row);
+            if (firstW != null && firstW > 0) itemCopy['largeur'] = firstW;
+            if (firstH != null && firstH > 0) itemCopy['hauteur'] = firstH;
+            itemCopy['quantity'] = qty;
+            itemCopy['orig_quantity'] = qty;
+            itemCopy['is_unified_measurement'] = true;
+            expandedDetails.add(itemCopy);
+          } else {
+            // 🟡 القياسات تغيرت واختلفت داخل صفحة تأكيد القياسات: عرض كل مجموعة قياسات مؤكدة أو كل نافذة على حدة
+            int indexCounter = 1;
+            for (var inst in parsedInstances) {
+              final w = inst['width'] ?? inst['largeur'] ?? row['largeur'];
+              final h = inst['height'] ?? inst['hauteur'] ?? row['hauteur'];
+              final q = (inst['qty'] ?? 1) as int;
+              final pos = inst['position']?.toString() ?? '';
+
+              if (q > 1 && pos.isEmpty) {
+                final itemCopy = Map<String, dynamic>.from(row);
+                itemCopy['largeur'] = w;
+                itemCopy['hauteur'] = h;
+                itemCopy['position'] = pos;
+                itemCopy['quantity'] = q;
+                itemCopy['orig_quantity'] = qty;
+                itemCopy['is_confirmed_measurement'] = true;
+                expandedDetails.add(itemCopy);
+                indexCounter += q;
+              } else {
+                for (int k = 0; k < q; k++) {
+                  final itemCopy = Map<String, dynamic>.from(row);
+                  itemCopy['largeur'] = w;
+                  itemCopy['hauteur'] = h;
+                  itemCopy['position'] = pos;
+                  itemCopy['quantity'] = 1;
+                  itemCopy['orig_quantity'] = qty;
+                  itemCopy['unit_index'] = indexCounter;
+                  itemCopy['is_confirmed_measurement'] = true;
+                  expandedDetails.add(itemCopy);
+                  indexCounter++;
+                }
+              }
             }
           }
           continue;
@@ -296,17 +338,38 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
           try {
             final List parsed = jsonDecode(jsonRaw.toString());
             if (parsed.isNotEmpty) {
-              for (int i = 0; i < qty; i++) {
-                final itemCopy = Map<String, dynamic>.from(row);
-                if (i < parsed.length) {
-                  itemCopy['hauteur'] = parsed[i]['hauteur'] ?? row['hauteur'];
-                  itemCopy['largeur'] = parsed[i]['largeur'] ?? row['largeur'];
-                  itemCopy['position'] = parsed[i]['position'] ?? '';
-                  itemCopy['unit_index'] = i + 1;
+              bool isUnified = true;
+              final firstW = parsed.first['largeur'] ?? row['largeur'];
+              final firstH = parsed.first['hauteur'] ?? row['hauteur'];
+              for (var p in parsed) {
+                if ((p['largeur'] ?? row['largeur']) != firstW || (p['hauteur'] ?? row['hauteur']) != firstH) {
+                  isUnified = false;
+                  break;
                 }
-                itemCopy['quantity'] = 1;
+              }
+
+              if (isUnified) {
+                final itemCopy = Map<String, dynamic>.from(row);
+                itemCopy['largeur'] = firstW;
+                itemCopy['hauteur'] = firstH;
+                itemCopy['quantity'] = qty;
                 itemCopy['orig_quantity'] = qty;
+                itemCopy['is_unified_measurement'] = true;
                 expandedDetails.add(itemCopy);
+              } else {
+                for (int i = 0; i < qty; i++) {
+                  final itemCopy = Map<String, dynamic>.from(row);
+                  if (i < parsed.length) {
+                    itemCopy['hauteur'] = parsed[i]['hauteur'] ?? row['hauteur'];
+                    itemCopy['largeur'] = parsed[i]['largeur'] ?? row['largeur'];
+                    itemCopy['position'] = parsed[i]['position'] ?? '';
+                    itemCopy['unit_index'] = i + 1;
+                  }
+                  itemCopy['quantity'] = 1;
+                  itemCopy['orig_quantity'] = qty;
+                  itemCopy['is_confirmed_measurement'] = true;
+                  expandedDetails.add(itemCopy);
+                }
               }
               continue;
             }
