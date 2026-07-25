@@ -32,6 +32,7 @@ class _ExternalOperationsHubScreenState
   // خريطة لتأكيدات طلبات الزجاج
   final Map<int, String> _glassStatusMap = {}; // orderId -> status
   StreamSubscription? _syncSub;
+  bool _isLocalChangePending = false;
 
   @override
   void didChangeDependencies() {
@@ -51,7 +52,7 @@ class _ExternalOperationsHubScreenState
     super.initState();
     _loadData();
     _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
-      if (mounted) {
+      if (mounted && !_isLocalChangePending) {
         _loadDataQuietly();
       }
     });
@@ -886,6 +887,7 @@ class _ExternalOperationsHubScreenState
                                   );
                                   return;
                                 }
+                                _isLocalChangePending = true;
                                 final newVal = isDistributed ? 0 : 1;
                                 final nowIso = DateTime.now().toIso8601String();
                                 setState(() {
@@ -893,7 +895,6 @@ class _ExternalOperationsHubScreenState
                                   t['distributed_at'] = newVal == 1 ? nowIso : null;
                                 });
                                 await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
-                                await _loadDataQuietly();
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -905,6 +906,8 @@ class _ExternalOperationsHubScreenState
                                     ),
                                   );
                                 }
+                                await Future.delayed(const Duration(milliseconds: 1500));
+                                _isLocalChangePending = false;
                               },
                               icon: Icon(
                                 isDistributed ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
@@ -961,6 +964,7 @@ class _ExternalOperationsHubScreenState
                                   return;
                                 }
 
+                                _isLocalChangePending = true;
                                 final newVal = isInstalled ? 0 : 1;
                                 final nowIso = DateTime.now().toIso8601String();
                                 setState(() {
@@ -968,7 +972,6 @@ class _ExternalOperationsHubScreenState
                                   t['installed_at'] = newVal == 1 ? nowIso : null;
                                 });
                                 await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
-                                await _loadDataQuietly();
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -980,6 +983,8 @@ class _ExternalOperationsHubScreenState
                                     ),
                                   );
                                 }
+                                await Future.delayed(const Duration(milliseconds: 1500));
+                                _isLocalChangePending = false;
                               },
                               icon: Icon(
                                 isInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
@@ -1082,11 +1087,11 @@ class _ExternalOperationsHubScreenState
                                 );
 
                                 if (confirm == true) {
+                                  _isLocalChangePending = true;
                                   setState(() {
                                     t['is_completed'] = 1;
                                   });
                                   await widget.db.updateWorkerAllocationCompletion(allocId, 1);
-                                  await _loadDataQuietly();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
@@ -1098,6 +1103,8 @@ class _ExternalOperationsHubScreenState
                                       ),
                                     );
                                   }
+                                  await Future.delayed(const Duration(milliseconds: 1500));
+                                  _isLocalChangePending = false;
                                 }
                               },
                               icon: Icon(
@@ -1195,8 +1202,14 @@ class _ExternalOperationsHubScreenState
                                         TextButton(
                                           onPressed: () async {
                                             Navigator.pop(ctx, false);
+                                            _isLocalChangePending = true;
+                                            setState(() {
+                                              t['has_reserve'] = 0;
+                                              t['reserve_notes'] = null;
+                                            });
                                             await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
-                                            await _loadDataQuietly();
+                                            await Future.delayed(const Duration(milliseconds: 1500));
+                                            _isLocalChangePending = false;
                                           },
                                           child: Text(_tr('إلغاء التحفظ', 'Annuler réserve', 'Cancel reserve', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.red)),
                                         ),
@@ -1216,8 +1229,12 @@ class _ExternalOperationsHubScreenState
                                 if (confirm == true) {
                                   final txt = notesCtrl.text.trim();
                                   if (txt.isNotEmpty) {
+                                    _isLocalChangePending = true;
+                                    setState(() {
+                                      t['has_reserve'] = 1;
+                                      t['reserve_notes'] = txt;
+                                    });
                                     await widget.db.updateWorkerAllocationReserve(allocId, 1, txt);
-                                    await _loadDataQuietly();
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
@@ -1229,6 +1246,8 @@ class _ExternalOperationsHubScreenState
                                         ),
                                       );
                                     }
+                                    await Future.delayed(const Duration(milliseconds: 1500));
+                                    _isLocalChangePending = false;
                                   }
                                 }
                               },
@@ -1415,8 +1434,11 @@ class _ExternalOperationsHubScreenState
                         );
                         return;
                       }
+                      _isLocalChangePending = true;
+                      setState(() {
+                        _reserveAllocations.removeWhere((item) => (item['id'] as num?)?.toInt() == allocId);
+                      });
                       await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
-                      await _loadDataQuietly();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -1428,6 +1450,8 @@ class _ExternalOperationsHubScreenState
                           ),
                         );
                       }
+                      await Future.delayed(const Duration(milliseconds: 1500));
+                      _isLocalChangePending = false;
                     },
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: Text(
