@@ -3254,50 +3254,64 @@ class SqlDatabase {
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
+      final userRole = prefs.getString('user_role') ?? 'worker';
       if (workshopId != null && workshopId.isNotEmpty) {
         final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
 
         // 1. Delete from worker_allocations_status
-        await workshopRef
-            .collection('worker_allocations_status')
-            .doc(allocationId.toString())
-            .delete();
+        try {
+          await workshopRef
+              .collection('worker_allocations_status')
+              .doc(allocationId.toString())
+              .delete()
+              .timeout(const Duration(seconds: 5));
+        } catch (e) {
+          debugPrint('Error deleting status doc: $e');
+        }
 
         // 2. Delete from allocations subcollection if present
         try {
           await workshopRef
               .collection('allocations')
               .doc(allocationId.toString())
-              .delete();
+              .delete()
+              .timeout(const Duration(seconds: 5));
         } catch (_) {}
 
-        // 3. Clean up from backup chunks
-        final chunksSnap = await workshopRef
-            .collection('backups')
-            .doc('latest')
-            .collection('chunks')
-            .get();
+        // 3. Clean up from backup chunks (only for manager/admin)
+        if (userRole != 'worker') {
+          try {
+            final chunksSnap = await workshopRef
+                .collection('backups')
+                .doc('latest')
+                .collection('chunks')
+                .get()
+                .timeout(const Duration(seconds: 5));
 
-        for (var chunkDoc in chunksSnap.docs) {
-          final data = chunkDoc.data();
-          String table = data['table']?.toString() ?? '';
-          if (table.isEmpty) {
-            table = chunkDoc.id.replaceAll(RegExp(r'_\d+$'), '');
-          }
-          if (table == 'WorkerAllocations') {
-            List<dynamic> rows = List<dynamic>.from(data['data'] ?? []);
-            final int initialLen = rows.length;
-            rows.removeWhere((r) => r is Map && ((r['id'] as num?)?.toInt() == allocationId));
-            if (rows.length < initialLen) {
-              if (rows.isEmpty) {
-                await chunkDoc.reference.delete();
-              } else {
-                await chunkDoc.reference.update({'data': rows});
+            for (var chunkDoc in chunksSnap.docs) {
+              final data = chunkDoc.data();
+              String table = data['table']?.toString() ?? '';
+              if (table.isEmpty) {
+                table = chunkDoc.id.replaceAll(RegExp(r'_\d+$'), '');
+              }
+              if (table == 'WorkerAllocations') {
+                List<dynamic> rows = List<dynamic>.from(data['data'] ?? []);
+                final int initialLen = rows.length;
+                rows.removeWhere((r) => r is Map && ((r['id'] as num?)?.toInt() == allocationId));
+                if (rows.length < initialLen) {
+                  if (rows.isEmpty) {
+                    await chunkDoc.reference.delete().timeout(const Duration(seconds: 5));
+                  } else {
+                    await chunkDoc.reference.update({'data': rows}).timeout(const Duration(seconds: 5));
+                  }
+                }
               }
             }
+          } catch (e) {
+            debugPrint('Error updating chunks for deleted allocation: $e');
           }
         }
-        debugPrint('--- SqlDatabase: Deleted allocation $allocationId from all cloud collections and chunks ---');
+        debugPrint('--- SqlDatabase: Deleted allocation $allocationId from cloud ---');
       }
     } catch (e) {
       debugPrint('Error deleting allocation from cloud: $e');
@@ -3352,58 +3366,74 @@ class SqlDatabase {
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
+      final userRole = prefs.getString('user_role') ?? 'worker';
       if (workshopId != null && workshopId.isNotEmpty) {
         final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
 
         // 1. Delete all status docs
-        final statusDocs = await workshopRef.collection('worker_allocations_status').get();
-        for (var doc in statusDocs.docs) {
-          await doc.reference.delete();
+        try {
+          final statusDocs = await workshopRef.collection('worker_allocations_status').get().timeout(const Duration(seconds: 5));
+          for (var doc in statusDocs.docs) {
+            await doc.reference.delete().timeout(const Duration(seconds: 3));
+          }
+        } catch (e) {
+          debugPrint('Error clearing status docs: $e');
         }
 
         // 2. Delete all allocs docs
         try {
-          final allocDocs = await workshopRef.collection('allocations').get();
+          final allocDocs = await workshopRef.collection('allocations').get().timeout(const Duration(seconds: 5));
           for (var doc in allocDocs.docs) {
-            await doc.reference.delete();
+            await doc.reference.delete().timeout(const Duration(seconds: 3));
           }
         } catch (_) {}
 
-        // 3. Delete all WorkerAllocations chunks from backups/latest/chunks
-        final chunksSnap = await workshopRef
-            .collection('backups')
-            .doc('latest')
-            .collection('chunks')
-            .get();
+        // 3. Delete all WorkerAllocations chunks from backups/latest/chunks (only for manager)
+        if (userRole != 'worker') {
+          try {
+            final chunksSnap = await workshopRef
+                .collection('backups')
+                .doc('latest')
+                .collection('chunks')
+                .get()
+                .timeout(const Duration(seconds: 5));
 
-        for (var doc in chunksSnap.docs) {
-          final data = doc.data();
-          String table = data['table']?.toString() ?? '';
-          if (table.isEmpty) {
-            table = doc.id.replaceAll(RegExp(r'_\d+$'), '');
-          }
-          if (table == 'WorkerAllocations') {
-            await doc.reference.delete();
-          }
-        }
-
-        // 4. Update latest backup metadata
-        final latestRef = workshopRef.collection('backups').doc('latest');
-        final latestSnap = await latestRef.get();
-        if (latestSnap.exists && latestSnap.data() != null) {
-          final map = latestSnap.data()!;
-          if (map.containsKey('data_json')) {
-            final rawJson = map['data_json']?.toString() ?? '{}';
-            try {
-              final Map<String, dynamic> allData = jsonDecode(rawJson);
-              allData['WorkerAllocations'] = [];
-              await latestRef.set({
-                'data_json': jsonEncode(allData),
-                'updated_at': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-            } catch (e) {
-              debugPrint('Error updating cloud backup json: $e');
+            for (var doc in chunksSnap.docs) {
+              final data = doc.data();
+              String table = data['table']?.toString() ?? '';
+              if (table.isEmpty) {
+                table = doc.id.replaceAll(RegExp(r'_\d+$'), '');
+              }
+              if (table == 'WorkerAllocations') {
+                await doc.reference.delete().timeout(const Duration(seconds: 5));
+              }
             }
+          } catch (e) {
+            debugPrint('Error deleting chunk docs: $e');
+          }
+
+          // 4. Update latest backup metadata
+          try {
+            final latestRef = workshopRef.collection('backups').doc('latest');
+            final latestSnap = await latestRef.get().timeout(const Duration(seconds: 5));
+            if (latestSnap.exists && latestSnap.data() != null) {
+              final map = latestSnap.data()!;
+              if (map.containsKey('data_json')) {
+                final rawJson = map['data_json']?.toString() ?? '{}';
+                try {
+                  final Map<String, dynamic> allData = jsonDecode(rawJson);
+                  allData['WorkerAllocations'] = [];
+                  await latestRef.set({
+                    'data_json': jsonEncode(allData),
+                    'updated_at': FieldValue.serverTimestamp(),
+                  }, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
+                } catch (e) {
+                  debugPrint('Error updating cloud backup json: $e');
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error updating latest backup doc: $e');
           }
         }
       }

@@ -13,6 +13,7 @@ import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/firebase_options.dart';
 
 import 'dart:io' show Platform;
+import 'dart:ui' show PlatformDispatcher;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -23,33 +24,60 @@ import 'package:window_manager/window_manager.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 🛡️ حماية شاملة لمنع الانهيار والإغلاق المفاجئ للتطبيق (Crash Prevention)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('Caught Flutter Error: ${details.exception}');
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Caught Platform Error: $error');
+    return true; // تم التعامل مع الخطأ دون إغلاق التطبيق
+  };
+
   // Initialize SQLite for Windows/Linux
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+  try {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+  } catch (e) {
+    debugPrint('SQLite FFI init error: $e');
   }
 
   // Initialize SQLite for Web
-  if (kIsWeb) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfiWebNoWebWorker;
+  try {
+    if (kIsWeb) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfiWebNoWebWorker;
+    }
+  } catch (e) {
+    debugPrint('SQLite Web init error: $e');
   }
 
   // Initialize window_manager
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-    await windowManager.ensureInitialized();
-    WindowOptions windowOptions = const WindowOptions(
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-    );
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
+  try {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      await windowManager.ensureInitialized();
+      WindowOptions windowOptions = const WindowOptions(
+        backgroundColor: Colors.transparent,
+        skipTaskbar: false,
+      );
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+      });
+    }
+  } catch (e) {
+    debugPrint('Window Manager init error: $e');
   }
 
   // Initialize texture cache for wood drawing textures
-  await TextureCache.init();
+  try {
+    await TextureCache.init();
+  } catch (e) {
+    debugPrint('TextureCache init warning: $e');
+  }
 
   String? firebaseError;
   try {
@@ -94,12 +122,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // [إضافة هامة]: تهيئة خدمة المزامنة السحابية وبدء الاستماع بمجرد فتح التطبيق
+    // [إضافة هامة]: تهيئة خدمة المزامنة السحابية وبدء الاستماع بمجرد فتح التطبيق مع حماية ضد الانهيار
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (widget.firebaseError != null)
-        return; // Prevent crash if Firebase failed
-      final syncService = CloudSyncService();
-      await syncService.init();
+      try {
+        if (widget.firebaseError != null) return;
+        final syncService = CloudSyncService();
+        await syncService.init().timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('CloudSyncService post frame init error: $e');
+      }
     });
   }
 
