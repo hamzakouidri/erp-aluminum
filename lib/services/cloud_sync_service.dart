@@ -25,6 +25,7 @@ class CloudSyncService {
   StreamSubscription<QuerySnapshot>? _statusListener;
   StreamSubscription<QuerySnapshot>? _orderStatusListener;
   StreamSubscription<QuerySnapshot>? _measurementsListener;
+  StreamSubscription<QuerySnapshot>? _deletionsListener; // ⚡ لحدف الإسنادات فورياً على جميع الأجهزة
   bool _isRestoring = false;
 
   final StreamController<String> _dbUpdateController = StreamController<String>.broadcast();
@@ -91,10 +92,12 @@ class CloudSyncService {
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
+    _deletionsListener?.cancel();
     _listener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
+    _deletionsListener = null;
   }
 
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
@@ -198,6 +201,33 @@ class CloudSyncService {
         print('Error syncing confirmed measurements real-time: $e');
       }
     });
+
+    // 5. ⚡ الاستماع اللحظي لحذف الإسنادات من أي جهاز (بما فيها هاتف العامل)
+    _deletionsListener?.cancel();
+    _deletionsListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('deleted_allocations')
+        .snapshots()
+        .listen((snapshot) async {
+      if (_isRestoring) return;
+      // عند إضافة tombstone جديد (حذف إسناد) نحذفه فوراً من SQLite على هذا الجهاز
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          try {
+            final data = change.doc.data();
+            if (data == null) continue;
+            final id = (data['id'] as num?)?.toInt() ?? int.tryParse(change.doc.id) ?? 0;
+            if (id > 0) {
+              await _db.deleteWorkerAllocationLocalOnly(id);
+            }
+          } catch (e) {
+            print('Error applying deletion tombstone real-time: $e');
+          }
+        }
+      }
+      _dbUpdateController.add('allocation_deleted');
+    });
   }
 
   /// إيقاف الاستماع
@@ -206,10 +236,12 @@ class CloudSyncService {
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
+    _deletionsListener?.cancel();
     _listener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
+    _deletionsListener = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
