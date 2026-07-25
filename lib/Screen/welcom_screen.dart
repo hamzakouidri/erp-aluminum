@@ -360,14 +360,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
           await _loadStats();
           if (!mounted) return;
           setState(() {});
-          final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(Localization.translate('تم مزامنة بيانات جديدة من السحابة 🔄', lang)),
-              backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
-              duration: const Duration(seconds: 2),
-            ),
-          );
         }
       });
     }
