@@ -403,17 +403,43 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   void _markAsDelivered() async {
     if (_selectedDelivery == null) return;
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    
-    // Update main order status to Full Distribution or Partial Distribution
+
+    // إظهار مؤشر تقدم فوري
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  Localization.translate('جاري تحديث حالة التوزيع…', lang),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     final orderId = _selectedDelivery!['id_commandes'];
     await _db.updateCommandeStatus(orderId, 'Full Distribution');
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(Localization.translate('تم تحديث حالة التوزيع بنجاح!', lang)),
-        backgroundColor: Colors.green,
-      ),
-    );
+    if (mounted) Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم تحديث حالة التوزيع بنجاح!', lang)),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
     _loadDeliveries();
   }
 

@@ -397,6 +397,27 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     }
   }
 
+  /// تحديث بيانات الإسنادات فقط بدون إعادة بناء كامل للصفحة (لا يعود للأعلى)
+  Future<void> _refreshAllocationsOnly() async {
+    try {
+      final orderId = widget.orderData['id'] as int;
+      final rawDetails = await widget.db.readCommandeDetails(orderId);
+      final Map<int, List<Map<String, dynamic>>> allocs = {};
+      for (var row in rawDetails) {
+        final detailId = row['id'] as int;
+        final list = await widget.db.readWorkerAllocations(detailId);
+        allocs[detailId] = list;
+      }
+      if (mounted) {
+        setState(() {
+          _allocations = allocs;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error refreshing allocations: $e');
+    }
+  }
+
   void _showConfirmMeasurementsDialog(Map<String, dynamic> item) {
     final qty = (item['orig_quantity'] ?? item['quantity'] ?? 1) as int;
     final origH = (item['hauteur'] ?? 0) as int;
@@ -553,6 +574,31 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     int? unitIndex,
     String? unitPosition,
   }) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+
+    // إظهار مؤشر تقدم فوري
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  lang == AppLanguage.arabic ? 'جاري إسناد العمل…' : 'Affectation en cours…',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     try {
       await widget.db.insertWorkerAllocation(
         detailId,
@@ -562,18 +608,14 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         unitIndex: unitIndex,
         unitPosition: unitPosition,
       );
-      await _loadData();
-      try {
-        await CloudSyncService().backupToCloud();
-      } catch (syncErr) {
-        debugPrint('Allocation cloud sync error: $syncErr');
-      }
+      CloudSyncService().notifyChange(); // ⚡ رفع في الخلفية
+      await _refreshAllocationsOnly();  // لا يعود للأعلى
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
       if (mounted) {
-        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              lang == AppLanguage.arabic ? 'تم إسناد العمل بنجاح والمزامنة مع السحابة ✅' : 'Affectation réussie et synchronisée ✅',
+              lang == AppLanguage.arabic ? 'تم إسناد العمل بنجاح ✅' : 'Affectation réussie ✅',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.green,
@@ -582,6 +624,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         );
       }
     } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
@@ -591,26 +634,36 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   Future<void> _removeWorkerAllocation(int allocationId) async {
-    // إظهار رسالة فورية قبل انتظار السحابة
-    if (mounted) {
-      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            lang == AppLanguage.arabic ? 'جاري إلغاء الإسناد...' : 'Annulation en cours...',
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+
+    // إظهار مؤشر تقدم فوري
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  lang == AppLanguage.arabic ? 'جاري إلغاء الإسناد…' : 'Annulation en cours…',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            ],
           ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 2),
         ),
-      );
-    }
+      ),
+    );
+
     try {
       await widget.db.deleteWorkerAllocation(allocationId);
-      await _loadData();
+      await _refreshAllocationsOnly(); // لا يعود للأعلى
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
       if (mounted) {
-        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -623,8 +676,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         );
       }
     } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
         );
@@ -632,22 +685,42 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     }
   }
 
-
   Future<void> _editWorkerAllocation(int allocationId, String workerUid, int quantity, double price) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+
+    // إظهار مؤشر تقدم فوري
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  lang == AppLanguage.arabic ? 'جاري تعديل الإسناد…' : 'Modification en cours…',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     try {
       await widget.db.updateWorkerAllocationDetails(allocationId, workerUid, quantity, price);
-      await _loadData();
-      try {
-        await CloudSyncService().backupToCloud();
-      } catch (syncErr) {
-        debugPrint('Allocation cloud sync error: $syncErr');
-      }
+      CloudSyncService().notifyChange(); // ⚡ رفع في الخلفية
+      await _refreshAllocationsOnly();  // لا يعود للأعلى
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
       if (mounted) {
-        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              lang == AppLanguage.arabic ? 'تم تعديل الإسناد بنجاح والمزامنة ✅' : 'Modification réussie et synchronisée ✅',
+              lang == AppLanguage.arabic ? 'تم تعديل الإسناد بنجاح ✅' : 'Modification réussie ✅',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
             ),
             backgroundColor: Colors.green,
@@ -656,6 +729,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         );
       }
     } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),

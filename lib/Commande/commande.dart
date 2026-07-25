@@ -1591,7 +1591,32 @@ class _CommandeState extends State<Commande> {
                       final nextStatus = stagesSequence[currentIndex + 1];
 
                       if (normalizedStatus == 'In Progress') {
+                        if (!mounted) return;
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => PopScope(
+                            canPop: false,
+                            child: AlertDialog(
+                              content: Row(
+                                children: [
+                                  const CircularProgressIndicator(),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      lang == AppLanguage.french
+                                          ? 'Vérification des mesures…'
+                                          : 'جاري التحقق من القياسات…',
+                                      style: const TextStyle(fontFamily: 'Cairo'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
                         final allConfirmed = await _areAllMeasurementsConfirmed(orderData['id']);
+                        if (mounted) Navigator.of(context, rootNavigator: true).pop();
                         if (!allConfirmed) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1618,7 +1643,34 @@ class _CommandeState extends State<Commande> {
                         }
                       }
 
+                      if (!mounted) return;
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (_) => PopScope(
+                          canPop: false,
+                          child: AlertDialog(
+                            content: Row(
+                              children: [
+                                const CircularProgressIndicator(),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Text(
+                                    lang == AppLanguage.french
+                                        ? 'Mise à jour de la commande…'
+                                        : 'جاري تحديث حالة الطلبية…',
+                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+
                       await db.updateCommandeStatus(orderData['id'], nextStatus);
+                      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
                       setState(() {
                         _data = db.readCommandesWithClients();
                       });

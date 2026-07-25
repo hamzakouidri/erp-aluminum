@@ -34,6 +34,7 @@ class OrderMeasurementsConfirmScreen extends StatefulWidget {
 class _OrderMeasurementsConfirmScreenState
     extends State<OrderMeasurementsConfirmScreen> {
   bool _isLoading = true;
+  bool _isSaving = false; // لمنع الضغط المزدوج على زر الحفظ
   List<Map<String, dynamic>> _detailsList = [];
 
   // Controllers maps: detailId -> list of instance editors
@@ -212,10 +213,8 @@ class _OrderMeasurementsConfirmScreenState
         await widget.db.updateCommandeDetailConfirmedMesures(detailId, instancesStr, confirmedStr);
       }
 
+      // ⚡ استخدام notifyChange() بدل backupToCloud() الثقيل — الرفع يحدث في الخلفية
       CloudSyncService().notifyChange();
-      try {
-        await CloudSyncService().backupToCloud();
-      } catch (_) {}
 
       return true;
     } catch (e) {
@@ -788,10 +787,13 @@ class _OrderMeasurementsConfirmScreenState
     final subtextColor = isDark ? Colors.grey.shade300 : Colors.black54;
 
     return PopScope(
-      canPop: true,
+      canPop: false, // نتحكم يدوياً لتجنب استخدام context بعد deactivation
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) {
-          await _saveAllMeasurements(quietly: true);
+        if (didPop) return; // إذا سبق وضغط pop نتجاهل
+        // نحفظ أولاً ثم نخرج
+        await _saveAllMeasurements(quietly: true);
+        if (mounted) {
+          Navigator.of(context).pop();
         }
       },
       child: Directionality(
@@ -1210,14 +1212,22 @@ class _OrderMeasurementsConfirmScreenState
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: 4,
                       ),
-                      icon: const Icon(Icons.check_circle_rounded, size: 24),
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                            )
+                          : const Icon(Icons.check_circle_rounded, size: 24),
                       label: Text(
-                        _tr(
-                          'تم حفظ كل القياسات 💾',
-                          'Toutes les mesures sont enregistrées 💾',
-                          'All measurements saved 💾',
-                          lang,
-                        ),
+                        _isSaving
+                            ? _tr('جاري الحفظ...', 'Enregistrement...', 'Saving...', lang)
+                            : _tr(
+                                'تم حفظ كل القياسات 💾',
+                                'Toutes les mesures sont enregistrées 💾',
+                                'All measurements saved 💾',
+                                lang,
+                              ),
                         style: const TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 16,
@@ -1253,10 +1263,14 @@ class _OrderMeasurementsConfirmScreenState
 
                         if (!allValid) return;
 
-                        // 2. Save details to DB and cloud
-                        await _saveAllMeasurements();
+                        // 2. حفظ محلي سريع بدون انتظار السحابة
+                        if (_isSaving) return;
+                        setState(() => _isSaving = true);
+                        final saved = await _saveAllMeasurements();
+                        if (!mounted) return;
+                        setState(() => _isSaving = false);
 
-                        if (mounted) {
+                        if (saved) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
