@@ -23,6 +23,7 @@ class CloudSyncService {
   Timer? _debounceTimer;
   StreamSubscription<DocumentSnapshot>? _listener;
   StreamSubscription<QuerySnapshot>? _statusListener;
+  StreamSubscription<QuerySnapshot>? _orderStatusListener;
   bool _isRestoring = false;
 
   final StreamController<String> _dbUpdateController = StreamController<String>.broadcast();
@@ -87,8 +88,10 @@ class CloudSyncService {
     _workshopId = null;
     _listener?.cancel();
     _statusListener?.cancel();
+    _orderStatusListener?.cancel();
     _listener = null;
     _statusListener = null;
+    _orderStatusListener = null;
   }
 
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
@@ -157,14 +160,36 @@ class CloudSyncService {
         print('Error syncing allocation status real-time: $e');
       }
     });
+
+    // 3. ⚡ الاستماع الفوري واللحظي لتحديثات حالات الطلبيات من أي هاتف في الورشة
+    _orderStatusListener?.cancel();
+    _orderStatusListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('orders_status')
+        .snapshots()
+        .listen((snapshot) async {
+      if (_isRestoring) return;
+      try {
+        await _db.syncOrdersStatusFromCloud();
+        _dbUpdateController.add('order_status_updated');
+        if (onDataRestored != null) {
+          onDataRestored!();
+        }
+      } catch (e) {
+        print('Error syncing order status real-time: $e');
+      }
+    });
   }
 
   /// إيقاف الاستماع
   void stopListening() {
     _listener?.cancel();
     _statusListener?.cancel();
+    _orderStatusListener?.cancel();
     _listener = null;
     _statusListener = null;
+    _orderStatusListener = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
@@ -598,6 +623,7 @@ class CloudSyncService {
         await _db.importAllData(assembledData);
         await _db.relinkCurrentWorkerAllocations();
         await _db.syncWorkerAllocationsStatusFromCloud();
+        await _db.syncOrdersStatusFromCloud();
         final summaryList = assembledData.entries
             .where((e) => e.value.isNotEmpty)
             .map((e) => '${e.key}: ${e.value.length}')

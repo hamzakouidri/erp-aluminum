@@ -3067,8 +3067,68 @@ class SqlDatabase {
       await _syncAllocationsFromOrderStatus(id, newStatus);
     }
 
+    await _uploadOrderStatusToCloud(id, newStatus);
     CloudSyncService().notifyChange();
     return res;
+  }
+
+  Future<void> _uploadOrderStatusToCloud(int orderId, String status) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('orders_status')
+            .doc(orderId.toString())
+            .set({
+              'id': orderId,
+              'status': status,
+              'updated_at': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+        debugPrint('--- SqlDatabase: Uploaded order status $orderId ($status) to cloud ---');
+      }
+    } catch (e) {
+      debugPrint('Error uploading order status to cloud: $e');
+    }
+  }
+
+  Future<void> syncOrdersStatusFromCloud() async {
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = prefs.getString('workshop_code');
+    if (workshopId == null || workshopId.isEmpty) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(workshopId)
+          .collection('orders_status')
+          .get();
+
+      Database? myDb = await db;
+      if (myDb == null) return;
+
+      for (var doc in snapshot.docs) {
+        final orderId = int.tryParse(doc.id);
+        if (orderId == null) continue;
+        final data = doc.data();
+        final cloudStatus = data['status']?.toString() ?? '';
+        if (cloudStatus.isEmpty) continue;
+
+        final existing = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
+        if (existing.isNotEmpty) {
+          final currentStatus = existing.first['status']?.toString() ?? '';
+          if (currentStatus != cloudStatus) {
+            await myDb.update('Commandes', {'status': cloudStatus}, where: 'id = ?', whereArgs: [orderId]);
+            await _syncAllocationsFromOrderStatus(orderId, cloudStatus);
+          }
+        }
+      }
+      debugPrint('--- SqlDatabase: Synced orders status from cloud successfully ---');
+    } catch (e) {
+      debugPrint('Error syncing orders status from cloud: $e');
+    }
   }
 
   Future<void> _syncAllocationsFromOrderStatus(int orderId, String status) async {
