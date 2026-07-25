@@ -3264,6 +3264,7 @@ class SqlDatabase {
     if (unitPosition != null && unitPosition.isNotEmpty) row['unit_position'] = unitPosition;
 
     final res = await myDb!.insert('WorkerAllocations', row);
+    await _uploadAllocationStatusToCloud(res);
     CloudSyncService().notifyChange();
     return res;
   }
@@ -3721,7 +3722,7 @@ class SqlDatabase {
     // 1.5 مزامنة آلية للإسنادات بناءً على حالات الطلبيات الرئيسية (مثل التصنيع الكلي أو التوزيع الكلي)
     await syncAllAllocationsFromAllOrderStatuses();
 
-    // 2. جلب جميع إسنادات هذا العامل المطابقة بـ UID أو بالبريد الإلكتروني
+    // 2. جلب جميع إسنادات هذا العامل المطابقة بـ UID أو بالبريد الإلكتروني أو معرّف الموظف
     final results = await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
@@ -3730,13 +3731,15 @@ class SqlDatabase {
       LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       LEFT JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
-      LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR (e.email IS NOT NULL AND LOWER(e.email) = ?))
+      LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR (e.email IS NOT NULL AND LOWER(e.email) = ?) OR CAST(e.id AS TEXT) = wa.worker_uid)
       WHERE (wa.worker_uid = ?
          OR LOWER(wa.worker_uid) = ?
-         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?))
+         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
+         OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE LOWER(email) = ? OR uid = ?)
+         OR wa.worker_uid IN (SELECT uid FROM Employees WHERE LOWER(email) = ? OR CAST(id AS TEXT) = ?))
         AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
       ORDER BY wa.assigned_at DESC
-    ''', [cleanEmail, workerUid, cleanEmail, cleanEmail]);
+    ''', [cleanEmail, workerUid, cleanEmail, cleanEmail, cleanEmail, workerUid, cleanEmail, workerUid]);
 
     return results;
   }
@@ -3869,6 +3872,14 @@ class SqlDatabase {
               .collection('worker_allocations_status')
               .doc(allocationId.toString())
               .set({
+                'id': allocationId,
+                'commande_detail_id': alloc['commande_detail_id'],
+                'worker_uid': alloc['worker_uid'],
+                'quantity': alloc['quantity'],
+                'worker_price': alloc['worker_price'],
+                'assigned_at': alloc['assigned_at'],
+                'unit_index': alloc['unit_index'],
+                'unit_position': alloc['unit_position'],
                 'is_manufactured': alloc['is_manufactured'] ?? 0,
                 'manufactured_at': alloc['manufactured_at'],
                 'is_glass_installed': alloc['is_glass_installed'] ?? 0,
@@ -3908,9 +3919,39 @@ class SqlDatabase {
           if (allocationId == null) continue;
           final data = doc.data();
 
-          await txn.update(
-            'WorkerAllocations',
-            {
+          final existing = await txn.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+          if (existing.isNotEmpty) {
+            await txn.update(
+              'WorkerAllocations',
+              {
+                'worker_uid': data['worker_uid'] ?? existing.first['worker_uid'],
+                'quantity': data['quantity'] ?? existing.first['quantity'],
+                'worker_price': data['worker_price'] ?? existing.first['worker_price'],
+                'unit_index': data['unit_index'] ?? existing.first['unit_index'],
+                'unit_position': data['unit_position'] ?? existing.first['unit_position'],
+                'is_manufactured': data['is_manufactured'] ?? 0,
+                'manufactured_at': data['manufactured_at'],
+                'is_glass_installed': data['is_glass_installed'] ?? 0,
+                'glass_installed_at': data['glass_installed_at'],
+                'is_distributed': data['is_distributed'] ?? 0,
+                'distributed_at': data['distributed_at'],
+                'is_transferred_to_dist': data['is_transferred_to_dist'] ?? 0,
+                'transferred_at': data['transferred_at'],
+              },
+              where: 'id = ?',
+              whereArgs: [allocationId],
+            );
+          } else if (data['commande_detail_id'] != null && data['worker_uid'] != null) {
+            await txn.insert('WorkerAllocations', {
+              'id': allocationId,
+              'commande_detail_id': data['commande_detail_id'],
+              'worker_uid': data['worker_uid'],
+              'quantity': data['quantity'] ?? 1,
+              'worker_price': data['worker_price'] ?? 0.0,
+              'assigned_at': data['assigned_at'] ?? DateTime.now().toIso8601String(),
+              'unit_index': data['unit_index'],
+              'unit_position': data['unit_position'],
+              'is_settled': 0,
               'is_manufactured': data['is_manufactured'] ?? 0,
               'manufactured_at': data['manufactured_at'],
               'is_glass_installed': data['is_glass_installed'] ?? 0,
@@ -3919,10 +3960,8 @@ class SqlDatabase {
               'distributed_at': data['distributed_at'],
               'is_transferred_to_dist': data['is_transferred_to_dist'] ?? 0,
               'transferred_at': data['transferred_at'],
-            },
-            where: 'id = ?',
-            whereArgs: [allocationId],
-          );
+            });
+          }
         }
       });
       debugPrint('--- SqlDatabase: Synced allocations status from cloud successfully ---');
