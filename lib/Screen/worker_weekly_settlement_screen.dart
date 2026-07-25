@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../sql_database.dart';
@@ -28,25 +29,50 @@ class _WorkerWeeklySettlementScreenState
   bool _isLoading = true;
   List<Map<String, dynamic>> _workers = [];
   Map<String, Map<String, double>> _workerSummaries = {};
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadData(silent: true);
+      }
+    });
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent && _workers.isEmpty) {
+      setState(() => _isLoading = true);
+    }
     try {
       final rawWorkers = await widget.db.readEmployees();
       final Map<String, Map<String, double>> summaries = {};
 
       for (var w in rawWorkers) {
         final uid = w['uid']?.toString() ?? '';
-        if (uid.isEmpty) continue;
+        final empIdStr = w['id']?.toString() ?? '';
+        final empEmail = w['email']?.toString() ?? '';
 
         // 1. Unsettled work/earnings
-        final allocs = await widget.db.readWorkerUnsettledAllocations(uid);
+        List<Map<String, dynamic>> allocs = [];
+        if (uid.isNotEmpty) {
+          allocs = await widget.db.readWorkerUnsettledAllocations(uid);
+        }
+        if (allocs.isEmpty && empEmail.isNotEmpty) {
+          allocs = await widget.db.readWorkerUnsettledAllocations(empEmail);
+        }
+        if (allocs.isEmpty && empIdStr.isNotEmpty) {
+          allocs = await widget.db.readWorkerUnsettledAllocations(empIdStr);
+        }
+
         double totalEarned = 0.0;
         for (var a in allocs) {
           if (a['is_manufactured'] == 1) {
@@ -57,7 +83,17 @@ class _WorkerWeeklySettlementScreenState
         }
 
         // 2. Unsettled advances/loans
-        final txs = await widget.db.readWorkerTransactions(uid);
+        List<Map<String, dynamic>> txs = [];
+        if (uid.isNotEmpty) {
+          txs = await widget.db.readWorkerTransactions(uid);
+        }
+        if (txs.isEmpty && empEmail.isNotEmpty) {
+          txs = await widget.db.readWorkerTransactions(empEmail);
+        }
+        if (txs.isEmpty && empIdStr.isNotEmpty) {
+          txs = await widget.db.readWorkerTransactions(empIdStr);
+        }
+
         double totalAdvances = 0.0;
         for (var t in txs) {
           if (t['is_settled'] == 0 || t['is_settled'] == '0') {
@@ -65,21 +101,27 @@ class _WorkerWeeklySettlementScreenState
           }
         }
 
-        summaries[uid] = {
+        final summaryData = {
           'earned': totalEarned,
           'advances': totalAdvances,
           'due': totalEarned - totalAdvances,
         };
+
+        if (uid.isNotEmpty) summaries[uid] = summaryData;
+        if (empIdStr.isNotEmpty) summaries[empIdStr] = summaryData;
+        if (empEmail.isNotEmpty) summaries[empEmail] = summaryData;
       }
 
-      setState(() {
-        _workers = List<Map<String, dynamic>>.from(rawWorkers);
-        _workerSummaries = summaries;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _workers = List<Map<String, dynamic>>.from(rawWorkers);
+          _workerSummaries = summaries;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error loading weekly settlement workers: $e');
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

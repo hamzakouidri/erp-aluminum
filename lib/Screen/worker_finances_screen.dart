@@ -4,10 +4,15 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import 'dart:convert';
 
+import 'dart:async';
+import '../services/cloud_sync_service.dart';
+
 class WorkerFinancesScreen extends StatefulWidget {
   final SqlDatabase db;
+  /// وضع العرض فقط — يخفي أزرار التعديل والإضافة
+  final bool readOnly;
 
-  const WorkerFinancesScreen({super.key, required this.db});
+  const WorkerFinancesScreen({super.key, required this.db, this.readOnly = false});
 
   @override
   State<WorkerFinancesScreen> createState() => _WorkerFinancesScreenState();
@@ -16,20 +21,36 @@ class WorkerFinancesScreen extends StatefulWidget {
 class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
   List<Map<String, dynamic>> _workers = [];
   bool _isLoading = false;
+  StreamSubscription? _syncSub;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
+      if (mounted) {
+        _loadData(silent: true);
+      }
+    });
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent && _workers.isEmpty) {
+      setState(() => _isLoading = true);
+    }
     final data = await widget.db.readEmployees();
-    setState(() {
-      _workers = data;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _workers = data;
+        _isLoading = false;
+      });
+    }
   }
 
   void _showAddWorkerDialog() {
@@ -718,25 +739,27 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.orange),
-                          onPressed: () => _showEditWorkerDialog(worker),
-                        ),
+                        if (!widget.readOnly)
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, color: Colors.orange),
+                            onPressed: () => _showEditWorkerDialog(worker),
+                          ),
                         IconButton(
                           icon: const Icon(Icons.history, color: Colors.blue),
                           onPressed: () => _viewWorkerHistory(worker),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.payment, color: Colors.green),
-                          onPressed: () => _showAddTransactionDialog(worker),
-                        ),
+                        if (!widget.readOnly)
+                          IconButton(
+                            icon: const Icon(Icons.payment, color: Colors.green),
+                            onPressed: () => _showAddTransactionDialog(worker),
+                          ),
                       ],
                     ),
                   ),
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: widget.readOnly ? null : FloatingActionButton.extended(
         onPressed: _showAddWorkerDialog,
         backgroundColor: isDark ? Colors.orange[800] : Colors.orange,
         icon: const Icon(Icons.person_add),
