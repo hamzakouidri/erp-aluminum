@@ -189,6 +189,32 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     _visibleTasks = tasks;
   }
 
+  void _showOtherWorkerTaskNotice(BuildContext context, AppLanguage lang) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                lang == AppLanguage.arabic
+                    ? '🔒 هذه الإسنادات لعامل آخر، لا يمكنك التحكم بها'
+                    : '🔒 Ces tâches sont affectées à un autre ouvrier, vous ne pouvez pas les modifier.',
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.amber.shade900,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   Future<void> _toggleManufactured(int allocationId, int currentMfg) async {
     _isLocalChangePending = true;
     final newVal = currentMfg == 1 ? 0 : 1;
@@ -974,7 +1000,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                       );
                                     }
                                   }
-                                : null, // 🚫 معطّل للمدير وللعمال غير المسند لهم
+                                : (!isRealManager && !isMyAssignedTask)
+                                    ? () => _showOtherWorkerTaskNotice(context, lang)
+                                    : null, // 🚫 معطّل للمدير
                             icon: Icon(
                               isManufactured ? Icons.check_circle_rounded : Icons.build_circle_outlined,
                               size: 18,
@@ -1027,7 +1055,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                       );
                                     }
                                   }
-                                : null, // 🚫 معطّل للمدير وللعمال غير المسند لهم
+                                : (!isRealManager && !isMyAssignedTask)
+                                    ? () => _showOtherWorkerTaskNotice(context, lang)
+                                    : null, // 🚫 معطّل للمدير
                             icon: Icon(
                               isGlassInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
                               size: 20,
@@ -1074,29 +1104,16 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                   _transferToDistribution(allocId);
                                 }
                               }
-                            : (!settings.isManager && isMyAssignedTask && !isBothCompleted)
-                                ? () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          lang == AppLanguage.arabic
-                                              ? '⚠️ يجب إتمام "تم الصنع" و "تركيب الزجاج" أولاً قبل التحويل للتوزيع!'
-                                              : '⚠️ Terminez la fabrication et la pose du vitrage d\'abord !',
-                                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                        ),
-                                        backgroundColor: Colors.amber.shade900,
-                                        duration: const Duration(seconds: 2),
-                                      ),
-                                    );
-                                  }
-                                : (settings.isManager && !isBothCompleted)
+                            : (!isRealManager && !isMyAssignedTask)
+                                ? () => _showOtherWorkerTaskNotice(context, lang)
+                                : (!settings.isManager && isMyAssignedTask && !isBothCompleted)
                                     ? () {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
                                             content: Text(
                                               lang == AppLanguage.arabic
-                                                  ? '⚠️ لا يمكنك كمدير تحويل النافذة للتوزيع والأرشيف حتى يُكمل العامل "تم الصنع" و "تركيب الزجاج" أولاً!'
-                                                  : '⚠️ En tant que manager, le transfert exige que l\'ouvrier termine la fabrication et le vitrage d\'abord !',
+                                                  ? '⚠️ يجب إتمام "تم الصنع" و "تركيب الزجاج" أولاً قبل التحويل للتوزيع!'
+                                                  : '⚠️ Terminez la fabrication et la pose du vitrage d\'abord !',
                                               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                                             ),
                                             backgroundColor: Colors.amber.shade900,
@@ -1104,7 +1121,22 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                           ),
                                         );
                                       }
-                                    : null, // 🚫 معطّل للعمال غير المسند لهم
+                                    : (settings.isManager && !isBothCompleted)
+                                        ? () {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  lang == AppLanguage.arabic
+                                                      ? '⚠️ لا يمكنك كمدير تحويل النافذة للتوزيع والأرشيف حتى يُكمل العامل "تم الصنع" و "تركيب الزجاج" أولاً!'
+                                                      : '⚠️ En tant que manager, le transfert exige que l\'ouvrier termine la fabrication et le vitrage d\'abord !',
+                                                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                                                ),
+                                                backgroundColor: Colors.amber.shade900,
+                                                duration: const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        : null,
                         icon: const Icon(Icons.local_shipping_rounded, size: 18),
                         label: Text(
                           lang == AppLanguage.arabic ? 'تحويل للتوزيع والأرشيف 🚚' : 'Transférer pour Distribution 🚚',
@@ -1128,31 +1160,35 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                     // 🔒 تنبيه قفل العرض فقط (يظهر فقط لباقي العمال على العناصر غير المسندة لهم، ولا يظهر للمدير ولا للعامل المسند له)
                     if (showLockBadge) ...[
                       const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade900.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber.shade700, width: 0.8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.lock_outline_rounded, size: 14, color: Colors.amber.shade800),
-                            const SizedBox(width: 6),
-                            Text(
-                              lang == AppLanguage.arabic
-                                  ? 'مسندة لعامل آخر (للعرض فقط — لا يمكن تعديلها)'
-                                  : 'Affectée à un autre ouvrier (Lecture seule)',
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade800,
+                      InkWell(
+                        onTap: () => _showOtherWorkerTaskNotice(context, lang),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade900.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.shade700, width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.lock_outline_rounded, size: 15, color: Colors.amber.shade800),
+                              const SizedBox(width: 6),
+                              Text(
+                                lang == AppLanguage.arabic
+                                    ? 'مسندة لعامل آخر (للعرض فقط — لا يمكن تعديلها)'
+                                    : 'Affectée à un autre ouvrier (Lecture seule)',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.amber.shade800,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
