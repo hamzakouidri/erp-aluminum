@@ -295,14 +295,15 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
   Future<void> _transferToDistribution(int allocationId) async {
     _isLocalChangePending = true;
-    await widget.db.updateWorkerAllocationTransfer(allocationId, 1);
 
+    // ⚡ 1. إزالة النافذة فوراً من الشاشة بدون أي تأخير (Zero latency)
     setState(() {
       _allTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
       _visibleTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
     });
 
     if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -315,7 +316,15 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       );
     }
 
-    await Future.delayed(const Duration(milliseconds: 350));
+    // ⚡ 2. تحديث الحسابات والدبابيس في الخلفية
+    try {
+      await widget.db.updateWorkerAllocationTransfer(allocationId, 1);
+    } catch (e) {
+      debugPrint('Error transferring to distribution: $e');
+    }
+
+    // الحفاظ على حظر التحديث اللحظي لمدة ثانيتين لحين المزامنة السحابية
+    await Future.delayed(const Duration(seconds: 2));
     _isLocalChangePending = false;
   }
 
