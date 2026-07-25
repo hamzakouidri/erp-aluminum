@@ -238,6 +238,11 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canViewMyTasks() =>
       isManager || _isPermissionTrueOrDefault(_workerPermissions['view_my_tasks']);
 
+  bool canViewAllWorkerTasks() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['view_all_worker_tasks']) ||
+      _isPermissionTrue(_workerPermissions['view_all_tasks']);
+
   bool canViewMyAccreditations() =>
       isManager || _isPermissionTrueOrDefault(_workerPermissions['view_my_accreditations']);
 

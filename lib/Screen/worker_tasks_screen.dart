@@ -110,41 +110,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       if (user != null) {
         final settings = Provider.of<AppSettingsProvider>(context, listen: false);
         final List<Map<String, dynamic>> rawTasks;
-        if (settings.isManager) {
+        if (settings.canViewAllWorkerTasks()) {
           rawTasks = await widget.db.readAbsoluteAllWorkerAllocations();
         } else {
           rawTasks = await widget.db.readAllWorkerAllocations(user.uid, user.email ?? '');
-
-          // 🔍 تشخيص: اعرض معلومات مفيدة
-          try {
-            final db = await widget.db.db;
-            if (db != null) {
-              final allAllocs = await db.rawQuery('SELECT worker_uid, COUNT(*) as cnt FROM WorkerAllocations GROUP BY worker_uid');
-              final allEmps = await db.rawQuery('SELECT uid, email, name FROM Employees');
-              final info = StringBuffer();
-              info.writeln('🔑 UID الحالي: ${user.uid}');
-              info.writeln('📧 البريد: ${user.email ?? "—"}');
-              info.writeln('👤 الاسم: ${user.displayName ?? "—"}');
-              info.writeln('🏢 كود الورشة: ${CloudSyncService().workshopId}');
-              info.writeln('☁️ حالة الاسترجاع: ${CloudSyncService().lastRestoreSummary}');
-              info.writeln('📋 الإسنادات في القاعدة (${allAllocs.length}):');
-              for (final a in allAllocs) {
-                final uid = a['worker_uid']?.toString() ?? '';
-                final match = uid == user.uid ? ' ✅ مطابق' : '';
-                info.writeln('  uid=$uid (${a['cnt']} مهمة)$match');
-              }
-              info.writeln('👷 العمال في القاعدة (${allEmps.length}):');
-              for (final e in allEmps) {
-                info.writeln('  uid=${e['uid']} email=${e['email']} name=${e['name']}');
-              }
-              info.writeln('📊 مهام محمّلة: ${rawTasks.length}');
-              setState(() { _debugInfo = info.toString(); });
-              debugPrint(_debugInfo);
-            }
-          } catch (e) {
-            debugPrint('Debug info error: $e');
-          }
         }
+
         final tasks = rawTasks.map((t) => Map<String, dynamic>.from(t)).toList();
         setState(() {
           _allTasks = tasks;

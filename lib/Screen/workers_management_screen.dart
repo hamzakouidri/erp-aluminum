@@ -1041,6 +1041,12 @@ class _WorkerCardState extends State<WorkerCard> {
                   value: perms['order_allocation'] ?? false,
                   onChanged: (val) => _updatePermission('order_allocation', val),
                 ),
+                SwitchListTile(
+                  title: const Text('رؤية جميع إسنادات ومهام العمال (في صفحة مهامي وتصنيعاتي)'),
+                  subtitle: const Text('تسمح للمشرف أو نائب المدير بمتابعة وإدراج كل المهام المسندة لجميع عمال الورشة', style: TextStyle(fontSize: 11, color: Colors.blue)),
+                  value: perms['view_all_worker_tasks'] ?? false,
+                  onChanged: (val) => _updatePermission('view_all_worker_tasks', val),
+                ),
               ],
             ),
             blueDivider,
