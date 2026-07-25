@@ -591,35 +591,47 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   Future<void> _removeWorkerAllocation(int allocationId) async {
+    // إظهار رسالة فورية قبل انتظار السحابة
+    if (mounted) {
+      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            lang == AppLanguage.arabic ? 'جاري إلغاء الإسناد...' : 'Annulation en cours...',
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
     try {
       await widget.db.deleteWorkerAllocation(allocationId);
       await _loadData();
-      try {
-        await CloudSyncService().backupToCloud();
-      } catch (syncErr) {
-        debugPrint('Allocation cloud sync error: $syncErr');
-      }
       if (mounted) {
         final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              lang == AppLanguage.arabic ? 'تم إلغاء الإسناد وتحديث السحابة' : 'Affectation annulée et مسار حُدّث',
+              lang == AppLanguage.arabic ? 'تم إلغاء الإسناد ✅' : 'Affectation annulée ✅',
               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
             ),
-            backgroundColor: Colors.orange,
+            backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
+
 
   Future<void> _editWorkerAllocation(int allocationId, String workerUid, int quantity, double price) async {
     try {

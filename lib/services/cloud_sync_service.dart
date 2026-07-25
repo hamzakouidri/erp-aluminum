@@ -649,6 +649,8 @@ class CloudSyncService {
         await _db.relinkCurrentWorkerAllocations();
         await _db.syncWorkerAllocationsStatusFromCloud();
         await _db.syncOrdersStatusFromCloud();
+        // ⚠️ تطبيق علامات الحذف الدائمة بعد الاستيراد مباشرة لمنع عودة الإسنادات المحذوفة
+        await _applyDeletedAllocationsTombstones();
         final summaryList = assembledData.entries
             .where((e) => e.value.isNotEmpty)
             .map((e) => '${e.key}: ${e.value.length}')
@@ -665,6 +667,31 @@ class CloudSyncService {
       }
     } finally {
       _isRestoring = false;
+    }
+  }
+
+  // ==================== Global Catalog ====================
+
+  /// ⚠️ حذف الإسنادات التي تم وضع علامة حذف دائمة لها (tombstones) من قاعدة البيانات المحلية
+  /// يُستدعى بعد كل restoreFromCloud() لمنع عودة الإسنادات المحذوفة
+  Future<void> _applyDeletedAllocationsTombstones() async {
+    try {
+      if (_workshopId == null) return;
+      final snap = await _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .collection('deleted_allocations')
+          .get()
+          .timeout(const Duration(seconds: 10));
+      if (snap.docs.isEmpty) return;
+      for (final doc in snap.docs) {
+        final id = (doc.data()['id'] as num?)?.toInt() ?? int.tryParse(doc.id) ?? 0;
+        if (id > 0) {
+          await _db.deleteWorkerAllocationLocalOnly(id);
+        }
+      }
+    } catch (e) {
+      print('Error applying deleted_allocations tombstones: $e');
     }
   }
 

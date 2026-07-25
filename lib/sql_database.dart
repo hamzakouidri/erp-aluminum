@@ -3508,7 +3508,18 @@ class SqlDatabase {
       if (workshopId != null && workshopId.isNotEmpty) {
         final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
 
-        // 1. Delete from worker_allocations_status
+        // 1. كتابة علامة حذف دائمة (tombstone) تمنع restore من إعادة الإسناد المحذوف
+        try {
+          await workshopRef
+              .collection('deleted_allocations')
+              .doc(allocationId.toString())
+              .set({'deleted_at': FieldValue.serverTimestamp(), 'id': allocationId})
+              .timeout(const Duration(seconds: 5));
+        } catch (e) {
+          debugPrint('Error writing deleted_allocations tombstone: $e');
+        }
+
+        // 2. Delete from worker_allocations_status
         try {
           await workshopRef
               .collection('worker_allocations_status')
@@ -3519,7 +3530,7 @@ class SqlDatabase {
           debugPrint('Error deleting status doc: $e');
         }
 
-        // 2. Delete from allocations subcollection if present
+        // 3. Delete from allocations subcollection if present
         try {
           await workshopRef
               .collection('allocations')
@@ -3528,7 +3539,7 @@ class SqlDatabase {
               .timeout(const Duration(seconds: 5));
         } catch (_) {}
 
-        // 3. Clean up from backup chunks (only for manager/admin)
+        // 4. Clean up from backup chunks (only for manager/admin)
         if (userRole != 'worker') {
           try {
             final chunksSnap = await workshopRef
@@ -3586,24 +3597,35 @@ class SqlDatabase {
       }
     } catch (_) {}
 
+    // 1. حذف من SQLite أولاً (فوري)
     final res = await myDb.delete(
       'WorkerAllocations',
       where: 'id = ?',
       whereArgs: [allocationId],
     );
 
+    // 2. حذف من السحابة وتسجيل علامة الحذف الدائمة
     await _deleteAllocationFromCloud(allocationId);
 
     if (orderId > 0) {
       await syncOrderAndAllocationsStatus(orderId);
     }
 
-    try {
-      await CloudSyncService().backupToCloud();
-    } catch (_) {}
-
+    // ملاحظة: لا نستدعي backupToCloud() هنا لتجنب التأخر 20+ ثانية.
+    // notifyChange() يعمل بـ debounce 1 ثانية ويطلق _silentBackup() تلقائياً.
     CloudSyncService().notifyChange();
     return res;
+  }
+
+  /// حذف إسناد محلياً فقط (بدون أي اتصال سحابة) — يُستخدم عند تطبيق tombstones بعد الـ restore
+  Future<void> deleteWorkerAllocationLocalOnly(int allocationId) async {
+    try {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      await myDb.delete('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    } catch (e) {
+      debugPrint('deleteWorkerAllocationLocalOnly error: $e');
+    }
   }
 
   /// 🧹 تصفير وحذف جميع المهام والإسنادات محلياً وفي السحابة للتطوير
