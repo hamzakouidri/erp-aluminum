@@ -11,12 +11,10 @@ import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/voice_assistant_overlay.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/firebase_options.dart';
-
 import 'dart:io' show Platform;
-import 'dart:ui' show PlatformDispatcher;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
 import 'package:database_data/Commande/texture_cache.dart';
 
 import 'package:window_manager/window_manager.dart';
@@ -57,7 +55,8 @@ void main() async {
 
   // Initialize window_manager
   try {
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       await windowManager.ensureInitialized();
       WindowOptions windowOptions = const WindowOptions(
         backgroundColor: Colors.transparent,
@@ -88,8 +87,11 @@ void main() async {
     }
   } catch (e) {
     final errStr = e.toString();
-    if (errStr.contains('already-exists') || errStr.contains('already exists')) {
-      debugPrint("Firebase was already initialized on the native side. Ignoring error.");
+    if (errStr.contains('already-exists') ||
+        errStr.contains('already exists')) {
+      debugPrint(
+        "Firebase was already initialized on the native side. Ignoring error.",
+      );
     } else {
       debugPrint("Firebase Initialization Error: $e");
       firebaseError = e.toString();
@@ -190,9 +192,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           );
         }
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(settings.fontSizeScale),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
           child: VoiceAssistantOverlay(child: content),
         );
       },
