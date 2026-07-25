@@ -441,6 +441,8 @@ class _WorkerCardState extends State<WorkerCard> {
       'statistics': false,
       'isBlocked': false,
       'view_suppliers': false,
+      'full_manager_permissions': false,
+      'co_manager': false,
     };
     defaults.forEach((key, value) {
       if (!perms.containsKey(key)) perms[key] = value;
@@ -456,7 +458,6 @@ class _WorkerCardState extends State<WorkerCard> {
       jsonEncode(perms),
     );
 
-    // ✅ تحديث الفايربيس فوراً لجميع الصلاحيات (الحظر، رؤية الزبائن، الطلبيات، الخزينة...)
     try {
       await FirebaseFirestore.instance
           .collection('users')
@@ -468,6 +469,68 @@ class _WorkerCardState extends State<WorkerCard> {
           }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('Error updating permissions in Firebase: $e');
+    }
+  }
+
+  /// 👑 منح أو إلغاء صلاحيات كمدير بالكامل لهذا الشخص
+  Future<void> _toggleFullManagerPermissions(bool grant) async {
+    final Map<String, dynamic> updatedPerms = Map<String, dynamic>.from(perms);
+
+    updatedPerms['full_manager_permissions'] = grant;
+    updatedPerms['co_manager'] = grant;
+
+    if (grant) {
+      updatedPerms.forEach((k, v) {
+        if (k != 'isBlocked') {
+          updatedPerms[k] = true;
+        }
+      });
+    }
+
+    setState(() {
+      perms = updatedPerms;
+    });
+
+    final uid = widget.worker['uid'].toString();
+
+    await widget.db.updateEmployeePermissions(uid, jsonEncode(updatedPerms));
+
+    if (grant) {
+      await widget.db.updateEmployeeFullInfo(
+        uid,
+        name: widget.worker['name']?.toString() ?? '',
+        email: widget.worker['email']?.toString() ?? '',
+        phone: widget.worker['phone']?.toString() ?? '',
+        address: widget.worker['address']?.toString() ?? '',
+        jobRole: 'نائب مدير (صلاحيات كاملة)',
+      );
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'role': grant ? 'co_manager' : 'worker',
+        'permissions': updatedPerms,
+        'permissions_json': jsonEncode(updatedPerms),
+        if (grant) 'job_role': 'نائب مدير (صلاحيات كاملة)',
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating co_manager in Firebase: $e');
+    }
+
+    widget.onRefresh();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            grant
+                ? '✅ تم إعطاء مهام وصلاحيات المدير بالكامل لهذا الشخص 👑'
+                : 'ℹ️ تم إلغاء صلاحيات المدير وإعادة الحساب كعامل عادي',
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: grant ? Colors.green : Colors.orange,
+        ),
+      );
     }
   }
 
@@ -744,6 +807,104 @@ class _WorkerCardState extends State<WorkerCard> {
           // ── قسم الصلاحيات (قابل للإخفاء) ───────────────────────
           if (_expanded) ...[
             blueDivider,
+
+            // 👑 بطاقة زر "إعطاء مهام نفس مهام المدير"
+            Builder(
+              builder: (ctx) {
+                final bool isFullManager = (perms['full_manager_permissions'] == true) || (perms['co_manager'] == true);
+                return Container(
+                  margin: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isFullManager
+                          ? [const Color(0xFF059669), const Color(0xFF10B981)]
+                          : [const Color(0xFFD97706), const Color(0xFFF59E0B)],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isFullManager ? Colors.green : Colors.amber).withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isFullManager ? Icons.workspace_premium_rounded : Icons.admin_panel_settings_rounded,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isFullManager
+                                      ? 'تم منح مهام نفس مهام المدير 👑'
+                                      : 'إعطاء مهام نفس مهام المدير',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    fontFamily: 'Cairo',
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  isFullManager
+                                      ? 'هذا الشخص يستطيع الوصول لأي شيء في التطبيق مثله مثل المدير (بما فيها إضافة البروفايلات والسلاسل والمقاطع)'
+                                      : 'اضغط هنا لتمكين الوصول الشامل لأي شيء في التطبيق مثله مثل المدير (حتى إضافة البروفايلات والسلاسل والمقاطع)',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 11,
+                                    fontFamily: 'Cairo',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: Icon(
+                            isFullManager ? Icons.lock_reset_rounded : Icons.verified_user_rounded,
+                            color: isFullManager ? Colors.red.shade700 : const Color(0xFFD97706),
+                          ),
+                          label: Text(
+                            isFullManager ? 'إلغاء صلاحيات المدير (إعادة كعامل عادي)' : 'إعطاء مهام نفس مهام المدير 👑',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: isFullManager ? Colors.red.shade700 : const Color(0xFF78350F),
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: isFullManager ? Colors.red.shade700 : const Color(0xFF78350F),
+                            elevation: 3,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () => _toggleFullManagerPermissions(!isFullManager),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            blueDivider,
+
             Container(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.red.withOpacity(0.15)

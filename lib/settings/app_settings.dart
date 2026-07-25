@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../sql_database.dart';
 
 bool get isAdmin {
@@ -30,6 +32,13 @@ class AppSettingsProvider extends ChangeNotifier {
   String _workshopCode = '';
   String _userDisplayName = 'مدير الورشة';
   Map<String, dynamic> _workerPermissions = {};
+  StreamSubscription<DocumentSnapshot>? _permSubscription;
+
+  @override
+  void dispose() {
+    _permSubscription?.cancel();
+    super.dispose();
+  }
 
   // Getters
   AppLanguage get language => _language;
@@ -56,10 +65,21 @@ class AppSettingsProvider extends ChangeNotifier {
 
   String get userDisplayName => _userDisplayName;
 
-  bool get isManager => _userRole == 'manager' || _userRole == 'admin' || isAdmin;
+  bool get isManager =>
+      _userRole == 'manager' ||
+      _userRole == 'co_manager' ||
+      _userRole == 'admin' ||
+      isAdmin ||
+      _isPermissionTrue(_workerPermissions['full_manager_permissions']) ||
+      _isPermissionTrue(_workerPermissions['co_manager']);
+
+  bool get isCoManager =>
+      _userRole == 'co_manager' ||
+      _isPermissionTrue(_workerPermissions['full_manager_permissions']) ||
+      _isPermissionTrue(_workerPermissions['co_manager']);
 
   AppSettingsProvider() {
-    _loadSettings();
+    loadSettings();
   }
 
   Future<void> reloadPermissions() async {
@@ -68,89 +88,249 @@ class AppSettingsProvider extends ChangeNotifier {
     _workshopCode = prefs.getString('workshop_code') ?? '';
     _userDisplayName = prefs.getString('user_display_name') ?? 'مدير الورشة';
 
-    if (_userRole == 'worker') {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final db = SqlDatabase();
-        final employees = await db.readEmployees();
-        try {
-          final me = employees.firstWhere((e) => e['uid'] == user.uid);
-          _workerPermissions = jsonDecode(me['permissions_json']);
-        } catch (e) {
-          _workerPermissions = {};
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // 🔄 استماع فوري ودائم لتعديلات الصلاحيات والدور من السحابة لجميع الحسابات
+      _permSubscription?.cancel();
+      _permSubscription = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen((docSnap) {
+        if (docSnap.exists && docSnap.data() != null) {
+          final data = docSnap.data()!;
+          if (data['role'] != null) {
+            _userRole = data['role'].toString();
+          }
+          if (data['permissions_json'] is String && (data['permissions_json'] as String).isNotEmpty) {
+            try {
+              _workerPermissions = jsonDecode(data['permissions_json']);
+            } catch (_) {}
+          } else if (data['permissions'] is Map) {
+            _workerPermissions = Map<String, dynamic>.from(data['permissions']);
+          }
+          notifyListeners();
         }
+      });
+
+      // قراءة احتياطية من قاعدة البيانات المحلية
+      if (_workerPermissions.isEmpty) {
+        final db = SqlDatabase();
+        db.readEmployees().then((employees) {
+          try {
+            final me = employees.firstWhere((e) => e['uid'] == user.uid);
+            _workerPermissions = jsonDecode(me['permissions_json']);
+            notifyListeners();
+          } catch (_) {}
+        });
       }
     }
     notifyListeners();
   }
 
+  bool _isPermissionTrue(dynamic val) {
+    if (val == true) return true;
+    if (val == 1) return true;
+    if (val is String) {
+      final s = val.trim().toLowerCase();
+      return s == 'true' || s == '1';
+    }
+    return false;
+  }
+
+  bool _isPermissionTrueOrDefault(dynamic val, {bool defaultValue = true}) {
+    if (val == null) return defaultValue;
+    if (val == true || val == 1) return true;
+    if (val == false || val == 0) return false;
+    if (val is String) {
+      final s = val.trim().toLowerCase();
+      if (s == 'false' || s == '0') return false;
+      if (s == 'true' || s == '1') return true;
+    }
+    return defaultValue;
+  }
+
+  bool _isSubPermissionEnabled(String key) {
+    if (isManager) return true;
+    if (!canViewMyAccreditations()) return false;
+    if (!_workerPermissions.containsKey(key) || _workerPermissions[key] == null) {
+      return true;
+    }
+    return _isPermissionTrueOrDefault(_workerPermissions[key]);
+  }
+
   // RBAC Permission Checkers
-  // ✅ جميع الصلاحيات تستخدم == true حتى يكون الافتراضي هو المنع وليس السماح
   bool canViewClients() =>
-      isManager || _workerPermissions['view_clients'] == true;
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_clients']);
+
+  bool canViewClientLedger() =>
+      isManager || _isPermissionTrue(_workerPermissions['view_client_ledger']);
 
   bool canCreateClients() =>
-      isManager || _workerPermissions['create_clients'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['create_clients']);
+
+  bool canEditClients() =>
+      isManager || _isPermissionTrue(_workerPermissions['edit_clients']);
+
+  bool canDeleteClients() =>
+      isManager || _isPermissionTrue(_workerPermissions['delete_clients']);
 
   bool canViewOrders() =>
-      isManager || _workerPermissions['view_orders'] == true;
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_orders']);
+
+  bool canViewProjects() =>
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_projects']);
+
+  bool canAccessInventory() =>
+      isManager || _isPermissionTrue(_workerPermissions['inventory']);
+
+  bool canAccessDistributionTracking() =>
+      isManager || _isPermissionTrue(_workerPermissions['distribution_tracking']);
+
+  bool canViewSales() =>
+      isManager || _isPermissionTrue(_workerPermissions['sales']);
+
+  bool canViewGlobalConsumption() =>
+      isManager || _isPermissionTrue(_workerPermissions['global_consumption']);
+
+  bool canViewWorkerFinances() =>
+      isManager || _isPermissionTrue(_workerPermissions['worker_finances']);
+
+  bool canViewWorkerWeeklySettlement() =>
+      isManager || _isPermissionTrue(_workerPermissions['worker_settlement']);
 
   bool canCreateOrders() =>
-      isManager || _workerPermissions['create_orders'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['create_orders']);
+
+  bool canEditOrders() =>
+      isManager || _isPermissionTrue(_workerPermissions['edit_orders']);
 
   bool canViewClientDetails() =>
-      isManager || _workerPermissions['view_client_details'] == true;
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_client_details']);
 
   bool canViewOrderDetails() =>
-      isManager || _workerPermissions['view_order_details'] == true;
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_order_details']);
+
+  bool canViewOrderDocuments() =>
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_order_documents']);
+
+  bool canViewFicheDeCoupe() =>
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['fiche_de_coupe']);
+
+  bool canViewOrderMaterials() =>
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_order_materials']);
+
+  bool canConfirmMeasurements() =>
+      isManager || _isPermissionTrue(_workerPermissions['confirm_measurements']);
+
+  bool canAccessMeasurements() =>
+      isManager || _isPermissionTrue(_workerPermissions['measurements_card']);
+
+  bool canChangeOrderStatus() =>
+      isManager || _isPermissionTrue(_workerPermissions['change_order_status']);
+
+  bool canPassNextStage() =>
+      isManager || _isPermissionTrue(_workerPermissions['pass_to_next_stage']);
+
+  bool canDuplicateOrders() =>
+      isManager || _isPermissionTrue(_workerPermissions['duplicate_orders']);
+
+  bool canViewMyTasks() =>
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_my_tasks']);
+
+  bool canViewMyAccreditations() =>
+      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_my_accreditations']);
+
+  bool canViewProfiles() => _isSubPermissionEnabled('view_profiles');
+
+  bool canViewGlass() => _isSubPermissionEnabled('view_glass');
+
+  bool canViewShutters() => _isSubPermissionEnabled('view_shutters');
+
+  bool canViewColors() => _isSubPermissionEnabled('view_colors');
+
+  bool canViewAccessories() => _isSubPermissionEnabled('view_accessories');
+
+  bool canViewSeriesAccessories() => _isSubPermissionEnabled('view_series_accessories');
+
+  bool canViewJoints() => _isSubPermissionEnabled('view_joints');
+
+  bool canViewKitBundles() => _isSubPermissionEnabled('view_kit_bundles');
+
+  bool canAccessExternalOperations() =>
+      isManager || _isPermissionTrue(_workerPermissions['external_operations']);
+
+  bool canAllocateTasks() =>
+      isManager || _isPermissionTrue(_workerPermissions['order_allocation']);
+
+  bool canAccessSettings() =>
+      isManager || _isPermissionTrue(_workerPermissions['settings']);
+
+  bool canSelectSystems() =>
+      isManager || _isPermissionTrue(_workerPermissions['select_systems']);
 
   bool canChangePrices() =>
-      isManager || _workerPermissions['change_prices'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['change_prices']);
 
   bool canViewCostPrice() =>
-      isManager || _workerPermissions['view_cost_price'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['view_cost_price']);
 
   bool canAccessTreasury() =>
-      isManager || _workerPermissions['treasury'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['treasury']);
 
   bool canManageWorkers() =>
-      isManager || _workerPermissions['manage_workers'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['manage_workers']);
+
+  bool canEditWorker() =>
+      isManager || _isPermissionTrue(_workerPermissions['edit_worker']);
+
+  bool canDeleteWorker() =>
+      isManager || _isPermissionTrue(_workerPermissions['delete_worker']);
+
+  bool canBackupToCloud() =>
+      isManager || _isPermissionTrue(_workerPermissions['cloud_backup']);
+
+  bool canSyncGlobalCatalog() =>
+      isManager || _isPermissionTrue(_workerPermissions['sync_global_catalog']);
+
+  bool canAccessLocalJsonBackup() =>
+      isManager || _isPermissionTrue(_workerPermissions['local_json_backup']);
 
   bool canRegisterPurchases() =>
-      isManager || _workerPermissions['purchases'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['purchases']);
 
   bool canAddPurchases() =>
-      isManager || _workerPermissions['add_purchases'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['add_purchases']);
 
   bool canEditPurchases() =>
-      isManager || _workerPermissions['edit_purchases'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['edit_purchases']);
 
   bool canDeletePurchases() =>
-      isManager || _workerPermissions['delete_purchases'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['delete_purchases']);
 
   bool canAccelerateConfirmedInvoices() =>
-      isManager || _workerPermissions['accelerate_confirmed_invoices'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['accelerate_confirmed_invoices']);
 
   bool canViewStatistics() =>
-      isManager || _workerPermissions['statistics'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['statistics']);
 
   bool canDeleteOrders() =>
-      isManager || _workerPermissions['delete_orders'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['delete_orders']);
 
   bool canViewSuppliers() =>
-      isManager || _workerPermissions['view_suppliers'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['view_suppliers']);
 
   bool canEditPayments() =>
-      isManager || _workerPermissions['edit_payments'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['edit_payments']);
 
   bool canDeletePayments() =>
-      isManager || _workerPermissions['delete_payments'] == true;
+      isManager || _isPermissionTrue(_workerPermissions['delete_payments']);
 
   bool canManageCaisses() =>
       isManager || _workerPermissions['manage_caisses'] == true;
 
   // Load settings from SharedPreferences
-  Future<void> _loadSettings() async {
+  Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
 
     // Load Language
