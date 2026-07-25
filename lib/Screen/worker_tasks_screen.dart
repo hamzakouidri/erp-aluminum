@@ -308,6 +308,55 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     }
   }
 
+  Future<void> _confirmResetTasksData(BuildContext context, AppLanguage lang) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          lang == AppLanguage.arabic ? 'تأكيد مسح وتصفير المهام' : 'Reset Tasks Confirmation',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+        ),
+        content: Text(
+          lang == AppLanguage.arabic 
+            ? 'هل أنت تأكد من مسح وتصفير جميع الإسنادات والمهام المصنعة بالتطوير؟'
+            : 'Voulez-vous réinitialiser toutes les tâches et affectations ?',
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              lang == AppLanguage.arabic ? 'مسح كلي 🧹' : 'Effacer tout 🧹',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final db = await widget.db.db;
+      if (db != null) {
+        await db.rawDelete('DELETE FROM WorkerAllocations');
+      }
+      CloudSyncService().notifyChange();
+      await _refreshTasks();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(lang == AppLanguage.arabic ? 'تم مسح وتصفير كافة الإسنادات والمهام بنجاح 🧹' : 'Toutes les tâches ont été réinitialisées 🧹'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -323,6 +372,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+            tooltip: lang == AppLanguage.arabic ? 'تصفير كافة المهام والإسنادات (للتطوير)' : 'Réinitialiser toutes les tâches (Dev)',
+            onPressed: () => _confirmResetTasksData(context, lang),
+          ),
           IconButton(
             icon: const Icon(Icons.archive_outlined),
             tooltip: lang == AppLanguage.arabic ? 'الأرشيف' : 'Archives',

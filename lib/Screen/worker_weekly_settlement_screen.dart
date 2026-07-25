@@ -5,13 +5,17 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../Commande/add_commande.dart';
 import '../widgets/lazy_window_image.dart';
+import '../services/cloud_sync_service.dart';
 
 class WorkerWeeklySettlementScreen extends StatefulWidget {
   final SqlDatabase db;
+  /// وضع العرض فقط — يخفي زر تسوية الحساب
+  final bool readOnly;
 
   const WorkerWeeklySettlementScreen({
     super.key,
     required this.db,
+    this.readOnly = false,
   });
 
   @override
@@ -79,6 +83,59 @@ class _WorkerWeeklySettlementScreenState
     }
   }
 
+  Future<void> _confirmResetWeeklySettlementData(BuildContext context, AppLanguage lang) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          lang == AppLanguage.arabic ? 'تأكيد تصفير المحاسبة الأسبوعية' : 'Reset Settlement Data',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+        ),
+        content: Text(
+          lang == AppLanguage.arabic 
+            ? 'هل أنت تأكد من تصفير كافة تسويات وسجلات المحاسبة الأسبوعية للعمال ومستحقاتهم بالتطوير؟'
+            : 'Voulez-vous réinitialiser toutes les données de règlement des ouvriers ?',
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              lang == AppLanguage.arabic ? 'مسح كلي 🧹' : 'Effacer tout 🧹',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final db = await widget.db.db;
+      if (db != null) {
+        await db.rawUpdate('UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL');
+        await db.rawUpdate('UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL');
+        try {
+          await db.rawDelete('DELETE FROM WorkerSettlements');
+        } catch (_) {}
+      }
+      CloudSyncService().notifyChange();
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(lang == AppLanguage.arabic ? 'تم تصفير ومسح بيانات المحاسبة الأسبوعية للعمال بنجاح 🧹' : 'Données de règlement réinitialisées 🧹'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -94,6 +151,17 @@ class _WorkerWeeklySettlementScreenState
         ),
         centerTitle: true,
         backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep, color: Colors.white),
+            tooltip: lang == AppLanguage.arabic ? 'تصفير المحاسبة (للتطوير)' : 'Réinitialiser règlements (Dev)',
+            onPressed: () => _confirmResetWeeklySettlementData(context, lang),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadData,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -135,6 +203,7 @@ class _WorkerWeeklySettlementScreenState
                                     WorkerSettlementDetailScreen(
                                   worker: worker,
                                   db: widget.db,
+                                  readOnly: widget.readOnly,
                                 ),
                               ),
                             );
@@ -276,11 +345,13 @@ class _WorkerWeeklySettlementScreenState
 class WorkerSettlementDetailScreen extends StatefulWidget {
   final Map<String, dynamic> worker;
   final SqlDatabase db;
+  final bool readOnly;
 
   const WorkerSettlementDetailScreen({
     super.key,
     required this.worker,
     required this.db,
+    this.readOnly = false,
   });
 
   @override
@@ -983,29 +1054,30 @@ class _WorkerSettlementDetailScreenState
                             ],
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () => _showPaymentDialog(netDue),
-                              icon: const Icon(Icons.handshake),
-                              label: Text(
-                                lang == AppLanguage.arabic
-                                    ? 'تسجيل دفعة وتسوية الحساب'
-                                    : 'Enregistrer paiement & Clôturer',
-                                style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                backgroundColor: Colors.teal,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                          if (!widget.readOnly)
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () => _showPaymentDialog(netDue),
+                                icon: const Icon(Icons.handshake),
+                                label: Text(
+                                  lang == AppLanguage.arabic
+                                      ? 'تسجيل دفعة وتسوية الحساب'
+                                      : 'Enregistrer paiement & Clôturer',
+                                  style: const TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  backgroundColor: Colors.teal,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),

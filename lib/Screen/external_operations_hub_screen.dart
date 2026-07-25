@@ -6,6 +6,7 @@ import '../settings/localization.dart';
 import 'glass_order_reception_screen.dart';
 import 'achat_screen.dart';
 import '../widgets/lazy_window_image.dart';
+import '../services/cloud_sync_service.dart';
 
 class ExternalOperationsHubScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -147,6 +148,51 @@ class _ExternalOperationsHubScreenState
     }
   }
 
+  Future<void> _confirmResetInstallationData(BuildContext context, AppLanguage lang) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_tr('تأكيد المسح الكلي للتركيبات', 'Confirmation de réinitialisation', 'Confirm Reset', lang), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+        content: Text(_tr('هل أنت تأكد من تصفير ومسح جميع بيانات التركيبات والتحفظات الميدانية بالتطوير؟', 'Voulez-vous réinitialiser toutes les données d\'installation ?', 'Do you want to reset all installation data?', lang), style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_tr('مسح كلي 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final db = await widget.db.db;
+      if (db != null) {
+        await db.rawUpdate('''
+          UPDATE WorkerAllocations 
+          SET is_transferred_to_dist = 0, transferred_at = NULL,
+              is_distributed = 0, distributed_at = NULL,
+              is_installed = 0, installed_at = NULL,
+              is_completed = 0, completed_at = NULL,
+              has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
+        ''');
+      }
+      CloudSyncService().notifyChange();
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_tr('تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹', 'Données d\'installation réinitialisées 🧹', 'Installation data cleared 🧹', lang)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -164,6 +210,11 @@ class _ExternalOperationsHubScreenState
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+            tooltip: _tr('تصفير تتبع التركيبات (للتطوير)', 'Vider les données d\'installation (Dev)', 'Clear Installation Data (Dev)', lang),
+            onPressed: () => _confirmResetInstallationData(context, lang),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
