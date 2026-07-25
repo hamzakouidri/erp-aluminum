@@ -84,12 +84,22 @@ class AppSettingsProvider extends ChangeNotifier {
 
   Future<void> reloadPermissions() async {
     final prefs = await SharedPreferences.getInstance();
-    _userRole = prefs.getString('user_role') ?? 'worker'; // ✅ افتراضي 'worker' وليس 'manager'
     _workshopCode = prefs.getString('workshop_code') ?? '';
     _userDisplayName = prefs.getString('user_display_name') ?? 'مدير الورشة';
 
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
+    if (user == null) {
+      _userRole = 'worker';
+      _workerPermissions = {};
+      prefs.setString('user_role', 'worker');
+    } else {
+      if (user.email == 'kouidrihamza45@gmail.com') {
+        _userRole = 'manager';
+        await prefs.setString('user_role', 'manager');
+      } else {
+        _userRole = prefs.getString('user_role') ?? 'worker';
+      }
+
       // 🔄 استماع فوري ودائم لتعديلات الصلاحيات والدور من السحابة لجميع الحسابات
       _permSubscription?.cancel();
       _permSubscription = FirebaseFirestore.instance
@@ -99,8 +109,9 @@ class AppSettingsProvider extends ChangeNotifier {
           .listen((docSnap) {
         if (docSnap.exists && docSnap.data() != null) {
           final data = docSnap.data()!;
-          if (data['role'] != null) {
+          if (data['role'] != null && user.email != 'kouidrihamza45@gmail.com') {
             _userRole = data['role'].toString();
+            prefs.setString('user_role', _userRole);
           }
           if (data['permissions_json'] is String && (data['permissions_json'] as String).isNotEmpty) {
             try {
@@ -114,16 +125,29 @@ class AppSettingsProvider extends ChangeNotifier {
       });
 
       // قراءة احتياطية من قاعدة البيانات المحلية
-      if (_workerPermissions.isEmpty) {
-        final db = SqlDatabase();
-        db.readEmployees().then((employees) {
-          try {
-            final me = employees.firstWhere((e) => e['uid'] == user.uid);
+      final db = SqlDatabase();
+      db.readEmployees().then((employees) {
+        try {
+          final cleanEmail = (user.email ?? '').trim().toLowerCase();
+          final me = employees.firstWhere((e) =>
+              (user.uid.isNotEmpty && e['uid'] == user.uid) ||
+              (cleanEmail.isNotEmpty && e['email'] != null && e['email'].toString().trim().toLowerCase() == cleanEmail));
+
+          if (user.email != 'kouidrihamza45@gmail.com' && me['job_role'] != null) {
+            final jRole = me['job_role'].toString().toLowerCase();
+            if (jRole.contains('نائب') || jRole.contains('مدير') || jRole.contains('co_manager')) {
+              _userRole = 'co_manager';
+            } else {
+              _userRole = 'worker';
+            }
+            prefs.setString('user_role', _userRole);
+          }
+          if (me['permissions_json'] != null) {
             _workerPermissions = jsonDecode(me['permissions_json']);
-            notifyListeners();
-          } catch (_) {}
-        });
-      }
+          }
+          notifyListeners();
+        } catch (_) {}
+      });
     }
     notifyListeners();
   }

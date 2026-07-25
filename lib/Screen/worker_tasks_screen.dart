@@ -908,6 +908,10 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 final currentUid = (currentUser?.uid ?? '').trim().toLowerCase();
                 final currentEmail = (currentUser?.email ?? '').trim().toLowerCase();
 
+                // هل هذا حساب مدير أصول حقيقي (بريد المدير الأصلي أو نائب مدير محقق بالصلاحية)؟
+                final bool isRealManager = (currentEmail == 'kouidrihamza45@gmail.com') ||
+                    (settings.isManager && currentEmail == 'kouidrihamza45@gmail.com');
+
                 final taskWorkerUid = (t['worker_uid'] ?? '').toString().trim().toLowerCase();
                 final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
                 final taskWorkerName = (t['worker_name'] ?? '').toString().trim().toLowerCase();
@@ -940,17 +944,17 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 }
 
                 // 1️⃣ زر "تم الصنع" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
-                final bool canClickManufactured = !settings.isManager && isMyAssignedTask;
+                final bool canClickManufactured = !isRealManager && isMyAssignedTask;
 
                 // 2️⃣ زر "تم تركيب الزجاج" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
-                final bool canClickGlass = !settings.isManager && isMyAssignedTask;
+                final bool canClickGlass = !isRealManager && isMyAssignedTask;
 
-                // 3️⃣ زر "تحويل للتوزيع والأرشيف" — يظهر ومتاح للمدير وللعامل المسند بشرط إتمام "تم الصنع" و "تم تركيب الزجاج"
+                // 3️⃣ زر "تحويل للتوزيع والأرشيف" — متاح إذا تم الانتهاء وهو مسند له، أو للمدير الحقيقي بعد الانتهاء
                 final bool isBothCompleted = isManufactured && isGlassInstalled;
-                final bool canTransfer = isBothCompleted && (settings.isManager || isMyAssignedTask);
+                final bool canTransfer = isBothCompleted && (isRealManager || isMyAssignedTask);
 
-                // 🔒 شارة القفل "مسندة لعامل آخر (للعرض فقط)" — تظهر فقط للعمال الآخرين وليس للمدير وليس للعامل المسند له
-                final bool showLockBadge = !settings.isManager && !isMyAssignedTask;
+                // 🔒 شارة القفل "مسندة لعامل آخر (للعرض فقط)" — تظهر فقط على البطاقات التي ليست مسندة لحساب العامل الحالي
+                final bool showLockBadge = !isMyAssignedTask && !isRealManager;
 
                 return Column(
                   children: [
