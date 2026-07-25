@@ -29,6 +29,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   String _searchQuery = '';
   String _debugInfo = ''; // 🔍 تشخيص مؤقت
   bool _isLocalChangePending = false;
+  Map<String, dynamic>? _currentEmpInfo;
 
   @override
   void didChangeDependencies() {
@@ -108,6 +109,22 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+
+        // جلب سجل الموظف الحالي لمطابقة المعرفات بشكل دقيق
+        try {
+          final emps = await widget.db.readEmployees();
+          final cleanEmail = (user.email ?? '').trim().toLowerCase();
+          for (var e in emps) {
+            final eUid = (e['uid'] ?? '').toString().trim().toLowerCase();
+            final eEmail = (e['email'] ?? '').toString().trim().toLowerCase();
+            if ((user.uid.isNotEmpty && eUid == user.uid.toLowerCase()) ||
+                (cleanEmail.isNotEmpty && eEmail == cleanEmail)) {
+              _currentEmpInfo = e;
+              break;
+            }
+          }
+        } catch (_) {}
+
         final List<Map<String, dynamic>> rawTasks;
         if (settings.canViewAllWorkerTasks()) {
           rawTasks = await widget.db.readAbsoluteAllWorkerAllocations();
@@ -893,15 +910,33 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
                 final taskWorkerUid = (t['worker_uid'] ?? '').toString().trim().toLowerCase();
                 final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
+                final taskWorkerName = (t['worker_name'] ?? '').toString().trim().toLowerCase();
 
-                // فحص هل هذه المهمة مسندة لهذا العامل شخصياً
+                // فحص مؤكد ومطلق: هل هذه النافذة مسندة لهذا العامل شخصياً؟
                 bool isMyAssignedTask = false;
-                if (currentUid.isNotEmpty && taskWorkerUid == currentUid) {
+
+                if (currentUid.isNotEmpty && taskWorkerUid.isNotEmpty && taskWorkerUid == currentUid) {
                   isMyAssignedTask = true;
-                } else if (currentEmail.isNotEmpty && (taskWorkerUid == currentEmail || taskWorkerEmail == currentEmail)) {
+                } else if (currentEmail.isNotEmpty && (
+                  (taskWorkerUid.isNotEmpty && taskWorkerUid == currentEmail) ||
+                  (taskWorkerEmail.isNotEmpty && taskWorkerEmail == currentEmail)
+                )) {
                   isMyAssignedTask = true;
-                } else if (!settings.canViewAllWorkerTasks()) {
-                  isMyAssignedTask = true;
+                } else if (_currentEmpInfo != null) {
+                  final empUid = (_currentEmpInfo!['uid'] ?? '').toString().trim().toLowerCase();
+                  final empEmail = (_currentEmpInfo!['email'] ?? '').toString().trim().toLowerCase();
+                  final empId = (_currentEmpInfo!['id'] ?? '').toString().trim().toLowerCase();
+                  final empName = (_currentEmpInfo!['name'] ?? '').toString().trim().toLowerCase();
+
+                  if (empUid.isNotEmpty && taskWorkerUid == empUid) {
+                    isMyAssignedTask = true;
+                  } else if (empEmail.isNotEmpty && (taskWorkerUid == empEmail || taskWorkerEmail == empEmail)) {
+                    isMyAssignedTask = true;
+                  } else if (empId.isNotEmpty && taskWorkerUid == empId) {
+                    isMyAssignedTask = true;
+                  } else if (empName.isNotEmpty && taskWorkerName.isNotEmpty && taskWorkerName == empName) {
+                    isMyAssignedTask = true;
+                  }
                 }
 
                 // 1️⃣ زر "تم الصنع" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)

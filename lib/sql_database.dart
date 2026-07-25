@@ -3972,37 +3972,7 @@ class SqlDatabase {
     if (myDb == null) return [];
     final cleanEmail = workerEmail.trim().toLowerCase();
 
-    // 1. ربط حقيقي للعامل بالبريد الإلكتروني المطابق فقط (تجنب المطابقة بالأسماء حتى لا يتم دمج إسنادات العمال)
-    try {
-      if (cleanEmail.isNotEmpty) {
-        final allEmps = await myDb.query('Employees');
-        for (var emp in allEmps) {
-          final eUid = emp['uid']?.toString() ?? '';
-          final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
-
-          if (eEmail.isNotEmpty && cleanEmail == eEmail && eUid.isNotEmpty && eUid != workerUid) {
-            await linkLocalWorker(eUid, workerUid, cleanEmail);
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Auto link worker allocations error: $e');
-    }
-
-    if (cleanEmail.isNotEmpty) {
-      try {
-        await myDb.rawUpdate('''
-          UPDATE WorkerAllocations
-          SET worker_uid = ?
-          WHERE worker_uid IN (SELECT uid FROM Employees WHERE email IS NOT NULL AND email != '' AND LOWER(email) = ?)
-             OR (worker_uid IS NOT NULL AND worker_uid != '' AND LOWER(worker_uid) = ?)
-        ''', [workerUid, cleanEmail, cleanEmail]);
-      } catch (e) {
-        debugPrint('Auto link worker allocations error: $e');
-      }
-    }
-
-    // 2. استعلام دقيق يسترجع فقط إسنادات هذا العامل بـ UID أو البريد الإلكتروني المحقق فقط
+    // 1. استعلام دقيق يسترجع فقط إسنادات هذا العامل بـ UID أو البريد الإلكتروني المحقق فقط
     final List<Map<String, dynamic>> results;
     if (cleanEmail.isNotEmpty) {
       results = await myDb.rawQuery('''
@@ -4013,14 +3983,21 @@ class SqlDatabase {
         LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
         LEFT JOIN Commandes c ON cd.id_commandes = c.id
         LEFT JOIN Client cl ON c.client_id = cl.id
-        LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?) OR CAST(e.id AS TEXT) = wa.worker_uid)
-        WHERE (wa.worker_uid = ?
-           OR (LOWER(wa.worker_uid) = ?)
-           OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
-           OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE email IS NOT NULL AND email != '' AND LOWER(email) = ?))
+        LEFT JOIN Employees e ON (
+          wa.worker_uid = e.uid 
+          OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
+          OR CAST(e.id AS TEXT) = wa.worker_uid
+        )
+        WHERE (
+          wa.worker_uid = ?
+          OR (LOWER(wa.worker_uid) = ?)
+          OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
+          OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE email IS NOT NULL AND email != '' AND LOWER(email) = ?)
+          OR wa.worker_uid IN (SELECT uid FROM Employees WHERE email IS NOT NULL AND email != '' AND LOWER(email) = ?)
+        )
           AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
         ORDER BY wa.assigned_at DESC
-      ''', [cleanEmail, workerUid, cleanEmail, cleanEmail, cleanEmail]);
+      ''', [cleanEmail, workerUid, cleanEmail, cleanEmail, cleanEmail, cleanEmail]);
     } else {
       results = await myDb.rawQuery('''
         SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
