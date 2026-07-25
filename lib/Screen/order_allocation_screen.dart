@@ -258,8 +258,39 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         final list = await widget.db.readWorkerAllocations(detailId);
         allocs[detailId] = list;
 
+        final instancesRaw = row['instances_json'];
         final jsonRaw = row['confirmed_mesures_json'];
         final qty = (row['quantity'] ?? row['nbr'] ?? 1) as int;
+
+        List<dynamic> parsedInstances = [];
+        if (instancesRaw != null && instancesRaw.toString().trim().isNotEmpty) {
+          try {
+            parsedInstances = jsonDecode(instancesRaw.toString()) as List<dynamic>;
+          } catch (_) {}
+        }
+
+        if (parsedInstances.isNotEmpty) {
+          int indexCounter = 1;
+          for (var inst in parsedInstances) {
+            final w = inst['width'] ?? inst['largeur'] ?? row['largeur'];
+            final h = inst['height'] ?? inst['hauteur'] ?? row['hauteur'];
+            final q = (inst['qty'] ?? 1) as int;
+            final pos = inst['position']?.toString() ?? '';
+
+            for (int k = 0; k < q; k++) {
+              final itemCopy = Map<String, dynamic>.from(row);
+              itemCopy['largeur'] = w;
+              itemCopy['hauteur'] = h;
+              itemCopy['position'] = pos;
+              itemCopy['quantity'] = 1;
+              itemCopy['orig_quantity'] = qty;
+              itemCopy['unit_index'] = indexCounter;
+              expandedDetails.add(itemCopy);
+              indexCounter++;
+            }
+          }
+          continue;
+        }
 
         if (jsonRaw != null && jsonRaw.toString().trim().isNotEmpty && qty > 1) {
           try {
@@ -270,6 +301,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                 if (i < parsed.length) {
                   itemCopy['hauteur'] = parsed[i]['hauteur'] ?? row['hauteur'];
                   itemCopy['largeur'] = parsed[i]['largeur'] ?? row['largeur'];
+                  itemCopy['position'] = parsed[i]['position'] ?? '';
                   itemCopy['unit_index'] = i + 1;
                 }
                 itemCopy['quantity'] = 1;
@@ -863,9 +895,16 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                             final qty = item['quantity'] as int;
                             final color = item['color']?.toString() ?? '';
                             final glass = item['glass']?.toString() ?? '';
+                            final position = item['position']?.toString() ?? '';
+                            final unitIndex = item['unit_index'];
+
+                            final isConfirmed = unitIndex != null || position.isNotEmpty;
+                            final dimText = isConfirmed
+                                ? '📐 ${lang == AppLanguage.arabic ? "القياس المؤكد" : "Mesure Validée"}: $largeur x $hauteur ${position.isNotEmpty ? "($position)" : ""} | ${lang == AppLanguage.arabic ? "الكمية" : "Qté"}: $qty'
+                                : '${lang == AppLanguage.arabic ? "الأبعاد" : "Dimensions"}: $largeur x $hauteur | ${lang == AppLanguage.arabic ? "الكمية" : "Qté"}: $qty';
 
                             return Card(
-                              margin: EdgeInsets.symmetric(vertical: 8),
+                              margin: const EdgeInsets.symmetric(vertical: 8),
                               elevation: 2,
                               color: Theme.of(context).cardColor,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -896,20 +935,39 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                Localization.translate(windowType, lang),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                  fontFamily: 'Cairo',
-                                                ),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      Localization.translate(windowType, lang),
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 16,
+                                                        fontFamily: 'Cairo',
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (unitIndex != null)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.teal.shade700,
+                                                        borderRadius: BorderRadius.circular(10),
+                                                      ),
+                                                      child: Text(
+                                                        '${lang == AppLanguage.arabic ? "قطعة" : "Pièce"} #$unitIndex',
+                                                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
                                               const SizedBox(height: 4),
                                               Text(
-                                                '${lang == AppLanguage.arabic ? "الأبعاد" : "Dimensions"}: $largeur x $hauteur | ${lang == AppLanguage.arabic ? "الكمية" : "Qté"}: $qty',
+                                                dimText,
                                                 style: TextStyle(
                                                   fontSize: 13,
-                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                  fontWeight: isConfirmed ? FontWeight.bold : FontWeight.normal,
+                                                  color: isConfirmed ? Colors.teal.shade800 : Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                                                   fontFamily: 'Cairo',
                                                 ),
                                               ),
