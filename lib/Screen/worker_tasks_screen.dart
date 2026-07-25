@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -676,8 +677,6 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
   Widget _buildTaskCard(Map<String, dynamic> t, AppLanguage lang, bool isDark, AppSettingsProvider settings) {
     final windowType = t['window_type']?.toString() ?? 'Window';
-    final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
-    final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
     final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
     final price = (t['worker_price'] as num?)?.toDouble() ?? 0.0;
     final total = qty * price;
@@ -691,6 +690,30 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     final isGlassInstalled = t['is_glass_installed'] == 1;
 
     final commandeId = (t['id_commandes'] as num?)?.toInt() ?? 0;
+
+    int finalW = (t['largeur'] as num?)?.toInt() ?? 0;
+    int finalH = (t['hauteur'] as num?)?.toInt() ?? 0;
+    String unitPos = t['unit_position']?.toString() ?? '';
+    final unitIndex = t['unit_index'];
+
+    if (t['confirmed_mesures_json'] != null && t['confirmed_mesures_json'].toString().trim().isNotEmpty) {
+      try {
+        final List parsed = jsonDecode(t['confirmed_mesures_json'].toString());
+        final uIdx = (unitIndex as num?)?.toInt() ?? 1;
+        final arrayIdx = uIdx - 1;
+        if (arrayIdx >= 0 && arrayIdx < parsed.length) {
+          final unitMap = parsed[arrayIdx];
+          final cw = (unitMap['largeur'] as num?)?.toInt();
+          final ch = (unitMap['hauteur'] as num?)?.toInt();
+          final pos = unitMap['position']?.toString() ?? '';
+          if (cw != null && cw > 0) finalW = cw;
+          if (ch != null && ch > 0) finalH = ch;
+          if (pos.isNotEmpty) unitPos = pos;
+        }
+      } catch (_) {}
+    }
+
+    final isConfirmedMesure = unitIndex != null || unitPos.isNotEmpty || (finalW != (t['largeur'] as num?)?.toInt() || finalH != (t['hauteur'] as num?)?.toInt());
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -787,13 +810,31 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
             ],
 
             // ── تفاصيل العنصر ─────────────────────────────────────────────
-            Text(
-              '${Localization.translate(windowType, lang)} ($largeur × $hauteur مم)',
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${Localization.translate(windowType, lang)} ($finalW × $finalH مم)',
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                if (unitIndex != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade700,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${lang == AppLanguage.arabic ? "قطعة" : "Pièce"} #$unitIndex ${unitPos.isNotEmpty ? "($unitPos)" : ""}',
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
 
@@ -802,6 +843,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
               spacing: 8,
               runSpacing: 6,
               children: [
+                if (isConfirmedMesure)
+                  _specBadge('📐 ${lang == AppLanguage.arabic ? "قياس مؤكد" : "Mesure Validée"}: $finalW×$finalH', Icons.straighten_rounded, Colors.teal),
                 if (color.isNotEmpty)
                   _specBadge(lang == AppLanguage.arabic ? 'اللون: $color' : 'Couleur: $color', Icons.color_lens_outlined, Colors.purple),
                 if (glass.isNotEmpty)

@@ -3725,7 +3725,7 @@ class SqlDatabase {
 
     // 2. جلب جميع إسنادات هذا العامل المطابقة بـ UID أو بالبريد الإلكتروني
     final results = await myDb.rawQuery('''
-      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+      SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
              cl.firstname, cl.lastname, e.name as worker_name
       FROM WorkerAllocations wa
@@ -3749,7 +3749,7 @@ class SqlDatabase {
           debugPrint('readAllWorkerAllocations fallback: Linking $cnt allocations to $workerUid');
           await myDb.rawUpdate('UPDATE WorkerAllocations SET worker_uid = ?', [workerUid]);
           return await myDb.rawQuery('''
-            SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
+            SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
                    cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
                    cl.firstname, cl.lastname, e.name as worker_name
             FROM WorkerAllocations wa
