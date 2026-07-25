@@ -33,6 +33,19 @@ class _CommandeState extends State<Commande> {
   String _searchQuery = '';
   BuildContext? _loadingDialogContext;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canViewOrders()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
   String formatDate(Map<String, dynamic> order) {
     return formatOrderDate(order['created_at'], fallback: order['updated_at']);
   }
@@ -117,13 +130,15 @@ class _CommandeState extends State<Commande> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           Localization.translate(
             "Commande",
-            Provider.of<AppSettingsProvider>(context).language,
+            lang,
           ),
         ),
         centerTitle: true,
@@ -540,9 +555,11 @@ class _CommandeState extends State<Commande> {
                               ),
                             ],
                           ),
-                          onTap: () {
-                            _showOrderOptions(context, data[index]);
-                          },
+                          onTap: settings.canViewOrderDetails()
+                              ? () {
+                                  _showOrderOptions(context, data[index]);
+                                }
+                              : null,
                         ),
                       );
                     },
@@ -554,24 +571,30 @@ class _CommandeState extends State<Commande> {
         ],
       ),
 
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => CommandePage(db: db)),
-          );
-          if (result == true) {
-            setState(() {
-              _data = db.readCommandesWithClients();
-            });
-          }
-        },
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: settings.canCreateOrders()
+          ? FloatingActionButton(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => CommandePage(db: db)),
+                );
+                if (result == true) {
+                  setState(() {
+                    _data = db.readCommandesWithClients();
+                  });
+                }
+              },
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
-  void _showOrderOptions(BuildContext context, Map<String, dynamic> orderData) {
+  void _showOrderOptions(BuildContext context, Map<String, dynamic> orderData) async {
+    final orderId = (orderData['id'] as num?)?.toInt() ?? 0;
+    final isFullyManufactured = await db.isOrderFullyManufactured(orderId);
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -579,7 +602,8 @@ class _CommandeState extends State<Commande> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (BuildContext ctx) {
-        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+        final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+        final lang = settings.language;
         final currentStatus = orderData['status']?.toString() ?? 'Pending';
         final statusRaw = (orderData['status']?.toString() ?? '').trim().toLowerCase();
         final isPending = statusRaw == 'en attente' ||
@@ -671,9 +695,10 @@ class _CommandeState extends State<Commande> {
               const Divider(),
               const SizedBox(height: 10),
 
-              // 1. Devis (تخضع لجميع الحالات)
-              ListTile(
-                leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              // 1. الوثائق والمستندات الرسمية للطلبية
+              // 1. الوثائق والمستندات الرسمية للطلبية
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
                 title: Text(Localization.translate('doc_devis_menu', lang)),
                 onTap: () async {
                   Navigator.pop(ctx);
@@ -744,8 +769,9 @@ class _CommandeState extends State<Commande> {
                 },
               ),
 
-              // 1.3. Facture Officielle / Proforma (تخضع لجميع الحالات بما فيها حالة الانتظار)
-              ListTile(
+              // 1.3. Facture Officielle / Proforma
+              if (settings.canViewOrderDocuments())
+                ListTile(
                 leading: const Icon(Icons.description, color: Colors.indigo),
                 title: Text(Localization.translate('فاتورة رسمية / أولية', lang)),
                 onTap: () async {
@@ -783,10 +809,11 @@ class _CommandeState extends State<Commande> {
                 },
               ),
 
-              if (isConfirmedOrBeyond) ...[
+              
 
-              // 🟢 إضافة خيار فاتورة البيع الرسمية (Facture de Vente)
-              ListTile(
+              // Facture de Vente
+              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                ListTile(
                 leading: const Icon(Icons.receipt_rounded, color: Colors.teal),
                 title: Text(lang == AppLanguage.french ? 'Facture de Vente' : 'فاتورة بيع / Facture de Vente'),
                 onTap: () async {
@@ -825,8 +852,9 @@ class _CommandeState extends State<Commande> {
                 },
               ),
 
-              // 🟢 إضافة خيار بون دو روت (Bon de Route)
-              ListTile(
+              // Bon de Route
+              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                ListTile(
                 leading: const Icon(Icons.directions_car_outlined, color: Colors.blueAccent),
                 title: Text(lang == AppLanguage.french ? 'Bon de Route' : 'بون دو روت / Bon de Route'),
                 onTap: () async {
@@ -866,8 +894,9 @@ class _CommandeState extends State<Commande> {
               ),
 
 
-              // Bon de livraison (avec prix)
-              ListTile(
+              // Bon de livraison
+              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                ListTile(
                 leading: const Icon(Icons.assignment, color: Colors.blue),
                 title: Text(Localization.translate('doc_bon_livraison_menu', lang)),
                 onTap: () async {
@@ -941,7 +970,8 @@ class _CommandeState extends State<Commande> {
               ),
 
               // Bon de livraison sans prix
-              ListTile(
+              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                ListTile(
                 leading: const Icon(Icons.print_disabled, color: Colors.blueGrey),
                 title: Text(Localization.translate('doc_bon_livraison_sans_prix_menu', lang)),
                 onTap: () async {
@@ -1015,7 +1045,8 @@ class _CommandeState extends State<Commande> {
               ),
 
               // Bon de livraison partiel
-              ListTile(
+              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                ListTile(
                 leading: const Icon(Icons.picture_as_pdf_outlined, color: Colors.blue),
                 title: Text(Localization.translate('doc_bon_livraison_partiel_menu', lang)),
                 onTap: () {
@@ -1033,7 +1064,8 @@ class _CommandeState extends State<Commande> {
               ),
 
               // Bon de livraison partiel sans prix
-              ListTile(
+              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                ListTile(
                 leading: const Icon(Icons.print_disabled_outlined, color: Colors.blueGrey),
                 title: Text(Localization.translate('doc_bon_livraison_partiel_sans_prix_menu', lang)),
                 onTap: () {
@@ -1050,10 +1082,10 @@ class _CommandeState extends State<Commande> {
                   );
                 },
               ),
-              ],
 
-              if (isManufacturingOrBeyond) ...[
+              
                 // Bon de charge
+              if (settings.canViewOrderDocuments() && isManufacturingOrBeyond)
                 ListTile(
                 leading: const Icon(Icons.local_shipping, color: Colors.teal),
                 title: Text(Localization.translate('doc_bon_charge_menu', lang)),
@@ -1377,109 +1409,57 @@ class _CommandeState extends State<Commande> {
                   }
                 },
               ),
-              ],
-              if (isConfirmedOrBeyond)
-                const Divider(),
+          if (isConfirmedOrBeyond)
+            const Divider(),
 
               // 2. Fiche de Coupe
-              ListTile(
-                leading: const Icon(Icons.cut, color: Colors.orange),
-                title: Text(Localization.translate('ورقة التقطيع (Fiche de Coupe)', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  if (mounted)
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(Localization.translate('جاري تجهيز جدول التقطيع...', lang)),
-                      ),
-                    );
-                  try {
-                    final items = await db.readCommandeDetails(orderData['id']);
-                    final prefs = await SharedPreferences.getInstance();
-                    final workshopName =
-                        prefs.getString('workshop_name') ?? 'ورشتي';
-                    await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
-                      order: orderData,
-                      items: items,
-                      workshopName: workshopName,
-                    );
-                  } catch (e) {
+              if (settings.canViewFicheDeCoupe())
+                ListTile(
+                  leading: const Icon(Icons.cut, color: Colors.orange),
+                  title: Text(Localization.translate('ورقة التقطيع (Fiche de Coupe)', lang)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
                     if (mounted)
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e'),
-                          backgroundColor: Colors.red,
+                          content: Text(Localization.translate('جاري تجهيز جدول التقطيع...', lang)),
                         ),
                       );
-                  }
-                },
-              ),
-
-              // 3. Fiche de Consommation
-              ListTile(
-                leading: const Icon(Icons.inventory_2, color: Colors.indigo),
-                title: Text(Localization.translate('سلع الطلبية وموادها (تقرير النواقص)', lang)),
-                onTap: () {},
-              ),
-
-              // 3.5 السلع المطلوبة (مجمّعة من كل المنتجات)
-              ListTile(
-                leading: const Icon(Icons.shopping_basket, color: Colors.deepPurple),
-                title: Text(Localization.translate('السلع المطلوبة', lang)),
-                subtitle: Text(
-                  Localization.translate('مجموع سلع جميع المنتجات مجمّعة', lang),
-                  style: const TextStyle(fontSize: 11),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => OrderRequiredGoodsScreen(
-                        orderData: orderData,
-                        db: db,
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              if (isConfirmedOrBeyond) ...[
-                // 3.8 تأكيد القياسات والملصقات
-                ListTile(
-                  leading: const Icon(Icons.line_weight_rounded, color: Colors.indigoAccent),
-                  title: Text(Localization.translate('تأكيد القياسات والملصقات (Stickers)', lang)),
-                  subtitle: Text(
-                    Localization.translate('تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة', lang),
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OrderMeasurementsConfirmScreen(
-                          orderData: orderData,
-                          db: db,
-                        ),
-                      ),
-                    );
+                    try {
+                      final items = await db.readCommandeDetails(orderData['id']);
+                      final prefs = await SharedPreferences.getInstance();
+                      final workshopName =
+                          prefs.getString('workshop_name') ?? 'ورشتي';
+                      await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
+                        order: orderData,
+                        items: items,
+                        workshopName: workshopName,
+                      );
+                    } catch (e) {
+                      if (mounted)
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                    }
                   },
                 ),
 
-                // 3.9 توزيع المهام وإسناد العمل للعمال
+              // 3. Fiche de Consommation & المواد والسلع المطلوبة
+              if (settings.canViewOrderMaterials()) ...[
                 ListTile(
-                  leading: const Icon(Icons.engineering_rounded, color: Colors.purple),
-                  title: Text(
-                    lang == AppLanguage.french 
-                      ? 'Affectation des tâches aux ouvriers' 
-                      : 'توزيع المهام على العمال (إسناد الورشة)',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  leading: const Icon(Icons.inventory_2, color: Colors.indigo),
+                  title: Text(Localization.translate('سلع الطلبية وموادها (تقرير النواقص)', lang)),
+                  onTap: () {},
+                ),
+
+                ListTile(
+                  leading: const Icon(Icons.shopping_basket, color: Colors.deepPurple),
+                  title: Text(Localization.translate('السلع المطلوبة', lang)),
                   subtitle: Text(
-                    lang == AppLanguage.french
-                      ? 'Répartir la fabrication des éléments sur l\'équipe'
-                      : 'توزيع النوافذ وتحديد أجر تصنيع كل عنصر للعمال',
+                    Localization.translate('مجموع سلع جميع المنتجات مجمّعة', lang),
                     style: const TextStyle(fontSize: 11),
                   ),
                   onTap: () {
@@ -1487,7 +1467,7 @@ class _CommandeState extends State<Commande> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => OrderAllocationScreen(
+                        builder: (_) => OrderRequiredGoodsScreen(
                           orderData: orderData,
                           db: db,
                         ),
@@ -1496,65 +1476,150 @@ class _CommandeState extends State<Commande> {
                   },
                 ),
               ],
+
+              
+                // 3.8 تأكيد القياسات والملصقات
+                if (settings.canConfirmMeasurements())
+                  ListTile(
+                    leading: const Icon(Icons.line_weight_rounded, color: Colors.indigoAccent),
+                    title: Text(Localization.translate('تأكيد القياسات والملصقات (Stickers)', lang)),
+                    subtitle: Text(
+                      Localization.translate('تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة', lang),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OrderMeasurementsConfirmScreen(
+                            orderData: orderData,
+                            db: db,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                // 3.9 توزيع المهام وإسناد العمل للعمال (تختفي إذا تم تصنيع كل العناصر بالكامل)
+                if (settings.canAllocateTasks() && !isFullyManufactured)
+                  ListTile(
+                    leading: const Icon(Icons.engineering_rounded, color: Colors.purple),
+                    title: Text(
+                      lang == AppLanguage.french 
+                        ? 'Affectation des tâches aux ouvriers' 
+                        : 'توزيع المهام على العمال (إسناد الورشة)',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      lang == AppLanguage.french
+                        ? 'Répartir la fabrication des éléments sur l\'équipe'
+                        : 'توزيع النوافذ وتحديد أجر تصنيع كل عنصر للعمال',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OrderAllocationScreen(
+                            orderData: orderData,
+                            db: db,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
 
               const Divider(),
 
               // 4. Move to Next Stage (نقل إلى المرحلة التالية)
-              ListTile(
-                leading: const Icon(Icons.forward_rounded, color: Colors.green),
-                title: Text(lang == AppLanguage.french ? 'Passer à l\'étape suivante' : 'نقل إلى المرحلة التالية'),
-                subtitle: Text(
-                  lang == AppLanguage.french
-                      ? 'Passer la commande de "${_translateStatus(currentStatus, lang)}" à l\'étape suivante'
-                      : 'نقل الطلبية من حالة "${_translateStatus(currentStatus, lang)}" إلى المرحلة التي تليها',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  const stagesSequence = [
-                    'Pending',
-                    'Confirmed',
-                    'In Progress',
-                    'Partial Manufacturing',
-                    'Partial Distribution',
-                    'Full Manufacturing',
-                    'Full Distribution',
-                    'Installation',
-                    'Reserve',
-                    'Done',
-                  ];
+              if (settings.canPassNextStage())
+                ListTile(
+                  leading: const Icon(Icons.forward_rounded, color: Colors.green),
+                  title: Text(lang == AppLanguage.french ? 'Passer à l\'étape suivante' : 'نقل إلى المرحلة التالية'),
+                  subtitle: Text(
+                    lang == AppLanguage.french
+                        ? 'Passer la commande de "${_translateStatus(currentStatus, lang)}" à l\'étape suivante'
+                        : 'نقل الطلبية من حالة "${_translateStatus(currentStatus, lang)}" إلى المرحلة التي تليها',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    const stagesSequence = [
+                      'Pending',
+                      'Confirmed',
+                      'In Progress',
+                      'Partial Manufacturing',
+                      'Partial Distribution',
+                      'Full Manufacturing',
+                      'Full Distribution',
+                      'Installation',
+                      'Reserve',
+                      'Done',
+                    ];
 
-                  final normalizedStatus = (currentStatus == 'en_attente' || currentStatus == 'في الانتظار' || currentStatus == 'Draft' || currentStatus == 'New')
-                      ? 'Pending'
-                      : currentStatus;
+                    final normalizedStatus = (currentStatus == 'en_attente' || currentStatus == 'في الانتظار' || currentStatus == 'Draft' || currentStatus == 'New')
+                        ? 'Pending'
+                        : currentStatus;
 
-                  int currentIndex = stagesSequence.indexOf(normalizedStatus);
-                  if (currentIndex == -1) {
-                    if (normalizedStatus.toLowerCase().contains('attente') || normalizedStatus.toLowerCase().contains('انتظار')) {
-                      currentIndex = 0;
-                    } else if (normalizedStatus.toLowerCase().contains('confirm')) {
-                      currentIndex = 1;
-                    } else {
-                      currentIndex = 0;
+                    int currentIndex = stagesSequence.indexOf(normalizedStatus);
+                    if (currentIndex == -1) {
+                      if (normalizedStatus.toLowerCase().contains('attente') || normalizedStatus.toLowerCase().contains('انتظار')) {
+                        currentIndex = 0;
+                      } else if (normalizedStatus.toLowerCase().contains('confirm')) {
+                        currentIndex = 1;
+                      } else {
+                        currentIndex = 0;
+                      }
                     }
-                  }
 
-                  if (currentIndex < stagesSequence.length - 1) {
-                    final nextStatus = stagesSequence[currentIndex + 1];
+                    if (currentIndex < stagesSequence.length - 1) {
+                      final nextStatus = stagesSequence[currentIndex + 1];
 
-                    // Check if current status is 'In Progress' (تأكيد القياسات) and we want to go beyond
-                    if (normalizedStatus == 'In Progress') {
-                      final allConfirmed = await _areAllMeasurementsConfirmed(orderData['id']);
-                      if (!allConfirmed) {
+                      if (normalizedStatus == 'In Progress') {
+                        final allConfirmed = await _areAllMeasurementsConfirmed(orderData['id']);
+                        if (!allConfirmed) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Impossible de passer à la fabrication sans valider les mesures !'
+                                      : 'لا يمكن الانتقال للتصنيع إن لم تقم بتأكيد القياسات!',
+                                ),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => OrderMeasurementsConfirmScreen(
+                                  orderData: orderData,
+                                  db: db,
+                                ),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+                      }
+
+                      await db.updateCommandeStatus(orderData['id'], nextStatus);
+                      setState(() {
+                        _data = db.readCommandesWithClients();
+                      });
+
+                      if (nextStatus == 'In Progress') {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
                                 lang == AppLanguage.french
-                                    ? 'Impossible de passer à la fabrication sans valider les mesures !'
-                                    : 'لا يمكن الانتقال للتصنيع إن لم تقم بتأكيد القياسات!',
+                                    ? 'Commande passée à: Confirmation des mesures'
+                                    : 'تم نقل الطلبية إلى مرحلة تأكيد القياسات. يرجى تأكيد المقاسات.',
                               ),
-                              backgroundColor: Colors.redAccent,
+                              backgroundColor: Colors.indigo,
                             ),
                           );
                           Navigator.push(
@@ -1567,36 +1632,19 @@ class _CommandeState extends State<Commande> {
                             ),
                           );
                         }
-                        return; // Block status change
-                      }
-                    }
-
-                    await db.updateCommandeStatus(orderData['id'], nextStatus);
-                    setState(() {
-                      _data = db.readCommandesWithClients();
-                    });
-
-                    if (nextStatus == 'In Progress') {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              lang == AppLanguage.french
-                                  ? 'Commande passée à: Confirmation des mesures'
-                                  : 'تم نقل الطلبية إلى مرحلة تأكيد القياسات. يرجى تأكيد المقاسات.',
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                lang == AppLanguage.french
+                                    ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
+                                    : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
+                              ),
+                              backgroundColor: Colors.green,
                             ),
-                            backgroundColor: Colors.indigo,
-                          ),
-                        );
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => OrderMeasurementsConfirmScreen(
-                              orderData: orderData,
-                              db: db,
-                            ),
-                          ),
-                        );
+                          );
+                        }
                       }
                     } else {
                       if (mounted) {
@@ -1604,97 +1652,86 @@ class _CommandeState extends State<Commande> {
                           SnackBar(
                             content: Text(
                               lang == AppLanguage.french
-                                  ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
-                                  : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
+                                  ? 'La commande est déjà dans la dernière étape (Done)!'
+                                  : 'الطلبية وصلت بالفعل للمرحلة الأخيرة!',
                             ),
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.orange,
                           ),
                         );
                       }
                     }
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            lang == AppLanguage.french
-                                ? 'La commande est déjà dans la dernière étape (Done)!'
-                                : 'الطلبية وصلت بالفعل للمرحلة الأخيرة!',
-                          ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
+                  },
+                ),
 
-              // 5. Change Status
-              ListTile(
-                leading: const Icon(Icons.swap_horiz, color: Colors.blue),
-                title: Text(Localization.translate('تغيير الحالة المخصص', lang)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showChangeStatusDialog(orderData);
-                },
-              ),
+              // 5. Change Status (تغيير الحالة المخصص يدوياً)
+              if (settings.canChangeOrderStatus())
+                ListTile(
+                  leading: const Icon(Icons.swap_horiz, color: Colors.blue),
+                  title: Text(Localization.translate('تغيير الحالة المخصص', lang)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showChangeStatusDialog(orderData);
+                  },
+                ),
 
               // 6. Modification
-              ListTile(
-                leading: const Icon(Icons.edit, color: Colors.blue),
-                title: Text(
-                  Localization.translate(
-                    "Edit Order",
-                    lang,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          CommandePage(db: db, editCommandeId: orderData['id']),
+              if (settings.canEditOrders())
+                ListTile(
+                  leading: const Icon(Icons.edit, color: Colors.blue),
+                  title: Text(
+                    Localization.translate(
+                      "Edit Order",
+                      lang,
                     ),
-                  ).then((_) {
-                    setState(() {
-                      _data = db.readCommandesWithClients();
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CommandePage(db: db, editCommandeId: orderData['id']),
+                      ),
+                    ).then((_) {
+                      setState(() {
+                        _data = db.readCommandesWithClients();
+                      });
                     });
-                  });
-                },
-              ),
+                  },
+                ),
 
               // NEW: 6.5 Duplicate
-              ListTile(
-                leading: const Icon(Icons.copy, color: Colors.blueGrey),
-                title: Text(Localization.translate('تكرار الطلبية (Duplicate)', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    await _duplicateOrder(orderData);
-                    setState(() {
-                      _data = db.readCommandesWithClients();
-                    });
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(Localization.translate('تم تكرار الطلبية بنجاح!', lang)),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
+              if (settings.canDuplicateOrders())
+                ListTile(
+                  leading: const Icon(Icons.copy, color: Colors.blueGrey),
+                  title: Text(Localization.translate('تكرار الطلبية (Duplicate)', lang)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await _duplicateOrder(orderData);
+                      setState(() {
+                        _data = db.readCommandesWithClients();
+                      });
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(Localization.translate('تم تكرار الطلبية بنجاح!', lang)),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${Localization.translate('حدث خطأ أثناء التكرار:', lang)} $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${Localization.translate('حدث خطأ أثناء التكرار:', lang)} $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
+                  },
+                ),
 
               const Divider(),
 

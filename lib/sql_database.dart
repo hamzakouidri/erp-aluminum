@@ -3622,6 +3622,34 @@ class SqlDatabase {
     }
   }
 
+  Future<bool> isOrderFullyManufactured(int orderId) async {
+    Database? myDb = await db;
+    if (myDb == null || orderId <= 0) return false;
+
+    final details = await myDb.query('Commandes_details', where: 'id_commandes = ?', whereArgs: [orderId]);
+    if (details.isEmpty) return false;
+
+    int totalRequiredQty = 0;
+    for (final d in details) {
+      totalRequiredQty += (d['quantity'] as num?)?.toInt() ?? 0;
+    }
+    if (totalRequiredQty == 0) return false;
+
+    final manufacturedAllocs = await myDb.rawQuery('''
+      SELECT SUM(wa.quantity) as total_mfg_qty
+      FROM WorkerAllocations wa
+      INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+      WHERE cd.id_commandes = ? AND wa.is_manufactured = 1
+    ''', [orderId]);
+
+    int totalMfgQty = 0;
+    if (manufacturedAllocs.isNotEmpty && manufacturedAllocs.first['total_mfg_qty'] != null) {
+      totalMfgQty = (manufacturedAllocs.first['total_mfg_qty'] as num).toInt();
+    }
+
+    return totalMfgQty >= totalRequiredQty;
+  }
+
   Future<void> updateWorkerAllocationManufacturing(int allocationId, int isManufactured) async {
     Database? myDb = await db;
     if (myDb == null) return;
