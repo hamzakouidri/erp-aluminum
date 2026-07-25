@@ -3255,13 +3255,49 @@ class SqlDatabase {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
       if (workshopId != null && workshopId.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId)
+        final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
+
+        // 1. Delete from worker_allocations_status
+        await workshopRef
             .collection('worker_allocations_status')
             .doc(allocationId.toString())
             .delete();
-        debugPrint('--- SqlDatabase: Deleted allocation $allocationId from cloud ---');
+
+        // 2. Delete from allocations subcollection if present
+        try {
+          await workshopRef
+              .collection('allocations')
+              .doc(allocationId.toString())
+              .delete();
+        } catch (_) {}
+
+        // 3. Clean up from backup chunks
+        final chunksSnap = await workshopRef
+            .collection('backups')
+            .doc('latest')
+            .collection('chunks')
+            .get();
+
+        for (var chunkDoc in chunksSnap.docs) {
+          final data = chunkDoc.data();
+          String table = data['table']?.toString() ?? '';
+          if (table.isEmpty) {
+            table = chunkDoc.id.replaceAll(RegExp(r'_\d+$'), '');
+          }
+          if (table == 'WorkerAllocations') {
+            List<dynamic> rows = List<dynamic>.from(data['data'] ?? []);
+            final int initialLen = rows.length;
+            rows.removeWhere((r) => r is Map && ((r['id'] as num?)?.toInt() == allocationId));
+            if (rows.length < initialLen) {
+              if (rows.isEmpty) {
+                await chunkDoc.reference.delete();
+              } else {
+                await chunkDoc.reference.update({'data': rows});
+              }
+            }
+          }
+        }
+        debugPrint('--- SqlDatabase: Deleted allocation $allocationId from all cloud collections and chunks ---');
       }
     } catch (e) {
       debugPrint('Error deleting allocation from cloud: $e');
@@ -3317,21 +3353,42 @@ class SqlDatabase {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
       if (workshopId != null && workshopId.isNotEmpty) {
-        final statusDocs = await FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId)
-            .collection('worker_allocations_status')
-            .get();
+        final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
+
+        // 1. Delete all status docs
+        final statusDocs = await workshopRef.collection('worker_allocations_status').get();
         for (var doc in statusDocs.docs) {
           await doc.reference.delete();
         }
 
-        final latestRef = FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId)
-            .collection('backups')
-            .doc('latest');
+        // 2. Delete all allocs docs
+        try {
+          final allocDocs = await workshopRef.collection('allocations').get();
+          for (var doc in allocDocs.docs) {
+            await doc.reference.delete();
+          }
+        } catch (_) {}
 
+        // 3. Delete all WorkerAllocations chunks from backups/latest/chunks
+        final chunksSnap = await workshopRef
+            .collection('backups')
+            .doc('latest')
+            .collection('chunks')
+            .get();
+
+        for (var doc in chunksSnap.docs) {
+          final data = doc.data();
+          String table = data['table']?.toString() ?? '';
+          if (table.isEmpty) {
+            table = doc.id.replaceAll(RegExp(r'_\d+$'), '');
+          }
+          if (table == 'WorkerAllocations') {
+            await doc.reference.delete();
+          }
+        }
+
+        // 4. Update latest backup metadata
+        final latestRef = workshopRef.collection('backups').doc('latest');
         final latestSnap = await latestRef.get();
         if (latestSnap.exists && latestSnap.data() != null) {
           final map = latestSnap.data()!;
