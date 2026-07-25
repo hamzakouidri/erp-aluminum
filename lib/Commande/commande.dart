@@ -618,6 +618,19 @@ class _CommandeState extends State<Commande> {
             statusRaw != 'مؤكدة' &&
             statusRaw != 'مؤكد';
 
+        final isDistributedOrBeyond = isFullyManufactured ||
+            statusRaw.contains('full manufacturing') ||
+            statusRaw.contains('تصنيع كلي') ||
+            statusRaw.contains('distribution') ||
+            statusRaw.contains('توزيع') ||
+            statusRaw.contains('installation') ||
+            statusRaw.contains('تركيب') ||
+            statusRaw.contains('reserve') ||
+            statusRaw.contains('تحفظ') ||
+            statusRaw.contains('done') ||
+            statusRaw.contains('انتهاء') ||
+            statusRaw.contains('منتهية');
+
         return ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(ctx).size.height * 0.85,
@@ -1501,8 +1514,8 @@ class _CommandeState extends State<Commande> {
                     },
                   ),
 
-                // 3.9 توزيع المهام وإسناد العمل للعمال (تختفي إذا تم تصنيع كل العناصر بالكامل)
-                if (settings.canAllocateTasks() && !isFullyManufactured)
+                // 3.9 توزيع المهام وإسناد العمل للعمال (تختفي عند التصنيع الكلي، التوزيع، التركيب، التحفظات أو الانتهاء)
+                if (settings.canAllocateTasks() && !isDistributedOrBeyond)
                   ListTile(
                     leading: const Icon(Icons.engineering_rounded, color: Colors.purple),
                     title: Text(

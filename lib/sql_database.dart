@@ -3592,13 +3592,22 @@ class SqlDatabase {
       int totalAllocs = allOrderAllocs.length;
       int mfgAllocs = allOrderAllocs.where((wa) => (wa['is_manufactured'] as num?)?.toInt() == 1).length;
       int distAllocs = allOrderAllocs.where((wa) => (wa['is_distributed'] as num?)?.toInt() == 1 || (wa['is_transferred_to_dist'] as num?)?.toInt() == 1).length;
+      int installAllocs = allOrderAllocs.where((wa) => (wa['is_installed'] as num?)?.toInt() == 1).length;
+      int reserveAllocs = allOrderAllocs.where((wa) => (wa['has_reserve'] as num?)?.toInt() == 1).length;
+      int completedAllocs = allOrderAllocs.where((wa) => (wa['is_completed'] as num?)?.toInt() == 1).length;
 
       String? targetStatus;
-      if (distAllocs >= totalAllocs) {
+      if (completedAllocs >= totalAllocs && totalAllocs > 0 && reserveAllocs == 0) {
+        targetStatus = 'Done';
+      } else if (reserveAllocs > 0) {
+        targetStatus = 'Reserve';
+      } else if (installAllocs >= totalAllocs && totalAllocs > 0) {
+        targetStatus = 'Installation';
+      } else if (distAllocs >= totalAllocs && totalAllocs > 0) {
         targetStatus = 'Full Distribution';
       } else if (distAllocs > 0) {
         targetStatus = 'Partial Distribution';
-      } else if (mfgAllocs >= totalAllocs) {
+      } else if (mfgAllocs >= totalAllocs && totalAllocs > 0) {
         targetStatus = 'Full Manufacturing';
       } else if (mfgAllocs > 0) {
         targetStatus = 'Partial Manufacturing';
@@ -3608,10 +3617,7 @@ class SqlDatabase {
         final orderRow = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
         if (orderRow.isNotEmpty) {
           final currentStatus = orderRow.first['status']?.toString() ?? '';
-          if (currentStatus != targetStatus &&
-              currentStatus != 'Installation' &&
-              currentStatus != 'Reserve' &&
-              currentStatus != 'Done') {
+          if (currentStatus != targetStatus) {
             await updateCommandeStatus(orderId, targetStatus, skipAllocationSync: true);
             debugPrint('syncOrderAndAllocationsStatus: updated order #$orderId status from $currentStatus to $targetStatus');
           }
@@ -3814,6 +3820,21 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [allocationId],
     );
+
+    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    if (allocRow.isNotEmpty) {
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      if (detailId > 0) {
+        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (detailRow.isNotEmpty) {
+          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          if (orderId > 0) {
+            await syncOrderAndAllocationsStatus(orderId);
+          }
+        }
+      }
+    }
+
     await _uploadAllocationStatusToCloud(allocationId);
     CloudSyncService().notifyChange();
   }
