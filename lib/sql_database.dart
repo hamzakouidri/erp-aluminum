@@ -3104,6 +3104,16 @@ class SqlDatabase {
     final isMfgPartial = sLower.contains('partial manufacturing') || sLower.contains('تصنيع جزئي') || sLower.contains('التصنيع الجزئي');
     final isDistPartial = sLower.contains('partial distribution') || sLower.contains('توزيع جزئي') || sLower.contains('التوزيع الجزئي');
 
+    final isPreMfg = sLower == 'pending' ||
+                     sLower == 'draft' ||
+                     sLower == 'new' ||
+                     sLower == 'confirmed' ||
+                     sLower == 'in progress' ||
+                     sLower.contains('attente') ||
+                     sLower.contains('انتظار') ||
+                     sLower.contains('مؤكد') ||
+                     sLower.contains('قياسات');
+
     for (var i = 0; i < details.length; i++) {
       final detailId = (details[i]['id'] as num?)?.toInt() ?? 0;
       if (detailId <= 0) continue;
@@ -3113,7 +3123,23 @@ class SqlDatabase {
         if (allocId <= 0) continue;
         Map<String, dynamic> updates = {};
 
-        if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
+        if (isPreMfg) {
+          updates['is_manufactured'] = 0;
+          updates['manufactured_at'] = null;
+          updates['is_glass_installed'] = 0;
+          updates['glass_installed_at'] = null;
+          updates['is_distributed'] = 0;
+          updates['distributed_at'] = null;
+          updates['is_transferred_to_dist'] = 0;
+          updates['transferred_at'] = null;
+          updates['is_installed'] = 0;
+          updates['installed_at'] = null;
+          updates['is_completed'] = 0;
+          updates['completed_at'] = null;
+          updates['has_reserve'] = 0;
+          updates['reserve_notes'] = null;
+          updates['reserve_at'] = null;
+        } else if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
           updates['is_manufactured'] = 1;
           updates['manufactured_at'] = nowStr;
           updates['is_glass_installed'] = 1;
