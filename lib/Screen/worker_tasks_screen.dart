@@ -47,7 +47,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshTasks(); // ✅ نسحب أحدث البيانات من السحابة عند الدخول للشاشة
+    _loadTasks(); // ⚡ 1. القراءة المحلية السريعة فوراً (تنهي التحميل بأقل من 50 مالي ثانية)
+    _refreshTasks(silent: true); // ⚡ 2. المزامنة والاستعادة السحابية في الخلفية دون حظر الواجهة
     _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
       if (mounted) {
         if (!_isLocalChangePending) {
@@ -64,25 +65,20 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     super.dispose();
   }
 
-  // ✅ دالة التحديث الكامل (السحابة + المحلي) مع دعم التحديث الصامت بدون إخفاء الشاشة
-  Future<void> _refreshTasks({bool silent = false}) async {
-    if (_allTasks.isEmpty && !silent) {
-      setState(() => _isLoading = true);
-    }
+  // ✅ دالة التحديث الكامل (السحابة + المحلي) بالتحديث الصامت خلف الكواليس
+  Future<void> _refreshTasks({bool silent = true}) async {
     String restoreError = '';
     try {
       final settings = Provider.of<AppSettingsProvider>(context, listen: false);
       if (!settings.isManager) {
         try {
           final svc = CloudSyncService();
-          await svc.init(); // ✅ ضروري لتهيئة workshopId قبل الاستعادة
+          await svc.init(); // ✅ تهيئة workshopId
           await svc.restoreFromCloud();
-          // ✅ ربط الإسنادات بـ UID الصحيح للعامل بعد الاستعادة
           await widget.db.relinkCurrentWorkerAllocations();
         } catch (e) {
           debugPrint('Worker cloud restore failed: $e');
           restoreError = '❌ خطأ مزامنة السحابة: $e\n';
-          // حتى لو فشلت السحابة، نحاول ربط الإسنادات بالبيانات المحلية
           await widget.db.relinkCurrentWorkerAllocations();
         }
       } else {
@@ -93,11 +89,13 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         }
       }
     } finally {
-      await _loadTasks(silent: true);
-      if (restoreError.isNotEmpty) {
-        setState(() {
-          _debugInfo = restoreError + _debugInfo;
-        });
+      if (mounted) {
+        await _loadTasks(silent: true);
+        if (restoreError.isNotEmpty) {
+          setState(() {
+            _debugInfo = restoreError + _debugInfo;
+          });
+        }
       }
     }
   }
