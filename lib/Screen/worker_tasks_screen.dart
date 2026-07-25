@@ -397,6 +397,33 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       ),
       body: Column(
         children: [
+          // ── شريط تصفير البيانات البارز للتطوير ─────────────────────────
+          Container(
+            color: Colors.red.shade900,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  lang == AppLanguage.arabic ? '🧪 تصفير المهام (للتطوير)' : '🧪 Réinitialiser (Dev)',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.red.shade900,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  onPressed: () => _confirmResetTasksData(context, lang),
+                  icon: const Icon(Icons.delete_sweep, size: 18),
+                  label: Text(
+                    lang == AppLanguage.arabic ? 'تصفير كافة المهام 🧹' : 'Effacer Tout 🧹',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
           // ── فلترة المهام ──────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),

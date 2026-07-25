@@ -223,6 +223,33 @@ class _ExternalOperationsHubScreenState
       ),
       body: Column(
         children: [
+          // ── شريط تصفير البيانات البارز للتطوير ─────────────────────────
+          Container(
+            color: Colors.red.shade900,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _tr('🧪 تصفير التركيبات (للتطوير)', '🧪 Réinitialiser (Dev)', '🧪 Reset (Dev)', lang),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.red.shade900,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  onPressed: () => _confirmResetInstallationData(context, lang),
+                  icon: const Icon(Icons.delete_sweep, size: 18),
+                  label: Text(
+                    _tr('تصفير التركيبات 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
           // ── 1. قائمة علوية زالقة هوريزونتال (Horizontal Scrollable Menu Bar) ───────
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),

@@ -163,21 +163,50 @@ class _WorkerWeeklySettlementScreenState
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _workers.isEmpty
-              ? Center(
-                  child: Text(
-                    lang == AppLanguage.arabic ? 'لا يوجد عمال مسجلون حالياً' : 'Aucun ouvrier',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 15),
+      body: Column(
+        children: [
+          Container(
+            color: Colors.red.shade900,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  lang == AppLanguage.arabic ? '🧪 تصفير المحاسبة (للتطوير)' : '🧪 Réinitialiser (Dev)',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.red.shade900,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _workers.length,
-                    itemBuilder: (context, index) {
+                  onPressed: () => _confirmResetWeeklySettlementData(context, lang),
+                  icon: const Icon(Icons.delete_sweep, size: 18),
+                  label: Text(
+                    lang == AppLanguage.arabic ? 'تصفير المحاسبة 🧹' : 'Effacer Tout 🧹',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _workers.isEmpty
+                    ? Center(
+                        child: Text(
+                          lang == AppLanguage.arabic ? 'لا يوجد عمال مسجلون حالياً' : 'Aucun ouvrier',
+                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 15),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadData,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _workers.length,
+                          itemBuilder: (context, index) {
                       final worker = _workers[index];
                       final uid = worker['uid']?.toString() ?? '';
                       final summary = _workerSummaries[uid] ??
@@ -308,6 +337,9 @@ class _WorkerWeeklySettlementScreenState
                     },
                   ),
                 ),
+          ),
+        ],
+      ),
     );
   }
 

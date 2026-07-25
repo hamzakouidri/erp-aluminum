@@ -13,6 +13,7 @@ import '../settings/localization.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../services/cloud_sync_service.dart';
 
 class DistributionTrackingScreen extends StatefulWidget {
   const DistributionTrackingScreen({super.key});
@@ -455,6 +456,51 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     );
   }
 
+  Future<void> _confirmResetInstallationData(BuildContext context, AppLanguage lang) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد المسح الكلي للتركيبات', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+        content: const Text('هل أنت تأكد من تصفير ومسح جميع بيانات التركيبات والتحفظات الميدانية بالتطوير؟', style: TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('مسح كلي 🧹', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final db = await _db.db;
+      if (db != null) {
+        await db.rawUpdate('''
+          UPDATE WorkerAllocations 
+          SET is_transferred_to_dist = 0, transferred_at = NULL,
+              is_distributed = 0, distributed_at = NULL,
+              is_installed = 0, installed_at = NULL,
+              is_completed = 0, completed_at = NULL,
+              has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
+        ''');
+      }
+      CloudSyncService().notifyChange();
+      await _loadDeliveries();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم مسح وتصفير كافة بيانات التركيبات بنجاح 🧹'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
@@ -465,6 +511,19 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       appBar: AppBar(
         title: Text(Localization.translate('خطط التوزيع والتتبع المباشر', lang)),
         actions: [
+          ElevatedButton.icon(
+            onPressed: () => _confirmResetInstallationData(context, lang),
+            icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+            label: const Text(
+              'تصفير التركيبات 🧹',
+              style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              elevation: 0,
+            ),
+          ),
+          const SizedBox(width: 8),
           ElevatedButton.icon(
             onPressed: _showCreatePlanDialog,
             icon: Icon(Icons.add, color: Theme.of(context).cardColor),
