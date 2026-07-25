@@ -169,18 +169,7 @@ class _ExternalOperationsHubScreenState
     );
 
     if (confirm == true) {
-      final db = await widget.db.db;
-      if (db != null) {
-        await db.rawUpdate('''
-          UPDATE WorkerAllocations 
-          SET is_transferred_to_dist = 0, transferred_at = NULL,
-              is_distributed = 0, distributed_at = NULL,
-              is_installed = 0, installed_at = NULL,
-              is_completed = 0, completed_at = NULL,
-              has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
-        ''');
-      }
-      CloudSyncService().notifyChange();
+      await widget.db.clearAllInstallationDataFromCloudAndLocal();
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

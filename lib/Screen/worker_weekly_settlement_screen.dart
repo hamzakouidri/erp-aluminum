@@ -115,15 +115,7 @@ class _WorkerWeeklySettlementScreenState
     );
 
     if (confirm == true) {
-      final db = await widget.db.db;
-      if (db != null) {
-        await db.rawUpdate('UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL');
-        await db.rawUpdate('UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL');
-        try {
-          await db.rawDelete('DELETE FROM WorkerSettlements');
-        } catch (_) {}
-      }
-      CloudSyncService().notifyChange();
+      await widget.db.clearAllWeeklySettlementsFromCloudAndLocal();
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

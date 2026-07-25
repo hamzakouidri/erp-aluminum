@@ -340,16 +340,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     );
 
     if (confirm == true) {
-      final db = await widget.db.db;
-      if (db != null) {
-        await db.rawDelete('DELETE FROM WorkerAllocations');
-      }
-      CloudSyncService().notifyChange();
-      await _refreshTasks();
+      await widget.db.clearAllWorkerAllocationsFromCloudAndLocal();
+      await _loadTasks();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(lang == AppLanguage.arabic ? 'تم مسح وتصفير كافة الإسنادات والمهام بنجاح 🧹' : 'Toutes les tâches ont été réinitialisées 🧹'),
+            content: Text(lang == AppLanguage.arabic ? 'تم مسح وتصفير كافة الإسنادات والمهام بنجاح محلياً ومنا السحابة 🧹' : 'Toutes les tâches ont été réinitialisées 🧹'),
             backgroundColor: Colors.red,
           ),
         );

@@ -3280,6 +3280,190 @@ class SqlDatabase {
     return res;
   }
 
+  /// 🧹 تصفير وحذف جميع المهام والإسنادات محلياً وفي السحابة للتطوير
+  Future<void> clearAllWorkerAllocationsFromCloudAndLocal() async {
+    Database? myDb = await db;
+    if (myDb != null) {
+      await myDb.rawDelete('DELETE FROM WorkerAllocations');
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        final statusDocs = await FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('worker_allocations_status')
+            .get();
+        for (var doc in statusDocs.docs) {
+          await doc.reference.delete();
+        }
+
+        final latestRef = FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('backups')
+            .doc('latest');
+
+        final latestSnap = await latestRef.get();
+        if (latestSnap.exists && latestSnap.data() != null) {
+          final map = latestSnap.data()!;
+          if (map.containsKey('data_json')) {
+            final rawJson = map['data_json']?.toString() ?? '{}';
+            try {
+              final Map<String, dynamic> allData = jsonDecode(rawJson);
+              allData['WorkerAllocations'] = [];
+              await latestRef.set({
+                'data_json': jsonEncode(allData),
+                'updated_at': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+            } catch (e) {
+              debugPrint('Error updating cloud backup json: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing cloud allocations: $e');
+    }
+
+    CloudSyncService().notifyChange();
+  }
+
+  /// 🧹 تصفير بيانات التركيبات محلياً وفي السحابة للتطوير
+  Future<void> clearAllInstallationDataFromCloudAndLocal() async {
+    Database? myDb = await db;
+    if (myDb != null) {
+      await myDb.rawUpdate('''
+        UPDATE WorkerAllocations 
+        SET is_transferred_to_dist = 0, transferred_at = NULL,
+            is_distributed = 0, distributed_at = NULL,
+            is_installed = 0, installed_at = NULL,
+            is_completed = 0, completed_at = NULL,
+            has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
+      ''');
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        final latestRef = FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('backups')
+            .doc('latest');
+
+        final latestSnap = await latestRef.get();
+        if (latestSnap.exists && latestSnap.data() != null) {
+          final map = latestSnap.data()!;
+          if (map.containsKey('data_json')) {
+            final rawJson = map['data_json']?.toString() ?? '{}';
+            try {
+              final Map<String, dynamic> allData = jsonDecode(rawJson);
+              if (allData.containsKey('WorkerAllocations') && allData['WorkerAllocations'] is List) {
+                final List allocs = allData['WorkerAllocations'];
+                for (var a in allocs) {
+                  if (a is Map) {
+                    a['is_transferred_to_dist'] = 0;
+                    a['transferred_at'] = null;
+                    a['is_distributed'] = 0;
+                    a['distributed_at'] = null;
+                    a['is_installed'] = 0;
+                    a['installed_at'] = null;
+                    a['is_completed'] = 0;
+                    a['completed_at'] = null;
+                    a['has_reserve'] = 0;
+                    a['reserve_notes'] = null;
+                    a['reserve_at'] = null;
+                  }
+                }
+                allData['WorkerAllocations'] = allocs;
+                await latestRef.set({
+                  'data_json': jsonEncode(allData),
+                  'updated_at': FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+              }
+            } catch (e) {
+              debugPrint('Error updating cloud backup json: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing cloud installation data: $e');
+    }
+
+    CloudSyncService().notifyChange();
+  }
+
+  /// 🧹 تصفير سجلات المحاسبة محلياً وفي السحابة للتطوير
+  Future<void> clearAllWeeklySettlementsFromCloudAndLocal() async {
+    Database? myDb = await db;
+    if (myDb != null) {
+      await myDb.rawUpdate('UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL');
+      await myDb.rawUpdate('UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL');
+      try {
+        await myDb.rawDelete('DELETE FROM WorkerSettlements');
+      } catch (_) {}
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        final latestRef = FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('backups')
+            .doc('latest');
+
+        final latestSnap = await latestRef.get();
+        if (latestSnap.exists && latestSnap.data() != null) {
+          final map = latestSnap.data()!;
+          if (map.containsKey('data_json')) {
+            final rawJson = map['data_json']?.toString() ?? '{}';
+            try {
+              final Map<String, dynamic> allData = jsonDecode(rawJson);
+              if (allData.containsKey('WorkerAllocations') && allData['WorkerAllocations'] is List) {
+                final List allocs = allData['WorkerAllocations'];
+                for (var a in allocs) {
+                  if (a is Map) {
+                    a['is_settled'] = 0;
+                    a['settlement_id'] = null;
+                  }
+                }
+                allData['WorkerAllocations'] = allocs;
+              }
+              if (allData.containsKey('WorkerTransactions') && allData['WorkerTransactions'] is List) {
+                final List txs = allData['WorkerTransactions'];
+                for (var t in txs) {
+                  if (t is Map) {
+                    t['is_settled'] = 0;
+                    t['settlement_id'] = null;
+                  }
+                }
+                allData['WorkerTransactions'] = txs;
+              }
+              allData['WorkerSettlements'] = [];
+              await latestRef.set({
+                'data_json': jsonEncode(allData),
+                'updated_at': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+            } catch (e) {
+              debugPrint('Error updating cloud backup json: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing cloud settlements: $e');
+    }
+
+    CloudSyncService().notifyChange();
+  }
+
   Future<List<Map<String, dynamic>>> readWorkerUnsettledAllocations(
     String workerUid,
   ) async {
