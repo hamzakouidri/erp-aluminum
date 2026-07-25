@@ -130,6 +130,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (widget.firebaseError != null) return;
         final syncService = CloudSyncService();
         await syncService.init().timeout(const Duration(seconds: 10));
+        syncService.startListeningForUpdates(() {
+          debugPrint('CloudSyncService: Realtime update received!');
+        });
       } catch (e) {
         debugPrint('CloudSyncService post frame init error: $e');
       }
