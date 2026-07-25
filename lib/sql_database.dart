@@ -3972,26 +3972,17 @@ class SqlDatabase {
     if (myDb == null) return [];
     final cleanEmail = workerEmail.trim().toLowerCase();
 
-    // 1. ربط حقيقي للعامل بجميع المعرفات المحتملة (UID، البريد الإلكتروني، أو الاسم)
+    // 1. ربط حقيقي للعامل بالبريد الإلكتروني المطابق فقط (تجنب المطابقة بالأسماء حتى لا يتم دمج إسنادات العمال)
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      final cleanName = (user?.displayName ?? '').trim().toLowerCase();
+      if (cleanEmail.isNotEmpty) {
+        final allEmps = await myDb.query('Employees');
+        for (var emp in allEmps) {
+          final eUid = emp['uid']?.toString() ?? '';
+          final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
 
-      final allEmps = await myDb.query('Employees');
-      for (var emp in allEmps) {
-        final eUid = emp['uid']?.toString() ?? '';
-        final eEmail = (emp['email']?.toString() ?? '').trim().toLowerCase();
-        final eName = (emp['name']?.toString() ?? '').trim().toLowerCase();
-
-        bool isMatch = false;
-        if (cleanEmail.isNotEmpty && eEmail.isNotEmpty && cleanEmail == eEmail) {
-          isMatch = true;
-        } else if (cleanName.isNotEmpty && eName.isNotEmpty && (cleanName == eName || eName.contains(cleanName) || cleanName.contains(eName))) {
-          isMatch = true;
-        }
-
-        if (isMatch && eUid.isNotEmpty && eUid != workerUid) {
-          await linkLocalWorker(eUid, workerUid, cleanEmail.isNotEmpty ? cleanEmail : eEmail);
+          if (eEmail.isNotEmpty && cleanEmail == eEmail && eUid.isNotEmpty && eUid != workerUid) {
+            await linkLocalWorker(eUid, workerUid, cleanEmail);
+          }
         }
       }
     } catch (e) {
@@ -4095,7 +4086,7 @@ class SqlDatabase {
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
-      LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR CAST(e.id AS TEXT) = wa.worker_uid OR (e.email IS NOT NULL AND LOWER(e.email) = LOWER(wa.worker_uid)))
       WHERE (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
       ORDER BY wa.assigned_at DESC
     ''');
