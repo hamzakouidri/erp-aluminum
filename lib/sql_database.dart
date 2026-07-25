@@ -3971,8 +3971,9 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return [];
     final cleanEmail = workerEmail.trim().toLowerCase();
+    final cleanUid = workerUid.trim().toLowerCase();
 
-    // 1. استعلام دقيق يسترجع فقط إسنادات هذا العامل بـ UID أو البريد الإلكتروني المحقق فقط
+    // 1. استعلام دقيق يضمن فلترة وحصر الإسنادات المسندة لهذا العامل فقط بدون تسريب إسنادات غيره
     final List<Map<String, dynamic>> results;
     if (cleanEmail.isNotEmpty) {
       results = await myDb.rawQuery('''
@@ -3985,19 +3986,18 @@ class SqlDatabase {
         LEFT JOIN Client cl ON c.client_id = cl.id
         LEFT JOIN Employees e ON (
           wa.worker_uid = e.uid 
-          OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
           OR CAST(e.id AS TEXT) = wa.worker_uid
+          OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = LOWER(wa.worker_uid))
         )
         WHERE (
           wa.worker_uid = ?
-          OR (LOWER(wa.worker_uid) = ?)
-          OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
-          OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE email IS NOT NULL AND email != '' AND LOWER(email) = ?)
-          OR wa.worker_uid IN (SELECT uid FROM Employees WHERE email IS NOT NULL AND email != '' AND LOWER(email) = ?)
+          OR LOWER(wa.worker_uid) = ?
+          OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE (uid = ? OR (email IS NOT NULL AND LOWER(email) = ?)))
+          OR wa.worker_uid IN (SELECT uid FROM Employees WHERE (uid = ? OR (email IS NOT NULL AND LOWER(email) = ?)))
         )
           AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
         ORDER BY wa.assigned_at DESC
-      ''', [cleanEmail, workerUid, cleanEmail, cleanEmail, cleanEmail, cleanEmail]);
+      ''', [workerUid, cleanEmail, cleanUid, cleanEmail, cleanUid, cleanEmail]);
     } else {
       results = await myDb.rawQuery('''
         SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
@@ -4007,11 +4007,18 @@ class SqlDatabase {
         LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
         LEFT JOIN Commandes c ON cd.id_commandes = c.id
         LEFT JOIN Client cl ON c.client_id = cl.id
-        LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR CAST(e.id AS TEXT) = wa.worker_uid)
-        WHERE (wa.worker_uid = ? OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE uid = ?))
+        LEFT JOIN Employees e ON (
+          wa.worker_uid = e.uid 
+          OR CAST(e.id AS TEXT) = wa.worker_uid
+        )
+        WHERE (
+          wa.worker_uid = ?
+          OR wa.worker_uid IN (SELECT CAST(id AS TEXT) FROM Employees WHERE uid = ?)
+          OR wa.worker_uid IN (SELECT uid FROM Employees WHERE CAST(id AS TEXT) = ?)
+        )
           AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
         ORDER BY wa.assigned_at DESC
-      ''', [workerUid, workerUid]);
+      ''', [workerUid, workerUid, workerUid]);
     }
 
     return results;
