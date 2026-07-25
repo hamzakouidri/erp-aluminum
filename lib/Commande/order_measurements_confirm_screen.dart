@@ -14,6 +14,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../Screen/order_allocation_screen.dart';
+import '../services/cloud_sync_service.dart';
 
 class OrderMeasurementsConfirmScreen extends StatefulWidget {
   final Map<String, dynamic> orderData;
@@ -87,10 +88,35 @@ class _OrderMeasurementsConfirmScreenState
         }
 
         final instancesJson = detail['instances_json'];
+        final confirmedJson = detail['confirmed_mesures_json'];
         List<dynamic> parsedInstances = [];
         if (instancesJson != null && instancesJson.toString().isNotEmpty) {
           try {
             parsedInstances = jsonDecode(instancesJson.toString()) as List<dynamic>;
+          } catch (_) {}
+        } else if (confirmedJson != null && confirmedJson.toString().isNotEmpty) {
+          try {
+            final List confirmedList = jsonDecode(confirmedJson.toString()) as List<dynamic>;
+            if (confirmedList.isNotEmpty) {
+              final Map<String, Map<String, dynamic>> grouped = {};
+              for (var c in confirmedList) {
+                final w = (c['largeur'] ?? c['width'] ?? originalW) as int;
+                final h = (c['hauteur'] ?? c['height'] ?? originalH) as int;
+                final pos = (c['position'] ?? defaultPos).toString();
+                final key = '$w-$h-$pos';
+                if (grouped.containsKey(key)) {
+                  grouped[key]!['qty'] = (grouped[key]!['qty'] as int) + 1;
+                } else {
+                  grouped[key] = {
+                    'width': w,
+                    'height': h,
+                    'qty': 1,
+                    'position': pos,
+                  };
+                }
+              }
+              parsedInstances = grouped.values.toList();
+            }
           } catch (_) {}
         }
 
@@ -98,14 +124,13 @@ class _OrderMeasurementsConfirmScreenState
         if (parsedInstances.isNotEmpty) {
           for (final inst in parsedInstances) {
             editorsList.add(InstanceEditor(
-              widthCtrl: TextEditingController(text: inst['width']?.toString() ?? originalW.toString()),
-              heightCtrl: TextEditingController(text: inst['height']?.toString() ?? originalH.toString()),
+              widthCtrl: TextEditingController(text: inst['width']?.toString() ?? inst['largeur']?.toString() ?? originalW.toString()),
+              heightCtrl: TextEditingController(text: inst['height']?.toString() ?? inst['hauteur']?.toString() ?? originalH.toString()),
               qtyCtrl: TextEditingController(text: inst['qty']?.toString() ?? '1'),
               positionCtrl: TextEditingController(text: inst['position']?.toString() ?? defaultPos),
             ));
           }
         } else {
-          // Default to 1 row representing all quantities
           editorsList.add(InstanceEditor(
             widthCtrl: TextEditingController(text: originalW.toString()),
             heightCtrl: TextEditingController(text: originalH.toString()),
@@ -144,6 +169,69 @@ class _OrderMeasurementsConfirmScreenState
     return sum;
   }
 
+  Future<bool> _saveAllMeasurements({bool quietly = false}) async {
+    try {
+      final myDb = await widget.db.db;
+      if (myDb == null) return false;
+
+      for (final detail in _detailsList) {
+        final detailId = detail['id'] as int;
+        final list = _editors[detailId] ?? [];
+        if (list.isEmpty) continue;
+
+        final List<Map<String, dynamic>> instancesData = [];
+        final List<Map<String, dynamic>> confirmedData = [];
+
+        for (final ed in list) {
+          final w = int.tryParse(ed.widthCtrl.text) ?? 0;
+          final h = int.tryParse(ed.heightCtrl.text) ?? 0;
+          final q = int.tryParse(ed.qtyCtrl.text) ?? 0;
+          final pos = ed.positionCtrl.text.trim();
+
+          instancesData.add({
+            'width': w,
+            'height': h,
+            'qty': q,
+            'position': pos,
+          });
+
+          for (int k = 0; k < q; k++) {
+            confirmedData.add({
+              'largeur': w,
+              'hauteur': h,
+              'width': w,
+              'height': h,
+              'position': pos,
+            });
+          }
+        }
+
+        final instancesStr = jsonEncode(instancesData);
+        final confirmedStr = jsonEncode(confirmedData);
+
+        await myDb.update(
+          'Commandes_details',
+          {
+            'instances_json': instancesStr,
+            'confirmed_mesures_json': confirmedStr,
+          },
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
+      }
+
+      CloudSyncService().notifyChange();
+      try {
+        await CloudSyncService().backupToCloud();
+      } catch (_) {}
+
+      return true;
+    } catch (e) {
+      debugPrint('Error saving all measurements: $e');
+      return false;
+    }
+  }
+
   Future<void> _saveInstances(int detailId, int totalQty) async {
     final list = _editors[detailId] ?? [];
     final sum = _getSumQty(detailId);
@@ -160,42 +248,69 @@ class _OrderMeasurementsConfirmScreenState
       return;
     }
 
-    final List<Map<String, dynamic>> data = [];
+    final List<Map<String, dynamic>> instancesData = [];
+    final List<Map<String, dynamic>> confirmedData = [];
+
     for (final ed in list) {
       final w = int.tryParse(ed.widthCtrl.text) ?? 0;
       final h = int.tryParse(ed.heightCtrl.text) ?? 0;
       final q = int.tryParse(ed.qtyCtrl.text) ?? 0;
       final pos = ed.positionCtrl.text.trim();
-      data.add({
+
+      instancesData.add({
         'width': w,
         'height': h,
         'qty': q,
         'position': pos,
       });
+
+      for (int k = 0; k < q; k++) {
+        confirmedData.add({
+          'largeur': w,
+          'hauteur': h,
+          'width': w,
+          'height': h,
+          'position': pos,
+        });
+      }
     }
 
-    final jsonStr = jsonEncode(data);
+    final instancesStr = jsonEncode(instancesData);
+    final confirmedStr = jsonEncode(confirmedData);
+
     try {
       final myDb = await widget.db.db;
       if (myDb != null) {
         await myDb.update(
           'Commandes_details',
-          {'instances_json': jsonStr},
+          {
+            'instances_json': instancesStr,
+            'confirmed_mesures_json': confirmedStr,
+          },
           where: 'id = ?',
           whereArgs: [detailId],
         );
+        CloudSyncService().notifyChange();
+        try {
+          await CloudSyncService().backupToCloud();
+        } catch (_) {}
+
         await _loadDetails();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: Colors.green,
-            content: Text('تم حفظ تفاصيل قياسات هذه النافذة بنجاح!'),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Colors.green,
+              content: Text('تم حفظ تفاصيل قياسات هذه النافذة والمزامنة بنجاح! ✅'),
+            ),
+          );
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء الحفظ: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء الحفظ: $e')),
+        );
+      }
     }
   }
 
@@ -680,9 +795,16 @@ class _OrderMeasurementsConfirmScreenState
     final textColor = isDark ? Colors.white : Colors.black87;
     final subtextColor = isDark ? Colors.grey.shade300 : Colors.black54;
 
-    return Directionality(
-      textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
-      child: Scaffold(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          await _saveAllMeasurements(quietly: true);
+        }
+      },
+      child: Directionality(
+        textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
+        child: Scaffold(
         backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF3F4F6),
         appBar: AppBar(
           backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.indigo.shade800,
@@ -1139,34 +1261,8 @@ class _OrderMeasurementsConfirmScreenState
 
                         if (!allValid) return;
 
-                        // 2. Save details to DB
-                        for (final detail in _detailsList) {
-                          final detailId = detail['id'] as int;
-                          final list = _editors[detailId] ?? [];
-                          final List<Map<String, dynamic>> data = [];
-                          for (final ed in list) {
-                            final w = int.tryParse(ed.widthCtrl.text) ?? 0;
-                            final h = int.tryParse(ed.heightCtrl.text) ?? 0;
-                            final q = int.tryParse(ed.qtyCtrl.text) ?? 0;
-                            final pos = ed.positionCtrl.text.trim();
-                            data.add({
-                              'width': w,
-                              'height': h,
-                              'qty': q,
-                              'position': pos,
-                            });
-                          }
-                          final jsonStr = jsonEncode(data);
-                          final myDb = await widget.db.db;
-                          if (myDb != null) {
-                            await myDb.update(
-                              'Commandes_details',
-                              {'instances_json': jsonStr},
-                              where: 'id = ?',
-                              whereArgs: [detailId],
-                            );
-                          }
-                        }
+                        // 2. Save details to DB and cloud
+                        await _saveAllMeasurements();
 
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1200,6 +1296,7 @@ class _OrderMeasurementsConfirmScreenState
                   ),
                 ),
               ),
+        ),
       ),
     );
   }
