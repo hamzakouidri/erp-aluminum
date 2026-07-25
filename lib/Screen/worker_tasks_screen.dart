@@ -51,7 +51,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
       if (mounted) {
         if (!_isLocalChangePending) {
-          _loadTasks(); // ✅ عند التحديث التلقائي، نقرأ من المحلي فقط لتجنب الدوران اللانهائي
+          _loadTasks(silent: true); // ✅ تحديث صامت بدون إخفاء شاشة المهام
         }
       }
     });
@@ -64,9 +64,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     super.dispose();
   }
 
-  // ✅ دالة التحديث الكامل (السحابة + المحلي)
-  Future<void> _refreshTasks() async {
-    setState(() => _isLoading = true);
+  // ✅ دالة التحديث الكامل (السحابة + المحلي) مع دعم التحديث الصامت بدون إخفاء الشاشة
+  Future<void> _refreshTasks({bool silent = false}) async {
+    if (_allTasks.isEmpty && !silent) {
+      setState(() => _isLoading = true);
+    }
     String restoreError = '';
     try {
       final settings = Provider.of<AppSettingsProvider>(context, listen: false);
@@ -91,7 +93,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         }
       }
     } finally {
-      await _loadTasks();
+      await _loadTasks(silent: true);
       if (restoreError.isNotEmpty) {
         setState(() {
           _debugInfo = restoreError + _debugInfo;
@@ -100,9 +102,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     }
   }
 
-  // ✅ دالة القراءة المحلية فقط لتفادي التكرار اللانهائي
-  Future<void> _loadTasks() async {
-    setState(() => _isLoading = true);
+  // ✅ دالة القراءة المحلية مع التحديث اللحظي الصامت في الخلفية
+  Future<void> _loadTasks({bool silent = false}) async {
+    if (_allTasks.isEmpty && !silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -147,12 +151,15 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         setState(() {
           _allTasks = tasks;
           _applyFilters();
+          _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading worker tasks: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

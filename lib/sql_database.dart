@@ -3394,6 +3394,32 @@ class SqlDatabase {
     String? unitPosition,
   }) async {
     Database? myDb = await db;
+    if (myDb == null) return 0;
+
+    // 🛡️ 1. Hard constraint check: ensure total allocated quantity for this detail does not exceed detail.quantity
+    final details = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+    if (details.isNotEmpty) {
+      final totalAllowedQty = (details.first['quantity'] ?? details.first['nbr'] ?? 1) as int;
+      final existingAllocs = await readWorkerAllocations(detailId);
+
+      int currentAllocatedSum = 0;
+      for (var a in existingAllocs) {
+        if (unitIndex != null) {
+          if (a['unit_index'] == unitIndex) {
+            currentAllocatedSum += (a['quantity'] as int);
+          }
+        } else {
+          currentAllocatedSum += (a['quantity'] as int);
+        }
+      }
+
+      int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
+      if (currentAllocatedSum + quantity > maxAllowed) {
+        throw Exception('الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}');
+      }
+    }
+
+    // 🛡️ 2. Clean slate initialization: reset all status flags for new allocation
     final Map<String, dynamic> row = {
       'commande_detail_id': detailId,
       'worker_uid': workerUid,
@@ -3401,12 +3427,75 @@ class SqlDatabase {
       'worker_price': workerPrice,
       'assigned_at': DateTime.now().toIso8601String(),
       'is_settled': 0,
+      'is_manufactured': 0,
+      'manufactured_at': null,
+      'is_glass_installed': 0,
+      'glass_installed_at': null,
+      'is_distributed': 0,
+      'distributed_at': null,
+      'is_transferred_to_dist': 0,
+      'transferred_at': null,
     };
     if (unitIndex != null) row['unit_index'] = unitIndex;
     if (unitPosition != null && unitPosition.isNotEmpty) row['unit_position'] = unitPosition;
 
-    final res = await myDb!.insert('WorkerAllocations', row);
+    final res = await myDb.insert('WorkerAllocations', row);
     await _uploadAllocationStatusToCloud(res);
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
+  Future<int> updateWorkerAllocationDetails(
+    int allocationId,
+    String workerUid,
+    int quantity,
+    double workerPrice,
+  ) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+
+    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    if (allocRow.isNotEmpty) {
+      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final unitIndex = allocRow.first['unit_index'];
+      if (detailId > 0) {
+        final details = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        if (details.isNotEmpty) {
+          final totalAllowedQty = (details.first['quantity'] ?? details.first['nbr'] ?? 1) as int;
+          final existingAllocs = await readWorkerAllocations(detailId);
+
+          int currentAllocatedSum = 0;
+          for (var a in existingAllocs) {
+            if ((a['id'] as num?)?.toInt() == allocationId) continue;
+            if (unitIndex != null) {
+              if (a['unit_index'] == unitIndex) {
+                currentAllocatedSum += (a['quantity'] as int);
+              }
+            } else {
+              currentAllocatedSum += (a['quantity'] as int);
+            }
+          }
+
+          int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
+          if (currentAllocatedSum + quantity > maxAllowed) {
+            throw Exception('الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}');
+          }
+        }
+      }
+    }
+
+    final res = await myDb.update(
+      'WorkerAllocations',
+      {
+        'worker_uid': workerUid,
+        'quantity': quantity,
+        'worker_price': workerPrice,
+      },
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
+
+    await _uploadAllocationStatusToCloud(allocationId);
     CloudSyncService().notifyChange();
     return res;
   }
@@ -4529,30 +4618,6 @@ class SqlDatabase {
       processed.add(mutable);
     }
     return processed;
-  }
-
-  Future<void> updateWorkerAllocationDetails(
-    int allocationId,
-    String workerUid,
-    int quantity,
-    double price,
-  ) async {
-    Database? myDb = await db;
-    if (myDb == null) return;
-
-    await myDb.update(
-      'WorkerAllocations',
-      {
-        'worker_uid': workerUid,
-        'quantity': quantity,
-        'worker_price': price,
-      },
-      where: 'id = ?',
-      whereArgs: [allocationId],
-    );
-
-    await _uploadAllocationStatusToCloud(allocationId);
-    CloudSyncService().notifyChange();
   }
 
   Future<void> updateWorkerAllocationPrice(int allocationId, double price) async {
