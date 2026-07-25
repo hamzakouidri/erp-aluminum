@@ -158,14 +158,20 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
-          lang == AppLanguage.arabic ? 'أرشيف المهام والتصنيع 📦' : 'Archives des Tâches 📦',
+          lang == AppLanguage.arabic
+              ? 'أرشيف المهام والتوزيع 📦'
+              : (lang == AppLanguage.french
+                  ? 'Archives & Distribution 📦'
+                  : 'Tasks & Distribution Archive 📦'),
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadArchivedTasks,
-            tooltip: lang == AppLanguage.arabic ? 'تحديث' : 'Actualiser',
+            tooltip: lang == AppLanguage.arabic
+                ? 'تحديث'
+                : (lang == AppLanguage.french ? 'Actualiser' : 'Refresh'),
           ),
         ],
       ),
@@ -178,7 +184,11 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
               controller: _searchController,
               onChanged: (val) => setState(() => _searchQuery = val),
               decoration: InputDecoration(
-                hintText: lang == AppLanguage.arabic ? 'بحث باسم الزبون، العامل، النافذة، رقم الطلب...' : 'Rechercher...',
+                hintText: lang == AppLanguage.arabic
+                    ? 'بحث باسم الزبون، العامل، النافذة، رقم الطلب...'
+                    : (lang == AppLanguage.french
+                        ? 'Rechercher par client, ouvrier, élément...'
+                        : 'Search by client, worker, window, order #...'),
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
                 fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,

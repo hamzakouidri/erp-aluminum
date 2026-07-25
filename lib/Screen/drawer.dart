@@ -364,10 +364,12 @@ class _AppDrawerState extends State<AppDrawer> {
               leading: const Icon(Icons.archive_rounded, color: Colors.deepOrange),
               title: Text(lang == AppLanguage.arabic
                   ? 'أرشيف التوزيع والمهام'
-                  : (lang == AppLanguage.french ? 'Archives & Live' : 'Archive & Distribution')),
+                  : (lang == AppLanguage.french ? 'Archives & Distribution' : 'Tasks & Distribution Archive')),
               onTap: () {
                 _openScreen(
-                  lang == AppLanguage.arabic ? 'أرشيف التوزيع والمهام' : 'Archives & Live',
+                  lang == AppLanguage.arabic
+                      ? 'أرشيف التوزيع والمهام'
+                      : (lang == AppLanguage.french ? 'Archives & Distribution' : 'Tasks & Distribution Archive'),
                   Icons.archive_rounded,
                   WorkerArchiveScreen(db: db),
                   titleKey: 'worker_archive',

@@ -1048,13 +1048,13 @@ class _WelcomScreenState extends State<WelcomScreen> {
           icon: Icons.archive_rounded,
           label: lang == AppLanguage.arabic
               ? 'أرشيف التوزيع والمهام'
-              : (lang == AppLanguage.french ? 'Archives & Live' : 'Archive & Distribution'),
+              : (lang == AppLanguage.french ? 'Archives & Distribution' : 'Tasks & Distribution Archive'),
           color: const Color(0xFFEA580C), // Vivid Burnt Orange
           onTap: () => openAdaptiveScreen(
             context,
             title: lang == AppLanguage.arabic
                 ? 'أرشيف التوزيع والمهام'
-                : (lang == AppLanguage.french ? 'Archives & Live' : 'Archive & Distribution'),
+                : (lang == AppLanguage.french ? 'Archives & Distribution' : 'Tasks & Distribution Archive'),
             icon: Icons.archive_rounded,
             screen: WorkerArchiveScreen(db: db),
           ),
