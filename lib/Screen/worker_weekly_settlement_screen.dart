@@ -896,6 +896,122 @@ class _WorkerSettlementDetailScreenState
     );
   }
 
+  Future<void> _showAddDailyJobDialog() async {
+    final titleCtrl = TextEditingController(text: 'عمل يومي');
+    final noteCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final dateCtrl = TextEditingController(text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    final formKey = GlobalKey<FormState>();
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.work_history, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(
+              lang == AppLanguage.arabic ? 'إضافة عمل يومي للعامل' : 'Ajouter travail journalier',
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: lang == AppLanguage.arabic ? 'عنوان العمل (مثلاً: عمل يومي، تحفظات، تركيب خارج)' : 'Titre',
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? (lang == AppLanguage.arabic ? 'العنوان مطلوب' : 'Titre requis') : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: dateCtrl,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: lang == AppLanguage.arabic ? 'التاريخ' : 'Date',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: const Icon(Icons.calendar_today),
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: DateTime.tryParse(dateCtrl.text) ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: lang == AppLanguage.arabic ? 'أجرة/سعر هذا اليوم (د.ج)' : 'Prix / Tarif (DA)',
+                    border: const OutlineInputBorder(),
+                    suffixText: 'د.ج',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return lang == AppLanguage.arabic ? 'السعر مطلوب' : 'Prix requis';
+                    if (double.tryParse(v.trim()) == null || double.parse(v.trim()) < 0) {
+                      return lang == AppLanguage.arabic ? 'أدخل مبلغاً صحيحاً' : 'Montant invalide';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: noteCtrl,
+                  decoration: InputDecoration(
+                    labelText: lang == AppLanguage.arabic ? 'ملاحظات / تفاصيل العمل' : 'Notes / Détails',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: Text(lang == AppLanguage.arabic ? 'حفظ العمل اليومي' : 'Enregistrer'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
+      final price = double.parse(priceCtrl.text.trim());
+      await widget.db.addWorkerDailyJob(
+        workerUid: uid,
+        workDate: dateCtrl.text,
+        title: titleCtrl.text.trim(),
+        note: noteCtrl.text.trim().isNotEmpty ? noteCtrl.text.trim() : null,
+        price: price,
+      );
+      _loadDetails();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1100,6 +1216,94 @@ class _WorkerSettlementDetailScreenState
                                                 )
                                               : const Icon(Icons.open_in_new, size: 16, color: Colors.blue),
                                           onTap: () => _showAllocationDetailsDialog(a),
+                                        ),
+                                      );
+                                    },
+                                  ),
+
+                            const SizedBox(height: 16),
+
+                            // Section: Daily Jobs (عمل يومي)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  lang == AppLanguage.arabic ? '🗓️ الأعمال اليومية هذا الأسبوع:' : 'Travaux journaliers:',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Cairo',
+                                      fontSize: 15,
+                                      color: Colors.amber),
+                                ),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amber.shade800,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  ),
+                                  onPressed: _showAddDailyJobDialog,
+                                  icon: const Icon(Icons.add, size: 16),
+                                  label: Text(
+                                    lang == AppLanguage.arabic ? 'إضافة عمل يومي' : 'Ajouter',
+                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _unsettledDailyJobs.isEmpty
+                                ? Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? Colors.grey[900] : Colors.grey[100],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      lang == AppLanguage.arabic
+                                          ? 'لا توجد أعمال يومية مسجلة هذا الأسبوع'
+                                          : 'Aucun travail journalier',
+                                      style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
+                                          color: Colors.grey),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    itemCount: _unsettledDailyJobs.length,
+                                    itemBuilder: (context, idx) {
+                                      final j = _unsettledDailyJobs[idx];
+                                      final jobId = (j['id'] as num?)?.toInt() ?? 0;
+                                      final price = (j['price'] as num?)?.toDouble() ?? 0.0;
+                                      return Card(
+                                        margin: const EdgeInsets.only(bottom: 8),
+                                        elevation: 1,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        child: ListTile(
+                                          leading: const CircleAvatar(
+                                            backgroundColor: Colors.amber,
+                                            child: Icon(Icons.work_history, color: Colors.white, size: 18),
+                                          ),
+                                          title: Text(
+                                            '${j['title']} — $price د.ج',
+                                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                                          ),
+                                          subtitle: Text(
+                                            '📅 ${j['work_date'] ?? ''}${j['note'] != null ? '\n📝 ${j['note']}' : ''}',
+                                            style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
+                                          ),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                            onPressed: () async {
+                                              if (jobId > 0) {
+                                                await widget.db.deleteWorkerDailyJob(jobId);
+                                                _loadDetails();
+                                              }
+                                            },
+                                          ),
                                         ),
                                       );
                                     },
