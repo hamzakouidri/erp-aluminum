@@ -509,12 +509,15 @@ class _WorkerSettlementDetailScreenState
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
 
-    List<String> caisseNames = ['الصندوق الرئيسي', 'الصندوق المفرد'];
+    List<String> caisseNames = ['الصندوق الرئيسي', 'الصندوق المفرد', 'الحساب البنكي / البنك'];
     try {
       final caissesData = await widget.db.readCaisses();
       final names = caissesData.map((c) => c['name']?.toString() ?? '').where((n) => n.isNotEmpty).toList();
       if (names.isNotEmpty) {
         caisseNames = names;
+        if (!caisseNames.contains('الحساب البنكي / البنك')) {
+          caisseNames.add('الحساب البنكي / البنك');
+        }
       }
     } catch (_) {}
 

@@ -9,6 +9,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ReceiptPdfService {
@@ -28,11 +29,30 @@ class ReceiptPdfService {
       } catch (_) {}
     }
 
-    // تحميل الخط العربي
-    final cairoRegular = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final cairoBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-    final fontRegular = pw.Font.ttf(cairoRegular);
-    final fontBold = pw.Font.ttf(cairoBold);
+    // تحميل الخط العربي بشكل آمن
+    pw.Font fontRegular;
+    pw.Font fontBold;
+    try {
+      final cairoRegular = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+      fontRegular = pw.Font.ttf(cairoRegular);
+    } catch (_) {
+      try {
+        fontRegular = await PdfGoogleFonts.cairoRegular();
+      } catch (_) {
+        fontRegular = pw.Font.helvetica();
+      }
+    }
+
+    try {
+      final cairoBold = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
+      fontBold = pw.Font.ttf(cairoBold);
+    } catch (_) {
+      try {
+        fontBold = await PdfGoogleFonts.cairoBold();
+      } catch (_) {
+        fontBold = pw.Font.helveticaBold();
+      }
+    }
 
     final formatter = NumberFormat('#,##0.00');
     final isEncaissement =
@@ -325,9 +345,25 @@ class ReceiptPdfService {
   }
 
   static Future<void> shareReceipt(Map<String, dynamic> transaction) async {
-    final bytes = await generateReceiptPdfBytes(transaction);
-    final receiptId = transaction['id']?.toString() ?? '-';
-    await Printing.sharePdf(bytes: bytes, filename: 'receipt_$receiptId.pdf');
+    try {
+      final bytes = await generateReceiptPdfBytes(transaction);
+      final receiptId = transaction['id']?.toString() ?? '-';
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/receipt_$receiptId.pdf');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'وصل معاملة الصندوق رقم $receiptId',
+      );
+    } catch (_) {
+      try {
+        final bytes = await generateReceiptPdfBytes(transaction);
+        final receiptId = transaction['id']?.toString() ?? '-';
+        await Printing.sharePdf(bytes: bytes, filename: 'receipt_$receiptId.pdf');
+      } catch (e) {
+        debugPrint('Error sharing receipt: $e');
+      }
+    }
   }
 
   static Future<void> saveReceipt(Map<String, dynamic> transaction, BuildContext context) async {

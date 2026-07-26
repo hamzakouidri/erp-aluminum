@@ -7142,6 +7142,54 @@ class SqlDatabase {
     }
   }
 
+  Future<void> deallocateWorkerPayment(int workerId, double amount, String createdAt) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+
+    final workerRows = await myDb.query('Employees', where: 'id = ?', whereArgs: [workerId]);
+    if (workerRows.isEmpty) return;
+
+    final emp = workerRows.first;
+    final workerUid = (emp['uid']?.toString() ?? '').isNotEmpty
+        ? emp['uid'].toString()
+        : (emp['id']?.toString() ?? workerId.toString());
+    final email = emp['email']?.toString() ?? '';
+
+    List<String> allKeys = [];
+    if (workerUid.isNotEmpty) allKeys.add(workerUid);
+    if (workerId > 0 && !allKeys.contains(workerId.toString())) allKeys.add(workerId.toString());
+    if (email.isNotEmpty && !allKeys.contains(email)) allKeys.add(email);
+
+    final placeholders = List.filled(allKeys.length, '?').join(',');
+
+    // 1. Unsettle all allocations for this worker (is_settled = 0, settled_at = null)
+    await myDb.rawUpdate(
+      "UPDATE WorkerAllocations SET is_settled = 0, settled_at = NULL WHERE worker_uid IN ($placeholders)",
+      allKeys,
+    );
+
+    // 2. Unsettle all transactions for this worker (is_settled = 0, settled_at = null)
+    await myDb.rawUpdate(
+      "UPDATE WorkerTransactions SET is_settled = 0, settled_at = NULL WHERE worker_uid IN ($placeholders)",
+      allKeys,
+    );
+
+    // 3. Delete salary payout transactions and carryover transactions created around settlement or with matching createdAt
+    if (createdAt.isNotEmpty) {
+      await myDb.rawDelete(
+        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%تسوية%')",
+        [...allKeys, createdAt, amount],
+      );
+    } else {
+      await myDb.rawDelete(
+        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%تسوية%')",
+        allKeys,
+      );
+    }
+
+    CloudSyncService().notifyChangeImmediate();
+  }
+
   Future<int> insertTreasury(
     String transactionType,
     double amount,
@@ -7235,8 +7283,10 @@ class SqlDatabase {
         await deallocateClientPayment(entityId, amount);
       } else if (entityType == 'Supplier' && type == 'Décaissement' && entityId != null) {
         await deallocateSupplierPayment(entityId, amount);
+      } else if (entityType == 'Worker' && entityId != null) {
+        await deallocateWorkerPayment(entityId, amount, row['created_at']?.toString() ?? '');
       }
-      CloudSyncService().notifyChange();
+      CloudSyncService().notifyChangeImmediate();
     }
     return res;
   }
