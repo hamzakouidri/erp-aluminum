@@ -4863,6 +4863,17 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
 
+    if (checkIn == null && checkOut == null && (note == null || note.isEmpty)) {
+      // 🗑️ إذا كانت البيانات فارغة، احذف السجل لتصفير خيار الحضور والغياب (فارغ ⚪)
+      await myDb.delete(
+        'WorkerAttendance',
+        where: 'worker_uid = ? AND attendance_date = ?',
+        whereArgs: [workerUid, date],
+      );
+      CloudSyncService().notifyChange();
+      return;
+    }
+
     final existing = await myDb.query(
       'WorkerAttendance',
       where: 'worker_uid = ? AND attendance_date = ?',
@@ -4870,19 +4881,16 @@ class SqlDatabase {
     );
 
     if (existing.isNotEmpty) {
-      final Map<String, dynamic> updates = {};
-      if (checkIn != null) updates['check_in'] = checkIn;
-      if (checkOut != null) updates['check_out'] = checkOut;
-      if (note != null) updates['note'] = note;
-
-      if (updates.isNotEmpty) {
-        await myDb.update(
-          'WorkerAttendance',
-          updates,
-          where: 'worker_uid = ? AND attendance_date = ?',
-          whereArgs: [workerUid, date],
-        );
-      }
+      await myDb.update(
+        'WorkerAttendance',
+        {
+          'check_in': checkIn,
+          'check_out': checkOut,
+          'note': note,
+        },
+        where: 'worker_uid = ? AND attendance_date = ?',
+        whereArgs: [workerUid, date],
+      );
     } else {
       await myDb.insert('WorkerAttendance', {
         'worker_uid': workerUid,
