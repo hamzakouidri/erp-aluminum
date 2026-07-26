@@ -688,6 +688,15 @@ class PdfInvoiceApi {
     );
   }
 
+  static bool _isCaissonOnly(DevisData data) {
+    return data.items.isNotEmpty &&
+        data.items.every((item) =>
+            item.title.contains('Caisson Tunnel') ||
+            item.title.contains('caisson') ||
+            (item.imagePath != null && item.imagePath!.contains('caisson_tunnel')) ||
+            item.details.any((d) => d.contains('Caisson') || d.contains('صندوق') || d.contains('Kit')));
+  }
+
   static pw.Widget _buildTable(
     DevisData data,
     Map<int, pw.MemoryImage> imageWidgets,
@@ -695,6 +704,12 @@ class PdfInvoiceApi {
     final bool hidePrices = data.hidePrices;
     final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
     final bool hasBorder = data.documentTitleKey != 'BON_ROUTE';
+    final bool isCaissonOnly = _isCaissonOnly(data);
+
+    if (isCaissonOnly) {
+      return _buildCaissonTunnelTable(data, imageWidgets, hidePrices, hasBorder);
+    }
+
     final List<pw.Widget> rows = [_tableHeader(hidePrices, isOfficial, hasBorder: hasBorder)];
 
     for (var entry in data.items.asMap().entries) {
@@ -808,6 +823,187 @@ class PdfInvoiceApi {
         ],
       ),
     );
+
+    return pw.Column(children: rows);
+  }
+
+  // ── جدول خاص بالـ Caisson Tunnel المستقل (6 أعمدة) ──────────────────────
+  static pw.Widget _buildCaissonTunnelTable(
+    DevisData data,
+    Map<int, pw.MemoryImage> imageWidgets,
+    bool hidePrices,
+    bool hasBorder,
+  ) {
+    const double cImgW = 50.0;
+    const double cDimW = 135.0;
+    const double cSizeW = 100.0;
+    const double cPriceW = 85.0;
+    const double cQtyW = 45.0;
+    const double cTotalW = _tableW - cImgW - cDimW - cSizeW - cPriceW - cQtyW; // 124.28
+
+    pw.Widget hCell(double w, String text, {pw.Alignment align = pw.Alignment.center}) =>
+        pw.Container(
+          width: w,
+          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          alignment: align,
+          decoration: pw.BoxDecoration(
+            color: _blue,
+            border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+          ),
+          child: pw.Text(
+            _ar(text),
+            textDirection: _dir(text),
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              color: PdfColors.white,
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 9,
+            ),
+          ),
+        );
+
+    final List<pw.Widget> rows = [
+      pw.Row(
+        children: [
+          hCell(cImgW, 'الصورة'),
+          hCell(cDimW, 'التفاصيل (البعد)'),
+          hCell(cSizeW, 'حجم الصندوق'),
+          if (!hidePrices) hCell(cPriceW, 'سعر الوحدة'),
+          hCell(cQtyW, 'الكمية'),
+          if (!hidePrices) hCell(cTotalW, 'المجموع'),
+        ],
+      ),
+    ];
+
+    for (var entry in data.items.asMap().entries) {
+      final index = entry.key;
+      final item = entry.value;
+      final bg = index.isEven ? PdfColors.white : PdfColors.grey100;
+
+      // استخراج البعد (Dimension)
+      String dimText = item.width > 0 ? '${item.width} cm' : '';
+      if (dimText.isEmpty && item.details.isNotEmpty) {
+        dimText = item.details.firstWhere(
+          (d) => d.contains('cm') || d.contains('ملم') || d.contains('مم') || d.contains('طول') || d.contains('البعد'),
+          orElse: () => item.details.first,
+        );
+      }
+
+      // استخراج حجم الصندوق (Box Size)
+      String boxSizeText = item.height > 0 ? '${item.height} cm' : '';
+      if (boxSizeText.isEmpty && item.details.length > 1) {
+        boxSizeText = item.details.firstWhere(
+          (d) => d.contains('Kit') || d.contains('صندوق') || d.contains('25') || d.contains('30') || d.contains('40'),
+          orElse: () => item.details.length > 1 ? item.details[1] : '—',
+        );
+      } else if (boxSizeText.isEmpty) {
+        boxSizeText = '—';
+      }
+
+      rows.add(
+        pw.Row(
+          children: [
+            // 1. الصورة
+            _cell(
+              cImgW,
+              imageWidgets[index] != null
+                  ? pw.Image(imageWidgets[index]!, fit: pw.BoxFit.contain)
+                  : pw.Text('-', style: const pw.TextStyle(color: PdfColors.grey500)),
+              alignment: pw.Alignment.center,
+              bg: bg,
+              padding: const pw.EdgeInsets.all(3),
+              hasBorder: hasBorder,
+            ),
+            // 2. التفاصيل (البعد)
+            _cell(
+              cDimW,
+              pw.Text(
+                _ar(dimText),
+                textDirection: _dir(dimText),
+                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+              ),
+              alignment: pw.Alignment.center,
+              bg: bg,
+              hasBorder: hasBorder,
+            ),
+            // 3. حجم الصندوق
+            _cell(
+              cSizeW,
+              pw.Text(
+                _ar(boxSizeText),
+                textDirection: _dir(boxSizeText),
+                style: const pw.TextStyle(fontSize: 8.5),
+              ),
+              alignment: pw.Alignment.center,
+              bg: bg,
+              hasBorder: hasBorder,
+            ),
+            // 4. سعر الوحدة
+            if (!hidePrices)
+              _cell(
+                cPriceW,
+                pw.Text(
+                  '${item.unitPrice.toStringAsFixed(2)} DA',
+                  style: const pw.TextStyle(fontSize: 8.5),
+                ),
+                alignment: pw.Alignment.centerRight,
+                bg: bg,
+                hasBorder: hasBorder,
+              ),
+            // 5. الكمية
+            _cell(
+              cQtyW,
+              pw.Text(
+                '${item.quantity}',
+                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _blue),
+              ),
+              alignment: pw.Alignment.center,
+              bg: bg,
+              hasBorder: hasBorder,
+            ),
+            // 6. المجموع
+            if (!hidePrices)
+              _cell(
+                cTotalW,
+                pw.Text(
+                  '${(item.unitPrice * item.quantity).toStringAsFixed(2)} DA',
+                  style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+                ),
+                alignment: pw.Alignment.centerRight,
+                bg: bg,
+                hasBorder: hasBorder,
+              ),
+          ],
+        ),
+      );
+    }
+
+    // مجموع الكميات ومجموع حسابات الكميات في الأسفل
+    final int totalQty = data.items.where((i) => !i.isReplaced).fold(0, (s, i) => s + i.quantity);
+    final double totalCalcAmount = data.items.where((i) => !i.isReplaced).fold(0.0, (s, i) => s + (i.unitPrice * i.quantity));
+
+    // 1. صف مجموع الكميات
+    rows.add(
+      pw.Row(
+        children: [
+          _cell(cImgW + cDimW + cSizeW, pw.Text(_ar('مجموع الكميات (Total Quantités)'), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)), bg: PdfColors.grey100, hasBorder: hasBorder),
+          _cell(cQtyW, pw.Text('$totalQty', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _blue)), alignment: pw.Alignment.center, bg: PdfColors.grey100, hasBorder: hasBorder),
+          if (!hidePrices) _cell(cPriceW + cTotalW, pw.SizedBox(), bg: PdfColors.grey100, hasBorder: hasBorder),
+        ],
+      ),
+    );
+
+    // 2. صف مجموع حسابات الكميات / المجموع الإجمالي
+    if (!hidePrices) {
+      rows.add(
+        pw.Row(
+          children: [
+            _cell(cImgW + cDimW + cSizeW + cPriceW + cQtyW, pw.Text(_ar('مجموع حسابات الكميات (Total Général)'), style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)), alignment: pw.Alignment.centerRight, bg: PdfColors.grey200, hasBorder: hasBorder),
+            _cell(cTotalW, pw.Text('${totalCalcAmount.toStringAsFixed(2)} DA', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _blue)), alignment: pw.Alignment.centerRight, bg: PdfColors.grey200, hasBorder: hasBorder),
+          ],
+        ),
+      );
+    }
 
     return pw.Column(children: rows);
   }
@@ -947,6 +1143,7 @@ class PdfInvoiceApi {
         final cumTicketNum = data.priorConfirmedWindowsCount + globalIndex;
         rows.add({
           'num': '$globalIndex\n(#$cumTicketNum)',
+          'title': item.title,
           'client': data.clientName,
           'dims': '${item.width} x ${item.height} mm',
           'color': item.color,
@@ -980,8 +1177,12 @@ class PdfInvoiceApi {
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
                   pw.Text(
-                    _currentLang == AppLanguage.french ? 'Bon de charge' : 'وصل الشحن',
-                    style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: _blue),
+                    _currentLang == AppLanguage.french
+                        ? 'Bon de charge / Livraison'
+                        : _currentLang == AppLanguage.english
+                            ? 'Loading & Delivery Note'
+                            : _ar('وصل الشحن والتسليم (الفاتورة التقديرية)'),
+                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: _blue),
                   ),
                   pw.Text('Date: ${data.orderDate}', style: const pw.TextStyle(fontSize: 10)),
                 ],
@@ -1001,7 +1202,11 @@ class PdfInvoiceApi {
             child: pw.Row(
               children: [
                 pw.Text(
-                  '${_currentLang == AppLanguage.french ? "Client:" : "الزبون:"} ',
+                  _currentLang == AppLanguage.french
+                      ? 'Client: '
+                      : _currentLang == AppLanguage.english
+                          ? 'Client: '
+                          : _ar('الزبون: '),
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
                 ),
                 pw.Text(
@@ -1016,25 +1221,28 @@ class PdfInvoiceApi {
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             columnWidths: {
-              0: const pw.FixedColumnWidth(40),  // N° Ticket
-              1: const pw.FlexColumnWidth(1.2), // Dimensions
-              2: const pw.FlexColumnWidth(1),   // Couleur
-              3: const pw.FlexColumnWidth(1.5), // Barcode
+              0: const pw.FixedColumnWidth(45),  // N° Ticket
+              1: const pw.FlexColumnWidth(1.8), // Designation / Item Title
+              2: const pw.FlexColumnWidth(1.2), // Dimensions
+              3: const pw.FlexColumnWidth(1),   // Couleur
+              4: const pw.FlexColumnWidth(1.5), // Barcode
             },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                 children: [
-                  _headerCell(_currentLang == AppLanguage.french ? 'N°' : 'رقم'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Dimensions (mm)' : 'المقاسات (ملم)'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Couleur' : 'اللون'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Code à barres' : 'الكود بار'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'N°' : _currentLang == AppLanguage.english ? 'No' : 'رقم'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Désignation' : _currentLang == AppLanguage.english ? 'Item Designation' : 'البيان / النافذة'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Dimensions (mm)' : _currentLang == AppLanguage.english ? 'Dimensions (mm)' : 'المقاسات (ملم)'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Couleur' : _currentLang == AppLanguage.english ? 'Color' : 'اللون'),
+                  _headerCell(_currentLang == AppLanguage.french ? 'Code à barres' : _currentLang == AppLanguage.english ? 'Barcode' : 'الكود بار'),
                 ],
               ),
               for (final row in rows)
                 pw.TableRow(
                   children: [
                     _dataCell(row['num']!),
+                    _dataCell(row['title']!),
                     _dataCell(row['dims']!),
                     _dataCell(row['color']!),
                     pw.Container(

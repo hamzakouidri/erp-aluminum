@@ -368,6 +368,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         rows.add({
           'num': '$globalIndex',
           'cumNum': '#$cumTicketNum',
+          'title': item.title,
           'dims': '${item.width} x ${item.height} mm',
           'color': item.color,
           'barcode': barcodeVal,
@@ -500,28 +501,35 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               SizedBox(
                 width: 45,
                 child: Text(
-                  isFr ? 'N°' : 'رقم',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  isFr ? 'Dimensions' : 'المقاسات',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  isFr ? 'Couleur' : 'اللون',
+                  isFr ? 'N°' : _invoiceLanguage == AppLanguage.english ? 'No' : 'رقم',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
                 ),
               ),
               Expanded(
                 flex: 3,
                 child: Text(
-                  isFr ? 'Code à barres' : 'الكود بار',
+                  isFr ? 'Désignation' : _invoiceLanguage == AppLanguage.english ? 'Item Designation' : 'البيان / النافذة',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  isFr ? 'Dimensions' : _invoiceLanguage == AppLanguage.english ? 'Dimensions' : 'المقاسات',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  isFr ? 'Couleur' : _invoiceLanguage == AppLanguage.english ? 'Color' : 'اللون',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  isFr ? 'Code à barres' : _invoiceLanguage == AppLanguage.english ? 'Barcode' : 'الكود بار',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
                 ),
               ),
@@ -555,6 +563,13 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                           style: TextStyle(fontSize: 10, color: isDark ? Colors.cyanAccent : subtextColor, fontWeight: FontWeight.bold),
                         ),
                       ],
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      row['title'] ?? '',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Cairo', color: textColor),
                     ),
                   ),
                   Expanded(
