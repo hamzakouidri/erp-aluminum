@@ -3928,43 +3928,95 @@ class SqlDatabase {
     String workerUid,
   ) async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('''
+    if (myDb == null) return [];
+
+    final cleanKey = workerUid.trim().toLowerCase();
+    if (cleanKey.isEmpty) return [];
+
+    return await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.id_commandes, cd.partitions_json, cd.drawing_image_path, cd.drawing_image_base64,
              cl.firstname, cl.lastname
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
-      WHERE wa.worker_uid = ? AND wa.is_settled = 0
+      WHERE (
+        wa.worker_uid = ?
+        OR LOWER(wa.worker_uid) = ?
+        OR wa.worker_uid IN (
+          SELECT CAST(id AS TEXT) FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wa.worker_uid IN (
+          SELECT uid FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wa.worker_uid IN (
+          SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+      ) AND (wa.is_settled = 0 OR wa.is_settled IS NULL)
       ORDER BY wa.assigned_at DESC
-    ''', [workerUid]);
+    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
   }
 
   Future<List<Map<String, dynamic>>> readWorkerSettledAllocations(
     String workerUid,
   ) async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('''
+    if (myDb == null) return [];
+
+    final cleanKey = workerUid.trim().toLowerCase();
+    if (cleanKey.isEmpty) return [];
+
+    return await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.id_commandes, cd.partitions_json, cd.drawing_image_path, cd.drawing_image_base64,
              cl.firstname, cl.lastname
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
-      WHERE wa.worker_uid = ? AND wa.is_settled = 1
+      WHERE (
+        wa.worker_uid = ?
+        OR LOWER(wa.worker_uid) = ?
+        OR wa.worker_uid IN (
+          SELECT CAST(id AS TEXT) FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wa.worker_uid IN (
+          SELECT uid FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wa.worker_uid IN (
+          SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+      ) AND wa.is_settled = 1
       ORDER BY wa.settled_at DESC
-    ''', [workerUid]);
+    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
   }
 
   Future<List<Map<String, dynamic>>> readWorkerSettledTransactions(
     String workerUid,
   ) async {
     Database? myDb = await db;
-    return await myDb!.query(
-      'WorkerTransactions',
-      where: 'worker_uid = ? AND is_settled = 1',
-      orderBy: 'settled_at DESC',
-    );
+    if (myDb == null) return [];
+
+    final cleanKey = workerUid.trim().toLowerCase();
+    if (cleanKey.isEmpty) return [];
+
+    return await myDb.rawQuery('''
+      SELECT wt.*
+      FROM WorkerTransactions wt
+      WHERE (
+        wt.worker_uid = ?
+        OR LOWER(wt.worker_uid) = ?
+        OR wt.worker_uid IN (
+          SELECT CAST(id AS TEXT) FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wt.worker_uid IN (
+          SELECT uid FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+        OR wt.worker_uid IN (
+          SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
+        )
+      ) AND wt.is_settled = 1
+      ORDER BY wt.settled_at DESC
+    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
   }
 
   Future<List<Map<String, dynamic>>> readAllWorkerAllocations(String workerUid, String workerEmail) async {
@@ -4727,18 +4779,43 @@ class SqlDatabase {
     if (myDb == null) return;
 
     final now = DateTime.now().toIso8601String();
+    final cleanKey = workerUid.trim().toLowerCase();
+
+    // Collect all matching identifiers for this worker
+    List<String> allKeys = [];
+    if (workerUid.trim().isNotEmpty) allKeys.add(workerUid.trim());
+    if (workerId > 0) allKeys.add(workerId.toString());
+
+    final empRows = await myDb.query(
+      'Employees',
+      where: 'uid = ? OR LOWER(email) = ? OR id = ?',
+      whereArgs: [workerUid, cleanKey, workerId],
+    );
+    if (empRows.isNotEmpty) {
+      final emp = empRows.first;
+      final u = emp['uid']?.toString() ?? '';
+      final idStr = emp['id']?.toString() ?? '';
+      final email = emp['email']?.toString() ?? '';
+      if (u.isNotEmpty && !allKeys.contains(u)) allKeys.add(u);
+      if (idStr.isNotEmpty && !allKeys.contains(idStr)) allKeys.add(idStr);
+      if (email.isNotEmpty && !allKeys.contains(email)) allKeys.add(email);
+    }
+
+    if (allKeys.isEmpty) return;
+
+    final placeholders = List.filled(allKeys.length, '?').join(',');
 
     // 1. Calculate total earned from unsettled allocations (only manufactured)
     final List<Map<String, dynamic>> allocations = await myDb.rawQuery(
-      "SELECT COALESCE(SUM(quantity * worker_price), 0) as total FROM WorkerAllocations WHERE worker_uid = ? AND is_settled = 0 AND is_manufactured = 1",
-      [workerUid],
+      "SELECT COALESCE(SUM(quantity * worker_price), 0) as total FROM WorkerAllocations WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL) AND is_manufactured = 1",
+      allKeys,
     );
     final double totalEarned = (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
 
     // 2. Calculate total advances/loans/payments taken (unsettled)
     final List<Map<String, dynamic>> transactions = await myDb.rawQuery(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM WorkerTransactions WHERE worker_uid = ? AND is_settled = 0",
-      [workerUid],
+      "SELECT COALESCE(SUM(amount), 0) as total FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
+      allKeys,
     );
     final double totalPaidBefore = (transactions.first['total'] as num?)?.toDouble() ?? 0.0;
 
@@ -4746,30 +4823,22 @@ class SqlDatabase {
     final double netDueBefore = totalEarned - totalPaidBefore;
 
     // 3. Mark all current unsettled, manufactured allocations as settled
-    await myDb.update(
-      'WorkerAllocations',
-      {
-        'is_settled': 1,
-        'settled_at': now,
-      },
-      where: 'worker_uid = ? AND is_settled = 0 AND is_manufactured = 1',
-      whereArgs: [workerUid],
+    await myDb.rawUpdate(
+      "UPDATE WorkerAllocations SET is_settled = 1, settled_at = ? WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL) AND is_manufactured = 1",
+      [now, ...allKeys],
     );
 
     // 4. Mark all current unsettled transactions as settled
-    await myDb.update(
-      'WorkerTransactions',
-      {
-        'is_settled': 1,
-        'settled_at': now,
-      },
-      where: 'worker_uid = ? AND is_settled = 0',
-      whereArgs: [workerUid],
+    await myDb.rawUpdate(
+      "UPDATE WorkerTransactions SET is_settled = 1, settled_at = ? WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
+      [now, ...allKeys],
     );
+
+    final primaryKey = allKeys.first;
 
     // 5. Record the actual payment made in SQLite WorkerTransactions
     await myDb.insert('WorkerTransactions', {
-      'worker_uid': workerUid,
+      'worker_uid': primaryKey,
       'amount': paymentAmount,
       'transaction_type': 'salary',
       'note': 'تسوية أسبوعية - دفع أسبوعي',
@@ -4779,21 +4848,23 @@ class SqlDatabase {
     });
 
     // 6. Record in Treasury as Decaissement
-    await insertTreasury(
-      'Décaissement',
-      paymentAmount,
-      'تسوية أسبوعية للعامل $workerName',
-      entityType: 'Worker',
-      entityId: workerId,
-      recordedBy: recordedBy,
-      createdAt: now,
-    );
+    if (paymentAmount > 0) {
+      await insertTreasury(
+        'Décaissement',
+        paymentAmount,
+        'تسوية أسبوعية للعامل $workerName',
+        entityType: 'Worker',
+        entityId: workerId > 0 ? workerId : null,
+        recordedBy: recordedBy,
+        createdAt: now,
+      );
+    }
 
     // 7. Calculate carryover (the difference)
     final double carryover = paymentAmount - netDueBefore;
     if (carryover != 0.0) {
       await myDb.insert('WorkerTransactions', {
-        'worker_uid': workerUid,
+        'worker_uid': primaryKey,
         'amount': carryover,
         'transaction_type': 'advance',
         'note': 'رصيد مرحّل من الأسبوع السابق',
@@ -7104,6 +7175,30 @@ class SqlDatabase {
       await allocateClientPayment(entityId, amount);
     } else if (entityType == 'Supplier' && transactionType == 'Décaissement' && entityId != null && referenceId == null) {
       await allocateSupplierPayment(entityId, amount);
+    } else if (entityType == 'Worker' && transactionType == 'Décaissement' && entityId != null && referenceId == null) {
+      final workerRows = await myDb.query('Employees', where: 'id = ?', whereArgs: [entityId]);
+      if (workerRows.isNotEmpty) {
+        final workerUid = (workerRows.first['uid']?.toString() ?? '').isNotEmpty
+            ? workerRows.first['uid'].toString()
+            : (workerRows.first['id']?.toString() ?? entityId.toString());
+
+        final txTime = createdAt ?? DateTime.now().toIso8601String();
+        final existingTxs = await myDb.query(
+          'WorkerTransactions',
+          where: 'created_at = ? AND amount = ?',
+          whereArgs: [txTime, amount],
+        );
+        if (existingTxs.isEmpty) {
+          await myDb.insert('WorkerTransactions', {
+            'worker_uid': workerUid,
+            'amount': amount,
+            'transaction_type': 'advance',
+            'note': description,
+            'created_at': txTime,
+            'is_settled': 0,
+          });
+        }
+      }
     }
     
     CloudSyncService().notifyChange();

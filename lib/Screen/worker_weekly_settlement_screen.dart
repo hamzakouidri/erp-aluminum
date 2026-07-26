@@ -61,18 +61,11 @@ class _WorkerWeeklySettlementScreenState
         final empIdStr = w['id']?.toString() ?? '';
         final empEmail = w['email']?.toString() ?? '';
 
-        // 1. Unsettled work/earnings
-        List<Map<String, dynamic>> allocs = [];
-        if (uid.isNotEmpty) {
-          allocs = await widget.db.readWorkerUnsettledAllocations(uid);
-        }
-        if (allocs.isEmpty && empEmail.isNotEmpty) {
-          allocs = await widget.db.readWorkerUnsettledAllocations(empEmail);
-        }
-        if (allocs.isEmpty && empIdStr.isNotEmpty) {
-          allocs = await widget.db.readWorkerUnsettledAllocations(empIdStr);
-        }
+        final targetKey = uid.isNotEmpty ? uid : (empEmail.isNotEmpty ? empEmail : empIdStr);
+        if (targetKey.isEmpty) continue;
 
+        // 1. Unsettled work/earnings
+        final allocs = await widget.db.readWorkerUnsettledAllocations(targetKey);
         double totalEarned = 0.0;
         for (var a in allocs) {
           if (a['is_manufactured'] == 1) {
@@ -83,17 +76,7 @@ class _WorkerWeeklySettlementScreenState
         }
 
         // 2. Unsettled advances/loans
-        List<Map<String, dynamic>> txs = [];
-        if (uid.isNotEmpty) {
-          txs = await widget.db.readWorkerTransactions(uid);
-        }
-        if (txs.isEmpty && empEmail.isNotEmpty) {
-          txs = await widget.db.readWorkerTransactions(empEmail);
-        }
-        if (txs.isEmpty && empIdStr.isNotEmpty) {
-          txs = await widget.db.readWorkerTransactions(empIdStr);
-        }
-
+        final txs = await widget.db.readWorkerTransactions(targetKey);
         double totalAdvances = 0.0;
         for (var t in txs) {
           if (t['is_settled'] == 0 || t['is_settled'] == '0') {
