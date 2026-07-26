@@ -212,7 +212,30 @@ class PdfInvoiceApi {
   }
 
   static String _formatDocumentNumber(DevisData data) {
-    String year2 = '26';
+    String prefix = 'FV';
+    final key = data.documentTitleKey ?? '';
+
+    if (key == 'BON_CHARGE') {
+      prefix = data.isPartial ? 'FCP' : 'FC';
+    } else if (key == 'FACTURE_VENTE' || key == 'BON_ROUTE') {
+      prefix = 'FV';
+    } else if (data.isProForma || key == 'DEVIS') {
+      prefix = data.isPartial ? 'FPP' : 'FP';
+    } else if (key == 'DEVIS_PARTIAL') {
+      prefix = 'FPP';
+    } else if (key == 'doc_bon_livraison' || key == 'doc_bon_livraison_sans_prix') {
+      prefix = 'BL';
+    } else if (key == 'doc_bon_livraison_partiel' || key == 'doc_bon_livraison_partiel_sans_prix') {
+      prefix = 'BLP';
+    } else {
+      if (data.isProForma) {
+        prefix = 'FP';
+      } else {
+        prefix = 'FV';
+      }
+    }
+
+    String year2 = (DateTime.now().year % 100).toString().padLeft(2, '0');
     try {
       final dateStr = data.orderDate;
       final yearMatch = RegExp(r'\b(20\d{2})\b').firstMatch(dateStr);
@@ -226,8 +249,8 @@ class PdfInvoiceApi {
       }
     } catch (_) {}
 
-    final orderIdStr = data.orderId.toString().padLeft(4, '0');
-    return '$year2/$orderIdStr';
+    final seqNum = data.orderId.toString().padLeft(3, '0');
+    return '$prefix$year2$seqNum';
   }
 
   static pw.Widget _buildTopHeader(DevisData data) {
@@ -313,18 +336,10 @@ class PdfInvoiceApi {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
-            if (data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE') ...[
-              _metaLine(t('Date:'), data.orderDate),
-            ] else if (data.documentTitleKey == 'doc_bon_livraison_sans_prix' ||
-                       data.documentTitleKey == 'doc_bon_livraison_partiel' ||
-                       data.documentTitleKey == 'doc_bon_livraison_partiel_sans_prix') ...[
-              _metaLine(t('N°:'), '${data.orderId}'),
-              _metaLine(t('Date:'), data.orderDate),
-            ] else ...[
-              _metaLine(t('N°:'), '${data.orderId}'),
-              _metaLine(t('Date:'), data.orderDate),
+            _metaLine(t('N°:'), _formatDocumentNumber(data)),
+            _metaLine(t('Date:'), data.orderDate),
+            if (data.isProForma && data.validUntil.isNotEmpty)
               _metaLine(t('Valide jusqu\'au:'), data.validUntil),
-            ],
           ],
         ),
       ],
