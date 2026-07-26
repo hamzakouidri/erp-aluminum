@@ -94,6 +94,12 @@ class _WorkerWeeklySettlementScreenState
           }
         }
 
+        // 1b. Unsettled daily jobs (عمل يومي)
+        final dailyJobs = await widget.db.readWorkerUnsettledDailyJobs(targetKey);
+        for (var j in dailyJobs) {
+          totalEarned += (j['price'] as num?)?.toDouble() ?? 0.0;
+        }
+
         // 2. Unsettled advances/loans
         final txs = await widget.db.readWorkerTransactions(targetKey);
         double totalAdvances = 0.0;
@@ -436,6 +442,7 @@ class _WorkerSettlementDetailScreenState
   // Current unsettled
   List<Map<String, dynamic>> _unsettledAllocs = [];
   List<Map<String, dynamic>> _unsettledTxs = [];
+  List<Map<String, dynamic>> _unsettledDailyJobs = [];
 
   // Archive (last 6 months)
   List<Map<String, dynamic>> _settledAllocs = [];
@@ -475,8 +482,10 @@ class _WorkerSettlementDetailScreenState
 
       // Unsettled allocations
       List<Map<String, dynamic>> uAllocs = [];
+      List<Map<String, dynamic>> uDailyJobs = [];
       if (targetKey.isNotEmpty) {
         uAllocs = await widget.db.readWorkerUnsettledAllocations(targetKey);
+        uDailyJobs = await widget.db.readWorkerUnsettledDailyJobs(targetKey);
       }
 
       // Transactions
@@ -504,6 +513,7 @@ class _WorkerSettlementDetailScreenState
         setState(() {
           _unsettledAllocs = uAllocs;
           _unsettledTxs = uTxs;
+          _unsettledDailyJobs = uDailyJobs;
           _settledAllocs = sAllocs;
           _settledTxs = sTxs;
           _isLoading = false;
@@ -900,6 +910,10 @@ class _WorkerSettlementDetailScreenState
         final p = (a['worker_price'] as num?)?.toDouble() ?? 0.0;
         earnedTotal += q * p;
       }
+    }
+
+    for (var j in _unsettledDailyJobs) {
+      earnedTotal += (j['price'] as num?)?.toDouble() ?? 0.0;
     }
 
     double advancesTotal = 0.0;

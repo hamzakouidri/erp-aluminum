@@ -312,47 +312,13 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   Future<void> _transferToDistribution(int allocationId) async {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
 
-    // ⚡ 1. إظهار مؤشر تقدم فوري
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  lang == AppLanguage.arabic
-                      ? 'جاري تحويل النافذة للتوزيع والأرشيف…'
-                      : 'Transfert vers la distribution…',
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
     _isLocalChangePending = true;
 
-    // ⚡ 2. تحديث الحسابات والدبابيس والقواعد السحابية في الخلفية
-    try {
-      await widget.db.updateWorkerAllocationTransfer(allocationId, 1);
-    } catch (e) {
-      debugPrint('Error transferring to distribution: $e');
-    }
-
-    // ⚡ 3. إزالة النافذة فوراً من قائمة الشاشة
+    // ⚡ 1. إزالة النافذة فوراً ولحظياً من قائمة الشاشة (استجابة فورية بدون انتظار)
     setState(() {
       _allTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
       _visibleTasks.removeWhere((t) => (t['id'] as num?)?.toInt() == allocationId);
     });
-
-    if (mounted) Navigator.of(context, rootNavigator: true).pop(); // إغلاق مؤشر التقدم
 
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -370,7 +336,14 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       );
     }
 
-    await Future.delayed(const Duration(seconds: 2));
+    // ⚡ 2. تحديث الدبابيس والقواعد السحابية في الخلفية بدون حظر الواجهة
+    try {
+      await widget.db.updateWorkerAllocationTransfer(allocationId, 1);
+    } catch (e) {
+      debugPrint('Error transferring to distribution: $e');
+    }
+
+    await Future.delayed(const Duration(seconds: 1));
     _isLocalChangePending = false;
   }
 
