@@ -433,17 +433,18 @@ class _WorkerTransactionsDetailScreenState
           foregroundColor: Colors.white,
           elevation: 0,
           actions: [
-            // ── سجل الحضور والغياب ────────────────────────────
-            IconButton(
-              icon: const Icon(Icons.co_present_rounded),
-              tooltip: _tr('سجل حضور ودخول العامل', 'Présence ouvrier', 'Worker Attendance', lang),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => WorkerAttendanceScreen(worker: widget.worker, db: widget.db),
+            // ── سجل الحضور والغياب (للراتب الشهري الثابت فقط) ──
+            if (widget.worker['salary_type'] == 'fixed')
+              IconButton(
+                icon: const Icon(Icons.co_present_rounded),
+                tooltip: _tr('سجل حضور ودخول العامل', 'Présence ouvrier', 'Worker Attendance', lang),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => WorkerAttendanceScreen(worker: widget.worker, db: widget.db),
+                  ),
                 ),
               ),
-            ),
             // ── إضافة عمل يومي ─────────────────────────────────
             IconButton(
               icon: const Icon(Icons.work_history_outlined),

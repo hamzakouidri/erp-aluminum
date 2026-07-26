@@ -23,7 +23,6 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
   List<Map<String, dynamic>> _records = [];
   final _dateFormat = DateFormat('yyyy-MM-dd');
   final _timeFormat = DateFormat('HH:mm');
-  final _displayDate = DateFormat('EEEE dd/MM/yyyy', 'ar');
 
   String _tr(String ar, String fr, String en, AppLanguage lang) {
     switch (lang) {
@@ -44,7 +43,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final uid = widget.worker['uid']?.toString() ?? '';
+    final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
     final data = await widget.db.readWorkerAttendance(uid);
     if (mounted) {
       setState(() {
@@ -56,6 +55,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
 
   Future<void> _checkIn(AppLanguage lang) async {
     final today = _dateFormat.format(DateTime.now());
+    final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
     // هل يوجد تسجيل دخول اليوم بالفعل؟
     final existing = _records.where((r) => r['attendance_date'] == today).toList();
     if (existing.isNotEmpty && existing.first['check_in'] != null) {
@@ -77,7 +77,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
     }
     final now = _timeFormat.format(DateTime.now());
     await widget.db.upsertWorkerAttendance(
-      workerUid: widget.worker['uid'],
+      workerUid: uid,
       date: today,
       checkIn: now,
     );
@@ -133,8 +133,9 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
       return;
     }
     final now = _timeFormat.format(DateTime.now());
+    final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
     await widget.db.upsertWorkerAttendance(
-      workerUid: widget.worker['uid'],
+      workerUid: uid,
       date: today,
       checkOut: now,
     );
@@ -235,8 +236,9 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
             onPressed: () async {
+              final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
               await widget.db.upsertWorkerAttendance(
-                workerUid: widget.worker['uid'],
+                workerUid: uid,
                 date: dateCtrl.text,
                 checkIn: inCtrl.text.isNotEmpty ? inCtrl.text : null,
                 checkOut: outCtrl.text.isNotEmpty ? outCtrl.text : null,
