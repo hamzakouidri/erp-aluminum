@@ -768,10 +768,19 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     );
     final formKey = GlobalKey<FormState>();
 
+    // تحقق من نوع راتب العامل المختار
+    String _getSelectedSalaryType(String? uid) {
+      if (uid == null) return 'manual';
+      final w = _workers.firstWhere((w) => w['uid'].toString() == uid, orElse: () => {});
+      return w['salary_type']?.toString() ?? 'manual';
+    }
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
+        builder: (context, setStateDialog) {
+          final isFixed = _getSelectedSalaryType(selectedWorkerUid) == 'fixed';
+          return AlertDialog(
           title: Text(
             isManufactured ? 'تعديل سعر التصنيع (مقفول للعامل)' : 'تعديل إسناد العمل',
             style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
@@ -841,20 +850,45 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: priceCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'سعر تصنيع القطعة الواحدة للعامل (د.ج) - إجباري',
-                      border: OutlineInputBorder(),
+                  // ── حقل السعر: مخفي للعمال ذوي الراتب الثابت ──────────────────────────────
+                  if (isFixed) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.teal.withOpacity(0.4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.teal, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'هذا العامل له راتب شهري ثابت — لا يتم إدخال سعر خاص لهذا الإسناد.',
+                              style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.teal),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty) return 'يرجى إدخال سعر/أجرة التصنيع لا محالة';
-                      final p = double.tryParse(val.trim());
-                      if (p == null || p <= 0) return 'الرجاء إدخال مبلغ صحيح أكبر من 0';
-                      return null;
-                    },
-                  ),
+                  ] else ...[
+                    TextFormField(
+                      controller: priceCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+                        helperText: 'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return null; // اختياري
+                        final p = double.tryParse(val.trim());
+                        if (p == null || p < 0) return 'الرجاء إدخال مبلغ صحيح';
+                        return null;
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -868,7 +902,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
               onPressed: () {
                 if (formKey.currentState!.validate() && selectedWorkerUid != null) {
                   final q = int.parse(qtyCtrl.text.trim());
-                  final p = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+                  final p = isFixed ? 0.0 : (double.tryParse(priceCtrl.text.trim()) ?? 0.0);
                   Navigator.pop(context);
                   _editWorkerAllocation(alloc['id'] as int, selectedWorkerUid!, q, p);
                 }
@@ -876,7 +910,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
               child: const Text('حفظ التعديل', style: TextStyle(fontFamily: 'Cairo')),
             ),
           ],
-        ),
+        );
+        }
       ),
     );
   }
@@ -887,10 +922,19 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
     final priceCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
+    // تحقق من نوع راتب العامل المحدد
+    String _getSelectedSalaryType(String? uid) {
+      if (uid == null) return 'manual';
+      final w = _workers.firstWhere((w) => w['uid'].toString() == uid, orElse: () => {});
+      return w['salary_type']?.toString() ?? 'manual';
+    }
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
+        builder: (context, setStateDialog) {
+          final isFixed = _getSelectedSalaryType(selectedWorkerUid) == 'fixed';
+          return AlertDialog(
           title: const Text(
             'إسناد عمل جديد لعامل',
             style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
@@ -911,7 +955,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                       return DropdownMenuItem<String>(
                         value: w['uid'].toString(),
                         child: Text(
-                          w['name'] ?? '',
+                          '${w['name'] ?? ''} ${w['salary_type'] == 'fixed' ? '(راتب ثابت)' : ''}',
                           style: const TextStyle(fontFamily: 'Cairo'),
                         ),
                       );
@@ -936,20 +980,45 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: priceCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'سعر تصنيع القطعة الواحدة للعامل (د.ج) - إجباري',
-                      border: OutlineInputBorder(),
+                  // ── حقل السعر: مخفي للعمال ذوي الراتب الثابت ─────────────────────────────
+                  if (isFixed) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.teal.withOpacity(0.4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.teal, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'هذا العامل له راتب شهري ثابت — لا يتم إدخال سعر خاص لهذا الإسناد.',
+                              style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.teal),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty) return 'يرجى إدخال سعر/أجرة التصنيع لا محالة';
-                      final p = double.tryParse(val.trim());
-                      if (p == null || p <= 0) return 'الرجاء إدخال مبلغ صحيح أكبر من 0';
-                      return null;
-                    },
-                  ),
+                  ] else ...[
+                    TextFormField(
+                      controller: priceCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+                        helperText: 'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return null; // اختياري
+                        final p = double.tryParse(val.trim());
+                        if (p == null || p < 0) return 'الرجاء إدخال مبلغ صحيح';
+                        return null;
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -963,7 +1032,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
               onPressed: () {
                 if (formKey.currentState!.validate() && selectedWorkerUid != null) {
                   final q = int.parse(qtyCtrl.text.trim());
-                  final p = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+                  final p = isFixed ? 0.0 : (double.tryParse(priceCtrl.text.trim()) ?? 0.0);
                   Navigator.pop(context);
                   _addWorkerAllocation(
                     item['id'] as int,
@@ -980,7 +1049,8 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
               child: const Text('إسناد', style: TextStyle(fontFamily: 'Cairo')),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }

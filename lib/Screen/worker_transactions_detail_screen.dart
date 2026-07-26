@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
+import 'worker_attendance_screen.dart';
 
 class WorkerTransactionsDetailScreen extends StatefulWidget {
   final Map<String, dynamic> worker;
@@ -24,6 +25,7 @@ class _WorkerTransactionsDetailScreenState
   bool _isLoading = true;
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _allocations = [];
+  List<Map<String, dynamic>> _dailyJobs = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00');
 
   String _selectedFilter = 'All'; // All, Advance, Salary
@@ -78,6 +80,8 @@ class _WorkerTransactionsDetailScreenState
       final txs = await widget.db.readWorkerTransactions(targetKey);
       // Load allocations
       final allocs = await widget.db.readWorkerUnsettledAllocations(targetKey);
+      // Load daily jobs (عمل يومي)
+      final dailyJobs = await widget.db.readWorkerUnsettledDailyJobs(targetKey);
 
       double totalEarned = 0.0;
       for (var a in allocs) {
@@ -86,6 +90,10 @@ class _WorkerTransactionsDetailScreenState
           final price = (a['worker_price'] as num?)?.toDouble() ?? 0.0;
           totalEarned += qty * price;
         }
+      }
+
+      for (var j in dailyJobs) {
+        totalEarned += (j['price'] as num?)?.toDouble() ?? 0.0;
       }
 
       double totalAdv = 0.0;
@@ -97,6 +105,7 @@ class _WorkerTransactionsDetailScreenState
         setState(() {
           _transactions = List<Map<String, dynamic>>.from(txs);
           _allocations = List<Map<String, dynamic>>.from(allocs);
+          _dailyJobs = List<Map<String, dynamic>>.from(dailyJobs);
           _totalEarned = totalEarned;
           _totalAdvances = totalAdv;
           _netBalance = totalEarned - totalAdv;
@@ -106,6 +115,122 @@ class _WorkerTransactionsDetailScreenState
     } catch (e) {
       debugPrint('Error loading worker transactions: $e');
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showAddDailyJobDialog() async {
+    final titleCtrl = TextEditingController(text: 'عمل يومي');
+    final noteCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final dateCtrl = TextEditingController(text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    final formKey = GlobalKey<FormState>();
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.work_history, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(
+              _tr('إضافة عمل يومي للعامل', 'Ajouter travail journalier', 'Add Daily Job', lang),
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: _tr('عنوان العمل', 'Titre', 'Title', lang),
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? _tr('العنوان مطلوب', 'Titre requis', 'Title required', lang) : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: dateCtrl,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: _tr('التاريخ', 'Date', 'Date', lang),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: const Icon(Icons.calendar_today),
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: DateTime.tryParse(dateCtrl.text) ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: _tr('سعر العمل / الأجرة (دج)', 'Prix / Tarif (DA)', 'Price (DA)', lang),
+                    border: const OutlineInputBorder(),
+                    suffixText: 'دج',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return _tr('السعر مطلوب', 'Prix requis', 'Price required', lang);
+                    if (double.tryParse(v.trim()) == null || double.parse(v.trim()) < 0) {
+                      return _tr('أدخل مبلغاً صحيحاً', 'Montant invalide', 'Invalid price', lang);
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: noteCtrl,
+                  decoration: InputDecoration(
+                    labelText: _tr('ملاحظات / تفاصيل العمل (اختياري)', 'Remarques / Détails', 'Notes / Details', lang),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: Text(_tr('إضافة العمل', 'Ajouter', 'Add Job', lang)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
+      final price = double.parse(priceCtrl.text.trim());
+      await widget.db.addWorkerDailyJob(
+        workerUid: uid,
+        workDate: dateCtrl.text,
+        title: titleCtrl.text.trim(),
+        note: noteCtrl.text.trim().isNotEmpty ? noteCtrl.text.trim() : null,
+        price: price,
+      );
+      _loadData();
     }
   }
 
@@ -308,6 +433,23 @@ class _WorkerTransactionsDetailScreenState
           foregroundColor: Colors.white,
           elevation: 0,
           actions: [
+            // ── سجل الحضور والغياب ────────────────────────────
+            IconButton(
+              icon: const Icon(Icons.co_present_rounded),
+              tooltip: _tr('سجل حضور ودخول العامل', 'Présence ouvrier', 'Worker Attendance', lang),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => WorkerAttendanceScreen(worker: widget.worker, db: widget.db),
+                ),
+              ),
+            ),
+            // ── إضافة عمل يومي ─────────────────────────────────
+            IconButton(
+              icon: const Icon(Icons.work_history_outlined),
+              tooltip: _tr('إضافة عمل يومي', 'Ajouter travail journalier', 'Add Daily Job', lang),
+              onPressed: _showAddDailyJobDialog,
+            ),
             // ── فلتر بالتاريخ ─────────────────────────────────
             IconButton(
               icon: Icon(
@@ -350,7 +492,7 @@ class _WorkerTransactionsDetailScreenState
                           children: [
                             Expanded(
                               child: _buildSummaryCard(
-                                title: _tr('إجمالي المستحقات (المصنعة)', 'Gains (Fabriqués)', 'Total Earned', lang),
+                                title: _tr('إجمالي المستحقات (المصنعة/اليومية)', 'Gains (Fabriqués/Journaliers)', 'Total Earned', lang),
                                 amount: _totalEarned,
                                 icon: Icons.trending_up,
                                 color: Colors.green.shade100,
@@ -395,7 +537,7 @@ class _WorkerTransactionsDetailScreenState
                             hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
                             prefixIcon: const Icon(Icons.search, size: 20),
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
@@ -441,6 +583,72 @@ class _WorkerTransactionsDetailScreenState
                       ],
                     ),
                   ),
+
+                  // ── قسم الأعمال اليومية (عمل يومي) ──────────────────────────
+                  if (_dailyJobs.isNotEmpty) ...[
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.work_history, size: 18, color: Colors.amber),
+                              const SizedBox(width: 6),
+                              Text(
+                                _tr('الأعمال اليومية غير المسواة (${_dailyJobs.length})',
+                                    'Travaux journaliers (${_dailyJobs.length})',
+                                    'Unsettled Daily Jobs (${_dailyJobs.length})', lang),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                onPressed: _showAddDailyJobDialog,
+                                icon: const Icon(Icons.add, size: 14),
+                                label: Text(_tr('إضافة', 'Ajouter', 'Add', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 10),
+                          ..._dailyJobs.map((j) {
+                            final jobId = (j['id'] as num?)?.toInt() ?? 0;
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              title: Text(
+                                '${j['title']} — ${j['price']} دج',
+                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                              subtitle: Text(
+                                '${j['work_date'] ?? ''} ${j['note'] != null ? '• ${j['note']}' : ''}',
+                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                                onPressed: () async {
+                                  if (jobId > 0) {
+                                    await widget.db.deleteWorkerDailyJob(jobId);
+                                    _loadData();
+                                  }
+                                },
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ],
 
                   // 3. Transactions List
                   Expanded(

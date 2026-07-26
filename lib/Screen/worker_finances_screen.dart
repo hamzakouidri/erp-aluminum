@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:async';
 import '../services/cloud_sync_service.dart';
 import 'worker_transactions_detail_screen.dart';
+import 'worker_attendance_screen.dart';
 
 class WorkerFinancesScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -772,6 +773,21 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        IconButton(
+                          icon: const Icon(Icons.co_present_rounded, color: Colors.teal),
+                          tooltip: 'سجل حضور ودخول وخروج العامل',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => WorkerAttendanceScreen(
+                                  worker: worker,
+                                  db: widget.db,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                         if (!widget.readOnly)
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, color: Colors.orange),

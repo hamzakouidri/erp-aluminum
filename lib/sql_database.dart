@@ -175,6 +175,40 @@ class SqlDatabase {
           await db.execute("ALTER TABLE Employees ADD COLUMN job_role TEXT;");
         } catch (_) {}
 
+        // ── جدول الحضور اليومي ─────────────────────────────────────────────
+        try {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS WorkerAttendance (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              worker_uid TEXT NOT NULL,
+              attendance_date TEXT NOT NULL,
+              check_in TEXT,
+              check_out TEXT,
+              note TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now')),
+              UNIQUE(worker_uid, attendance_date)
+            )
+          ''');
+        } catch (_) {}
+
+        // ── جدول الأعمال اليومية (عمل يومي) ──────────────────────────────────
+        try {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS WorkerDailyJobs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              worker_uid TEXT NOT NULL,
+              work_date TEXT NOT NULL,
+              title TEXT NOT NULL DEFAULT 'عمل يومي',
+              note TEXT,
+              price REAL NOT NULL DEFAULT 0.0,
+              is_settled INTEGER NOT NULL DEFAULT 0,
+              settled_at TEXT,
+              settlement_week_id TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+          ''');
+        } catch (_) {}
+
         for (final table in tablesToFix) {
           try {
             await db.execute(
@@ -4806,6 +4840,114 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
+  // ── الحضور والغياب (WorkerAttendance) ──────────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> readWorkerAttendance(String workerUid) async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+    final cleanUid = workerUid.trim().toLowerCase();
+    final results = await myDb.rawQuery('''
+      SELECT * FROM WorkerAttendance 
+      WHERE worker_uid = ? OR LOWER(worker_uid) = ?
+      ORDER BY attendance_date DESC
+    ''', [workerUid, cleanUid]);
+    return results.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> upsertWorkerAttendance({
+    required String workerUid,
+    required String date,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+
+    final existing = await myDb.query(
+      'WorkerAttendance',
+      where: 'worker_uid = ? AND attendance_date = ?',
+      whereArgs: [workerUid, date],
+    );
+
+    if (existing.isNotEmpty) {
+      final Map<String, dynamic> updates = {};
+      if (checkIn != null) updates['check_in'] = checkIn;
+      if (checkOut != null) updates['check_out'] = checkOut;
+      if (note != null) updates['note'] = note;
+
+      if (updates.isNotEmpty) {
+        await myDb.update(
+          'WorkerAttendance',
+          updates,
+          where: 'worker_uid = ? AND attendance_date = ?',
+          whereArgs: [workerUid, date],
+        );
+      }
+    } else {
+      await myDb.insert('WorkerAttendance', {
+        'worker_uid': workerUid,
+        'attendance_date': date,
+        'check_in': checkIn,
+        'check_out': checkOut,
+        'note': note,
+      });
+    }
+    CloudSyncService().notifyChange();
+  }
+
+  // ── الأعمال اليومية (WorkerDailyJobs - عمل يومي) ──────────────────────────
+  Future<List<Map<String, dynamic>>> readWorkerDailyJobs(String workerUid) async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+    final cleanUid = workerUid.trim().toLowerCase();
+    final results = await myDb.rawQuery('''
+      SELECT * FROM WorkerDailyJobs 
+      WHERE worker_uid = ? OR LOWER(worker_uid) = ?
+      ORDER BY work_date DESC, id DESC
+    ''', [workerUid, cleanUid]);
+    return results.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> readWorkerUnsettledDailyJobs(String workerUid) async {
+    Database? myDb = await db;
+    if (myDb == null) return [];
+    final cleanUid = workerUid.trim().toLowerCase();
+    final results = await myDb.rawQuery('''
+      SELECT * FROM WorkerDailyJobs 
+      WHERE (worker_uid = ? OR LOWER(worker_uid) = ?)
+        AND (is_settled = 0 OR is_settled IS NULL)
+      ORDER BY work_date DESC
+    ''', [workerUid, cleanUid]);
+    return results.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> addWorkerDailyJob({
+    required String workerUid,
+    required String workDate,
+    required String title,
+    String? note,
+    required double price,
+  }) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    await myDb.insert('WorkerDailyJobs', {
+      'worker_uid': workerUid,
+      'work_date': workDate,
+      'title': title.trim().isEmpty ? 'عمل يومي' : title.trim(),
+      'note': note,
+      'price': price,
+      'is_settled': 0,
+    });
+    CloudSyncService().notifyChange();
+  }
+
+  Future<void> deleteWorkerDailyJob(int jobId) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    await myDb.delete('WorkerDailyJobs', where: 'id = ?', whereArgs: [jobId]);
+    CloudSyncService().notifyChange();
+  }
+
   Future<void> settleWorkerWeek(
     String workerUid,
     int workerId,
@@ -4849,7 +4991,16 @@ class SqlDatabase {
       "SELECT COALESCE(SUM(quantity * worker_price), 0) as total FROM WorkerAllocations WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL) AND is_manufactured = 1",
       allKeys,
     );
-    final double totalEarned = (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
+    final double totalAllocEarned = (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // 1b. Calculate total earned from unsettled daily jobs (عمل يومي)
+    final List<Map<String, dynamic>> dailyJobs = await myDb.rawQuery(
+      "SELECT COALESCE(SUM(price), 0) as total FROM WorkerDailyJobs WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
+      allKeys,
+    );
+    final double totalDailyEarned = (dailyJobs.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final double totalEarned = totalAllocEarned + totalDailyEarned;
 
     // 2. Calculate total advances/loans/payments taken (unsettled)
     final List<Map<String, dynamic>> transactions = await myDb.rawQuery(
@@ -4864,6 +5015,12 @@ class SqlDatabase {
     // 3. Mark all current unsettled, manufactured allocations as settled
     await myDb.rawUpdate(
       "UPDATE WorkerAllocations SET is_settled = 1, settled_at = ? WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL) AND is_manufactured = 1",
+      [now, ...allKeys],
+    );
+
+    // 3b. Mark all current unsettled daily jobs as settled
+    await myDb.rawUpdate(
+      "UPDATE WorkerDailyJobs SET is_settled = 1, settled_at = ? WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
       [now, ...allKeys],
     );
 
