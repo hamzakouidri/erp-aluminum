@@ -71,8 +71,32 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
 
   Future<void> _toggleDayStatus(int day, AppLanguage lang) async {
     try {
+      final dayDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+      final nowTime = DateTime.now();
+      final todayDate = DateTime(nowTime.year, nowTime.month, nowTime.day);
+
+      // 🚫 منع التعديل على الأيام المستقبلية
+      if (dayDate.isAfter(todayDate)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _tr('⚠️ لا يمكن تسجيل الحضور أو الغياب للأيام المستقبلية!',
+                    '⚠️ Impossible de pointer pour des dates futures!',
+                    '⚠️ Cannot mark attendance for future dates!',
+                    lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              backgroundColor: Colors.orange.shade800,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
       final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
-      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime(_selectedMonth.year, _selectedMonth.month, day));
+      final dateStr = DateFormat('yyyy-MM-dd').format(dayDate);
 
       final existingIndex = _records.indexWhere((r) => r['attendance_date'] == dateStr);
       final existing = existingIndex != -1 ? Map<String, dynamic>.from(_records[existingIndex]) : null;
@@ -496,8 +520,12 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                           itemCount: daysInMonth,
                           itemBuilder: (ctx, idx) {
                             final dayNum = idx + 1;
-                            final dateStr = DateFormat('yyyy-MM-dd')
-                                .format(DateTime(_selectedMonth.year, _selectedMonth.month, dayNum));
+                            final dayDate = DateTime(_selectedMonth.year, _selectedMonth.month, dayNum);
+                            final nowTime = DateTime.now();
+                            final todayDate = DateTime(nowTime.year, nowTime.month, nowTime.day);
+                            final bool isFuture = dayDate.isAfter(todayDate);
+
+                            final dateStr = DateFormat('yyyy-MM-dd').format(dayDate);
                             final record = _records.where((r) => r['attendance_date'] == dateStr).firstOrNull;
 
                             final bool isPresent = record != null &&
@@ -510,7 +538,12 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                             IconData icon = Icons.circle_outlined;
                             Color iconColor = Colors.grey;
 
-                            if (isPresent) {
+                            if (isFuture) {
+                              cardColor = isDark ? Colors.grey.shade900.withOpacity(0.2) : Colors.grey.shade200;
+                              borderColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+                              icon = Icons.lock_clock_outlined;
+                              iconColor = isDark ? Colors.grey.shade600 : Colors.grey.shade400;
+                            } else if (isPresent) {
                               cardColor = isDark ? Colors.green.shade900.withOpacity(0.4) : Colors.green.shade50;
                               borderColor = Colors.green;
                               icon = Icons.check_circle;
@@ -527,20 +560,38 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                             }
 
                             return GestureDetector(
-                              onTap: () => _toggleDayStatus(dayNum, lang),
-                              onLongPress: () => _manualEntry(lang, existing: record, initialDate: dateStr),
+                              onTap: isFuture
+                                  ? () {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            _tr('⚠️ لا يمكن تسجيل الحضور أو الغياب للأيام المستقبلية!',
+                                                '⚠️ Impossible de pointer pour des dates futures!',
+                                                '⚠️ Cannot mark attendance for future dates!',
+                                                lang),
+                                            style: const TextStyle(fontFamily: 'Cairo'),
+                                          ),
+                                          backgroundColor: Colors.orange.shade800,
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  : () => _toggleDayStatus(dayNum, lang),
+                              onLongPress: isFuture ? null : () => _manualEntry(lang, existing: record, initialDate: dateStr),
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: cardColor,
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(color: borderColor, width: isToday ? 2.5 : 1),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.04),
-                                      blurRadius: 3,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
+                                  boxShadow: isFuture
+                                      ? []
+                                      : [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.04),
+                                            blurRadius: 3,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
                                 ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -551,18 +602,22 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                                         fontFamily: 'Cairo',
                                         fontWeight: FontWeight.bold,
                                         fontSize: 15,
-                                        color: isToday ? Colors.amber.shade900 : null,
+                                        color: isFuture
+                                            ? Colors.grey.shade400
+                                            : (isToday ? Colors.amber.shade900 : null),
                                       ),
                                     ),
                                     const SizedBox(height: 2),
                                     Icon(icon, size: 18, color: iconColor),
                                     const SizedBox(height: 2),
                                     Text(
-                                      isPresent
-                                          ? _tr('حاضر', 'Présent', 'Present', lang)
-                                          : (isAbsent
-                                              ? _tr('غائب', 'Absent', 'Absent', lang)
-                                              : _tr('فارغ', 'Neutre', 'Empty', lang)),
+                                      isFuture
+                                          ? _tr('مستقبلي', 'Futur', 'Future', lang)
+                                          : (isPresent
+                                              ? _tr('حاضر', 'Présent', 'Present', lang)
+                                              : (isAbsent
+                                                  ? _tr('غائب', 'Absent', 'Absent', lang)
+                                                  : _tr('فارغ', 'Neutre', 'Empty', lang))),
                                       style: TextStyle(
                                         fontSize: 9,
                                         fontFamily: 'Cairo',
