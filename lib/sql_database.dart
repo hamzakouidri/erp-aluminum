@@ -26,7 +26,11 @@ class SqlDatabase {
     if (kIsWeb) {
       return databaseFactoryFfiWeb;
     }
-    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!kIsWeb &&
+        (Platform.isWindows ||
+            Platform.isLinux ||
+            Platform.isMacOS ||
+            Platform.environment.containsKey('FLUTTER_TEST'))) {
       sqflite_common.sqfliteFfiInit();
       return sqflite_common.databaseFactoryFfi;
     }
@@ -117,7 +121,12 @@ class SqlDatabase {
   }
 
   Future<Database> _openEncryptedDb(String path, String password) {
-    if (kIsWeb || _dbFactory == sqflite_common.databaseFactoryFfi || (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST'))) {
+    if (kIsWeb ||
+        (!kIsWeb &&
+            (Platform.isWindows ||
+                Platform.isLinux ||
+                Platform.isMacOS ||
+                Platform.environment.containsKey('FLUTTER_TEST')))) {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
