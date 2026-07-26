@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:archive/archive_io.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
@@ -27,6 +28,19 @@ class MeasurementsScreen extends StatefulWidget {
 
 class _MeasurementsScreenState extends State<MeasurementsScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canAccessMeasurements()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
 
   // Controllers
   final _lengthController = TextEditingController();
@@ -62,6 +76,12 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   bool _isRecording = false;
   bool _isPlaying = false;
 
+  // Speech-to-text (continuous dictation) state
+  final stt.SpeechToText _speechToText = stt.SpeechToText();
+  bool _isSpeechListening = false;
+  bool _speechInitialized = false;
+  String _textBeforeSpeech = '';
+
   // Measurements list
   List<Map<String, dynamic>> _savedMeasurements = [];
 
@@ -83,6 +103,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     _noteFocus.dispose();
     _audioRecorder.dispose();
     _audioPlayer.dispose();
+    _speechToText.stop();
     super.dispose();
   }
 
@@ -305,6 +326,107 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       }
     } catch (e) {
       debugPrint('Audio playback error: $e');
+    }
+  }
+
+  // ── Speech-to-Text (Continuous dictation to notes) ──────────────────
+  Future<void> _toggleSpeechToText() async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+
+    if (_isSpeechListening) {
+      await _stopSpeechToText();
+      return;
+    }
+
+    if (!_speechInitialized) {
+      _speechInitialized = await _speechToText.initialize(
+        onError: (val) {
+          debugPrint('SpeechToText onError: $val');
+          if (mounted && _isSpeechListening) {
+            _startContinuousListening();
+          }
+        },
+        onStatus: (val) {
+          debugPrint('SpeechToText onStatus: $val');
+          if ((val == 'done' || val == 'notListening') && _isSpeechListening && mounted) {
+            _startContinuousListening();
+          }
+        },
+      );
+    }
+
+    if (_speechInitialized) {
+      setState(() {
+        _isSpeechListening = true;
+        _textBeforeSpeech = _noteController.text;
+        if (_textBeforeSpeech.isNotEmpty && !_textBeforeSpeech.endsWith(' ')) {
+          _textBeforeSpeech += ' ';
+        }
+      });
+      await _startContinuousListening();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(Localization.translate('الميكروفون يستمع الآن بشكل مستمر... تحدث بصوت واضح', lang)),
+            backgroundColor: Colors.teal,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(Localization.translate('عذراً، التعرف على الصوت غير متاح في جهازك أو يتطلب إذن الميكروفون', lang)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _startContinuousListening() async {
+    if (!_isSpeechListening) return;
+    try {
+      await _speechToText.listen(
+        onResult: (val) {
+          if (mounted && val.recognizedWords.isNotEmpty) {
+            setState(() {
+              _noteController.text = _textBeforeSpeech + val.recognizedWords;
+              _noteController.selection = TextSelection.fromPosition(
+                TextPosition(offset: _noteController.text.length),
+              );
+            });
+          }
+        },
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          partialResults: true,
+          onDevice: false,
+          cancelOnError: false,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Continuous listen error: $e');
+    }
+  }
+
+  Future<void> _stopSpeechToText() async {
+    setState(() {
+      _isSpeechListening = false;
+    });
+    try {
+      await _speechToText.stop();
+    } catch (_) {}
+    if (mounted) {
+      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم إيقاف الاستماع الصوتي وتثبيت النص', lang)),
+          backgroundColor: Colors.blue,
+        ),
+      );
     }
   }
 
@@ -773,7 +895,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           onChanged: (val) => setState(() => _bottomFrameExists = val),
                         ),
 
-                        // الملاحظات
+                        // الملاحظات مع ميكروفون الإملاء الصوتي المستمر
                         TextFormField(
                           controller: _noteController,
                           focusNode: _noteFocus,
@@ -781,7 +903,46 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           decoration: InputDecoration(
                             labelText: Localization.translate('ملاحظات إضافية', lang),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _isSpeechListening ? Icons.mic : Icons.mic_none,
+                                color: _isSpeechListening ? Colors.red : Colors.blue,
+                                size: 28,
+                              ),
+                              tooltip: Localization.translate('تحويل الكلام إلى نص مستمر', lang),
+                              onPressed: _toggleSpeechToText,
+                            ),
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              icon: Icon(
+                                _isSpeechListening ? Icons.mic : Icons.mic_none_outlined,
+                                color: Colors.white,
+                              ),
+                              label: Text(
+                                _isSpeechListening
+                                    ? Localization.translate('إيقاف الاستماع المستمر', lang)
+                                    : Localization.translate('تحدث لإملاء الملاحظات (مستمر بدون انقطاع)', lang),
+                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isSpeechListening ? Colors.red : Colors.blue,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                              onPressed: _toggleSpeechToText,
+                            ),
+                            if (_isSpeechListening) ...[
+                              const SizedBox(width: 10),
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 20),
 
