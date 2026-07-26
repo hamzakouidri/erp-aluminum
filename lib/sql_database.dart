@@ -4178,6 +4178,7 @@ class SqlDatabase {
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Employees e ON wa.worker_uid = e.uid
       WHERE wa.is_transferred_to_dist = 1
+        AND (wa.is_completed = 1 OR wa.is_installed = 1)
       ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
     ''');
 
@@ -4533,29 +4534,52 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
+
+    // ✔️ عند التحويل إلى التوزيع: نضبط حقل التحويل فقط → العنصر ينتقل لصفحة التركيبات الميدانية
+    // ✔️ عند الإلغاء (إرجاع من الأرشيف): نصفّر جميع حقول التركيب/الاكتمال حتى يمر العنصر بمرحلة التركيبات الميدانية مرة أخرى
+    final Map<String, dynamic> updateFields = isTransferred == 1
+        ? {
+            'is_transferred_to_dist': 1,
+            'transferred_at': nowStr,
+          }
+        : {
+            'is_transferred_to_dist': 0,
+            'transferred_at': null,
+            // ✅ أساسي: عند الإرجاع من الأرشيف يجب مسح حالة التركيب والاكتمال ليعود للتركيبات الميدانية بعد ذلك
+            'is_installed': 0,
+            'installed_at': null,
+            'is_completed': 0,
+            'completed_at': null,
+            'archive_locked': 0,
+          };
+
     await myDb.update(
       'WorkerAllocations',
-      {
-        'is_transferred_to_dist': isTransferred,
-        'transferred_at': isTransferred == 1 ? nowStr : null,
-      },
+      updateFields,
       where: 'id = ?',
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
-    if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
-      if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
-        if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
-          if (orderId > 0) {
-            await syncOrderAndAllocationsStatus(orderId);
+    // ⚡️ تشغيل syncOrder في الخلفية دون حظر الواجهة (تحسين السرعة)
+    () async {
+      try {
+        final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+        if (allocRow.isNotEmpty) {
+          final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+          if (detailId > 0) {
+            final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+            if (detailRow.isNotEmpty) {
+              final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+              if (orderId > 0) {
+                await syncOrderAndAllocationsStatus(orderId);
+              }
+            }
           }
         }
+      } catch (e) {
+        debugPrint('Background syncOrder error: $e');
       }
-    }
+    }();
 
     await _uploadAllocationStatusToCloud(allocationId);
     CloudSyncService().notifyChange();
@@ -4741,6 +4765,7 @@ class SqlDatabase {
          OR LOWER(wa.worker_uid) = ?
          OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?))
         AND wa.is_transferred_to_dist = 1
+        AND (wa.is_completed = 1 OR wa.is_installed = 1)
       ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
     ''', [cleanEmail, workerUid, cleanEmail, cleanEmail]);
 
