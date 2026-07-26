@@ -13,6 +13,24 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ReceiptPdfService {
+  static String formatReceiptNumber(Map<String, dynamic> transaction) {
+    final isEncaissement = (transaction['transaction_type'] ?? '') == 'Encaissement';
+    final prefix = isEncaissement ? 'BR' : 'BD';
+
+    String year2 = (DateTime.now().year % 100).toString().padLeft(2, '0');
+    final createdAt = transaction['created_at']?.toString() ?? '';
+    if (createdAt.isNotEmpty) {
+      try {
+        final dt = DateTime.parse(createdAt);
+        year2 = (dt.year % 100).toString().padLeft(2, '0');
+      } catch (_) {}
+    }
+
+    final id = (transaction['id'] as num?)?.toInt() ?? 1;
+    final seqNum = id.toString().padLeft(3, '0');
+    return '$prefix$year2$seqNum';
+  }
+
   static Future<Uint8List> generateReceiptPdfBytes(Map<String, dynamic> transaction) async {
     final pdf = pw.Document();
     final prefs = await SharedPreferences.getInstance();
@@ -73,7 +91,7 @@ class ReceiptPdfService {
     final entityType = transaction['entity_type'] ?? '';
     final description = transaction['description'] ?? '';
     final phone = transaction['phone'] ?? '';
-    final receiptId = transaction['id']?.toString() ?? '-';
+    final receiptId = formatReceiptNumber(transaction);
     final createdAt = transaction['created_at'] ?? '';
 
     String dateStr = createdAt;
@@ -182,7 +200,7 @@ class ReceiptPdfService {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('رقم الوصل: #$receiptId',
+                  pw.Text('رقم الوصل: $receiptId',
                       style: pw.TextStyle(font: fontBold, fontSize: 9)),
                   pw.Text('$dateStr  $timeStr',
                       style:
