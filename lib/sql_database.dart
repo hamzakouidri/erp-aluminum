@@ -4773,8 +4773,9 @@ class SqlDatabase {
     int workerId,
     double paymentAmount,
     String recordedBy,
-    String workerName,
-  ) async {
+    String workerName, {
+    String? caisseName,
+  }) async {
     Database? myDb = await db;
     if (myDb == null) return;
 
@@ -4847,15 +4848,17 @@ class SqlDatabase {
       'settled_at': now,
     });
 
-    // 6. Record in Treasury as Decaissement
-    if (paymentAmount > 0) {
+    // 6. Record in Treasury as Decaissement (ALWAYS record full payout in selected Caisse)
+    if (paymentAmount != 0.0) {
       await insertTreasury(
         'Décaissement',
-        paymentAmount,
+        paymentAmount.abs(),
         'تسوية أسبوعية للعامل $workerName',
         entityType: 'Worker',
         entityId: workerId > 0 ? workerId : null,
         recordedBy: recordedBy,
+        caisseName: caisseName ?? 'الصندوق الرئيسي',
+        referenceId: -1,
         createdAt: now,
       );
     }
@@ -4873,7 +4876,7 @@ class SqlDatabase {
       });
     }
 
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
   }
 
 

@@ -6,7 +6,14 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../Commande/add_commande.dart';
 import '../widgets/lazy_window_image.dart';
+import 'package:intl/intl.dart';
 import '../services/cloud_sync_service.dart';
+
+String _tr(String ar, String fr, String en, AppLanguage lang) {
+  if (lang == AppLanguage.french) return fr;
+  if (lang == AppLanguage.english) return en;
+  return ar;
+}
 
 class WorkerWeeklySettlementScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -496,79 +503,127 @@ class _WorkerSettlementDetailScreenState
     }
   }
 
-  void _showPaymentDialog(double netDue) {
+  Future<void> _showPaymentDialog(double netDue) async {
     final payCtrl = TextEditingController(text: netDue.toString());
     final formKey = GlobalKey<FormState>();
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+
+    List<String> caisseNames = ['الصندوق الرئيسي', 'الصندوق المفرد'];
+    try {
+      final caissesData = await widget.db.readCaisses();
+      final names = caissesData.map((c) => c['name']?.toString() ?? '').where((n) => n.isNotEmpty).toList();
+      if (names.isNotEmpty) {
+        caisseNames = names;
+      }
+    } catch (_) {}
+
+    String selectedCaisse = caisseNames.first;
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'تسجيل دفعة وتسوية الحساب',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'صافي المستحق للعامل: $netDue د.ج\nإذا تم دفع هذا المبلغ بالكامل، سيتم تصفير الرصيد للأسبوع القادم.',
-                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: payCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'المبلغ المدفوع فعلياً (د.ج)',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'يرجى إدخل المبلغ';
-                  if (double.tryParse(val.trim()) == null) return 'الرجاء إدخال رقم صحيح';
-                  return null;
-                },
-              ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          title: Text(
+            _tr('تسجيل دفعة وتسوية الحساب', 'Enregistrer un paiement & régler', 'Record Payment & Settle Account', lang),
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                final amt = double.parse(payCtrl.text.trim());
-                Navigator.pop(context);
-
-                final settings = Provider.of<AppSettingsProvider>(context, listen: false);
-                setState(() => _isLoading = true);
-
-                await widget.db.settleWorkerWeek(
-                  widget.worker['uid']?.toString() ?? '',
-                  (widget.worker['id'] as num?)?.toInt() ?? 0,
-                  amt,
-                  settings.userDisplayName,
-                  widget.worker['name']?.toString() ?? '',
-                );
-
-                await _loadDetails();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('تمت تسوية أسبوع العامل بنجاح وتحديث الصندوق'),
-                      backgroundColor: Colors.green,
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_tr("صافي المستحق للعامل:", "Solde net dû à l'ouvrier:", "Net due to worker:", lang)} ${NumberFormat('#,##0.00').format(netDue)} د.ج\n${_tr("المبلغ المكتوب أدناه سيسجل بالكامل كدفع في الصندوق المختار.", "Le montant ci-dessous sera intégralement déduit de la caisse sélectionnée.", "The amount below will be fully recorded as a payout in the selected caisse.", lang)}',
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: payCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: _tr('المبلغ المدفوع فعلياً (د.ج)', 'Montant payé (DZD)', 'Actual Amount Paid (DZD)', lang),
+                      border: const OutlineInputBorder(),
                     ),
-                  );
-                }
-              }
-            },
-            child: const Text('تسوية ودفع', style: TextStyle(fontFamily: 'Cairo')),
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) return _tr('يرجى إدخال المبلغ', 'Veuillez entrer le montant', 'Please enter amount', lang);
+                      if (double.tryParse(val.trim()) == null) return _tr('الرجاء إدخال رقم صحيح', 'Veuillez entrer un nombre valide', 'Please enter a valid number', lang);
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: selectedCaisse,
+                    decoration: InputDecoration(
+                      labelText: _tr('الدفع من صندوق / الخزينة', 'Caisse de paiement', 'Pay from Caisse', lang),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: caisseNames
+                        .map((cName) => DropdownMenuItem<String>(
+                              value: cName,
+                              child: Text(
+                                Localization.translate(cName, lang),
+                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setStateDialog(() => selectedCaisse = val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  final amt = double.parse(payCtrl.text.trim());
+                  Navigator.pop(context);
+
+                  setState(() => _isLoading = true);
+
+                  await widget.db.settleWorkerWeek(
+                    widget.worker['uid']?.toString() ?? '',
+                    (widget.worker['id'] as num?)?.toInt() ?? 0,
+                    amt,
+                    settings.userDisplayName,
+                    widget.worker['name']?.toString() ?? '',
+                    caisseName: selectedCaisse,
+                  );
+
+                  await _loadDetails();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(_tr('تمت تسوية أسبوع العامل بنجاح وخصم المبلغ من الصندوق', 'Règlement effectué avec succès et déduit de la caisse', 'Worker settlement successfully recorded and deducted from Caisse', lang)),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: Text(_tr('تسوية ودفع', 'Régler & Payer', 'Settle & Pay', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
