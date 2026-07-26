@@ -59,8 +59,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
 
   String _openingSystem = 'French'; // French (Battante) or Sliding (Coulissante)
   bool _shutterExists = false;
-  String _shutterSide = 'Inside'; // Inside or Outside
-  String _shutterType = 'Aluminium'; // Aluminium or PVC
   bool _shutterMotorManeuver = false;
   String _glassType = 'Double'; // Simple or Double
   bool _bottomFrameExists = true;
@@ -145,8 +143,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       _locationController.text = (item['window_location'] ?? '').toString();
       _openingSystem = (item['opening_system'] ?? 'French').toString();
       _shutterExists = (item['shutter_exists'] ?? 0) == 1;
-      _shutterSide = (item['shutter_side'] ?? 'Inside').toString();
-      _shutterType = (item['shutter_type'] ?? 'Aluminium').toString();
       _shutterMotorManeuver = (item['shutter_motor_maneuver'] ?? 0) == 1;
       _glassType = (item['glass_type'] ?? 'Double').toString();
       _bottomFrameExists = (item['bottom_frame_exists'] ?? 1) == 1;
@@ -185,15 +181,21 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     final double h = (item['length'] as num?)?.toDouble() ?? 0.0;
     final String location = (item['window_location'] ?? '').toString();
     final bool shutterExists = (item['shutter_exists'] ?? 0) == 1;
+    final bool bottomFrame = (item['bottom_frame_exists'] ?? 1) == 1;
+    final String openingSystem = (item['opening_system'] ?? 'French').toString();
+    final bool isSliding = openingSystem == 'Sliding';
 
     final model = WindowModel(
       width: w,
       height: h,
       db: widget.db,
+      systemMode: isSliding ? 'sliding' : 'french',
     );
     model.position = location;
     model.hasShutter = shutterExists;
+    model.hasBottomFrame = bottomFrame;
 
+    // Apply color if available
     final frameType = (item['frame_type'] ?? '').toString();
     if (frameType.isNotEmpty && _allColors.isNotEmpty) {
       try {
@@ -203,6 +205,38 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         );
         model.selectedDbColor = matched;
       } catch (_) {}
+    }
+
+    // Auto-draw 2-sash window zone
+    if (w > 0 && h > 0) {
+      final double profileT = model.profileThickness;
+      final double shutterH = shutterExists ? 155.0 : 0.0; // default shutter box height
+      final double bottomOffset = bottomFrame ? profileT : 0.0;
+      final Rect fullZone = Rect.fromLTRB(
+        profileT,
+        shutterH + profileT,
+        w - profileT,
+        h - bottomOffset,
+      );
+
+      if (isSliding) {
+        // Sliding system: one zone with slidingSash content and 2 sashes
+        model.zones.add(WindowZone(
+          id: UniqueKey().toString(),
+          boundary: fullZone,
+          content: ZoneContent.slidingSash,
+          slidingSashesCount: 2,
+          sashThickness: model.profileThickness,
+        ));
+      } else {
+        // French (Battante) system: one zone with doubleSash content
+        model.zones.add(WindowZone(
+          id: UniqueKey().toString(),
+          boundary: fullZone,
+          content: ZoneContent.doubleSash,
+          sashThickness: model.profileThickness,
+        ));
+      }
     }
 
     return model;
@@ -441,8 +475,8 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       'frame_type': _selectedColor != null ? _selectedColor!['name'].toString() : '',
       'opening_system': _openingSystem,
       'shutter_exists': _shutterExists ? 1 : 0,
-      'shutter_side': _shutterSide,
-      'shutter_type': _shutterType,
+      'shutter_side': 'Inside',
+      'shutter_type': 'Aluminium',
       'shutter_motor_maneuver': _shutterMotorManeuver ? 1 : 0,
       'glass_type': _glassType,
       'glass_decoration': 0,
@@ -586,8 +620,8 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         'frame_type': item['frame_type'] ?? '',
         'opening_system': item['opening_system'] ?? '',
         'shutter_exists': item['shutter_exists'] ?? 0,
-        'shutter_side': item['shutter_side'] ?? '',
-        'shutter_type': item['shutter_type'] ?? '',
+        'shutter_side': 'Inside',
+        'shutter_type': 'Aluminium',
         'shutter_motor_maneuver': item['shutter_motor_maneuver'] ?? 0,
         'glass_type': item['glass_type'] ?? '',
         'glass_decoration': 0,
@@ -856,20 +890,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         ),
 
                         if (_shutterExists) ...[
-                          _buildSelectionRow(
-                            title: Localization.translate('جهة الستار', lang),
-                            yesLabel: Localization.translate('داخل / Inside', lang),
-                            noLabel: Localization.translate('خارج / Outside', lang),
-                            value: _shutterSide == 'Inside',
-                            onChanged: (val) => setState(() => _shutterSide = val ? 'Inside' : 'Outside'),
-                          ),
-                          _buildSelectionRow(
-                            title: Localization.translate('نوع شفرة الستار', lang),
-                            yesLabel: Localization.translate('ألمنيوم / Aluminium', lang),
-                            noLabel: Localization.translate('بي في سي / PVC', lang),
-                            value: _shutterType == 'Aluminium',
-                            onChanged: (val) => setState(() => _shutterType = val ? 'Aluminium' : 'PVC'),
-                          ),
                           _buildSelectionRow(
                             title: Localization.translate('هل المحرك بمناورة أمان (Maneuver Security)؟', lang),
                             yesLabel: Localization.translate('نعم / Yes', lang),
