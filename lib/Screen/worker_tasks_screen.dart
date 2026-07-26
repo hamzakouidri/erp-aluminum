@@ -934,9 +934,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 final currentUid = (currentUser?.uid ?? '').trim().toLowerCase();
                 final currentEmail = (currentUser?.email ?? '').trim().toLowerCase();
 
-                // هل هذا حساب مدير أصول حقيقي (بريد المدير الأصلي أو نائب مدير محقق بالصلاحية)؟
-                final bool isRealManager = (currentEmail == 'kouidrihamza45@gmail.com') ||
-                    (settings.isManager && currentEmail == 'kouidrihamza45@gmail.com');
+                // هل هذا حساب مدير أصول أو نائب مدير بصلاحيات كاملة؟
+                final bool isRealManager = settings.isManager;
 
                 final taskWorkerUid = (t['worker_uid'] ?? '').toString().trim().toLowerCase();
                 final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
@@ -975,7 +974,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 // 2️⃣ زر "تم تركيب الزجاج" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
                 final bool canClickGlass = !isRealManager && isMyAssignedTask;
 
-                // 3️⃣ زر "تحويل للتوزيع والأرشيف" — متاح إذا تم الانتهاء وهو مسند له، أو للمدير الحقيقي بعد الانتهاء
+                // 3️⃣ زر "تحويل للتوزيع والأرشيف" — متاح إذا تم الانتهاء، سواء للعامل أو أي مدير/نائب
                 final bool isBothCompleted = isManufactured && isGlassInstalled;
                 final bool canTransfer = isBothCompleted && (isRealManager || isMyAssignedTask);
 

@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'dart:async';
 import '../services/cloud_sync_service.dart';
+import 'worker_transactions_detail_screen.dart';
 
 class WorkerFinancesScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -319,10 +320,22 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
   }
 
 
-  void _showAddTransactionDialog(Map<String, dynamic> worker) {
+  void _showAddTransactionDialog(Map<String, dynamic> worker) async {
     final amountCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
     String type = 'advance'; // advance (سلفة) or salary (راتب)
+    String paymentSource = 'الصندوق الرئيسي';
+    List<String> caisseNames = ['الصندوق الرئيسي', 'الصندوق المفرد', 'الحساب البنكي / البنك', 'يدوي (بدون اقتطاع صندوق)'];
+
+    try {
+      final caissesData = await widget.db.readCaisses();
+      final names = caissesData.map((c) => c['name']?.toString() ?? '').where((n) => n.isNotEmpty).toList();
+      if (names.isNotEmpty) {
+        caisseNames = [...names, 'الحساب البنكي / البنك', 'يدوي (بدون اقتطاع صندوق)'];
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -341,17 +354,11 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                   items: const [
                     DropdownMenuItem(
                       value: 'advance',
-                      child: Text(
-                        'سلفة (Advance)',
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
+                      child: Text('سلفة (Advance)', style: TextStyle(fontFamily: 'Cairo')),
                     ),
                     DropdownMenuItem(
                       value: 'salary',
-                      child: Text(
-                        'أجرة (Salary)',
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
+                      child: Text('أجرة (Salary)', style: TextStyle(fontFamily: 'Cairo')),
                     ),
                   ],
                   onChanged: (val) => setStateDialog(() => type = val!),
@@ -361,11 +368,25 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
+                // ── اختيار الصندوق (Caisse) ────────────────────────────
+                DropdownButtonFormField<String>(
+                  value: paymentSource,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'مصدر الدفع / الصندوق',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: caisseNames
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (v) => setStateDialog(() => paymentSource = v!),
+                ),
+                const SizedBox(height: 10),
                 TextField(
                   controller: amountCtrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'المبلغ (سيُخصم من الصندوق)',
+                    labelText: 'المبلغ (دج)',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -388,34 +409,46 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (amountCtrl.text.isNotEmpty) {
-                  // تطبيع الإدخال: استبدال الفاصلة بنقطة والمسافات
                   final rawText = amountCtrl.text
-                      .replaceAll('،', '') // فاصلة عربية للآلاف
-                      .replaceAll(',', '') // فاصلة فرنسية للآلاف
-                      .replaceAll(' ', '') // مسافات
-                      .replaceAll('\u00a0', ''); // مسافة غير قابلة للكسر
+                      .replaceAll('،', '')
+                      .replaceAll(',', '')
+                      .replaceAll(' ', '')
+                      .replaceAll('\u00a0', '');
                   final amount = double.tryParse(rawText) ?? 0.0;
-                   final settings = Provider.of<AppSettingsProvider>(
-                    context,
-                    listen: false,
-                  );
+                  final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+                  final workerName = worker['name']?.toString() ?? '';
+                  final empId = worker['id'] as int? ?? 0;
 
-                  // 1. Record in worker's account (automatically deducts from Treasury)
+                  // 1. Record in worker's account
                   await widget.db.insertWorkerTransaction(
                     worker['uid'],
                     amount,
                     type,
-                    noteCtrl.text,
+                    noteCtrl.text.isNotEmpty ? noteCtrl.text : (type == 'advance' ? 'سلفة مالية' : 'دفعة أجر'),
                     recordedBy: settings.userDisplayName,
+                    caisseName: paymentSource,
                   );
+
+                  // 2. If source is a real caisse, record Décaissement in Treasury
+                  if (!paymentSource.contains('يدوي')) {
+                    await widget.db.insertTreasury(
+                      'Décaissement',
+                      amount,
+                      'إلى العامل: $workerName - ${type == 'advance' ? 'سلفة' : 'دفعة أجر'} (${noteCtrl.text.isNotEmpty ? noteCtrl.text : 'بدون ملاحظات'})',
+                      entityType: 'Worker',
+                      entityId: empId,
+                      caisseName: paymentSource,
+                      recordedBy: settings.userDisplayName,
+                    );
+                  }
 
                   Navigator.pop(context);
                   if (mounted) {
+                    _loadData();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text(
-                          'تم تسجيل العملية بنجاح وخصمها من الصندوق',
-                        ),
+                        content: Text('تم تسجيل العملية بنجاح وخصمها من الصندوق'),
+                        backgroundColor: Colors.green,
                       ),
                     );
                   }
@@ -700,7 +733,7 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'إدارة العمال والمقاولات',
+          'إدارة شؤون وأجور العمال',
           style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
         ),
         backgroundColor: isDark
@@ -745,8 +778,19 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                             onPressed: () => _showEditWorkerDialog(worker),
                           ),
                         IconButton(
-                          icon: const Icon(Icons.history, color: Colors.blue),
-                          onPressed: () => _viewWorkerHistory(worker),
+                          icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.blue),
+                          tooltip: 'عرض وسجل معاملات العامل',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => WorkerTransactionsDetailScreen(
+                                  worker: worker,
+                                  db: widget.db,
+                                ),
+                              ),
+                            ).then((_) => _loadData());
+                          },
                         ),
                         if (!widget.readOnly)
                           IconButton(

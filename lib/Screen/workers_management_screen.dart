@@ -813,22 +813,6 @@ class _WorkerCardState extends State<WorkerCard> {
                       ),
                     ),
                   ),
-                  // ── زر عرض وسجل معاملات وسلف العامل (صفحة مستقلة) ────
-                  IconButton(
-                    icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.green),
-                    tooltip: _tr('عرض وسجل سلف ومعاملات العامل', 'Voir finances ouvrier', 'View worker finances & advances', lang),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => WorkerTransactionsDetailScreen(
-                            worker: widget.worker,
-                            db: widget.db,
-                          ),
-                        ),
-                      ).then((_) => widget.onRefresh());
-                    },
-                  ),
                   // ── زر تعديل بيانات العامل ────────────────────────
                   if (!widget.isDeputyManager || (perms['edit_worker'] ?? false))
                     IconButton(

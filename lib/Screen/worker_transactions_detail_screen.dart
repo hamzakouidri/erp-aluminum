@@ -26,8 +26,10 @@ class _WorkerTransactionsDetailScreenState
   List<Map<String, dynamic>> _allocations = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00');
 
-  String _selectedFilter = 'All'; // All, Advance, Salary, Hand
+  String _selectedFilter = 'All'; // All, Advance, Salary
   String _searchQuery = '';
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   double _totalEarned = 0.0;
   double _totalAdvances = 0.0;
@@ -277,7 +279,18 @@ class _WorkerTransactionsDetailScreenState
       if (_selectedFilter == 'Advance' && type != 'advance') return false;
       if (_selectedFilter == 'Salary' && type != 'salary') return false;
       if (_searchQuery.isNotEmpty) {
-        return note.contains(_searchQuery.toLowerCase()) || t['amount'].toString().contains(_searchQuery);
+        if (!note.contains(_searchQuery.toLowerCase()) && !t['amount'].toString().contains(_searchQuery)) {
+          return false;
+        }
+      }
+      // ── فلتر التاريخ ───────────────────────────────────────
+      if (_startDate != null || _endDate != null) {
+        final createdAtStr = t['created_at']?.toString() ?? '';
+        DateTime? txDate;
+        try { txDate = DateTime.parse(createdAtStr); } catch (_) {}
+        if (txDate == null) return false;
+        if (_startDate != null && txDate.isBefore(_startDate!)) return false;
+        if (_endDate != null && txDate.isAfter(DateTime(_endDate!.year, _endDate!.month, _endDate!.day, 23, 59, 59))) return false;
       }
       return true;
     }).toList();
@@ -295,6 +308,17 @@ class _WorkerTransactionsDetailScreenState
           foregroundColor: Colors.white,
           elevation: 0,
           actions: [
+            // ── فلتر بالتاريخ ─────────────────────────────────
+            IconButton(
+              icon: Icon(
+                (_startDate != null || _endDate != null)
+                    ? Icons.date_range
+                    : Icons.date_range_outlined,
+                color: (_startDate != null || _endDate != null) ? Colors.amber : Colors.white,
+              ),
+              tooltip: _tr('فلتر بالتاريخ', 'Filtrer par date', 'Filter by date', lang),
+              onPressed: () => _showDateFilterDialog(lang),
+            ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _loadData,
@@ -386,6 +410,34 @@ class _WorkerTransactionsDetailScreenState
                             ],
                           ),
                         ),
+                        // ── شارة الفلتر النشط بالتاريخ ─────────────────────
+                        if (_startDate != null || _endDate != null) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade700),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.date_range, size: 14, color: Colors.amber),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${_startDate != null ? '${_startDate!.day}/${_startDate!.month}/${_startDate!.year}' : '•••'}  →  ${_endDate != null ? '${_endDate!.day}/${_endDate!.month}/${_endDate!.year}' : '•••'}',
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.amber, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  onTap: () => setState(() { _startDate = null; _endDate = null; }),
+                                  child: const Icon(Icons.close, size: 14, color: Colors.amber),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -573,6 +625,127 @@ class _WorkerTransactionsDetailScreenState
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── ديالوج فلتر التاريخ ─────────────────────────────────────────────
+  Future<void> _showDateFilterDialog(AppLanguage lang) async {
+    DateTime? tempStart = _startDate;
+    DateTime? tempEnd = _endDate;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.date_range, color: Colors.blue),
+              const SizedBox(width: 8),
+              Text(
+                _tr('فلتر بالتاريخ', 'Filtrer par date', 'Filter by date', lang),
+                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── تاريخ البداية ─────────────────────────────────────
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.play_arrow_rounded, color: Colors.green),
+                title: Text(
+                  _tr('تاريخ البداية', 'Date de début', 'Start Date', lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                ),
+                subtitle: Text(
+                  tempStart != null
+                      ? '${tempStart!.day}/${tempStart!.month}/${tempStart!.year}'
+                      : _tr('غير محدد', 'Non spécifié', 'Not set', lang),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: tempStart != null ? Colors.green : Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                trailing: tempStart != null
+                    ? IconButton(
+                        icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                        onPressed: () => setDlg(() => tempStart = null),
+                      )
+                    : null,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: tempStart ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) setDlg(() => tempStart = picked);
+                },
+              ),
+              const Divider(),
+              // ── تاريخ النهاية ──────────────────────────────────────
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.stop_rounded, color: Colors.red),
+                title: Text(
+                  _tr('تاريخ النهاية', 'Date de fin', 'End Date', lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                ),
+                subtitle: Text(
+                  tempEnd != null
+                      ? '${tempEnd!.day}/${tempEnd!.month}/${tempEnd!.year}'
+                      : _tr('غير محدد', 'Non spécifié', 'Not set', lang),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: tempEnd != null ? Colors.red : Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                trailing: tempEnd != null
+                    ? IconButton(
+                        icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                        onPressed: () => setDlg(() => tempEnd = null),
+                      )
+                    : null,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: tempEnd ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) setDlg(() => tempEnd = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => setDlg(() { tempStart = null; tempEnd = null; }),
+              child: Text(_tr('مسح الفلتر', 'Effacer', 'Clear', lang), style: const TextStyle(color: Colors.red, fontFamily: 'Cairo')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade700, foregroundColor: Colors.white),
+              onPressed: () {
+                setState(() {
+                  _startDate = tempStart;
+                  _endDate = tempEnd;
+                });
+                Navigator.pop(ctx);
+              },
+              child: Text(_tr('تطبيق الفلتر', 'Appliquer', 'Apply', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
             ),
           ],
         ),
