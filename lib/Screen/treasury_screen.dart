@@ -333,44 +333,53 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                InkWell(
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (date != null && mounted) {
-                      final time = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.fromDateTime(selectedDate),
-                      );
-                      if (time != null) {
-                        setStateDialog(() {
-                          selectedDate = DateTime(date.year, date.month,
-                              date.day, time.hour, time.minute);
-                        });
-                      }
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade400),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today, size: 18, color: Colors.teal),
-                        const SizedBox(width: 8),
-                        Text(
-                          DateFormat('dd/MM/yyyy  HH:mm').format(selectedDate),
-                          style: const TextStyle(fontFamily: 'Cairo'),
+                Builder(
+                  builder: (ctx) {
+                    final canChangeDate = Provider.of<AppSettingsProvider>(context, listen: false).canChangeTransactionDates();
+                    return InkWell(
+                      onTap: canChangeDate ? () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (date != null && mounted) {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(selectedDate),
+                          );
+                          if (time != null) {
+                            setStateDialog(() {
+                              selectedDate = DateTime(date.year, date.month,
+                                  date.day, time.hour, time.minute);
+                            });
+                          }
+                        }
+                      } : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade400),
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                      ],
-                    ),
-                  ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_today, size: 18, color: canChangeDate ? Colors.teal : Colors.grey),
+                            const SizedBox(width: 8),
+                            Text(
+                              DateFormat('dd/MM/yyyy  HH:mm').format(selectedDate),
+                              style: TextStyle(fontFamily: 'Cairo', color: canChangeDate ? null : Colors.grey),
+                            ),
+                            if (!canChangeDate) ...[
+                              const Spacer(),
+                              const Icon(Icons.lock, size: 16, color: Colors.grey),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
@@ -1162,44 +1171,53 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  InkWell(
-                    onTap: () async {
-                      final date = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                      );
-                      if (date != null && mounted) {
-                        final time = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.fromDateTime(selectedDate),
-                        );
-                        if (time != null) {
-                          setStateDialog(() {
-                            selectedDate = DateTime(date.year, date.month,
-                                date.day, time.hour, time.minute);
-                          });
-                        }
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today, size: 18, color: Colors.teal),
-                          const SizedBox(width: 8),
-                          Text(
-                            DateFormat('dd/MM/yyyy  HH:mm').format(selectedDate),
-                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                  Builder(
+                    builder: (ctx) {
+                      final canChangeDate = Provider.of<AppSettingsProvider>(context, listen: false).canChangeTransactionDates();
+                      return InkWell(
+                        onTap: canChangeDate ? () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: selectedDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                          );
+                          if (date != null && mounted) {
+                            final time = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(selectedDate),
+                            );
+                            if (time != null) {
+                              setStateDialog(() {
+                                selectedDate = DateTime(date.year, date.month,
+                                    date.day, time.hour, time.minute);
+                              });
+                            }
+                          }
+                        } : null,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade400),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                        ],
-                      ),
-                    ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.calendar_today, size: 18, color: canChangeDate ? Colors.teal : Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                DateFormat('dd/MM/yyyy  HH:mm').format(selectedDate),
+                                style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: canChangeDate ? null : Colors.grey),
+                              ),
+                              if (!canChangeDate) ...[
+                                const Spacer(),
+                                const Icon(Icons.lock, size: 16, color: Colors.grey),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
 

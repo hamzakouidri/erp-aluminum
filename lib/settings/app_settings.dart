@@ -307,6 +307,9 @@ class AppSettingsProvider extends ChangeNotifier {
   bool canAccessTreasury() =>
       isManager || _isPermissionTrue(_workerPermissions['treasury']);
 
+  bool canChangeTransactionDates() =>
+      isManager || _isPermissionTrue(_workerPermissions['change_transaction_dates']);
+
   bool canManageWorkers() =>
       isManager || _isPermissionTrue(_workerPermissions['manage_workers']);
 
