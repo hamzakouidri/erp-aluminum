@@ -5952,7 +5952,7 @@ class SqlDatabase {
       debugPrint('Error inserting worker transaction to treasury: $e');
     }
 
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -7201,7 +7201,7 @@ class SqlDatabase {
       }
     }
     
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -7743,10 +7743,14 @@ class SqlDatabase {
           continue;
         }
 
-        try {
-          await txn.delete(table);
-        } catch (e) {
-          print('Could not clear table $table before import: $e');
+        // 🛡️ حماية الجداول الحساسة (الصندوق، معاملات العمال، الإسنادات، الطلبيات، الزبائن، إلخ):
+        // لا نمسح هذه الجداول محلياً بـ txn.delete(table) بل نعتمد التدميج الذكي (upsert) للحفاظ على المعاملات المحلية الجديدة
+        if (!sensitiveTransactionalTables.contains(table)) {
+          try {
+            await txn.delete(table);
+          } catch (e) {
+            print('Could not clear table $table before import: $e');
+          }
         }
         final columns = await _tableColumns(txn, table);
         for (final row in rows) {

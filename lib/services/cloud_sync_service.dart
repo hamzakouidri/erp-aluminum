@@ -267,6 +267,25 @@ class CloudSyncService {
     });
   }
 
+  /// إشعار بوجود تغيير عاجل محلياً (كعمليات الصندوق والمعاملات المالية) والرفع الفوري للسحابة بدون انتظار
+  void notifyChangeImmediate() async {
+    _dbUpdateController.add('');
+    if (_isRestoring) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userRole = prefs.getString('user_role') ?? 'worker';
+      if (userRole != 'worker') {
+        await prefs.setBool('is_local_dirty', true);
+      }
+    } catch (e) {
+      print('Failed to set local dirty flag: $e');
+    }
+
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _silentBackup();
+  }
+
   /// الرفع الصامت للسحابة
   Future<void> _silentBackup() async {
     try {
@@ -639,6 +658,20 @@ class CloudSyncService {
     if (user == null) throw Exception('يجب تسجيل الدخول لاستعادة البيانات');
     if (_workshopId == null) {
       throw Exception('لم يتم العثور على ورشة خاصة بك للمزامنة');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final isDirty = prefs.getBool('is_local_dirty') ?? false;
+    final role = prefs.getString('user_role') ?? 'worker';
+
+    // 🛡️ حماية البيانات المحلية: إذا كانت هناك تغييرات محليّة لم تُرفع بعد، ارفعها أولاً للسحابة قبل الاسترجاع!
+    if (isDirty && role != 'worker') {
+      print("--- CloudSyncService: Local changes exist (is_local_dirty). Uploading local data first before restore... ---");
+      try {
+        await backupToCloud(isSilent: true);
+      } catch (e) {
+        print('Pre-restore backup warning: $e');
+      }
     }
 
     final latestDocRef = _firestore
