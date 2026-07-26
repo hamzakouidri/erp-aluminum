@@ -308,9 +308,24 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                     child: TextFormField(
                       controller: inCtrl,
                       decoration: InputDecoration(
-                        labelText: _tr('وقت الدخول (مثال 08:00)', 'Entrée', 'Check In', lang),
+                        labelText: _tr('وقت الدخول', 'Entrée', 'Check In', lang),
                         border: const OutlineInputBorder(),
                         hintText: '08:00',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.access_time, color: Colors.green),
+                          tooltip: _tr('اختيار وقت الدخول', 'Choisir l\'heure', 'Pick Check-In Time', lang),
+                          onPressed: () async {
+                            final TimeOfDay? picked = await showTimePicker(
+                              context: ctx,
+                              initialTime: const TimeOfDay(hour: 8, minute: 0),
+                            );
+                            if (picked != null) {
+                              final h = picked.hour.toString().padLeft(2, '0');
+                              final m = picked.minute.toString().padLeft(2, '0');
+                              inCtrl.text = '$h:$m';
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -319,9 +334,24 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                     child: TextFormField(
                       controller: outCtrl,
                       decoration: InputDecoration(
-                        labelText: _tr('وقت الخروج (مثال 17:00)', 'Sortie', 'Check Out', lang),
+                        labelText: _tr('وقت الخروج', 'Sortie', 'Check Out', lang),
                         border: const OutlineInputBorder(),
                         hintText: '17:00',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.access_time, color: Colors.red),
+                          tooltip: _tr('اختيار وقت الخروج', 'Choisir l\'heure', 'Pick Check-Out Time', lang),
+                          onPressed: () async {
+                            final TimeOfDay? picked = await showTimePicker(
+                              context: ctx,
+                              initialTime: const TimeOfDay(hour: 17, minute: 0),
+                            );
+                            if (picked != null) {
+                              final h = picked.hour.toString().padLeft(2, '0');
+                              final m = picked.minute.toString().padLeft(2, '0');
+                              outCtrl.text = '$h:$m';
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -678,8 +708,8 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                                   child: ElevatedButton.icon(
                                     onPressed: () => _checkIn(lang),
                                     icon: const Icon(Icons.login_rounded, size: 18),
-                                    label: Text(_tr('تسجيل الدخول', 'Pointer entrée', 'Check In', lang),
-                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    label: Text(_tr('تسجيل الدخول (الآن)', 'Pointer entrée', 'Check In (Now)', lang),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.green,
                                       foregroundColor: Colors.white,
@@ -687,13 +717,13 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: ElevatedButton.icon(
                                     onPressed: () => _checkOut(lang),
                                     icon: const Icon(Icons.logout_rounded, size: 18),
-                                    label: Text(_tr('تسجيل الخروج', 'Pointer sortie', 'Check Out', lang),
-                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    label: Text(_tr('تسجيل الخروج (الآن)', 'Pointer sortie', 'Check Out (Now)', lang),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.red.shade600,
                                       foregroundColor: Colors.white,
@@ -702,6 +732,22 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => _manualEntry(lang, existing: todayRecord),
+                                icon: const Icon(Icons.edit_calendar, size: 18, color: Colors.amber),
+                                label: Text(
+                                  _tr('⚙️ إدخال / تعديل ساعات الدخول والخروج يدوياً', '⚙️ Modifier les heures manuellement', '⚙️ Custom Time Entry / Edit', lang),
+                                  style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.amber),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                ),
+                              ),
                             ),
                           ],
                         ),
