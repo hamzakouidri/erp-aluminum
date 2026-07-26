@@ -3,6 +3,7 @@ import '../sql_database.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import 'dart:convert';
+import 'package:intl/intl.dart';
 
 import 'dart:async';
 import '../services/cloud_sync_service.dart';
@@ -24,6 +25,8 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
   List<Map<String, dynamic>> _workers = [];
   bool _isLoading = false;
   StreamSubscription? _syncSub;
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   String _tr(String ar, String fr, String en, AppLanguage lang) {
     switch (lang) {
@@ -34,6 +37,112 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
       default:
         return ar;
     }
+  }
+
+  Future<void> _showDateFilterDialog() async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+    final startCtrl = TextEditingController(
+      text: _startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : '',
+    );
+    final endCtrl = TextEditingController(
+      text: _endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : '',
+    );
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.date_range, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(
+              _tr('تحديد فترة البحث والفلترة بالتاريخ', 'Filtrer par date', 'Filter by Date Range', lang),
+              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: startCtrl,
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: _tr('تاريخ البداية (من)', 'Date de début (Du)', 'Start Date (From)', lang),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: const Icon(Icons.calendar_today),
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: _startDate ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    startCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: endCtrl,
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: _tr('تاريخ النهاية (إلى)', 'Date de fin (Au)', 'End Date (To)', lang),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: const Icon(Icons.calendar_today),
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: _endDate ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                  );
+                  if (picked != null) {
+                    endCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (_startDate != null || _endDate != null)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _startDate = null;
+                  _endDate = null;
+                });
+                Navigator.pop(ctx);
+              },
+              child: Text(
+                _tr('إلغاء الفلتر 🧹', 'Réinitialiser', 'Reset Filter', lang),
+                style: const TextStyle(color: Colors.red, fontFamily: 'Cairo'),
+              ),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
+            onPressed: () {
+              setState(() {
+                _startDate = startCtrl.text.isNotEmpty ? DateTime.tryParse(startCtrl.text) : null;
+                _endDate = endCtrl.text.isNotEmpty ? DateTime.tryParse(endCtrl.text) : null;
+              });
+              Navigator.pop(ctx);
+            },
+            child: Text(_tr('تطبيق الفلتر', 'Appliquer', 'Apply Filter', lang), style: const TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -757,6 +866,18 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
         backgroundColor: isDark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.orange,
+        actions: [
+          IconButton(
+            icon: Icon(
+              (_startDate != null || _endDate != null)
+                  ? Icons.date_range
+                  : Icons.date_range_outlined,
+              color: (_startDate != null || _endDate != null) ? Colors.amber : Colors.white,
+            ),
+            tooltip: _tr('فلترة بالتاريخ (تاريخ البداية وتاريخ النهاية)', 'Filtrer par date', 'Date Filter', lang),
+            onPressed: _showDateFilterDialog,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -794,6 +915,8 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                           builder: (_) => WorkerTransactionsDetailScreen(
                             worker: worker,
                             db: widget.db,
+                            initialStartDate: _startDate,
+                            initialEndDate: _endDate,
                           ),
                         ),
                       ).then((_) => _loadData());
@@ -833,6 +956,8 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                                 builder: (_) => WorkerTransactionsDetailScreen(
                                   worker: worker,
                                   db: widget.db,
+                                  initialStartDate: _startDate,
+                                  initialEndDate: _endDate,
                                 ),
                               ),
                             ).then((_) => _loadData());

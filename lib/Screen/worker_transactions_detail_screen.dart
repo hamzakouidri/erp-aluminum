@@ -8,11 +8,15 @@ import 'worker_attendance_screen.dart';
 class WorkerTransactionsDetailScreen extends StatefulWidget {
   final Map<String, dynamic> worker;
   final SqlDatabase db;
+  final DateTime? initialStartDate;
+  final DateTime? initialEndDate;
 
   const WorkerTransactionsDetailScreen({
     super.key,
     required this.worker,
     required this.db,
+    this.initialStartDate,
+    this.initialEndDate,
   });
 
   @override
@@ -40,6 +44,8 @@ class _WorkerTransactionsDetailScreenState
   @override
   void initState() {
     super.initState();
+    _startDate = widget.initialStartDate;
+    _endDate = widget.initialEndDate;
     _loadData();
   }
 
