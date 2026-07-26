@@ -50,8 +50,10 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
     final data = await widget.db.readWorkerAttendance(uid);
     if (mounted) {
@@ -70,28 +72,49 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
   Future<void> _toggleDayStatus(int day, AppLanguage lang) async {
     final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
     final dateStr = DateFormat('yyyy-MM-dd').format(DateTime(_selectedMonth.year, _selectedMonth.month, day));
-    final existing = _records.where((r) => r['attendance_date'] == dateStr).firstOrNull;
+    final existingIndex = _records.indexWhere((r) => r['attendance_date'] == dateStr);
+    final existing = existingIndex != -1 ? _records[existingIndex] : null;
+
+    Map<String, dynamic>? updatedRecord;
 
     if (existing == null || (existing['check_in'] == null && (existing['note'] ?? '').contains('غائب'))) {
-      // 🟢 تسجيل كـ (حاضر ✅)
-      await widget.db.upsertWorkerAttendance(
-        workerUid: uid,
-        date: dateStr,
-        checkIn: '08:00',
-        checkOut: '17:00',
-        note: 'حاضر ✅',
-      );
+      // 🟢 تحويل فوري إلى (حاضر ✅)
+      updatedRecord = {
+        'worker_uid': uid,
+        'attendance_date': dateStr,
+        'check_in': '08:00',
+        'check_out': '17:00',
+        'note': 'حاضر ✅',
+      };
     } else if (existing['check_in'] != null || (existing['note'] ?? '').contains('حاضر')) {
-      // 🔴 تسجيل كـ (غائب ❌)
-      await widget.db.upsertWorkerAttendance(
-        workerUid: uid,
-        date: dateStr,
-        checkIn: null,
-        checkOut: null,
-        note: 'غائب ❌',
-      );
+      // 🔴 تحويل فوري إلى (غائب ❌)
+      updatedRecord = {
+        'worker_uid': uid,
+        'attendance_date': dateStr,
+        'check_in': null,
+        'check_out': null,
+        'note': 'غائب ❌',
+      };
     } else {
-      // ⚪ مسح / إعادة تعيين
+      // ⚪ مسح / فارغ
+      updatedRecord = null;
+    }
+
+    // ⚡ تحديث واجهة المستخدم فوراً وبدون أي ترميش (Optimistic UI Update)
+    setState(() {
+      if (updatedRecord == null) {
+        if (existingIndex != -1) _records.removeAt(existingIndex);
+      } else {
+        if (existingIndex != -1) {
+          _records[existingIndex] = updatedRecord;
+        } else {
+          _records.add(updatedRecord);
+        }
+      }
+    });
+
+    // 💾 حفظ في قاعدة البيانات في الخلفية
+    if (updatedRecord == null) {
       await widget.db.upsertWorkerAttendance(
         workerUid: uid,
         date: dateStr,
@@ -99,8 +122,18 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
         checkOut: null,
         note: null,
       );
+    } else {
+      await widget.db.upsertWorkerAttendance(
+        workerUid: uid,
+        date: dateStr,
+        checkIn: updatedRecord['check_in'],
+        checkOut: updatedRecord['check_out'],
+        note: updatedRecord['note'],
+      );
     }
-    _loadData();
+
+    // 🔄 مزامنة صامتة في الكواليس
+    _loadData(silent: true);
   }
 
   Future<void> _checkIn(AppLanguage lang) async {
@@ -131,7 +164,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
       checkIn: now,
       note: 'حاضر ✅',
     );
-    _loadData();
+    _loadData(silent: true);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -189,7 +222,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
       date: today,
       checkOut: now,
     );
-    _loadData();
+    _loadData(silent: true);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -284,7 +317,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
                 note: noteCtrl.text.isNotEmpty ? noteCtrl.text : null,
               );
               if (ctx.mounted) Navigator.pop(ctx);
-              _loadData();
+              _loadData(silent: true);
             },
             child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang), style: const TextStyle(fontFamily: 'Cairo')),
           ),
