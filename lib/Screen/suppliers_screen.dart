@@ -7,6 +7,7 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
 import 'map_picker_screen.dart';
+import 'supplier_details_screen.dart';
 
 class SuppliersScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -254,6 +255,14 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                     vertical: 6,
                   ),
                   child: ListTile(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SupplierDetailsScreen(supplier: sup),
+                        ),
+                      );
+                    },
                     leading: const CircleAvatar(
                       backgroundColor: Colors.blue,
                       child: Icon(Icons.local_shipping, color: Colors.white),
