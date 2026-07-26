@@ -18,11 +18,13 @@ class WorkerAttendanceScreen extends StatefulWidget {
   State<WorkerAttendanceScreen> createState() => _WorkerAttendanceScreenState();
 }
 
-class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
+class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   List<Map<String, dynamic>> _records = [];
   final _dateFormat = DateFormat('yyyy-MM-dd');
   final _timeFormat = DateFormat('HH:mm');
+  DateTime _selectedMonth = DateTime.now();
+  late TabController _tabController;
 
   String _tr(String ar, String fr, String en, AppLanguage lang) {
     switch (lang) {
@@ -38,7 +40,14 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -53,10 +62,50 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
     }
   }
 
+  int _getDaysInMonth(DateTime month) {
+    final nextMonth = DateTime(month.year, month.month + 1, 1);
+    return nextMonth.subtract(const Duration(days: 1)).day;
+  }
+
+  Future<void> _toggleDayStatus(int day, AppLanguage lang) async {
+    final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime(_selectedMonth.year, _selectedMonth.month, day));
+    final existing = _records.where((r) => r['attendance_date'] == dateStr).firstOrNull;
+
+    if (existing == null || (existing['check_in'] == null && (existing['note'] ?? '').contains('غائب'))) {
+      // 🟢 تسجيل كـ (حاضر ✅)
+      await widget.db.upsertWorkerAttendance(
+        workerUid: uid,
+        date: dateStr,
+        checkIn: '08:00',
+        checkOut: '17:00',
+        note: 'حاضر ✅',
+      );
+    } else if (existing['check_in'] != null || (existing['note'] ?? '').contains('حاضر')) {
+      // 🔴 تسجيل كـ (غائب ❌)
+      await widget.db.upsertWorkerAttendance(
+        workerUid: uid,
+        date: dateStr,
+        checkIn: null,
+        checkOut: null,
+        note: 'غائب ❌',
+      );
+    } else {
+      // ⚪ مسح / إعادة تعيين
+      await widget.db.upsertWorkerAttendance(
+        workerUid: uid,
+        date: dateStr,
+        checkIn: null,
+        checkOut: null,
+        note: null,
+      );
+    }
+    _loadData();
+  }
+
   Future<void> _checkIn(AppLanguage lang) async {
     final today = _dateFormat.format(DateTime.now());
     final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
-    // هل يوجد تسجيل دخول اليوم بالفعل؟
     final existing = _records.where((r) => r['attendance_date'] == today).toList();
     if (existing.isNotEmpty && existing.first['check_in'] != null) {
       if (mounted) {
@@ -80,6 +129,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
       workerUid: uid,
       date: today,
       checkIn: now,
+      note: 'حاضر ✅',
     );
     _loadData();
     if (mounted) {
@@ -153,9 +203,9 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
     }
   }
 
-  Future<void> _manualEntry(AppLanguage lang, {Map<String, dynamic>? existing}) async {
+  Future<void> _manualEntry(AppLanguage lang, {Map<String, dynamic>? existing, String? initialDate}) async {
     final dateCtrl = TextEditingController(
-        text: existing != null ? existing['attendance_date'] : _dateFormat.format(DateTime.now()));
+        text: existing != null ? existing['attendance_date'] : (initialDate ?? _dateFormat.format(DateTime.now())));
     final inCtrl = TextEditingController(text: existing?['check_in'] ?? '');
     final outCtrl = TextEditingController(text: existing?['check_out'] ?? '');
     final noteCtrl = TextEditingController(text: existing?['note'] ?? '');
@@ -164,7 +214,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          _tr('إدخال يدوي للحضور', 'Saisie manuelle présence', 'Manual Attendance Entry', lang),
+          _tr('تفاصيل وتعديل حضور اليوم', 'Détails de présence', 'Attendance Details', lang),
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
         ),
         content: SingleChildScrollView(
@@ -179,15 +229,6 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
                   border: const OutlineInputBorder(),
                   suffixIcon: const Icon(Icons.calendar_today),
                 ),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    initialDate: DateTime.tryParse(dateCtrl.text) ?? DateTime.now(),
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                  );
-                  if (picked != null) dateCtrl.text = _dateFormat.format(picked);
-                },
               ),
               const SizedBox(height: 12),
               Row(
@@ -195,11 +236,10 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: inCtrl,
-                      keyboardType: TextInputType.datetime,
                       decoration: InputDecoration(
-                        labelText: _tr('وقت الدخول', 'Entrée', 'Check In', lang),
+                        labelText: _tr('وقت الدخول (مثال 08:00)', 'Entrée', 'Check In', lang),
                         border: const OutlineInputBorder(),
-                        hintText: 'HH:mm',
+                        hintText: '08:00',
                       ),
                     ),
                   ),
@@ -207,11 +247,10 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: outCtrl,
-                      keyboardType: TextInputType.datetime,
                       decoration: InputDecoration(
-                        labelText: _tr('وقت الخروج', 'Sortie', 'Check Out', lang),
+                        labelText: _tr('وقت الخروج (مثال 17:00)', 'Sortie', 'Check Out', lang),
                         border: const OutlineInputBorder(),
-                        hintText: 'HH:mm',
+                        hintText: '17:00',
                       ),
                     ),
                   ),
@@ -221,7 +260,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
               TextFormField(
                 controller: noteCtrl,
                 decoration: InputDecoration(
-                  labelText: _tr('ملاحظة', 'Note', 'Note', lang),
+                  labelText: _tr('ملاحظات / سبب الغياب', 'Note / Motif', 'Note / Reason', lang),
                   border: const OutlineInputBorder(),
                 ),
               ),
@@ -234,7 +273,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
             child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
             onPressed: () async {
               final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
               await widget.db.upsertWorkerAttendance(
@@ -242,13 +281,12 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
                 date: dateCtrl.text,
                 checkIn: inCtrl.text.isNotEmpty ? inCtrl.text : null,
                 checkOut: outCtrl.text.isNotEmpty ? outCtrl.text : null,
-                note: noteCtrl.text,
+                note: noteCtrl.text.isNotEmpty ? noteCtrl.text : null,
               );
               if (ctx.mounted) Navigator.pop(ctx);
               _loadData();
             },
-            child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang),
-                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo')),
+            child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang), style: const TextStyle(fontFamily: 'Cairo')),
           ),
         ],
       ),
@@ -281,205 +319,373 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
     final today = _dateFormat.format(DateTime.now());
     final todayRecord = _records.where((r) => r['attendance_date'] == today).firstOrNull;
 
+    final daysInMonth = _getDaysInMonth(_selectedMonth);
+    final monthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
+    final monthRecords = _records.where((r) => (r['attendance_date'] ?? '').startsWith(monthPrefix)).toList();
+
+    int presentDays = 0;
+    int absentDays = 0;
+    for (var r in monthRecords) {
+      if (r['check_in'] != null || (r['note'] ?? '').contains('حاضر')) {
+        presentDays++;
+      } else if ((r['note'] ?? '').contains('غائب')) {
+        absentDays++;
+      }
+    }
+
+    final double baseSalary = (widget.worker['base_salary'] as num?)?.toDouble() ?? 0.0;
+    final double dailyRate = baseSalary > 0 ? baseSalary / 26.0 : 0.0;
+    final double earnedSalary = dailyRate * presentDays;
+
     return Directionality(
       textDirection: lang == AppLanguage.arabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade100,
         appBar: AppBar(
           title: Text(
-            '${_tr('حضور العامل', 'Présence Ouvrier', 'Worker Attendance', lang)}: ${widget.worker['name']}',
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15),
+            '${_tr('جدول حضور وغياب العامل', 'Calendrier de présence', 'Attendance Calendar', lang)}: ${widget.worker['name']}',
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
           ),
           backgroundColor: isDark ? const Color(0xFF1A237E) : Colors.indigo.shade700,
           foregroundColor: Colors.white,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              tooltip: _tr('إدخال يدوي', 'Saisie manuelle', 'Manual Entry', lang),
-              onPressed: () => _manualEntry(lang),
-            ),
-          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.amber,
+            labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+            unselectedLabelStyle: const TextStyle(fontFamily: 'Cairo'),
+            tabs: [
+              Tab(text: _tr('🗓️ تقويم الشهر', '🗓️ Calendrier Mensuel', '🗓️ Monthly Grid', lang)),
+              Tab(text: _tr('⏱️ السجل والتوقيت', '⏱️ Pointage Horaire', '⏱️ Time Log', lang)),
+            ],
+          ),
         ),
         body: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : Column(
+            : TabBarView(
+                controller: _tabController,
                 children: [
-                  // ── بطاقة اليوم ──────────────────────────────────────────
-                  Container(
-                    color: isDark ? const Color(0xFF1A237E) : Colors.indigo.shade700,
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                    child: Column(
-                      children: [
-                        Text(
-                          _tr('اليوم', "Aujourd'hui", 'Today', lang),
-                          style: const TextStyle(color: Colors.white70, fontFamily: 'Cairo', fontSize: 12),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  // ── TAB 1: تقويم الشهر التفاعلي لتحديد الأيام ───────────────
+                  Column(
+                    children: [
+                      // ── أزرار اختيار الشهر والإحصائيات ──────────────────
+                      Container(
+                        color: isDark ? const Color(0xFF1A237E) : Colors.indigo.shade700,
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
                           children: [
-                            _buildTodayCard(
-                              label: _tr('دخول', 'Entrée', 'In', lang),
-                              value: todayRecord?['check_in'] ?? '--:--',
-                              icon: Icons.login_rounded,
-                              color: Colors.green,
-                            ),
-                            _buildTodayCard(
-                              label: _tr('خروج', 'Sortie', 'Out', lang),
-                              value: todayRecord?['check_out'] ?? '--:--',
-                              icon: Icons.logout_rounded,
-                              color: Colors.red.shade300,
-                            ),
-                            _buildTodayCard(
-                              label: _tr('المدة', 'Durée', 'Duration', lang),
-                              value: _calcDuration(todayRecord?['check_in'], todayRecord?['check_out']),
-                              icon: Icons.access_time,
-                              color: Colors.amber.shade300,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _checkIn(lang),
-                                icon: const Icon(Icons.login_rounded, size: 18),
-                                label: Text(_tr('تسجيل الدخول', 'Pointer entrée', 'Check In', lang),
-                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+                                    });
+                                  },
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _checkOut(lang),
-                                icon: const Icon(Icons.logout_rounded, size: 18),
-                                label: Text(_tr('تسجيل الخروج', 'Pointer sortie', 'Check Out', lang),
-                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red.shade600,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ── سجل الحضور ───────────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.history_rounded, size: 18, color: Colors.indigo),
-                        const SizedBox(width: 6),
-                        Text(
-                          _tr('سجل الحضور (${_records.length} يوم)', 'Historique (${_records.length} jours)',
-                              'History (${_records.length} days)', lang),
-                          style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white70 : Colors.indigo.shade800),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: _records.isEmpty
-                        ? Center(
-                            child: Text(
-                              _tr('لا توجد سجلات حضور بعد', 'Aucun enregistrement de présence', 'No attendance records yet', lang),
-                              style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            itemCount: _records.length,
-                            itemBuilder: (ctx, i) {
-                              final r = _records[i];
-                              final isToday = r['attendance_date'] == today;
-                              final duration = _calcDuration(r['check_in'], r['check_out']);
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                color: isToday
-                                    ? (isDark ? Colors.indigo.shade900 : Colors.indigo.shade50)
-                                    : (isDark ? const Color(0xFF1E1E1E) : Colors.white),
-                                elevation: isToday ? 4 : 1,
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor:
-                                        r['check_in'] != null && r['check_out'] != null
-                                            ? Colors.green
-                                            : r['check_in'] != null
-                                                ? Colors.orange
-                                                : Colors.grey,
-                                    child: Icon(
-                                      r['check_in'] != null && r['check_out'] != null
-                                          ? Icons.check_circle
-                                          : r['check_in'] != null
-                                              ? Icons.access_time
-                                              : Icons.cancel_outlined,
+                                Text(
+                                  DateFormat('MMMM yyyy').format(_selectedMonth),
+                                  style: const TextStyle(
                                       color: Colors.white,
-                                      size: 20,
+                                      fontFamily: 'Cairo',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildMetricChip(
+                                  label: _tr('أيام الحضور', 'Présent', 'Present', lang),
+                                  value: '$presentDays ${_tr("يوم", "j", "d", lang)}',
+                                  color: Colors.green,
+                                ),
+                                _buildMetricChip(
+                                  label: _tr('أيام الغياب', 'Absent', 'Absent', lang),
+                                  value: '$absentDays ${_tr("يوم", "j", "d", lang)}',
+                                  color: Colors.red.shade400,
+                                ),
+                                _buildMetricChip(
+                                  label: _tr('الراتب المستحق', 'Salaire Dû', 'Earned Wage', lang),
+                                  value: '${earnedSalary.toStringAsFixed(0)} د.ج',
+                                  color: Colors.amber,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _tr('💡 اضغط على أي يوم للتغيير: (🟢 حاضر 👈 🔴 غائب 👈 ⚪ إعادة تعيين)',
+                                  '💡 Appuyez pour changer: (🟢 Présent 👈 🔴 Absent 👈 ⚪ Réinitialiser)',
+                                  '💡 Tap day to toggle: (🟢 Present 👈 🔴 Absent 👈 ⚪ Reset)',
+                                  lang),
+                              style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'Cairo'),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ── شبكة أيام الشهر (Interactive Calendar Grid) ──────────
+                      Expanded(
+                        child: GridView.builder(
+                          padding: const EdgeInsets.all(12),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 7,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                            childAspectRatio: 0.85,
+                          ),
+                          itemCount: daysInMonth,
+                          itemBuilder: (ctx, idx) {
+                            final dayNum = idx + 1;
+                            final dateStr = DateFormat('yyyy-MM-dd')
+                                .format(DateTime(_selectedMonth.year, _selectedMonth.month, dayNum));
+                            final record = _records.where((r) => r['attendance_date'] == dateStr).firstOrNull;
+
+                            final bool isPresent = record != null &&
+                                (record['check_in'] != null || (record['note'] ?? '').contains('حاضر'));
+                            final bool isAbsent = record != null && !isPresent && (record['note'] ?? '').contains('غائب');
+                            final bool isToday = dateStr == today;
+
+                            Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+                            Color borderColor = Colors.grey.shade300;
+                            IconData icon = Icons.circle_outlined;
+                            Color iconColor = Colors.grey;
+
+                            if (isPresent) {
+                              cardColor = isDark ? Colors.green.shade900.withOpacity(0.4) : Colors.green.shade50;
+                              borderColor = Colors.green;
+                              icon = Icons.check_circle;
+                              iconColor = Colors.green;
+                            } else if (isAbsent) {
+                              cardColor = isDark ? Colors.red.shade900.withOpacity(0.4) : Colors.red.shade50;
+                              borderColor = Colors.red;
+                              icon = Icons.cancel;
+                              iconColor = Colors.red;
+                            }
+
+                            if (isToday) {
+                              borderColor = Colors.amber.shade800;
+                            }
+
+                            return GestureDetector(
+                              onTap: () => _toggleDayStatus(dayNum, lang),
+                              onLongPress: () => _manualEntry(lang, existing: record, initialDate: dateStr),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: cardColor,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: borderColor, width: isToday ? 2.5 : 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.04),
+                                      blurRadius: 3,
+                                      offset: const Offset(0, 2),
                                     ),
-                                  ),
-                                  title: Text(
-                                    r['attendance_date'] ?? '',
-                                    style: TextStyle(
+                                  ],
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '$dayNum',
+                                      style: TextStyle(
                                         fontFamily: 'Cairo',
                                         fontWeight: FontWeight.bold,
-                                        color: isToday ? Colors.indigo : null),
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.login_rounded, size: 13, color: Colors.green),
-                                          const SizedBox(width: 4),
-                                          Text(r['check_in'] ?? '--:--',
-                                              style: const TextStyle(fontSize: 12, fontFamily: 'Cairo')),
-                                          const SizedBox(width: 12),
-                                          const Icon(Icons.logout_rounded, size: 13, color: Colors.red),
-                                          const SizedBox(width: 4),
-                                          Text(r['check_out'] ?? '--:--',
-                                              style: const TextStyle(fontSize: 12, fontFamily: 'Cairo')),
-                                          const SizedBox(width: 12),
-                                          const Icon(Icons.schedule, size: 13, color: Colors.amber),
-                                          const SizedBox(width: 4),
-                                          Text(duration,
-                                              style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontFamily: 'Cairo',
-                                                  color: Colors.amber.shade800,
-                                                  fontWeight: FontWeight.bold)),
-                                        ],
+                                        fontSize: 15,
+                                        color: isToday ? Colors.amber.shade900 : null,
                                       ),
-                                      if ((r['note'] ?? '').isNotEmpty)
-                                        Text('📝 ${r['note']}',
-                                            style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                    ],
-                                  ),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.teal),
-                                    onPressed: () => _manualEntry(lang, existing: r),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Icon(icon, size: 18, color: iconColor),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      isPresent
+                                          ? _tr('حاضر', 'Présent', 'Present', lang)
+                                          : (isAbsent
+                                              ? _tr('غائب', 'Absent', 'Absent', lang)
+                                              : _tr('فارغ', 'Neutre', 'Empty', lang)),
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontFamily: 'Cairo',
+                                        color: iconColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // ── TAB 2: توقيت اليوم وسجل الساعات التفصيلي ─────────────────
+                  Column(
+                    children: [
+                      Container(
+                        color: isDark ? const Color(0xFF1A237E) : Colors.indigo.shade700,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        child: Column(
+                          children: [
+                            Text(
+                              _tr('تسجيل الساعات لليوم الحالي', "Pointage d'aujourd'hui", 'Today Check-In/Out', lang),
+                              style: const TextStyle(color: Colors.white70, fontFamily: 'Cairo', fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _buildTodayCard(
+                                  label: _tr('دخول', 'Entrée', 'In', lang),
+                                  value: todayRecord?['check_in'] ?? '--:--',
+                                  icon: Icons.login_rounded,
+                                  color: Colors.green,
+                                ),
+                                _buildTodayCard(
+                                  label: _tr('خروج', 'Sortie', 'Out', lang),
+                                  value: todayRecord?['check_out'] ?? '--:--',
+                                  icon: Icons.logout_rounded,
+                                  color: Colors.red.shade300,
+                                ),
+                                _buildTodayCard(
+                                  label: _tr('المدة', 'Durée', 'Duration', lang),
+                                  value: _calcDuration(todayRecord?['check_in'], todayRecord?['check_out']),
+                                  icon: Icons.access_time,
+                                  color: Colors.amber.shade300,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _checkIn(lang),
+                                    icon: const Icon(Icons.login_rounded, size: 18),
+                                    label: Text(_tr('تسجيل الدخول', 'Pointer entrée', 'Check In', lang),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _checkOut(lang),
+                                    icon: const Icon(Icons.logout_rounded, size: 18),
+                                    label: Text(_tr('تسجيل الخروج', 'Pointer sortie', 'Check Out', lang),
+                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red.shade600,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: _records.isEmpty
+                            ? Center(
+                                child: Text(
+                                  _tr('لا توجد سجلات حضور بعد', 'Aucun enregistrement', 'No attendance records yet', lang),
+                                  style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(12),
+                                itemCount: _records.length,
+                                itemBuilder: (ctx, i) {
+                                  final r = _records[i];
+                                  final isToday = r['attendance_date'] == today;
+                                  final duration = _calcDuration(r['check_in'], r['check_out']);
+                                  final isPresent = r['check_in'] != null || (r['note'] ?? '').contains('حاضر');
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    color: isToday
+                                        ? (isDark ? Colors.indigo.shade900 : Colors.indigo.shade50)
+                                        : (isDark ? const Color(0xFF1E1E1E) : Colors.white),
+                                    elevation: isToday ? 4 : 1,
+                                    child: ListTile(
+                                      leading: CircleAvatar(
+                                        backgroundColor: isPresent ? Colors.green : Colors.red,
+                                        child: Icon(
+                                          isPresent ? Icons.check_circle : Icons.cancel,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        r['attendance_date'] ?? '',
+                                        style: TextStyle(
+                                            fontFamily: 'Cairo',
+                                            fontWeight: FontWeight.bold,
+                                            color: isToday ? Colors.indigo : null),
+                                      ),
+                                      subtitle: Text(
+                                        '${r['check_in'] != null ? "🟢 دخول: ${r['check_in']}" : ""} ${r['check_out'] != null ? "| 🔴 خروج: ${r['check_out']}" : ""} ${r['note'] != null ? "\n📝 ${r['note']}" : ""}',
+                                        style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
+                                      ),
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.teal),
+                                        onPressed: () => _manualEntry(lang, existing: r),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildMetricChip({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(value,
+              style: TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13)),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Cairo')),
+        ],
       ),
     );
   }
@@ -502,7 +708,7 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> {
           Icon(icon, color: color, size: 20),
           const SizedBox(height: 4),
           Text(value,
-              style: TextStyle(
+              style: const TextStyle(
                   color: Colors.white,
                   fontFamily: 'Cairo',
                   fontWeight: FontWeight.bold,
