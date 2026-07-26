@@ -3287,6 +3287,10 @@ class SqlDatabase {
       for (var j = 0; j < allocs.length; j++) {
         final allocId = (allocs[j]['id'] as num?)?.toInt() ?? 0;
         if (allocId <= 0) continue;
+        // Re-read the current DB row to check existing timestamps before overwriting
+        final currentRows = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocId]);
+        if (currentRows.isEmpty) continue;
+        final current = currentRows.first;
         Map<String, dynamic> updates = {};
 
         if (isPreMfg) {
@@ -3307,14 +3311,23 @@ class SqlDatabase {
           updates['reserve_at'] = null;
         } else if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
           updates['is_manufactured'] = 1;
-          updates['manufactured_at'] = nowStr;
+          // ✅ Only set timestamp if not already recorded (preserve the exact button-press moment)
+          if (current['manufactured_at'] == null || current['manufactured_at'].toString().isEmpty) {
+            updates['manufactured_at'] = nowStr;
+          }
           updates['is_glass_installed'] = 1;
-          updates['glass_installed_at'] = nowStr;
+          // ✅ Only set timestamp if not already recorded
+          if (current['glass_installed_at'] == null || current['glass_installed_at'].toString().isEmpty) {
+            updates['glass_installed_at'] = nowStr;
+          }
         }
 
         if (isDistAll || (isDistPartial && i == 0 && j == 0)) {
           updates['is_distributed'] = 1;
-          updates['distributed_at'] = nowStr;
+          // ✅ Only set timestamp if not already recorded
+          if (current['distributed_at'] == null || current['distributed_at'].toString().isEmpty) {
+            updates['distributed_at'] = nowStr;
+          }
         }
 
         if (updates.isNotEmpty) {
