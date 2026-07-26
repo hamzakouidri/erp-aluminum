@@ -58,8 +58,14 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
     }
   }
 
-  String _formatDateTime(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return 'غير محدد';
+  String _tr(String ar, String fr, String en, AppLanguage lang) {
+    if (lang == AppLanguage.french) return fr;
+    if (lang == AppLanguage.english) return en;
+    return ar;
+  }
+
+  String _formatDateTime(String? dateStr, AppLanguage lang) {
+    if (dateStr == null || dateStr.isEmpty) return _tr('غير محدد', 'Non spécifié', 'Not specified', lang);
     try {
       final dt = DateTime.parse(dateStr);
       return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -68,24 +74,35 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
     }
   }
 
-  Future<void> _unarchiveTask(int allocId) async {
+  Future<void> _unarchiveTask(int allocId, AppLanguage lang) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('إلغاء الأرشفة ومسح السجل', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-        content: const Text(
-          'هل تريد إرجاع هذا العنصر من الأرشيف ومسحه منه وإعادته إلى قائمة مهامك النشطة؟',
-          style: TextStyle(fontFamily: 'Cairo'),
+        title: Text(
+          _tr('إرجاع من الأرشيف / مسح', 'Restaurer de l\'archive / Effacer', 'Restore from Archive / Delete', lang),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          _tr(
+            'هل تريد إرجاع هذا العنصر من الأرشيف ومسحه منه وإعادته إلى قائمة مهامك النشطة؟',
+            'Voulez-vous vraiment restaurer cet élément de l\'archive et le réintégrer à vos tâches actives ?',
+            'Do you want to restore this item from the archive and return it to your active tasks?',
+            lang,
+          ),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('تأكيد الإرجاع', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+            child: Text(
+              _tr('تأكيد الإرجاع / المسح', 'Confirmer la restauration', 'Confirm Restore', lang),
+              style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -96,8 +113,16 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
       _loadArchivedTasks();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم إلغاء أرشفة العنصر وإعادته لمهامك النشطة بنجاح 🔄', style: TextStyle(fontFamily: 'Cairo')),
+          SnackBar(
+            content: Text(
+              _tr(
+                'تم إلغاء أرشفة العنصر وإعادته لمهامك النشطة بنجاح 🔄',
+                'Élément restauré avec succès dans vos tâches actives 🔄',
+                'Item successfully restored to active tasks 🔄',
+                lang,
+              ),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
             backgroundColor: Colors.teal,
           ),
         );
@@ -105,35 +130,37 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
     }
   }
 
-  Future<void> _editArchivedNotes(int allocId, String currentNotes) async {
+  Future<void> _editArchivedNotes(int allocId, String currentNotes, AppLanguage lang) async {
     final controller = TextEditingController(text: currentNotes);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تعديل ملاحظات الأرشيف', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+        title: Text(
+          _tr('تعديل الملاحظات', 'Modifier les remarques', 'Edit Notes', lang),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+        ),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'أدخل الملاحظات والتعديلات...',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: _tr('أدخل الملاحظات والتعديلات...', 'Entrez les remarques ou modifications...', 'Enter notes or modifications...', lang),
+            border: const OutlineInputBorder(),
           ),
           maxLines: 3,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+            child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حفظ التعديل', style: TextStyle(fontFamily: 'Cairo')),
+            child: Text(_tr('حفظ التعديل', 'Enregistrer', 'Save Changes', lang), style: const TextStyle(fontFamily: 'Cairo')),
           ),
         ],
       ),
     );
 
     if (confirm == true) {
-      // Save notes if needed
       _loadArchivedTasks();
     }
   }
@@ -158,20 +185,14 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
-          lang == AppLanguage.arabic
-              ? 'أرشيف المهام والتوزيع 📦'
-              : (lang == AppLanguage.french
-                  ? 'Archives & Distribution 📦'
-                  : 'Tasks & Distribution Archive 📦'),
+          _tr('أرشيف المهام والتوزيع 📦', 'Archives & Distribution 📦', 'Tasks & Distribution Archive 📦', lang),
           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadArchivedTasks,
-            tooltip: lang == AppLanguage.arabic
-                ? 'تحديث'
-                : (lang == AppLanguage.french ? 'Actualiser' : 'Refresh'),
+            tooltip: _tr('تحديث', 'Actualiser', 'Refresh', lang),
           ),
         ],
       ),
@@ -184,11 +205,12 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
               controller: _searchController,
               onChanged: (val) => setState(() => _searchQuery = val),
               decoration: InputDecoration(
-                hintText: lang == AppLanguage.arabic
-                    ? 'بحث باسم الزبون، العامل، النافذة، رقم الطلب...'
-                    : (lang == AppLanguage.french
-                        ? 'Rechercher par client, ouvrier, élément...'
-                        : 'Search by client, worker, window, order #...'),
+                hintText: _tr(
+                  'بحث باسم الزبون، العامل، النافذة، رقم الطلب...',
+                  'Rechercher par client, ouvrier, élément...',
+                  'Search by client, worker, window, order #...',
+                  lang,
+                ),
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
                 fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
@@ -208,7 +230,7 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                 : filteredTasks.isEmpty
                     ? Center(
                         child: Text(
-                          lang == AppLanguage.arabic ? 'لا توجد مهام أرشيفية مسجلة' : 'Aucune tâche archivée',
+                          _tr('لا توجد مهام أرشيفية مسجلة', 'Aucune tâche archivée', 'No archived tasks recorded', lang),
                           style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, color: Colors.grey),
                         ),
                       )
@@ -235,15 +257,17 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
     final price = (t['worker_price'] as num?)?.toDouble() ?? 0.0;
     final total = qty * price;
 
-    final assignedAt = _formatDateTime(t['assigned_at']);
-    final mfgAt = _formatDateTime(t['manufactured_at']);
-    final glassAt = _formatDateTime(t['glass_installed_at']);
-    final distributedAt = _formatDateTime(t['distributed_at'] ?? t['transferred_at']);
-    final installedAt = _formatDateTime(t['installed_at']);
-    final completedAt = _formatDateTime(t['completed_at']);
+    final assignedAt = _formatDateTime(t['assigned_at'], lang);
+    final mfgAt = _formatDateTime(t['manufactured_at'], lang);
+    final glassAt = _formatDateTime(t['glass_installed_at'], lang);
+    final distributedAt = _formatDateTime(t['distributed_at'] ?? t['transferred_at'], lang);
+    final installedAt = _formatDateTime(t['installed_at'], lang);
+    final completedAt = _formatDateTime(t['completed_at'], lang);
 
     final isLocked = t['is_locked_after_week'] == true;
     final allocId = (t['id'] as num?)?.toInt() ?? 0;
+
+    final unassignedStr = _tr('غير محدد', 'Non spécifié', 'Not specified', lang);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -261,7 +285,9 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    clientName.isNotEmpty ? clientName : (lang == AppLanguage.arabic ? 'زبون غير محدد' : 'Client Inconnu'),
+                    clientName.isNotEmpty
+                        ? clientName
+                        : _tr('زبون غير محدد', 'Client non spécifié', 'Unspecified Client', lang),
                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
@@ -278,8 +304,8 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                       const SizedBox(width: 4),
                       Text(
                         isLocked
-                            ? (lang == AppLanguage.arabic ? 'مقفول (مرّ أكثر من أسبوع)' : 'Verrouillé (+7j)')
-                            : (lang == AppLanguage.arabic ? 'مفتوح (أقل من أسبوع)' : 'Modifiable (<7j)'),
+                            ? _tr('مقفول (مرّ أكثر من أسبوع)', 'Verrouillé (+7 jours)', 'Locked (over 1 week)', lang)
+                            : _tr('مفتوح (أقل من أسبوع)', 'Modifiable (<7 jours)', 'Editable (<1 week)', lang),
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 11,
@@ -300,11 +326,12 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                 const Icon(Icons.badge_outlined, size: 16, color: Colors.blue),
                 const SizedBox(width: 6),
                 Text(
-                  '${lang == AppLanguage.arabic ? "اسم العامل الصانع:" : "Nom de l'ouvrier:"} ',
+                  _tr('اسم العامل الصانع:', 'Nom de l\'ouvrier:', 'Worker name:', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey),
                 ),
+                const SizedBox(width: 4),
                 Text(
-                  workerName.isNotEmpty ? workerName : (lang == AppLanguage.arabic ? 'غير محدد' : 'Non spécifié'),
+                  workerName.isNotEmpty ? workerName : unassignedStr,
                   style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue),
                 ),
               ],
@@ -320,20 +347,20 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
               ),
               child: Column(
                 children: [
-                  _dateRow(Icons.assignment_outlined, 'تاريخ الإسناد:', assignedAt, Colors.orange),
+                  _dateRow(Icons.assignment_outlined, _tr('تاريخ الإسناد:', 'Date d\'attribution:', 'Assignment date:', lang), assignedAt, Colors.orange),
                   const SizedBox(height: 4),
-                  _dateRow(Icons.build_circle_outlined, 'تاريخ الصنع:', mfgAt, Colors.green),
+                  _dateRow(Icons.build_circle_outlined, _tr('تاريخ الصنع:', 'Date de fabrication:', 'Manufacturing date:', lang), mfgAt, Colors.green),
                   const SizedBox(height: 4),
-                  _dateRow(Icons.check_box_rounded, 'تاريخ تركيب الزجاج بالورشة:', glassAt, Colors.teal),
+                  _dateRow(Icons.check_box_rounded, _tr('تاريخ تركيب الزجاج بالورشة:', 'Date de pose vitrage à l\'atelier:', 'Workshop glass installation date:', lang), glassAt, Colors.teal),
                   const SizedBox(height: 4),
-                  _dateRow(Icons.local_shipping_rounded, 'تاريخ التوزيع والخروج للميدان:', distributedAt, Colors.indigo),
-                  if (installedAt != 'غير محدد') ...[
+                  _dateRow(Icons.local_shipping_rounded, _tr('تاريخ التوزيع والخروج للميدان:', 'Date de distribution et sortie terrain:', 'Distribution & field dispatch date:', lang), distributedAt, Colors.indigo),
+                  if (installedAt != unassignedStr) ...[
                     const SizedBox(height: 4),
-                    _dateRow(Icons.construction_rounded, 'تاريخ التركيب بالموقع:', installedAt, Colors.purple),
+                    _dateRow(Icons.construction_rounded, _tr('تاريخ التركيب بالموقع:', 'Date d\'installation sur site:', 'On-site installation date:', lang), installedAt, Colors.purple),
                   ],
-                  if (completedAt != 'غير محدد') ...[
+                  if (completedAt != unassignedStr) ...[
                     const SizedBox(height: 4),
-                    _dateRow(Icons.task_alt_rounded, 'تاريخ الانتهاء والأرشفة النهائي:', completedAt, Colors.green),
+                    _dateRow(Icons.task_alt_rounded, _tr('تاريخ الانتهاء والأرشفة النهائية:', 'Date d\'achèvement et d\'archivage final:', 'Completion & final archiving date:', lang), completedAt, Colors.green),
                   ],
                 ],
               ),
@@ -366,13 +393,13 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${lang == AppLanguage.arabic ? "الأبعاد:" : "Dims:"} ${largeur}cm × ${hauteur}cm | ${lang == AppLanguage.arabic ? "الكمية:" : "Qté:"} $qty',
+                        '${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${largeur}cm × ${hauteur}cm | ${_tr("الكمية:", "Qté:", "Qty:", lang)} $qty',
                         style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                       ),
                       if (price > 0) ...[
                         const SizedBox(height: 4),
                         Text(
-                          '${lang == AppLanguage.arabic ? "أجرة التصنيع:" : "Prix:"} ${total.toStringAsFixed(2)} DZD',
+                          '${_tr("أجرة التصنيع:", "Prix de fabrication:", "Worker price:", lang)} ${total.toStringAsFixed(2)} DZD',
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.teal),
                         ),
                       ],
@@ -389,9 +416,12 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => _editArchivedNotes(allocId, t['notes']?.toString() ?? ''),
+                      onPressed: () => _editArchivedNotes(allocId, t['notes']?.toString() ?? '', lang),
                       icon: const Icon(Icons.edit_note_rounded, size: 16),
-                      label: const Text('تعديل الملاحظات', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12)),
+                      label: Text(
+                        _tr('تعديل الملاحظات', 'Modifier les remarques', 'Edit Notes', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.blue,
                         side: const BorderSide(color: Colors.blue),
@@ -402,9 +432,12 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => _unarchiveTask(allocId),
+                      onPressed: () => _unarchiveTask(allocId, lang),
                       icon: const Icon(Icons.undo_rounded, size: 16),
-                      label: const Text('إرجاع من الأرشيف / مسح', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 11)),
+                      label: Text(
+                        _tr('إرجاع من الأرشيف / مسح', 'Restaurer / Effacer de l\'archive', 'Restore / Delete from archive', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 11),
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.red,
                         side: const BorderSide(color: Colors.red),
