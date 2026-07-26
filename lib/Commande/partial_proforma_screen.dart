@@ -802,7 +802,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          _tr('فاتورة تحميل جزئية', 'Facture de chargement partielle', 'Partial Loading Note', language),
+          _tr('فاتورة شحن جزئية', 'Facture d\'expédition partielle', 'Partial Shipping Note', language),
           style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
         ),
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Theme.of(context).appBarTheme.backgroundColor,

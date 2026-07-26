@@ -1898,9 +1898,9 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'QUOTATION',
   },
   'DEVIS_PARTIAL': {
-    AppLanguage.arabic: 'فاتورة تقديرية جزئية',
-    AppLanguage.french: 'PROFORMA PARTIELLE',
-    AppLanguage.english: 'PARTIAL PROFORMA',
+    AppLanguage.arabic: 'فاتورة شحن جزئية',
+    AppLanguage.french: 'FACTURE D\'EXPÉDITION PARTIELLE',
+    AppLanguage.english: 'PARTIAL SHIPPING INVOICE',
   },
   'FACTURE_VENTE': {
     AppLanguage.arabic: 'فاتورة بيع',

@@ -70,11 +70,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       }
       if (titleKey == 'BON_CHARGE') {
         if (_invoiceLanguage == AppLanguage.french) {
-          return 'Bon de charge / Livraison';
+          return 'Bon d\'expédition / Charge';
         } else if (_invoiceLanguage == AppLanguage.english) {
-          return 'Loading & Delivery Note';
+          return 'Shipping & Delivery Note';
         } else {
-          return 'فاتورة / وصل تحميل جزئي';
+          return 'فاتورة / وصل شحن كلي';
         }
       }
       if (titleKey == 'doc_bon_livraison_sans_prix' ||

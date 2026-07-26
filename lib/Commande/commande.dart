@@ -1114,7 +1114,7 @@ class _CommandeState extends State<Commande> {
                           const Icon(Icons.local_shipping, color: Colors.teal),
                           const SizedBox(width: 8),
                           Text(
-                            lang == AppLanguage.french ? 'Type de Bon de charge' : 'نوع وصل الشحن',
+                            lang == AppLanguage.french ? 'Type de Bon d\'expédition' : 'نوع فاتورة الشحن',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 16),
                           ),
                         ],
@@ -1126,7 +1126,7 @@ class _CommandeState extends State<Commande> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)),
                             leading: const Icon(Icons.inventory_2, color: Colors.blue),
                             title: Text(
-                              lang == AppLanguage.french ? 'Chargement complet (Toutes les fenêtres)' : 'تحميل كلي (جميع النوافذ)',
+                              lang == AppLanguage.french ? 'Expédition complète (Toutes les fenêtres)' : lang == AppLanguage.english ? 'Full Shipping (All windows)' : 'فاتورة شحن كلية (جميع النوافذ)',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
                             ),
                             onTap: () => Navigator.pop(dialogCtx, 'FULL'),
@@ -1136,7 +1136,7 @@ class _CommandeState extends State<Commande> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)),
                             leading: const Icon(Icons.local_shipping_outlined, color: Colors.orange),
                             title: Text(
-                              lang == AppLanguage.french ? 'Chargement partiel (Par bon de livraison)' : 'تحميل جزئي (حسب وصل التسليم الجزئي)',
+                              lang == AppLanguage.french ? 'Expédition partielle (Par bon de livraison)' : lang == AppLanguage.english ? 'Partial Shipping (By delivery note)' : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
                             ),
                             onTap: () => Navigator.pop(dialogCtx, 'PARTIAL'),
@@ -1158,8 +1158,8 @@ class _CommandeState extends State<Commande> {
                         SnackBar(
                           content: Text(
                             lang == AppLanguage.french 
-                              ? 'Aucun bon de livraison partiel trouvé. Redirection...' 
-                              : 'لا توجد وصولات تسليم جزئية مسبقة! سيتم التوجيه لتحديد العناصر المراد تحميلها.',
+                              ? 'Aucun bon d\'expédition partiel trouvé. Redirection...' 
+                              : 'لا توجد وصولات شحن جزئية مسبقة! سيتم التوجيه لتحديد العناصر المراد شحنها.',
                             style: const TextStyle(fontFamily: 'Cairo'),
                           ),
                           backgroundColor: Colors.orange,
