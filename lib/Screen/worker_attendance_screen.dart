@@ -70,70 +70,84 @@ class _WorkerAttendanceScreenState extends State<WorkerAttendanceScreen> with Si
   }
 
   Future<void> _toggleDayStatus(int day, AppLanguage lang) async {
-    final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
-    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime(_selectedMonth.year, _selectedMonth.month, day));
-    final existingIndex = _records.indexWhere((r) => r['attendance_date'] == dateStr);
-    final existing = existingIndex != -1 ? _records[existingIndex] : null;
+    try {
+      final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
+      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime(_selectedMonth.year, _selectedMonth.month, day));
 
-    Map<String, dynamic>? updatedRecord;
+      final existingIndex = _records.indexWhere((r) => r['attendance_date'] == dateStr);
+      final existing = existingIndex != -1 ? Map<String, dynamic>.from(_records[existingIndex]) : null;
 
-    if (existing == null || (existing['check_in'] == null && (existing['note'] ?? '').contains('غائب'))) {
-      // 🟢 تحويل فوري إلى (حاضر ✅)
-      updatedRecord = {
-        'worker_uid': uid,
-        'attendance_date': dateStr,
-        'check_in': '08:00',
-        'check_out': '17:00',
-        'note': 'حاضر ✅',
-      };
-    } else if (existing['check_in'] != null || (existing['note'] ?? '').contains('حاضر')) {
-      // 🔴 تحويل فوري إلى (غائب ❌)
-      updatedRecord = {
-        'worker_uid': uid,
-        'attendance_date': dateStr,
-        'check_in': null,
-        'check_out': null,
-        'note': 'غائب ❌',
-      };
-    } else {
-      // ⚪ مسح / فارغ
-      updatedRecord = null;
-    }
+      final bool isPresent = existing != null &&
+          (existing['check_in'] != null || (existing['note'] ?? '').contains('حاضر'));
+      final bool isAbsent = existing != null && !isPresent && (existing['note'] ?? '').contains('غائب');
 
-    // ⚡ تحديث واجهة المستخدم فوراً وبدون أي ترميش (Optimistic UI Update)
-    setState(() {
-      if (updatedRecord == null) {
-        if (existingIndex != -1) _records.removeAt(existingIndex);
+      Map<String, dynamic>? updatedRecord;
+
+      if (isPresent) {
+        // 🟢 حاضــر 👈 الضغطة الثانية تحوله إلى 🔴 غائــب
+        updatedRecord = {
+          'worker_uid': uid,
+          'attendance_date': dateStr,
+          'check_in': null,
+          'check_out': null,
+          'note': 'غائب ❌',
+        };
+      } else if (isAbsent) {
+        // 🔴 غائــب 👈 الضغطة الثالثة تحوله إلى ⚪ ملغى / فارغ
+        updatedRecord = null;
       } else {
-        if (existingIndex != -1) {
-          _records[existingIndex] = updatedRecord;
-        } else {
-          _records.add(updatedRecord);
-        }
+        // ⚪ فارغ 👈 الضغطة الأولى تحوله إلى 🟢 حاضــر
+        updatedRecord = {
+          'worker_uid': uid,
+          'attendance_date': dateStr,
+          'check_in': '08:00',
+          'check_out': '17:00',
+          'note': 'حاضر ✅',
+        };
       }
-    });
 
-    // 💾 حفظ في قاعدة البيانات في الخلفية
-    if (updatedRecord == null) {
-      await widget.db.upsertWorkerAttendance(
-        workerUid: uid,
-        date: dateStr,
-        checkIn: null,
-        checkOut: null,
-        note: null,
-      );
-    } else {
-      await widget.db.upsertWorkerAttendance(
-        workerUid: uid,
-        date: dateStr,
-        checkIn: updatedRecord['check_in'],
-        checkOut: updatedRecord['check_out'],
-        note: updatedRecord['note'],
-      );
+      // ⚡ تحديث فوري وآمن للواجهة لمنع أي ترميش أو توقف
+      if (mounted) {
+        setState(() {
+          final newRecords = List<Map<String, dynamic>>.from(_records);
+          final idx = newRecords.indexWhere((r) => r['attendance_date'] == dateStr);
+          if (updatedRecord == null) {
+            if (idx != -1) newRecords.removeAt(idx);
+          } else {
+            if (idx != -1) {
+              newRecords[idx] = updatedRecord;
+            } else {
+              newRecords.add(updatedRecord);
+            }
+          }
+          _records = newRecords;
+        });
+      }
+
+      // 💾 حفظ في قاعدة البيانات بشكل آمن خلف الكواليس
+      if (updatedRecord == null) {
+        await widget.db.upsertWorkerAttendance(
+          workerUid: uid,
+          date: dateStr,
+          checkIn: null,
+          checkOut: null,
+          note: null,
+        );
+      } else {
+        await widget.db.upsertWorkerAttendance(
+          workerUid: uid,
+          date: dateStr,
+          checkIn: updatedRecord['check_in'],
+          checkOut: updatedRecord['check_out'],
+          note: updatedRecord['note'],
+        );
+      }
+
+      // 🔄 مزامنة صامتة
+      await _loadData(silent: true);
+    } catch (e) {
+      debugPrint('Error toggling attendance day status: $e');
     }
-
-    // 🔄 مزامنة صامتة في الكواليس
-    _loadData(silent: true);
   }
 
   Future<void> _checkIn(AppLanguage lang) async {
