@@ -495,6 +495,37 @@ class _WorkerTransactionsDetailScreenState
                     padding: const EdgeInsets.only(bottom: 16, left: 12, right: 12, top: 8),
                     child: Column(
                       children: [
+                        if (widget.worker['salary_type'] == 'fixed') ...[
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 10),
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.teal.shade700,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.co_present_rounded, size: 22),
+                              label: Text(
+                                _tr('🗓️ تسجيل وتحديد أيام حضور وغياب العامل (تقويم الشهر)',
+                                    '🗓️ Pointage présence/absence', '🗓️ Attendance Calendar (Present/Absent)', lang),
+                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => WorkerAttendanceScreen(
+                                      worker: widget.worker,
+                                      db: widget.db,
+                                    ),
+                                  ),
+                                ).then((_) => _loadData());
+                              },
+                            ),
+                          ),
+                        ],
                         Row(
                           children: [
                             Expanded(
