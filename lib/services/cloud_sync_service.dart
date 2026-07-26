@@ -136,6 +136,7 @@ class CloudSyncService {
         _isRestoring = true;
         try {
           await restoreFromCloud();
+          _dbUpdateController.add('cloud_restored');
           if (onDataRestored != null) {
             onDataRestored!();
           }
@@ -449,64 +450,54 @@ class CloudSyncService {
             'note': 'Manual Backup',
           }).timeout(const Duration(seconds: 10));
         } catch (e) {
-          print('History backup failed: $e');
+          print('History snapshot warning: $e');
         }
       }
 
-      // 5. تنظيف الأجزاء الزائدة من رفعات سابقة (لو قلّ عدد صفوف جدول ما، أو
-      // اختفى جدول بالكامل). يتم بالخلفية (fire-and-forget) ولا يؤخر إتمام
-      // الرفع للمستخدم، ولا يفشّل عملية الرفع لو حصل به خطأ.
-      unawaited(
-        _cleanupStaleChunks(chunkRef, newChunkCounts).catchError((e) {
-          print('Chunk cleanup warning (non-fatal): $e');
-        }),
-      );
+      // 5. تنظيف الأجزاء الفائضة بالسحابة (في الخلفية دون تعطيل المستخدم)
+      _cleanupObsoleteCloudChunks(chunkRef, newChunkCounts).catchError((e) {
+        print('Background chunk cleanup warning: $e');
+      });
+
     } catch (e) {
-      try {
-        await latestDocRef.update({'status': 'failed'});
-      } catch (_) {}
-      throw Exception('فشل الرفع إلى السحابة: $e');
+      if (!isSilent) rethrow;
+      print('backupToCloud failed: $e');
     }
   }
 
-  /// حذف الأجزاء (chunks) الفائضة المتبقية من رفعة سابقة والتي لم تعد مطلوبة
-  /// بعد الرفعة الجديدة الناجحة — إما لأن جدولاً معيناً اختفى بالكامل، أو لأن
-  /// عدد أجزائه أصبح أقل من قبل. لا تُستدعى إلا بعد نجاح رفع البيانات الجديدة.
-  Future<void> _cleanupStaleChunks(
-      CollectionReference<Map<String, dynamic>> chunkRef,
+  /// تنظيف الأجزاء الزائدة من الرفعة السابقة (مثل تحويل الجدول من 3 أجزاء إلى جزء واحد)
+  Future<void> _cleanupObsoleteCloudChunks(
+      CollectionReference chunkRef,
       Map<String, int> newChunkCounts,
       ) async {
-    final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 60));
-    if (existingChunks.docs.isEmpty) return;
-
+    final oldSnap = await chunkRef.get().timeout(const Duration(seconds: 25));
     WriteBatch deleteBatch = _firestore.batch();
     int count = 0;
-    for (var doc in existingChunks.docs) {
-      final data = doc.data();
-      final table = data['table']?.toString() ??
-          doc.id.replaceAll(RegExp(r'_\d+$'), '');
-      final chunkIndex = data['chunkIndex'] is int
-          ? data['chunkIndex'] as int
-          : int.tryParse(doc.id.split('_').last) ?? -1;
-      final currentCount = newChunkCounts[table];
 
-      // هذا الجزء فائض إذا: الجدول لم يعد موجوداً بالرفعة الجديدة إطلاقاً،
-      // أو كان مؤشره خارج نطاق عدد أجزاء الرفعة الجديدة لنفس الجدول.
-      final isStale = currentCount == null || chunkIndex >= currentCount;
-      if (isStale) {
-        deleteBatch.delete(doc.reference);
-        count++;
-        if (count >= 10) {
-          await deleteBatch.commit().timeout(const Duration(seconds: 25));
-          deleteBatch = _firestore.batch();
-          count = 0;
+    for (var doc in oldSnap.docs) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+      String table = data['table']?.toString() ?? '';
+      int idx = (data['chunkIndex'] as num?)?.toInt() ?? -1;
+
+      if (table.isNotEmpty && idx >= 0) {
+        int maxNewChunks = newChunkCounts[table] ?? 0;
+        if (idx >= maxNewChunks) {
+          deleteBatch.delete(doc.reference);
+          count++;
         }
+      }
+      if (count >= 300) {
+        await deleteBatch.commit().timeout(const Duration(seconds: 25));
+        deleteBatch = _firestore.batch();
+        count = 0;
       }
     }
     if (count > 0) {
       await deleteBatch.commit().timeout(const Duration(seconds: 25));
     }
   }
+
 
   /// الاستعادة اليدوية/التلقائية من السحابة بنظام التجميع
   Future<void> fullRecoverySync() async {
@@ -571,6 +562,39 @@ class CloudSyncService {
             await _db.insertOrUpdateSafeLegacy('Commandes', data, 'id');
           } catch (e) {
             print('Failed to sync legacy Commandes doc: $e');
+          }
+        }
+
+        // جلب معاملات العمال (WorkerTransactions)
+        var wtSnapshot = await userDoc.collection('WorkerTransactions').get();
+        for (var doc in wtSnapshot.docs) {
+          try {
+            final data = doc.data();
+            await _db.insertOrUpdateSafeLegacy('WorkerTransactions', data, 'id');
+          } catch (e) {
+            print('Failed to sync legacy WorkerTransactions doc: $e');
+          }
+        }
+
+        // جلب إسنادات العمال (WorkerAllocations)
+        var waSnapshot = await userDoc.collection('WorkerAllocations').get();
+        for (var doc in waSnapshot.docs) {
+          try {
+            final data = doc.data();
+            await _db.insertOrUpdateSafeLegacy('WorkerAllocations', data, 'id');
+          } catch (e) {
+            print('Failed to sync legacy WorkerAllocations doc: $e');
+          }
+        }
+
+        // جلب الخزينة والصناديق (Treasury)
+        var treasurySnapshot = await userDoc.collection('Treasury').get();
+        for (var doc in treasurySnapshot.docs) {
+          try {
+            final data = doc.data();
+            await _db.insertOrUpdateSafeLegacy('Treasury', data, 'id');
+          } catch (e) {
+            print('Failed to sync legacy Treasury doc: $e');
           }
         }
 
