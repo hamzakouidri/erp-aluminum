@@ -96,6 +96,17 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
     super.dispose();
   }
 
+  String _tr(String ar, String fr, String en, AppLanguage lang) {
+    switch (lang) {
+      case AppLanguage.french:
+        return fr;
+      case AppLanguage.english:
+        return en;
+      case AppLanguage.arabic:
+        return ar;
+    }
+  }
+
   String _t(String key) {
     return Localization.translate(key, Provider.of<AppSettingsProvider>(context, listen: false).language);
   }
@@ -783,21 +794,26 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
     final clientLast = widget.order['lastname'] ?? '';
     final clientName = '$clientFirst $clientLast'.trim().isEmpty ? 'زبون غير معروف' : '$clientFirst $clientLast'.trim();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          _t('فاتورة تقديرية جزئية'),
+          _tr('فاتورة تحميل جزئية', 'Facture de chargement partielle', 'Partial Loading Note', language),
           style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
         ),
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Theme.of(context).appBarTheme.backgroundColor,
         actions: [
           IconButton(
-            tooltip: _t('سجل الفواتير المسلمة'),
+            tooltip: _tr('سجل الفواتير المسلمة', 'Historique des livraisons', 'Deliveries History', language),
             icon: const Icon(Icons.history_edu_rounded),
             onPressed: _showDeliveriesHistory,
           ),
           IconButton(
-            tooltip: _t('إعادة تعيين كل التسليمات'),
+            tooltip: _tr('إعادة تعيين كل التسليمات', 'Réinitialiser toutes les livraisons', 'Reset All Deliveries', language),
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _resetAllDeliveries,
           ),
@@ -808,8 +824,8 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
           : _items.isEmpty
               ? Center(
                   child: Text(
-                    _t('لا توجد عناصر في هذه الطلبية!'),
-                    style: const TextStyle(fontSize: 16, fontFamily: 'Cairo'),
+                    _tr('لا توجد عناصر في هذه الطلبية!', 'Aucun élément dans cette commande!', 'No items found in this order!', language),
+                    style: TextStyle(fontSize: 16, fontFamily: 'Cairo', color: textColor),
                   ),
                 )
               : Directionality(
@@ -822,8 +838,9 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                         margin: const EdgeInsets.all(12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: cardBg,
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.04),
@@ -839,11 +856,12 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '${_t('الطلب')} #${widget.order['id']}',
-                                  style: const TextStyle(
+                                  '${_tr('الطلب', 'Commande', 'Order', language)} #${widget.order['id']}',
+                                  style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                     fontFamily: 'Cairo',
+                                    color: textColor,
                                   ),
                                 ),
                                 Container(
@@ -920,10 +938,12 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                             final hasImage = imagePath.isNotEmpty && File(imagePath).existsSync();
 
                             return Card(
+                              color: cardBg,
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               elevation: 2,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.transparent),
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
@@ -962,10 +982,11 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                                             children: [
                                               Text(
                                                 item['description']?.toString() ?? '',
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 15,
                                                   fontFamily: 'Cairo',
+                                                  color: textColor,
                                                 ),
                                                 maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
@@ -1181,8 +1202,9 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                          border: Border(top: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200)),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.08),

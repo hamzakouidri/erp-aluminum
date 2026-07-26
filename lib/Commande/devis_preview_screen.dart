@@ -70,11 +70,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       }
       if (titleKey == 'BON_CHARGE') {
         if (_invoiceLanguage == AppLanguage.french) {
-          return 'Bon de charge';
+          return 'Bon de charge / Livraison';
         } else if (_invoiceLanguage == AppLanguage.english) {
-          return 'Loading Note';
+          return 'Loading & Delivery Note';
         } else {
-          return 'وصل الشحن';
+          return 'فاتورة / وصل تحميل جزئي';
         }
       }
       if (titleKey == 'doc_bon_livraison_sans_prix' ||
@@ -351,12 +351,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildBonDeChargeScreenBody() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const textColor = Colors.black87;
-    const subtextColor = Colors.black54;
-    final headerBg = Colors.grey.shade200;
-    final clientBg = Colors.grey.shade100;
-    final clientBorder = Colors.grey.shade300;
-    const itemBg = Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtextColor = isDark ? Colors.white70 : Colors.black54;
+    final headerBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade200;
+    final clientBg = isDark ? const Color(0xFF0F172A) : Colors.grey.shade100;
+    final clientBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
+    final itemBg = isDark ? const Color(0xFF1E293B) : Colors.white;
 
     final List<Map<String, dynamic>> rows = [];
     int globalIndex = 0;
@@ -641,7 +641,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
