@@ -67,6 +67,8 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
   }
 
   void _showAddWorkerDialog() {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
@@ -79,9 +81,9 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) => AlertDialog(
-          title: const Text(
-            'إضافة عامل جديد',
-            style: TextStyle(fontFamily: 'Cairo'),
+          title: Text(
+            _tr('إضافة عامل جديد', 'Ajouter un nouvel ouvrier', 'Add New Worker', lang),
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -89,66 +91,66 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم العامل (إجباري)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _tr('اسم العامل (إجباري)', 'Nom de l\'ouvrier (Obligatoire)', 'Worker Name (Required)', lang),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: phoneCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'رقم الهاتف (اختياري)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _tr('رقم الهاتف (اختياري)', 'Numéro de téléphone (Optionnel)', 'Phone Number (Optional)', lang),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'البريد الإلكتروني (اختياري)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _tr('البريد الإلكتروني (اختياري)', 'Email (Optionnel)', 'Email (Optional)', lang),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: addressCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'العنوان (اختياري)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _tr('العنوان (اختياري)', 'Adresse (Optionnelle)', 'Address (Optional)', lang),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: jobRoleCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'المنصب أو الاختصاص (اختياري)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _tr('المنصب أو الاختصاص (اختياري)', 'Poste ou Spécialité (Optionnel)', 'Position or Speciality (Optional)', lang),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   value: salaryType,
-                  items: const [
+                  items: [
                     DropdownMenuItem(
                       value: 'manual',
                       child: Text(
-                        'سحب متفرق (بدون راتب ثابت)',
-                        style: TextStyle(fontFamily: 'Cairo'),
+                        _tr('صاحب متفرق / كراء (بدون راتب ثابت)', 'Indépendant / À la قطعة (Sans salaire fixe)', 'Independent / Piecework (Without Fixed Salary)', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                       ),
                     ),
                     DropdownMenuItem(
                       value: 'fixed',
                       child: Text(
-                        'راتب شهري ثابت',
-                        style: TextStyle(fontFamily: 'Cairo'),
+                        _tr('راتب شهري ثابت', 'Salaire mensuel fixe', 'Fixed Monthly Salary', lang),
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                       ),
                     ),
                   ],
                   onChanged: (val) => setStateDialog(() => salaryType = val!),
-                  decoration: const InputDecoration(
-                    labelText: 'طريقة الدفع',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _tr('طريقة الدفع / الأجر', 'Mode de paiement', 'Payment Method', lang),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 if (salaryType == 'fixed') ...[
@@ -156,9 +158,9 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                   TextField(
                     controller: salaryCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'الراتب الشهري (د.ج)',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _tr('الراتب الشهري (د.ج)', 'Salaire mensuel (DA)', 'Monthly Salary (DA)', lang),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -168,7 +170,7 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
+              child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -192,7 +194,7 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                   _loadData();
                 }
               },
-              child: const Text('حفظ'),
+              child: Text(_tr('حفظ', 'Enregistrer', 'Save', lang)),
             ),
           ],
         ),
