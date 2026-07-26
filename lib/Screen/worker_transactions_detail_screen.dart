@@ -50,6 +50,18 @@ class _WorkerTransactionsDetailScreenState
     }
   }
 
+  String _formatNote(String rawNote, AppLanguage lang) {
+    if (rawNote.contains('رصيد مرحل') || rawNote.contains('رصيد مرحّل')) {
+      return _tr(
+        'رصيد مرحل من الأسبوع السابق',
+        'Solde reporté de la semaine précédente',
+        'Carried forward balance from previous week',
+        lang,
+      );
+    }
+    return rawNote;
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -522,7 +534,7 @@ class _WorkerTransactionsDetailScreenState
                   if (note.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
-                      note,
+                      _formatNote(note, lang),
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 12,

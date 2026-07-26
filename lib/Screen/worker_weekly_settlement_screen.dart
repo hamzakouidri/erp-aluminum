@@ -15,6 +15,18 @@ String _tr(String ar, String fr, String en, AppLanguage lang) {
   return ar;
 }
 
+String _formatNote(String rawNote, AppLanguage lang) {
+  if (rawNote.contains('رصيد مرحل') || rawNote.contains('رصيد مرحّل')) {
+    return _tr(
+      'رصيد مرحل من الأسبوع السابق',
+      'Solde reporté de la semaine précédente',
+      'Carried forward balance from previous week',
+      lang,
+    );
+  }
+  return rawNote;
+}
+
 class WorkerWeeklySettlementScreen extends StatefulWidget {
   final SqlDatabase db;
   /// وضع العرض فقط — يخفي زر تسوية الحساب
@@ -1140,7 +1152,7 @@ class _WorkerSettlementDetailScreenState
                                                 color: Colors.red),
                                           ),
                                           subtitle: Text(
-                                            '$note\n📅 $dateStr',
+                                            '${_formatNote(note, lang)}\n📅 $dateStr',
                                             style: const TextStyle(fontSize: 11),
                                           ),
                                         ),
@@ -1382,10 +1394,10 @@ class _WorkerSettlementDetailScreenState
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13),
                                     ),
-                                    subtitle: Text(
-                                      '$note\n📅 تاريخ التسوية: $dateStr',
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
+                                     subtitle: Text(
+                                       '${_formatNote(note, lang)}\n📅 ${_tr("تاريخ التسوية:", "Date de règlement:", "Settlement Date:", lang)} $dateStr',
+                                       style: const TextStyle(fontSize: 11),
+                                     ),
                                   ),
                                 );
                               },
