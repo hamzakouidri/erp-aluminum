@@ -787,6 +787,17 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                         fontFamily: 'Cairo',
                       ),
                     ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => WorkerTransactionsDetailScreen(
+                            worker: worker,
+                            db: widget.db,
+                          ),
+                        ),
+                      ).then((_) => _loadData());
+                    },
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -809,11 +820,12 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                         if (!widget.readOnly)
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, color: Colors.orange),
+                            tooltip: _tr('تعديل بيانات العامل', 'Modifier ouvrier', 'Edit Worker', lang),
                             onPressed: () => _showEditWorkerDialog(worker),
                           ),
                         IconButton(
                           icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.blue),
-                          tooltip: 'عرض وسجل معاملات العامل',
+                          tooltip: _tr('كشف وسجل السلفات والمعاملات', 'Relevé des avances', 'View Advances Statement', lang),
                           onPressed: () {
                             Navigator.push(
                               context,
@@ -826,11 +838,6 @@ class _WorkerFinancesScreenState extends State<WorkerFinancesScreen> {
                             ).then((_) => _loadData());
                           },
                         ),
-                        if (!widget.readOnly)
-                          IconButton(
-                            icon: const Icon(Icons.payment, color: Colors.green),
-                            onPressed: () => _showAddTransactionDialog(worker),
-                          ),
                       ],
                     ),
                   ),
