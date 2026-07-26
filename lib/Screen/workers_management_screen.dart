@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
+import 'worker_transactions_detail_screen.dart';
 
 String _tr(String ar, String fr, String en, AppLanguage lang) {
   if (lang == AppLanguage.french) return fr;
@@ -234,7 +235,10 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
     final isDeputy = _isDeputyManager;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إدارة صلاحيات الفريق'),
+        title: Text(
+          _tr('إدارة شؤون وأجور العمال', 'Gestion du Personnel & Salaires', 'Personnel & Payroll Management', Provider.of<AppSettingsProvider>(context).language),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
@@ -808,6 +812,22 @@ class _WorkerCardState extends State<WorkerCard> {
                         ],
                       ),
                     ),
+                  ),
+                  // ── زر عرض وسجل معاملات وسلف العامل (صفحة مستقلة) ────
+                  IconButton(
+                    icon: const Icon(Icons.account_balance_wallet_outlined, color: Colors.green),
+                    tooltip: _tr('عرض وسجل سلف ومعاملات العامل', 'Voir finances ouvrier', 'View worker finances & advances', lang),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => WorkerTransactionsDetailScreen(
+                            worker: widget.worker,
+                            db: widget.db,
+                          ),
+                        ),
+                      ).then((_) => widget.onRefresh());
+                    },
                   ),
                   // ── زر تعديل بيانات العامل ────────────────────────
                   if (!widget.isDeputyManager || (perms['edit_worker'] ?? false))

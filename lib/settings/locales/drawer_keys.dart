@@ -82,9 +82,9 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.english: 'Role Management',
   },
   'إدارة العمال والصلاحيات': {
-    AppLanguage.arabic: 'إدارة العمال والصلاحيات',
-    AppLanguage.french: 'Gestion des ouvriers & rôles',
-    AppLanguage.english: 'Workers & Role Management',
+    AppLanguage.arabic: 'إدارة شؤون وأجور العمال',
+    AppLanguage.french: 'Gestion du Personnel & Salaires',
+    AppLanguage.english: 'Personnel & Payroll Management',
   },
   'إدارة المستخدمين والاشتراكات': {
     AppLanguage.arabic: 'إدارة المستخدمين والاشتراكات',
