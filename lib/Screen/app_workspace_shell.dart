@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import 'drawer.dart';
@@ -288,17 +291,60 @@ void openAdaptiveScreen(
   required Widget screen,
 }) {
   final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+  final liveScreen = _CloudDataRefreshBoundary(child: screen);
   if (settings.viewMode == AppViewMode.classic) {
-    Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        builder: (routeCtx) => screen,
-      ),
-    );
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).push(MaterialPageRoute(builder: (routeCtx) => liveScreen));
     return;
   }
 
   final workspace = Provider.of<WorkspaceController>(context, listen: false);
-  workspace.open(title: title, icon: icon, content: screen);
+  workspace.open(title: title, icon: icon, content: liveScreen);
+}
+
+/// Keeps the current route open but recreates its data screen after a complete
+/// cloud restore. Local edits emit other events and never reset the page.
+class _CloudDataRefreshBoundary extends StatefulWidget {
+  const _CloudDataRefreshBoundary({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_CloudDataRefreshBoundary> createState() =>
+      _CloudDataRefreshBoundaryState();
+}
+
+class _CloudDataRefreshBoundaryState extends State<_CloudDataRefreshBoundary> {
+  StreamSubscription<String>? _subscription;
+  Timer? _debounce;
+  int _revision = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscription = CloudSyncService().dbUpdateStream.listen((event) {
+      if (event != 'cloud_restored' && event != 'catalog_downloaded') return;
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 80), () {
+        if (!mounted) return;
+        setState(() => _revision++);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyedSubtree(key: ValueKey<int>(_revision), child: widget.child);
+  }
 }
 
 class AppWorkspaceShell extends StatelessWidget {
@@ -394,11 +440,12 @@ class _WorkspaceHeader extends StatelessWidget {
           builder: (context, snapshot) {
             final data = snapshot.data?.data() as Map<String, dynamic>?;
             final workshopName = data?['workshopName'] ?? 'ورشة الألمنيوم';
-            final String displayName = (data?['displayName'] as String?)?.trim().isNotEmpty == true
+            final String displayName =
+                (data?['displayName'] as String?)?.trim().isNotEmpty == true
                 ? data!['displayName'].toString()
                 : (user?.displayName?.trim().isNotEmpty == true
-                    ? user!.displayName!
-                    : (data?['role'] == 'manager' ? 'مدير الورشة' : 'عامل'));
+                      ? user!.displayName!
+                      : (data?['role'] == 'manager' ? 'مدير الورشة' : 'عامل'));
             final logoUrl = data?['workshopLogoUrl'] ?? data?['logoUrl'];
 
             final safeWorkshopName =
@@ -531,8 +578,6 @@ class _WorkspaceHeader extends StatelessWidget {
   }
 }
 
-
-
 class _TabbedWorkspaceView extends StatelessWidget {
   const _TabbedWorkspaceView();
 
@@ -603,7 +648,12 @@ class _TabbedWorkspaceView extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                Localization.translate(entry.title, Provider.of<AppSettingsProvider>(context).language),
+                                Localization.translate(
+                                  entry.title,
+                                  Provider.of<AppSettingsProvider>(
+                                    context,
+                                  ).language,
+                                ),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: active
@@ -640,7 +690,10 @@ class _TabbedWorkspaceView extends StatelessWidget {
                   return FadeTransition(
                     opacity: animation,
                     child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
+                      scale: Tween<double>(
+                        begin: 0.96,
+                        end: 1.0,
+                      ).animate(animation),
                       child: child,
                     ),
                   );
@@ -678,10 +731,7 @@ class _FloatingWorkspaceView extends StatelessWidget {
     final immersiveIndex = workspace.entries.indexWhere(
       (entry) => entry.immersive,
     );
-    final visibleEntries = workspace.entries
-        .asMap()
-        .entries
-        .toList();
+    final visibleEntries = workspace.entries.asMap().entries.toList();
     visibleEntries.sort((a, b) {
       if (a.key == workspace.activeIndex) return 1;
       if (b.key == workspace.activeIndex) return -1;
@@ -915,7 +965,13 @@ class _WindowFrameState extends State<_WindowFrame> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          Localization.translate(widget.entry.title, Provider.of<AppSettingsProvider>(context, listen: false).language),
+                          Localization.translate(
+                            widget.entry.title,
+                            Provider.of<AppSettingsProvider>(
+                              context,
+                              listen: false,
+                            ).language,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

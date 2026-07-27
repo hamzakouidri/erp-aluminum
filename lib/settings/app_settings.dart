@@ -93,8 +93,9 @@ class AppSettingsProvider extends ChangeNotifier {
       prefs.setString('user_role', 'worker');
     } else {
       if (user.email == 'kouidrihamza45@gmail.com') {
-        _userRole = 'manager';
-        await prefs.setString('user_role', 'manager');
+        // Keep the application administrator distinct from workshop managers.
+        _userRole = 'admin';
+        await prefs.setString('user_role', 'admin');
       } else {
         // Never grant rights from a stale role stored on this device. The
         // signed-in user's Firestore document below is the source of truth.
@@ -108,29 +109,33 @@ class AppSettingsProvider extends ChangeNotifier {
           .doc(user.uid)
           .snapshots()
           .listen((docSnap) {
-        if (docSnap.exists && docSnap.data() != null) {
-          final data = docSnap.data()!;
-          if (data['role'] != null && user.email != 'kouidrihamza45@gmail.com') {
-            _userRole = data['role'].toString();
-            prefs.setString('user_role', _userRole);
-          }
-          // Firestore is the authority for permissions. A worker's local
-          // database can be older than the change made by the manager.
-          Map<String, dynamic> cloudPermissions = {};
-          if (data['permissions_json'] is String && (data['permissions_json'] as String).isNotEmpty) {
-            try {
-              final decoded = jsonDecode(data['permissions_json']);
-              if (decoded is Map) {
-                cloudPermissions = Map<String, dynamic>.from(decoded);
+            if (docSnap.exists && docSnap.data() != null) {
+              final data = docSnap.data()!;
+              if (data['role'] != null &&
+                  user.email != 'kouidrihamza45@gmail.com') {
+                _userRole = data['role'].toString();
+                prefs.setString('user_role', _userRole);
               }
-            } catch (_) {}
-          } else if (data['permissions'] is Map) {
-            cloudPermissions = Map<String, dynamic>.from(data['permissions']);
-          }
-          _workerPermissions = cloudPermissions;
-          notifyListeners();
-        }
-      });
+              // Firestore is the authority for permissions. A worker's local
+              // database can be older than the change made by the manager.
+              Map<String, dynamic> cloudPermissions = {};
+              if (data['permissions_json'] is String &&
+                  (data['permissions_json'] as String).isNotEmpty) {
+                try {
+                  final decoded = jsonDecode(data['permissions_json']);
+                  if (decoded is Map) {
+                    cloudPermissions = Map<String, dynamic>.from(decoded);
+                  }
+                } catch (_) {}
+              } else if (data['permissions'] is Map) {
+                cloudPermissions = Map<String, dynamic>.from(
+                  data['permissions'],
+                );
+              }
+              _workerPermissions = cloudPermissions;
+              notifyListeners();
+            }
+          });
     }
     notifyListeners();
   }
@@ -160,7 +165,8 @@ class AppSettingsProvider extends ChangeNotifier {
   bool _isSubPermissionEnabled(String key) {
     if (isManager) return true;
     if (!canViewMyAccreditations()) return false;
-    if (!_workerPermissions.containsKey(key) || _workerPermissions[key] == null) {
+    if (!_workerPermissions.containsKey(key) ||
+        _workerPermissions[key] == null) {
       return false;
     }
     return _isPermissionTrueOrDefault(_workerPermissions[key]);
@@ -168,7 +174,8 @@ class AppSettingsProvider extends ChangeNotifier {
 
   // RBAC Permission Checkers
   bool canViewClients() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_clients']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_clients']);
 
   bool canViewClientLedger() =>
       isManager || _isPermissionTrue(_workerPermissions['view_client_ledger']);
@@ -183,16 +190,19 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager || _isPermissionTrue(_workerPermissions['delete_clients']);
 
   bool canViewOrders() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_orders']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_orders']);
 
   bool canViewProjects() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_projects']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_projects']);
 
   bool canAccessInventory() =>
       isManager || _isPermissionTrue(_workerPermissions['inventory']);
 
   bool canAccessDistributionTracking() =>
-      isManager || _isPermissionTrue(_workerPermissions['distribution_tracking']);
+      isManager ||
+      _isPermissionTrue(_workerPermissions['distribution_tracking']);
 
   bool canViewSales() =>
       isManager || _isPermissionTrue(_workerPermissions['sales']);
@@ -213,22 +223,28 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager || _isPermissionTrue(_workerPermissions['edit_orders']);
 
   bool canViewClientDetails() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_client_details']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_client_details']);
 
   bool canViewOrderDetails() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_order_details']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_order_details']);
 
   bool canViewOrderDocuments() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_order_documents']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_order_documents']);
 
   bool canViewFicheDeCoupe() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['fiche_de_coupe']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['fiche_de_coupe']);
 
   bool canViewOrderMaterials() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_order_materials']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_order_materials']);
 
   bool canConfirmMeasurements() =>
-      isManager || _isPermissionTrue(_workerPermissions['confirm_measurements']);
+      isManager ||
+      _isPermissionTrue(_workerPermissions['confirm_measurements']);
 
   bool canAccessMeasurements() =>
       isManager || _isPermissionTrue(_workerPermissions['measurements_card']);
@@ -243,7 +259,8 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager || _isPermissionTrue(_workerPermissions['duplicate_orders']);
 
   bool canViewMyTasks() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_my_tasks']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_my_tasks']);
 
   bool canViewAllWorkerTasks() =>
       isManager ||
@@ -251,7 +268,8 @@ class AppSettingsProvider extends ChangeNotifier {
       _isPermissionTrue(_workerPermissions['view_all_tasks']);
 
   bool canViewMyAccreditations() =>
-      isManager || _isPermissionTrueOrDefault(_workerPermissions['view_my_accreditations']);
+      isManager ||
+      _isPermissionTrueOrDefault(_workerPermissions['view_my_accreditations']);
 
   bool canViewProfiles() => _isSubPermissionEnabled('view_profiles');
 
@@ -263,7 +281,8 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool canViewAccessories() => _isSubPermissionEnabled('view_accessories');
 
-  bool canViewSeriesAccessories() => _isSubPermissionEnabled('view_series_accessories');
+  bool canViewSeriesAccessories() =>
+      _isSubPermissionEnabled('view_series_accessories');
 
   bool canViewJoints() => _isSubPermissionEnabled('view_joints');
 
@@ -291,7 +310,8 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager || _isPermissionTrue(_workerPermissions['treasury']);
 
   bool canChangeTransactionDates() =>
-      isManager || _isPermissionTrue(_workerPermissions['change_transaction_dates']);
+      isManager ||
+      _isPermissionTrue(_workerPermissions['change_transaction_dates']);
 
   bool canManageWorkers() =>
       isManager || _isPermissionTrue(_workerPermissions['manage_workers']);
@@ -324,7 +344,8 @@ class AppSettingsProvider extends ChangeNotifier {
       isManager || _isPermissionTrue(_workerPermissions['delete_purchases']);
 
   bool canAccelerateConfirmedInvoices() =>
-      isManager || _isPermissionTrue(_workerPermissions['accelerate_confirmed_invoices']);
+      isManager ||
+      _isPermissionTrue(_workerPermissions['accelerate_confirmed_invoices']);
 
   bool canViewStatistics() =>
       isManager || _isPermissionTrue(_workerPermissions['statistics']);

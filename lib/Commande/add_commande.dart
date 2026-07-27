@@ -89,13 +89,17 @@ class _CommandePageState extends State<CommandePage> {
   /// تحديث حفظ الخصائص من نموذج نافذة
   void _saveLastSettings(WindowModel m) {
     _lastUsedSettings = {
-      'frameColor':             m.frameColor,
-      'selectedDbColor':        m.selectedDbColor != null ? Map<String, dynamic>.from(m.selectedDbColor!) : null,
-      'selectedAccessoryColor': m.selectedAccessoryColor != null ? Map<String, dynamic>.from(m.selectedAccessoryColor!) : null,
-      'hasShutter':             m.hasShutter,
-      'shutterLame':            m.shutterLame,
-      'shutterGlissiere':       m.shutterGlissiere,
-      'shutterMechanism':       m.shutterMechanism,
+      'frameColor': m.frameColor,
+      'selectedDbColor': m.selectedDbColor != null
+          ? Map<String, dynamic>.from(m.selectedDbColor!)
+          : null,
+      'selectedAccessoryColor': m.selectedAccessoryColor != null
+          ? Map<String, dynamic>.from(m.selectedAccessoryColor!)
+          : null,
+      'hasShutter': m.hasShutter,
+      'shutterLame': m.shutterLame,
+      'shutterGlissiere': m.shutterGlissiere,
+      'shutterMechanism': m.shutterMechanism,
     };
   }
 
@@ -103,13 +107,16 @@ class _CommandePageState extends State<CommandePage> {
   void _applyLastSettings(WindowModel m) {
     final s = _lastUsedSettings;
     if (s == null) return;
-    if (s['frameColor'] != null)             m.frameColor             = s['frameColor'];
-    if (s['selectedDbColor'] != null)        m.selectedDbColor        = s['selectedDbColor'];
-    if (s['selectedAccessoryColor'] != null) m.selectedAccessoryColor = s['selectedAccessoryColor'];
-    if (s['hasShutter'] != null)             m.hasShutter             = s['hasShutter'];
-    if (s['shutterLame'] != null)            m.shutterLame            = s['shutterLame'];
-    if (s['shutterGlissiere'] != null)       m.shutterGlissiere       = s['shutterGlissiere'];
-    if (s['shutterMechanism'] != null)       m.shutterMechanism       = s['shutterMechanism'];
+    if (s['frameColor'] != null) m.frameColor = s['frameColor'];
+    if (s['selectedDbColor'] != null) m.selectedDbColor = s['selectedDbColor'];
+    if (s['selectedAccessoryColor'] != null)
+      m.selectedAccessoryColor = s['selectedAccessoryColor'];
+    if (s['hasShutter'] != null) m.hasShutter = s['hasShutter'];
+    if (s['shutterLame'] != null) m.shutterLame = s['shutterLame'];
+    if (s['shutterGlissiere'] != null)
+      m.shutterGlissiere = s['shutterGlissiere'];
+    if (s['shutterMechanism'] != null)
+      m.shutterMechanism = s['shutterMechanism'];
   }
 
   Map<String, dynamic>? selectedProject;
@@ -147,7 +154,8 @@ class _CommandePageState extends State<CommandePage> {
           'firstname': proj['firstname'],
           'lastname': proj['lastname'],
         };
-        clientController.text = '${proj['firstname']} ${proj['lastname']}'.trim();
+        clientController.text = '${proj['firstname']} ${proj['lastname']}'
+            .trim();
       });
     }
   }
@@ -242,8 +250,21 @@ class _CommandePageState extends State<CommandePage> {
       final details = await widget.db.readCommandeDetails(
         widget.editCommandeId!,
       );
-      for (var row in details) {
+      double? readDouble(dynamic value) {
+        if (value is num) return value.toDouble();
+        return double.tryParse(value?.toString().trim() ?? '');
+      }
+
+      int? readInt(dynamic value) {
+        if (value is num) return value.toInt();
+        return int.tryParse(value?.toString().trim() ?? '');
+      }
+
+      final loadedProducts = <WindowModel>[];
+      for (final row in details) {
         final model = WindowModel(db: widget.db);
+        final savedWidth = readDouble(row['largeur']);
+        final savedHeight = readDouble(row['hauteur']);
         final jsonRaw = row['partitions_json'];
         if (jsonRaw != null) {
           Map<String, dynamic> map = {};
@@ -255,32 +276,66 @@ class _CommandePageState extends State<CommandePage> {
             final str = jsonRaw.toString().trim();
             if (str.length > 5) {
               try {
-                map = jsonDecode(str) as Map<String, dynamic>;
+                final decoded = jsonDecode(str);
+                if (decoded is Map) {
+                  map = Map<String, dynamic>.from(decoded);
+                }
               } catch (e) {
                 debugPrint('Error parsing partitions JSON: $e');
               }
             }
           }
           if (map.isNotEmpty) {
-            await applyWindowModelAndLoadCatalog(model, map);
+            try {
+              await applyWindowModelAndLoadCatalog(model, map);
+            } catch (e, st) {
+              debugPrint(
+                'Error restoring commande detail ${row['id']}: $e\n$st',
+              );
+            }
           }
         }
+        // These columns are a durable fallback if an old JSON model is
+        // incomplete or references a catalog entry that no longer exists.
+        if (savedWidth != null) model.width = savedWidth;
+        if (savedHeight != null) model.height = savedHeight;
+
         final game = row['game']?.toString().trim() ?? '';
         if (game.isNotEmpty) {
           model.manualNameOverride = game;
         }
-        model.manualPriceOverride =
-            (row['price'] as num?)?.toDouble() ?? model.manualPriceOverride;
-        if (model.manualPriceOverride == 0.0) {
-          model.isReplaced = true;
+        final savedPrice = readDouble(row['price']);
+        final jsonPrice = model.manualPriceOverride;
+        if (savedPrice != null &&
+            (savedPrice != 0 || jsonPrice == null || jsonPrice == 0)) {
+          model.manualPriceOverride = savedPrice;
         }
-        model.quantity = (row['quantity'] as num?)?.toInt() ?? model.quantity;
+        model.quantity = readInt(row['quantity']) ?? model.quantity;
         final desc = row['description']?.toString().trim() ?? '';
         if (desc.isNotEmpty) {
           model.description = desc;
         }
-        setState(() {
-          addedProducts.add(model);
+        loadedProducts.add(model);
+      }
+      if (!mounted) return;
+      setState(() {
+        addedProducts.addAll(loadedProducts);
+      });
+
+      final storedTotal = readDouble(cmd['total']) ?? 0.0;
+      if (details.isEmpty && storedTotal > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'هذه الطلبية القديمة تحتوي على مجموع محفوظ دون سطور تفاصيل. '
+                'استرجع نسخة سحابية أقدم أو أعد إضافة عناصرها قبل الحفظ.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 8),
+            ),
+          );
         });
       }
     }
@@ -517,7 +572,10 @@ class _CommandePageState extends State<CommandePage> {
 
     await Future.delayed(const Duration(milliseconds: 100));
 
+    final syncService = CloudSyncService();
+    await syncService.beginLocalWrite();
     try {
+      if (!mounted) return;
       final settings = Provider.of<AppSettingsProvider>(context, listen: false);
       double rawTotal = addedProducts
           .where((p) => !p.isReplaced)
@@ -534,72 +592,62 @@ class _CommandePageState extends State<CommandePage> {
       double remise = double.tryParse(remiseController.text) ?? 0.0;
       double tax = double.tryParse(taxController.text) ?? 0.0;
 
-      int commandeId;
-      final List<String> existingImagePaths = [];
-      if (widget.editCommandeId != null) {
-        commandeId = widget.editCommandeId!;
-        final existingDetails = await widget.db.readCommandeDetails(commandeId);
-        for (final row in existingDetails) {
-          final path = row['drawing_image_path']?.toString() ?? '';
-          if (path.isNotEmpty) {
-            existingImagePaths.add(path);
-          }
-        }
-        await widget.db.updateCommande(
-          idCommande: commandeId,
-          description: controller.text,
-          dateCommande: _parseQuoteDateForDb(quoteDateController.text),
-          remise: remise,
-          tax: tax,
-          totalGlobal: total,
-          netPayable: total - remise + ((total * tax) / 100),
-          projectId: selectedProject != null ? selectedProject!['id'] as int : null,
-          updateProjectId: true,
-        );
-        await widget.db.deleteCommandeDetails(commandeId);
-      } else {
-        commandeId = await widget.db.insertCommande(
-          clientId as int,
-          "Pending",
-          controller.text,
-          remise,
-          tax,
-          total,
-          advancePayment: 0.0,
-          createdAt: _parseQuoteDateForDb(quoteDateController.text),
-          projectId: selectedProject != null ? selectedProject!['id'] as int : null,
-        );
-      }
-
-      for (var p in addedProducts) {
+      final existingDetails = widget.editCommandeId == null
+          ? <Map<String, dynamic>>[]
+          : await widget.db.readCommandeDetails(widget.editCommandeId!);
+      final preparedDetails = <Map<String, dynamic>>[];
+      for (var index = 0; index < addedProducts.length; index++) {
+        final p = addedProducts[index];
         final newImagePath = await saveWindowImageToDisk(p);
-        await widget.db.insertCommandeDetail(
-          idCommande: commandeId,
-          largeur: p.width,
-          hauteur: p.height,
-          game: p.isShutterOnly ? 'Volet roulant' : (p.manualNameOverride ?? ''),
-          description: p.description ?? '',
-          windowType: p.zones.any((z) => z.content == ZoneContent.doubleSash)
-              ? 'Double Sash'
-              : 'Single Sash',
-          partitionsJson: jsonEncode(p.toMap()),
-          drawingImagePath: newImagePath,
-          price: p.manualPriceOverride ?? p.totalCost,
-          quantity: p.quantity,
-          color: p.frameColor.toString().split('.').last,
-          glass:
+        final previous = index < existingDetails.length
+            ? existingDetails[index]
+            : null;
+        final drawingPath = newImagePath.isNotEmpty
+            ? newImagePath
+            : previous?['drawing_image_path']?.toString() ?? '';
+        preparedDetails.add({
+          'largeur': p.width.toInt(),
+          'hauteur': p.height.toInt(),
+          'game': p.isShutterOnly
+              ? 'Volet roulant'
+              : (p.manualNameOverride ?? ''),
+          'quantity': p.quantity,
+          'glass':
               p.zones.isNotEmpty &&
                   p.zones.first.glass.structure == GlassStructure.double
               ? 'Double'
               : 'Single',
-          volet: p.hasShutter ? 'Yes' : 'No',
-        );
+          'color': p.frameColor.toString().split('.').last,
+          'volet': p.hasShutter ? 'Yes' : 'No',
+          'accessories': '',
+          'description': p.description ?? '',
+          'price': p.manualPriceOverride ?? p.totalCost,
+          'window_type': p.zones.any(
+            (z) => z.content == ZoneContent.doubleSash,
+          )
+              ? 'Double Sash'
+              : 'Single Sash',
+          'partitions_json': jsonEncode(p.toMap()),
+          'drawing_image_path': drawingPath,
+          if (newImagePath.isEmpty &&
+              previous?['drawing_image_base64'] != null)
+            'drawing_image_base64': previous!['drawing_image_base64'],
+        });
       }
 
-      // The order and all of its lines now exist locally. Trigger one
-      // immediate workshop sync instead of waiting for the delayed backup
-      // scheduled by each individual insert above.
-      CloudSyncService().notifyChangeImmediate();
+      await widget.db.saveCommandeWithDetails(
+        idCommande: widget.editCommandeId,
+        clientId: (clientId as num).toInt(),
+        status: 'Pending',
+        description: controller.text,
+        remise: remise,
+        tva: tax,
+        total: total,
+        netPayable: total - remise + ((total * tax) / 100),
+        createdAt: _parseQuoteDateForDb(quoteDateController.text),
+        projectId: (selectedProject?['id'] as num?)?.toInt(),
+        details: preparedDetails,
+      );
 
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
@@ -626,6 +674,7 @@ class _CommandePageState extends State<CommandePage> {
         ),
       );
     } finally {
+      syncService.endLocalWrite();
       if (mounted) setState(() => _isSaving = false);
     }
   }
@@ -819,7 +868,9 @@ class _CommandePageState extends State<CommandePage> {
             Provider.of<AppSettingsProvider>(context).language,
           ),
         ),
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.white,
+        backgroundColor: isDark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         actions: [
@@ -827,7 +878,9 @@ class _CommandePageState extends State<CommandePage> {
             IconButton(
               icon: Icon(
                 _isReordering ? Icons.grid_view : Icons.sort,
-                color: _isReordering ? Colors.blue : (isDark ? Colors.white70 : Colors.black87),
+                color: _isReordering
+                    ? Colors.blue
+                    : (isDark ? Colors.white70 : Colors.black87),
               ),
               onPressed: () {
                 setState(() {
@@ -859,64 +912,79 @@ class _CommandePageState extends State<CommandePage> {
                   "${Localization.translate('Customer', Provider.of<AppSettingsProvider>(context).language)} *",
               controller: clientController,
               icon: Icons.person,
-              suffix: (widget.projectId != null || selectedProject != null) ? null : Icons.search,
-              onTap: (widget.projectId != null || selectedProject != null) ? null : () async {
-                final result = await showDialog(
-                  context: context,
-                  builder: (context) => ClientDropdownDialog(db: widget.db),
-                );
+              suffix: (widget.projectId != null || selectedProject != null)
+                  ? null
+                  : Icons.search,
+              onTap: (widget.projectId != null || selectedProject != null)
+                  ? null
+                  : () async {
+                      final result = await showDialog(
+                        context: context,
+                        builder: (context) =>
+                            ClientDropdownDialog(db: widget.db),
+                      );
 
-                if (result != null && result is Map<String, dynamic>) {
-                  setState(() {
-                    selectedClient = result;
-                    clientController.text =
-                        "${result['firstname']} ${result['lastname']}";
-                    // Clear project if customer changes
-                    selectedProject = null;
-                    projectController.text = '';
-                  });
-                }
-              },
+                      if (result != null && result is Map<String, dynamic>) {
+                        setState(() {
+                          selectedClient = result;
+                          clientController.text =
+                              "${result['firstname']} ${result['lastname']}";
+                          // Clear project if customer changes
+                          selectedProject = null;
+                          projectController.text = '';
+                        });
+                      }
+                    },
             ),
 
             const SizedBox(height: 15),
 
             _buildField(
-              label: Localization.translate('المشروع (اختياري)', Provider.of<AppSettingsProvider>(context).language),
+              label: Localization.translate(
+                'المشروع (اختياري)',
+                Provider.of<AppSettingsProvider>(context).language,
+              ),
               controller: projectController,
               icon: Icons.folder_shared_rounded,
               suffix: (widget.projectId != null) ? null : Icons.search,
-              onTap: (widget.projectId != null) ? null : () async {
-                if (selectedClient == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        Localization.translate('يرجى اختيار الزبون أولاً لعرض مشاريعه', Provider.of<AppSettingsProvider>(context).language),
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                final result = await showDialog(
-                  context: context,
-                  builder: (context) => ProjectDropdownDialog(
-                    db: widget.db,
-                    clientId: selectedClient!['id'] as int,
-                  ),
-                );
+              onTap: (widget.projectId != null)
+                  ? null
+                  : () async {
+                      if (selectedClient == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              Localization.translate(
+                                'يرجى اختيار الزبون أولاً لعرض مشاريعه',
+                                Provider.of<AppSettingsProvider>(
+                                  context,
+                                ).language,
+                              ),
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      final result = await showDialog(
+                        context: context,
+                        builder: (context) => ProjectDropdownDialog(
+                          db: widget.db,
+                          clientId: selectedClient!['id'] as int,
+                        ),
+                      );
 
-                if (result != null && result is Map<String, dynamic>) {
-                  setState(() {
-                    selectedProject = result;
-                    projectController.text = result['name'];
-                  });
-                } else if (result == 'clear') {
-                  setState(() {
-                    selectedProject = null;
-                    projectController.text = '';
-                  });
-                }
-              },
+                      if (result != null && result is Map<String, dynamic>) {
+                        setState(() {
+                          selectedProject = result;
+                          projectController.text = result['name'];
+                        });
+                      } else if (result == 'clear') {
+                        setState(() {
+                          selectedProject = null;
+                          projectController.text = '';
+                        });
+                      }
+                    },
             ),
 
             const SizedBox(height: 15),
@@ -950,7 +1018,10 @@ class _CommandePageState extends State<CommandePage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      Localization.translate('ترتيب العناصر', Provider.of<AppSettingsProvider>(context).language),
+                      Localization.translate(
+                        'ترتيب العناصر',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -960,7 +1031,12 @@ class _CommandePageState extends State<CommandePage> {
                     TextButton.icon(
                       onPressed: () => setState(() => _isReordering = false),
                       icon: const Icon(Icons.check),
-                      label: Text(Localization.translate('تم', Provider.of<AppSettingsProvider>(context).language)),
+                      label: Text(
+                        Localization.translate(
+                          'تم',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -971,9 +1047,14 @@ class _CommandePageState extends State<CommandePage> {
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     leading: CircleAvatar(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -983,42 +1064,64 @@ class _CommandePageState extends State<CommandePage> {
                       p.manualNameOverride?.trim().isNotEmpty == true
                           ? p.manualNameOverride!.trim()
                           : (p.isShutterOnly
-                              ? 'Volet roulant'
-                              : (p.isDoor
-                                  ? (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                                      ? t('باب بضلفتين')
-                                      : t('باب بضلفة واحدة'))
-                                  : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                                      ? t('نافذة بضلفتين')
-                                      : t('نافذة بضلفة واحدة')))),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ? 'Volet roulant'
+                                : (p.isDoor
+                                      ? (p.zones.any(
+                                              (z) =>
+                                                  z.content ==
+                                                  ZoneContent.doubleSash,
+                                            )
+                                            ? t('باب بضلفتين')
+                                            : t('باب بضلفة واحدة'))
+                                      : (p.zones.any(
+                                              (z) =>
+                                                  z.content ==
+                                                  ZoneContent.doubleSash,
+                                            )
+                                            ? t('نافذة بضلفتين')
+                                            : t('نافذة بضلفة واحدة')))),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
                     subtitle: Text(
                       '${p.width.toInt()}x${p.height.toInt()} mm - ${p.quantity} Pcs',
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 13,
+                      ),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.arrow_upward, color: Colors.blue),
+                          icon: const Icon(
+                            Icons.arrow_upward,
+                            color: Colors.blue,
+                          ),
                           onPressed: index > 0
                               ? () {
                                   setState(() {
                                     final temp = addedProducts[index];
-                                    addedProducts[index] = addedProducts[index - 1];
+                                    addedProducts[index] =
+                                        addedProducts[index - 1];
                                     addedProducts[index - 1] = temp;
                                   });
                                 }
                               : null,
                         ),
                         IconButton(
-                          icon: const Icon(Icons.arrow_downward, color: Colors.blue),
+                          icon: const Icon(
+                            Icons.arrow_downward,
+                            color: Colors.blue,
+                          ),
                           onPressed: index < addedProducts.length - 1
                               ? () {
                                   setState(() {
                                     final temp = addedProducts[index];
-                                    addedProducts[index] = addedProducts[index + 1];
+                                    addedProducts[index] =
+                                        addedProducts[index + 1];
                                     addedProducts[index + 1] = temp;
                                   });
                                 }
@@ -1050,9 +1153,8 @@ class _CommandePageState extends State<CommandePage> {
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => OrderTableEditScreen(
-                          products: addedProducts,
-                        ),
+                        builder: (context) =>
+                            OrderTableEditScreen(products: addedProducts),
                       ),
                     );
                     if (result == true) {
@@ -1086,9 +1188,8 @@ class _CommandePageState extends State<CommandePage> {
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ChooseSysteme(
-                        initialSettings: _lastUsedSettings,
-                      ),
+                      builder: (context) =>
+                          ChooseSysteme(initialSettings: _lastUsedSettings),
                     ),
                   );
                   if (result != null && result is WindowModel) {
@@ -1146,18 +1247,27 @@ class _CommandePageState extends State<CommandePage> {
                   'Notes',
                   Provider.of<AppSettingsProvider>(context).language,
                 ),
-                hintStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
-                  borderSide: isDark ? BorderSide(color: Colors.grey.shade800) : const BorderSide(),
+                  borderSide: isDark
+                      ? BorderSide(color: Colors.grey.shade800)
+                      : const BorderSide(),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
-                  borderSide: isDark ? BorderSide(color: Colors.grey.shade800) : const BorderSide(color: Colors.grey),
+                  borderSide: isDark
+                      ? BorderSide(color: Colors.grey.shade800)
+                      : const BorderSide(color: Colors.grey),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
-                  borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                  borderSide: const BorderSide(
+                    color: Colors.blueAccent,
+                    width: 2,
+                  ),
                 ),
                 filled: true,
                 fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -1211,7 +1321,10 @@ class _CommandePageState extends State<CommandePage> {
               padding: const EdgeInsets.all(20),
               margin: const EdgeInsets.all(0),
               decoration: BoxDecoration(
-                border: Border.all(width: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                border: Border.all(
+                  width: 1,
+                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                ),
                 color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
@@ -1434,15 +1547,22 @@ class _CommandePageState extends State<CommandePage> {
   }
 
   void _showAddSpecialProductDialog([WindowModel? existingProduct]) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    final nameController = TextEditingController(text: existingProduct?.manualNameOverride ?? '');
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final nameController = TextEditingController(
+      text: existingProduct?.manualNameOverride ?? '',
+    );
     final purchaseController = TextEditingController(
       text: existingProduct?.totalCost.toString() ?? '0',
     );
     final sellController = TextEditingController(
       text: existingProduct?.manualPriceOverride?.toString() ?? '',
     );
-    final descController = TextEditingController(text: existingProduct?.description ?? '');
+    final descController = TextEditingController(
+      text: existingProduct?.description ?? '',
+    );
 
     showDialog(
       context: context,
@@ -1468,16 +1588,23 @@ class _CommandePageState extends State<CommandePage> {
               const SizedBox(height: 12),
               TextField(
                 controller: purchaseController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
-                  labelText: Localization.translate('سعر الشراء (اختياري)', lang),
+                  labelText: Localization.translate(
+                    'سعر الشراء (اختياري)',
+                    lang,
+                  ),
                   border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: sellController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: Localization.translate('سعر البيع', lang) + ' *',
                   border: const OutlineInputBorder(),
@@ -1505,18 +1632,27 @@ class _CommandePageState extends State<CommandePage> {
               final name = nameController.text.trim();
               if (name.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(Localization.translate('يرجى إدخال اسم المنتج', lang))),
+                  SnackBar(
+                    content: Text(
+                      Localization.translate('يرجى إدخال اسم المنتج', lang),
+                    ),
+                  ),
                 );
                 return;
               }
               final sellPrice = double.tryParse(sellController.text.trim());
               if (sellPrice == null || sellPrice <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(Localization.translate('يرجى إدخال سعر بيع صحيح', lang))),
+                  SnackBar(
+                    content: Text(
+                      Localization.translate('يرجى إدخال سعر بيع صحيح', lang),
+                    ),
+                  ),
                 );
                 return;
               }
-              final purchasePrice = double.tryParse(purchaseController.text.trim()) ?? 0.0;
+              final purchasePrice =
+                  double.tryParse(purchaseController.text.trim()) ?? 0.0;
 
               if (existingProduct == null) {
                 final newProduct = WindowModel(db: widget.db);
@@ -1555,7 +1691,8 @@ class _CommandePageState extends State<CommandePage> {
   Widget _buildProductCard(WindowModel p) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (p.isCustomProduct) {
-      final valStr = ((p.manualPriceOverride ?? 0.0) * p.quantity).toStringAsFixed(2);
+      final valStr = ((p.manualPriceOverride ?? 0.0) * p.quantity)
+          .toStringAsFixed(2);
       final totalLabel = '${t('المجموع:')} $valStr ${t('دج')}';
       final desc = p.description ?? '';
 
@@ -1605,7 +1742,9 @@ class _CommandePageState extends State<CommandePage> {
                             context: context,
                             builder: (ctx) => AlertDialog(
                               title: Text(t('حذف المنتج')),
-                              content: Text(t('هل أنت متأكد أنك تريد حذف هذا المنتج؟')),
+                              content: Text(
+                                t('هل أنت متأكد أنك تريد حذف هذا المنتج؟'),
+                              ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx),
@@ -1701,11 +1840,13 @@ class _CommandePageState extends State<CommandePage> {
     final cardKey = _cardKeys.putIfAbsent(p, () => GlobalKey());
     bool isHighlighted = _highlightedProduct == p;
 
-    final bool isCaisson = p.isCaissonTunnel ||
+    final bool isCaisson =
+        p.isCaissonTunnel ||
         (p.manualNameOverride?.contains('Caisson Tunnel') == true) ||
         (p.manualNameOverride?.contains('Caisson Tunnel') == true);
 
-    final bool isMoustiquaire = p.isMoustiquaire ||
+    final bool isMoustiquaire =
+        p.isMoustiquaire ||
         (p.manualNameOverride?.contains('Moustiquaire') == true) ||
         (p.manualNameOverride?.contains('موستيكير') == true) ||
         (p.manualNameOverride?.contains('ناموسية') == true);
@@ -1733,15 +1874,21 @@ class _CommandePageState extends State<CommandePage> {
         ),
       ),
       color: isDark
-          ? ((p.isReplaced && !isCaisson) ? Colors.grey.shade900 : const Color(0xFF1E1E1E))
-          : ((p.isReplaced && !isCaisson) ? const Color(0xFFF5F5F5) : Colors.white),
+          ? ((p.isReplaced && !isCaisson)
+                ? Colors.grey.shade900
+                : const Color(0xFF1E1E1E))
+          : ((p.isReplaced && !isCaisson)
+                ? const Color(0xFFF5F5F5)
+                : Colors.white),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CustomPaint(
-              foregroundPainter: (p.isReplaced && !isCaisson) ? CardCrossPainter() : null,
+              foregroundPainter: (p.isReplaced && !isCaisson)
+                  ? CardCrossPainter()
+                  : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1753,29 +1900,27 @@ class _CommandePageState extends State<CommandePage> {
                           isCaisson
                               ? (() {
                                   String dimSummary = '';
-                                  if (p.caissonPayload != null && p.caissonPayload!['items'] != null) {
-                                    final itemsList = (p.caissonPayload!['items'] as List);
+                                  if (p.caissonPayload != null &&
+                                      p.caissonPayload!['items'] != null) {
+                                    final itemsList =
+                                        (p.caissonPayload!['items'] as List);
                                     if (itemsList.isNotEmpty) {
                                       final firstMap = itemsList.first as Map;
-                                      final double lengthMm = (firstMap['lengthMm'] as num? ?? 0.0).toDouble();
-                                      final int sizeCm = (firstMap['sizeCm'] as num? ?? 25).toInt();
-                                      final String lenStr = (lengthMm / 10.0).toStringAsFixed(0);
-                                      dimSummary = ' ($lenStr سم - صندوق $sizeCm سم)';
+                                      final double lengthMm =
+                                          (firstMap['lengthMm'] as num? ?? 0.0)
+                                              .toDouble();
+                                      final int sizeCm =
+                                          (firstMap['sizeCm'] as num? ?? 25)
+                                              .toInt();
+                                      final String lenStr = (lengthMm / 10.0)
+                                          .toStringAsFixed(0);
+                                      dimSummary =
+                                          ' ($lenStr سم - صندوق $sizeCm سم)';
                                     }
                                   }
                                   return '${p.manualNameOverride ?? "Caisson Tunnel"}$dimSummary';
                                 })()
-                              : '${p.manualNameOverride?.trim().isNotEmpty == true 
-                                  ? p.manualNameOverride!.trim() 
-                                  : (p.isShutterOnly
-                                      ? 'Volet roulant'
-                                      : (p.isDoor
-                                          ? (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                                              ? t('باب بضلفتين')
-                                              : t('باب بضلفة واحدة'))
-                                          : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                                              ? t('نافذة بضلفتين')
-                                              : t('نافذة بضلفة واحدة'))))} - ${p.width.toInt()}x${p.height.toInt()} mm',
+                              : '${p.manualNameOverride?.trim().isNotEmpty == true ? p.manualNameOverride!.trim() : (p.isShutterOnly ? 'Volet roulant' : (p.isDoor ? (p.zones.any((z) => z.content == ZoneContent.doubleSash) ? t('باب بضلفتين') : t('باب بضلفة واحدة')) : (p.zones.any((z) => z.content == ZoneContent.doubleSash) ? t('نافذة بضلفتين') : t('نافذة بضلفة واحدة'))))} - ${p.width.toInt()}x${p.height.toInt()} mm',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -1799,15 +1944,17 @@ class _CommandePageState extends State<CommandePage> {
                               },
                             ),
                             IconButton(
-                              icon: const Icon(Icons.table_chart, color: Colors.purple),
+                              icon: const Icon(
+                                Icons.table_chart,
+                                color: Colors.purple,
+                              ),
                               tooltip: 'جدول المقاسات (Edit Table Details)',
                               onPressed: () async {
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => OrderTableEditScreen(
-                                      products: [p],
-                                    ),
+                                    builder: (context) =>
+                                        OrderTableEditScreen(products: [p]),
                                   ),
                                 );
                                 if (result == true) {
@@ -1823,28 +1970,55 @@ class _CommandePageState extends State<CommandePage> {
                             IconButton(
                               icon: const Icon(Icons.edit, color: Colors.blue),
                               onPressed: () async {
-                                if (p.isCaissonTunnel || (p.manualNameOverride?.contains('Caisson Tunnel') == true)) {
+                                if (p.isCaissonTunnel ||
+                                    (p.manualNameOverride?.contains(
+                                          'Caisson Tunnel',
+                                        ) ==
+                                        true)) {
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => CaissonTunnelScreen(initialPayload: p.caissonPayload),
+                                      builder: (context) => CaissonTunnelScreen(
+                                        initialPayload: p.caissonPayload,
+                                      ),
                                     ),
                                   );
-                                  if (result != null && result is Map<String, dynamic> && mounted) {
-                                    final int cBars = (result['grandTotalCaissonBars'] as int? ?? 0);
-                                    final int bBars = (result['grandTotalBottomCoverBars'] as int? ?? 0);
-                                    final int pairs = (result['grandTotalPairs'] as int? ?? 0);
+                                  if (result != null &&
+                                      result is Map<String, dynamic> &&
+                                      mounted) {
+                                    final int cBars =
+                                        (result['grandTotalCaissonBars']
+                                            as int? ??
+                                        0);
+                                    final int bBars =
+                                        (result['grandTotalBottomCoverBars']
+                                            as int? ??
+                                        0);
+                                    final int pairs =
+                                        (result['grandTotalPairs'] as int? ??
+                                        0);
 
                                     // Compute suggested price from DB prices
                                     double suggestedPrice = 0.0;
                                     try {
-                                      final ctPrices = await widget.db.getCaissonTunnelPrices();
+                                      final ctPrices = await widget.db
+                                          .getCaissonTunnelPrices();
                                       if (ctPrices.isNotEmpty) {
                                         // Use first color entry (or match by color if set)
                                         final priceRow = ctPrices.first;
-                                        final profileBar = (priceRow['profile_price_per_bar'] as num? ?? 0).toDouble();
-                                        final bottomBar = (priceRow['bottom_cover_price_per_bar'] as num? ?? 0).toDouble();
-                                        suggestedPrice = (cBars * profileBar) + (bBars * bottomBar);
+                                        final profileBar =
+                                            (priceRow['profile_price_per_bar']
+                                                        as num? ??
+                                                    0)
+                                                .toDouble();
+                                        final bottomBar =
+                                            (priceRow['bottom_cover_price_per_bar']
+                                                        as num? ??
+                                                    0)
+                                                .toDouble();
+                                        suggestedPrice =
+                                            (cBars * profileBar) +
+                                            (bBars * bottomBar);
                                       }
                                     } catch (_) {}
 
@@ -1853,10 +2027,13 @@ class _CommandePageState extends State<CommandePage> {
                                         p.isCaissonTunnel = true;
                                         p.isReplaced = false;
                                         p.manualNameOverride = 'Caisson Tunnel';
-                                        p.description = 'Kit: ${result['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
+                                        p.description =
+                                            'Kit: ${result['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
                                         p.caissonPayload = result;
-                                        if (suggestedPrice > 0 && p.manualPriceOverride == null) {
-                                          p.manualPriceOverride = suggestedPrice;
+                                        if (suggestedPrice > 0 &&
+                                            p.manualPriceOverride == null) {
+                                          p.manualPriceOverride =
+                                              suggestedPrice;
                                         }
                                         _highlightedProduct = p;
                                       });
@@ -1866,28 +2043,52 @@ class _CommandePageState extends State<CommandePage> {
                                   return;
                                 }
 
-                                if (p.isMoustiquaire || (p.manualNameOverride?.contains('Moustiquaire') == true) || (p.manualNameOverride?.contains('موستيكير') == true)) {
+                                if (p.isMoustiquaire ||
+                                    (p.manualNameOverride?.contains(
+                                          'Moustiquaire',
+                                        ) ==
+                                        true) ||
+                                    (p.manualNameOverride?.contains(
+                                          'موستيكير',
+                                        ) ==
+                                        true)) {
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => MoustiquaireScreen(initialPayload: p.moustiquairePayload),
+                                      builder: (context) => MoustiquaireScreen(
+                                        initialPayload: p.moustiquairePayload,
+                                      ),
                                     ),
                                   );
-                                  if (result != null && result is Map<String, dynamic> && mounted) {
-                                    final double grandTotalArea = (result['grandTotalAreaSqm'] as num? ?? 0.0).toDouble();
-                                    final double grandTotalPrice = (result['grandTotalPrice'] as num? ?? 0.0).toDouble();
-                                    final int grandTotalQty = (result['totalQuantity'] as int? ?? 1);
-                                    final String subType = (result['subType'] as String? ?? 'موستيكير');
+                                  if (result != null &&
+                                      result is Map<String, dynamic> &&
+                                      mounted) {
+                                    final double grandTotalArea =
+                                        (result['grandTotalAreaSqm'] as num? ??
+                                                0.0)
+                                            .toDouble();
+                                    final double grandTotalPrice =
+                                        (result['grandTotalPrice'] as num? ??
+                                                0.0)
+                                            .toDouble();
+                                    final int grandTotalQty =
+                                        (result['totalQuantity'] as int? ?? 1);
+                                    final String subType =
+                                        (result['subType'] as String? ??
+                                        'موستيكير');
 
                                     if (mounted) {
                                       setState(() {
                                         p.isMoustiquaire = true;
                                         p.isReplaced = false;
-                                        p.manualNameOverride = 'Moustiquaire ($subType)';
-                                        p.description = 'النوع: $subType | المساحة: ${grandTotalArea.toStringAsFixed(2)} m² | العدد: $grandTotalQty';
+                                        p.manualNameOverride =
+                                            'Moustiquaire ($subType)';
+                                        p.description =
+                                            'النوع: $subType | المساحة: ${grandTotalArea.toStringAsFixed(2)} m² | العدد: $grandTotalQty';
                                         p.moustiquairePayload = result;
                                         if (grandTotalPrice > 0) {
-                                          p.manualPriceOverride = grandTotalPrice;
+                                          p.manualPriceOverride =
+                                              grandTotalPrice;
                                         }
                                         _highlightedProduct = p;
                                       });
@@ -1902,9 +2103,8 @@ class _CommandePageState extends State<CommandePage> {
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => SystemRoling(
-                                        model: p,
-                                      ),
+                                      builder: (context) =>
+                                          SystemRoling(model: p),
                                     ),
                                   );
                                 } else {
@@ -1914,13 +2114,29 @@ class _CommandePageState extends State<CommandePage> {
                                       builder: (context) => WindowView(
                                         model: p,
                                         systemMode:
-                                            (p.systemMode != null && p.systemMode!.isNotEmpty)
+                                            (p.systemMode != null &&
+                                                p.systemMode!.isNotEmpty)
                                             ? p.systemMode!
                                             : (() {
-                                                final hasSliding = p.zones.any((z) => z.content == ZoneContent.slidingSash);
-                                                final hasFrench = p.zones.any((z) => z.content == ZoneContent.singleSash || z.content == ZoneContent.doubleSash);
-                                                if (hasSliding && hasFrench) return 'mixed';
-                                                return hasSliding ? 'sliding' : 'french';
+                                                final hasSliding = p.zones.any(
+                                                  (z) =>
+                                                      z.content ==
+                                                      ZoneContent.slidingSash,
+                                                );
+                                                final hasFrench = p.zones.any(
+                                                  (z) =>
+                                                      z.content ==
+                                                          ZoneContent
+                                                              .singleSash ||
+                                                      z.content ==
+                                                          ZoneContent
+                                                              .doubleSash,
+                                                );
+                                                if (hasSliding && hasFrench)
+                                                  return 'mixed';
+                                                return hasSliding
+                                                    ? 'sliding'
+                                                    : 'french';
                                               })(),
                                       ),
                                     ),
@@ -2110,31 +2326,39 @@ class _CommandePageState extends State<CommandePage> {
                                 ? Image.asset(
                                     'Icon/caisson_tunnel.jpg',
                                     fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Image.asset(
+                                              'assets/Icon/caisson_tunnel.jpg',
+                                              fit: BoxFit.contain,
+                                            ),
                                   )
                                 : isMoustiquaire
-                                    ? Image.asset(
-                                        'Icon/media.webp',
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (context, error, stackTrace) =>
-                                            Image.asset('assets/Icon/media.webp', fit: BoxFit.contain),
-                                      )
-                                    : IgnorePointer(
-                                        child: FittedBox(
-                                          fit: BoxFit.contain,
-                                          child: Opacity(
-                                            opacity: p.isReplaced ? 0.5 : 1.0,
-                                            child: CustomPaint(
-                                              size: Size(
-                                                p.width.toDouble(),
-                                                p.height.toDouble(),
-                                              ),
-                                              painter: WindowPainter(model: p),
+                                ? Image.asset(
+                                    'Icon/media.webp',
+                                    fit: BoxFit.contain,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Image.asset(
+                                              'assets/Icon/media.webp',
+                                              fit: BoxFit.contain,
                                             ),
+                                  )
+                                : IgnorePointer(
+                                    child: FittedBox(
+                                      fit: BoxFit.contain,
+                                      child: Opacity(
+                                        opacity: p.isReplaced ? 0.5 : 1.0,
+                                        child: CustomPaint(
+                                          size: Size(
+                                            p.width.toDouble(),
+                                            p.height.toDouble(),
                                           ),
+                                          painter: WindowPainter(model: p),
                                         ),
                                       ),
+                                    ),
+                                  ),
                           ),
                         ],
                       ),
@@ -2221,7 +2445,10 @@ class _CommandePageState extends State<CommandePage> {
     showDialog(
       context: context,
       builder: (ctx) {
-        final bool isDark = Provider.of<AppSettingsProvider>(context, listen: false).isDarkMode;
+        final bool isDark = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).isDarkMode;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF111827) : Colors.white,
           title: Text(
@@ -2249,16 +2476,27 @@ class _CommandePageState extends State<CommandePage> {
                   controller: controller,
                   maxLines: 4,
                   maxLength: 1000,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
                   decoration: InputDecoration(
                     border: const OutlineInputBorder(),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: isDark ? const Color(0xFF374151) : Colors.black26),
+                      borderSide: BorderSide(
+                        color: isDark
+                            ? const Color(0xFF374151)
+                            : Colors.black26,
+                      ),
                     ),
                     labelText: t('سبب التعديل / الإلغاء'),
-                    labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
-                    hintText: 'اكتب هنا سبب إلغاء هذا العنصر وتفعيل التعديل الجديد...',
-                    hintStyle: TextStyle(color: isDark ? Colors.white30 : Colors.black38),
+                    labelStyle: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                    hintText:
+                        'اكتب هنا سبب إلغاء هذا العنصر وتفعيل التعديل الجديد...',
+                    hintStyle: TextStyle(
+                      color: isDark ? Colors.white30 : Colors.black38,
+                    ),
                     alignLabelWithHint: true,
                   ),
                 ),
@@ -2270,7 +2508,9 @@ class _CommandePageState extends State<CommandePage> {
               onPressed: () => Navigator.pop(ctx),
               child: Text(
                 t('إلغاء'),
-                style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
               ),
             ),
             ElevatedButton(
@@ -2322,9 +2562,7 @@ class _CommandePageState extends State<CommandePage> {
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => SystemRoling(
-                        model: cloned,
-                      ),
+                      builder: (context) => SystemRoling(model: cloned),
                     ),
                   );
                 } else {
@@ -2334,11 +2572,18 @@ class _CommandePageState extends State<CommandePage> {
                       builder: (context) => WindowView(
                         model: cloned,
                         systemMode:
-                            (cloned.systemMode != null && cloned.systemMode!.isNotEmpty)
+                            (cloned.systemMode != null &&
+                                cloned.systemMode!.isNotEmpty)
                             ? cloned.systemMode!
                             : (() {
-                                final hasSliding = cloned.zones.any((z) => z.content == ZoneContent.slidingSash);
-                                final hasFrench = cloned.zones.any((z) => z.content == ZoneContent.singleSash || z.content == ZoneContent.doubleSash);
+                                final hasSliding = cloned.zones.any(
+                                  (z) => z.content == ZoneContent.slidingSash,
+                                );
+                                final hasFrench = cloned.zones.any(
+                                  (z) =>
+                                      z.content == ZoneContent.singleSash ||
+                                      z.content == ZoneContent.doubleSash,
+                                );
                                 if (hasSliding && hasFrench) return 'mixed';
                                 return hasSliding ? 'sliding' : 'french';
                               })(),
@@ -2356,7 +2601,10 @@ class _CommandePageState extends State<CommandePage> {
               },
               child: Text(
                 t('تعديل (Amélioration)'),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -2485,7 +2733,10 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
   }
 
   TextSpan highlightText(String text, String query) {
-    final bool isDark = Provider.of<AppSettingsProvider>(context, listen: false).isDarkMode;
+    final bool isDark = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).isDarkMode;
     final Color textColor = isDark ? Colors.white : Colors.black87;
 
     if (query.trim().isEmpty) {
@@ -2698,16 +2949,29 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
                 Expanded(
                   child: TextField(
                     controller: search,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
                     decoration: InputDecoration(
                       hintText: "Search...",
-                      hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
-                      prefixIcon: Icon(Icons.search, color: isDark ? Colors.white70 : Colors.black54),
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black54,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF1F2937) : Colors.transparent,
+                      fillColor: isDark
+                          ? const Color(0xFF1F2937)
+                          : Colors.transparent,
                       border: const OutlineInputBorder(),
                       enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: isDark ? const Color(0xFF374151) : Colors.black26),
+                        borderSide: BorderSide(
+                          color: isDark
+                              ? const Color(0xFF374151)
+                              : Colors.black26,
+                        ),
                       ),
                       focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Colors.blue, width: 2),
@@ -3065,7 +3329,10 @@ class _ProjectDropdownDialogState extends State<ProjectDropdownDialog> {
               child: filtered.isEmpty
                   ? Center(
                       child: Text(
-                        Localization.translate("لا توجد مشاريع لهذا الزبون", lang),
+                        Localization.translate(
+                          "لا توجد مشاريع لهذا الزبون",
+                          lang,
+                        ),
                         style: const TextStyle(color: Colors.grey),
                       ),
                     )
@@ -3076,8 +3343,14 @@ class _ProjectDropdownDialogState extends State<ProjectDropdownDialog> {
                           return ListTile(
                             leading: const Icon(Icons.clear, color: Colors.red),
                             title: Text(
-                              Localization.translate("بدون مشروع / إلغاء الربط", lang),
-                              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                              Localization.translate(
+                                "بدون مشروع / إلغاء الربط",
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             onTap: () => Navigator.pop(context, 'clear'),
                           );
@@ -3086,7 +3359,9 @@ class _ProjectDropdownDialogState extends State<ProjectDropdownDialog> {
                         return ListTile(
                           leading: const Icon(Icons.folder, color: Colors.blue),
                           title: Text(p['name']),
-                          subtitle: p['description'] != null && p['description'].toString().isNotEmpty
+                          subtitle:
+                              p['description'] != null &&
+                                  p['description'].toString().isNotEmpty
                               ? Text(p['description'])
                               : null,
                           onTap: () => Navigator.pop(context, p),

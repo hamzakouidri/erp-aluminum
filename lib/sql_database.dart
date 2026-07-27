@@ -93,13 +93,15 @@ class SqlDatabase {
       final lang = prefs.getString('language');
       final theme = prefs.getString('themeMode');
       final deviceId = prefs.getString('device_id');
-      
+
       await prefs.clear();
-      
+
       if (lang != null) await prefs.setString('language', lang);
       if (theme != null) await prefs.setString('themeMode', theme);
       if (deviceId != null) await prefs.setString('device_id', deviceId);
-      debugPrint('SharedPreferences cleared successfully (settings preserved).');
+      debugPrint(
+        'SharedPreferences cleared successfully (settings preserved).',
+      );
     } catch (e) {
       debugPrint('Error clearing SharedPreferences: $e');
     }
@@ -152,41 +154,43 @@ class SqlDatabase {
   }
 
   Future<void> _onOpenLogic(Database db) async {
-        // Ensure old records have is_active = 1 and missing columns are added
-        final tablesToFix = [
-          'Profile',
-          'Series',
-          'Sections',
-          'Colors',
-          'Accessories',
-          'Glass',
-          'ShutterComponents',
-          'Locations',
-        ];
-        try {
-          await db.execute("ALTER TABLE Glass ADD COLUMN height REAL NOT NULL DEFAULT 0.0;");
-        } catch (_) {}
+    // Ensure old records have is_active = 1 and missing columns are added
+    final tablesToFix = [
+      'Profile',
+      'Series',
+      'Sections',
+      'Colors',
+      'Accessories',
+      'Glass',
+      'ShutterComponents',
+      'Locations',
+    ];
+    try {
+      await db.execute(
+        "ALTER TABLE Glass ADD COLUMN height REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
 
-        // Migrations for Employees table
-        try {
-          await db.execute("ALTER TABLE Employees ADD COLUMN salary_type TEXT;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Employees ADD COLUMN base_salary REAL;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Employees ADD COLUMN phone TEXT;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Employees ADD COLUMN address TEXT;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Employees ADD COLUMN job_role TEXT;");
-        } catch (_) {}
+    // Migrations for Employees table
+    try {
+      await db.execute("ALTER TABLE Employees ADD COLUMN salary_type TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Employees ADD COLUMN base_salary REAL;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Employees ADD COLUMN phone TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Employees ADD COLUMN address TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Employees ADD COLUMN job_role TEXT;");
+    } catch (_) {}
 
-        // ── جدول الحضور اليومي ─────────────────────────────────────────────
-        try {
-          await db.execute('''
+    // ── جدول الحضور اليومي ─────────────────────────────────────────────
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerAttendance (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               worker_uid TEXT NOT NULL,
@@ -198,11 +202,11 @@ class SqlDatabase {
               UNIQUE(worker_uid, attendance_date)
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        // ── جدول الأعمال اليومية (عمل يومي) ──────────────────────────────────
-        try {
-          await db.execute('''
+    // ── جدول الأعمال اليومية (عمل يومي) ──────────────────────────────────
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerDailyJobs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               worker_uid TEXT NOT NULL,
@@ -216,172 +220,174 @@ class SqlDatabase {
               created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        for (final table in tablesToFix) {
-          try {
-            await db.execute(
-              "ALTER TABLE $table ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
-            );
-          } catch (_) {}
-          try {
-            await db.execute(
-              "UPDATE $table SET is_active = 1 WHERE is_active IS NULL;",
-            );
-          } catch (_) {}
-          try {
-            await db.execute("ALTER TABLE $table ADD COLUMN image_path TEXT;");
-          } catch (_) {}
+    for (final table in tablesToFix) {
+      try {
+        await db.execute(
+          "ALTER TABLE $table ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
+        );
+      } catch (_) {}
+      try {
+        await db.execute(
+          "UPDATE $table SET is_active = 1 WHERE is_active IS NULL;",
+        );
+      } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE $table ADD COLUMN image_path TEXT;");
+      } catch (_) {}
+    }
+
+    try {
+      await db.execute(
+        "ALTER TABLE Sections ADD COLUMN couvre_joint_thickness REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
+      );
+    } catch (_) {}
+
+    // Automatically link section and profile images based on their codes
+    try {
+      final sections = await db.query('Sections');
+      for (var sec in sections) {
+        final id = sec['id'];
+        final code = sec['code']?.toString() ?? '';
+        if (code.isNotEmpty) {
+          final expectedPath = 'assets/sections/$code.png';
+          await db.update(
+            'Sections',
+            {'image_path': expectedPath},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
         }
+      }
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Sections ADD COLUMN couvre_joint_thickness REAL NOT NULL DEFAULT 0.0;",
+    try {
+      final profiles = await db.query('Profile');
+      for (var prof in profiles) {
+        final id = prof['id'];
+        final code = prof['code']?.toString() ?? '';
+        if (code.isNotEmpty) {
+          final expectedPath = 'assets/sections/$code.png';
+          await db.update(
+            'Profile',
+            {'image_path': expectedPath},
+            where: 'id = ?',
+            whereArgs: [id],
           );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
-          );
-        } catch (_) {}
+        }
+      }
+    } catch (_) {}
 
-        // Automatically link section and profile images based on their codes
-        try {
-          final sections = await db.query('Sections');
-          for (var sec in sections) {
-            final id = sec['id'];
-            final code = sec['code']?.toString() ?? '';
-            if (code.isNotEmpty) {
-              final expectedPath = 'assets/sections/$code.png';
-              await db.update(
-                'Sections',
-                {'image_path': expectedPath},
-                where: 'id = ?',
-                whereArgs: [id],
-              );
-            }
-          }
-        } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Joints ADD COLUMN gasket_type TEXT;");
+    } catch (_) {}
 
-        try {
-          final profiles = await db.query('Profile');
-          for (var prof in profiles) {
-            final id = prof['id'];
-            final code = prof['code']?.toString() ?? '';
-            if (code.isNotEmpty) {
-              final expectedPath = 'assets/sections/$code.png';
-              await db.update(
-                'Profile',
-                {'image_path': expectedPath},
-                where: 'id = ?',
-                whereArgs: [id],
-              );
-            }
-          }
-        } catch (_) {}
+    // Treasury: أعمدة الجهة والرصيد
+    try {
+      await db.execute("ALTER TABLE Treasury ADD COLUMN entity_type TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Treasury ADD COLUMN entity_id INTEGER;");
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Treasury ADD COLUMN phone TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Treasury ADD COLUMN old_balance REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Treasury ADD COLUMN new_balance REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Joints ADD COLUMN gasket_type TEXT;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN assigned_worker_uid TEXT;",
+      );
+    } catch (_) {}
 
-        // Treasury: أعمدة الجهة والرصيد
-        try {
-          await db.execute("ALTER TABLE Treasury ADD COLUMN entity_type TEXT;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Treasury ADD COLUMN entity_id INTEGER;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Treasury ADD COLUMN phone TEXT;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Treasury ADD COLUMN old_balance REAL DEFAULT 0.0;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE Treasury ADD COLUMN new_balance REAL DEFAULT 0.0;");
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN worker_price REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN assigned_worker_uid TEXT;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN assigned_at TEXT;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN worker_price REAL DEFAULT 0.0;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN worker_settled INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN assigned_at TEXT;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN worker_settled_at TEXT;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN worker_settled INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN drawing_image_base64 TEXT;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN worker_settled_at TEXT;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN glass_received_qty INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN drawing_image_base64 TEXT;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN is_glass_received INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN glass_received_qty INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN confirmed_mesures_json TEXT;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN is_glass_received INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerTransactions ADD COLUMN is_settled INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN confirmed_mesures_json TEXT;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerTransactions ADD COLUMN settled_at TEXT;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE WorkerTransactions ADD COLUMN is_settled INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-
-        try {
-          await db.execute(
-            "ALTER TABLE WorkerTransactions ADD COLUMN settled_at TEXT;",
-          );
-        } catch (_) {}
-
-        // Create Caisses table if not exists
-        try {
-          await db.execute('''
+    // Create Caisses table if not exists
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS Caisses (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL UNIQUE
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        // Create WorkerAllocations table if not exists
-        try {
-          await db.execute('''
+    // Create WorkerAllocations table if not exists
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerAllocations (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               commande_detail_id INTEGER NOT NULL,
@@ -398,154 +404,152 @@ class SqlDatabase {
               FOREIGN KEY (commande_detail_id) REFERENCES Commandes_details(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN is_manufactured INTEGER DEFAULT 0;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN is_manufactured INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN manufactured_at TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN manufactured_at TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN is_glass_installed INTEGER DEFAULT 0;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN is_glass_installed INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN glass_installed_at TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN glass_installed_at TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN is_distributed INTEGER DEFAULT 0;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN is_distributed INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN distributed_at TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN distributed_at TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN is_installed INTEGER DEFAULT 0;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN is_installed INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN installed_at TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN installed_at TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN is_completed INTEGER DEFAULT 0;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN is_completed INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN completed_at TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN completed_at TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN has_reserve INTEGER DEFAULT 0;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN has_reserve INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN reserve_notes TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN reserve_notes TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN reserve_at TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN reserve_at TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN unit_index INTEGER;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN unit_index INTEGER;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN unit_position TEXT;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN unit_position TEXT;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN unit_width INTEGER;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN unit_width INTEGER;",
+      );
+    } catch (_) {}
 
-         try {
-           await db.execute(
-             "ALTER TABLE WorkerAllocations ADD COLUMN unit_height INTEGER;",
-           );
-         } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN unit_height INTEGER;",
+      );
+    } catch (_) {}
 
-        // Auto purge settled data older than 6 months
-        try {
-          await db.execute('''
+    // Auto purge settled data older than 6 months
+    try {
+      await db.execute('''
             DELETE FROM Commandes_details 
             WHERE worker_settled = 1 
               AND worker_settled_at IS NOT NULL 
               AND datetime(worker_settled_at) < datetime('now', '-6 months')
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        try {
-          await db.execute('''
+    try {
+      await db.execute('''
             DELETE FROM WorkerTransactions 
             WHERE is_settled = 1 
               AND settled_at IS NOT NULL 
               AND datetime(settled_at) < datetime('now', '-6 months')
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        try {
-          await db.execute('''
+    try {
+      await db.execute('''
             DELETE FROM WorkerAllocations 
             WHERE is_settled = 1 
               AND settled_at IS NOT NULL 
               AND datetime(settled_at) < datetime('now', '-6 months')
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_selling_calculated INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_selling_calculated INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE KitBundles ADD COLUMN is_selling_calculated INTEGER NOT NULL DEFAULT 1;",
+      );
+    } catch (_) {}
 
-        try {
-          await db.execute(
-            "ALTER TABLE KitBundles ADD COLUMN is_selling_calculated INTEGER NOT NULL DEFAULT 1;",
-          );
-        } catch (_) {}
-
-
-        try {
-          await db.execute('''
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS GlassColorPrices (
               glass_id INTEGER,
               color_name TEXT,
@@ -553,56 +557,56 @@ class SqlDatabase {
               PRIMARY KEY (glass_id, color_name)
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        try {
-          // Migrate any existing 'بدون لون / اللون الخام' to 'خام'
-          await db.update(
-            'Colors',
-            {'name': 'خام'},
-            where: "name = ?",
-            whereArgs: ['بدون لون / اللون الخام'],
-          );
-          await db.update(
-            'GlassColorPrices',
-            {'color_name': 'خام'},
-            where: "color_name = ?",
-            whereArgs: ['بدون لون / اللون الخام'],
-          );
-          try {
-            await db.update(
-              'Commandes_details',
-              {'color': 'خام'},
-              where: "color = ?",
-              whereArgs: ['بدون لون / اللون الخام'],
-            );
-          } catch (_) {}
-          try {
-            await db.update(
-              'Glass',
-              {'color': 'خام'},
-              where: "color = ?",
-              whereArgs: ['بدون لون / اللون الخام'],
-            );
-          } catch (_) {}
+    try {
+      // Migrate any existing 'بدون لون / اللون الخام' to 'خام'
+      await db.update(
+        'Colors',
+        {'name': 'خام'},
+        where: "name = ?",
+        whereArgs: ['بدون لون / اللون الخام'],
+      );
+      await db.update(
+        'GlassColorPrices',
+        {'color_name': 'خام'},
+        where: "color_name = ?",
+        whereArgs: ['بدون لون / اللون الخام'],
+      );
+      try {
+        await db.update(
+          'Commandes_details',
+          {'color': 'خام'},
+          where: "color = ?",
+          whereArgs: ['بدون لون / اللون الخام'],
+        );
+      } catch (_) {}
+      try {
+        await db.update(
+          'Glass',
+          {'color': 'خام'},
+          where: "color = ?",
+          whereArgs: ['بدون لون / اللون الخام'],
+        );
+      } catch (_) {}
 
-          final check = await db.query(
-            'Colors',
-            where: "name = ?",
-            whereArgs: ['خام'],
-          );
-          if (check.isEmpty) {
-            await db.insert('Colors', {
-              'name': 'خام',
-              'hex_code': '#E0E0E0',
-              'type': 'Global',
-              'is_active': 1,
-            });
-          }
-        } catch (_) {}
+      final check = await db.query(
+        'Colors',
+        where: "name = ?",
+        whereArgs: ['خام'],
+      );
+      if (check.isEmpty) {
+        await db.insert('Colors', {
+          'name': 'خام',
+          'hex_code': '#E0E0E0',
+          'type': 'Global',
+          'is_active': 1,
+        });
+      }
+    } catch (_) {}
 
-        try {
-          await db.execute('''
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS ShutterBoxLimits (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               box_size INTEGER NOT NULL,
@@ -611,10 +615,10 @@ class SqlDatabase {
               FOREIGN KEY (blade_id) REFERENCES ShutterComponents(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        try {
-          await db.execute('''
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS CaissonTunnelPrices (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               color_id INTEGER NOT NULL,
@@ -624,10 +628,10 @@ class SqlDatabase {
               UNIQUE(color_id)
             )
           ''');
-        } catch (_) {}
+    } catch (_) {}
 
-        try {
-          await db.execute('''
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS SeriesTableConfig (
               series_id INTEGER PRIMARY KEY,
               allowed_section_types TEXT NOT NULL DEFAULT '',
@@ -643,190 +647,205 @@ class SqlDatabase {
               updated_at TEXT NOT NULL DEFAULT ''
             )
           ''');
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_2 REAL DEFAULT 0.0;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_3 REAL DEFAULT 0.0;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_4 REAL DEFAULT 0.0;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN sash_overlap_val REAL DEFAULT 0.0;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN glass_w_deduction REAL DEFAULT 0.0;");
-        } catch (_) {}
-        try {
-          await db.execute("ALTER TABLE SeriesTableConfig ADD COLUMN custom_formula_notes TEXT DEFAULT '';");
-        } catch (_) {}
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_2 REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_3 REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE SeriesTableConfig ADD COLUMN sash_w_deduction_4 REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE SeriesTableConfig ADD COLUMN sash_overlap_val REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE SeriesTableConfig ADD COLUMN glass_w_deduction REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE SeriesTableConfig ADD COLUMN custom_formula_notes TEXT DEFAULT '';",
+      );
+    } catch (_) {}
 
-
-        // Ensure ShutterComponents has measurement, shutter_subtype, and bar_length_m columns and migrate existing records
-        try {
-          await db.execute(
-            "ALTER TABLE ShutterComponents ADD COLUMN measurement TEXT DEFAULT '';",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE ShutterComponents ADD COLUMN motor_diameter TEXT DEFAULT '';",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE ShutterComponents ADD COLUMN shutter_subtype TEXT NOT NULL DEFAULT 'normal';",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE ShutterComponents ADD COLUMN bar_length_m REAL NOT NULL DEFAULT 0.0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE ShutterComponents ADD COLUMN cap_thickness REAL NOT NULL DEFAULT 0.0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE ShutterComponents ADD COLUMN weight_per_sqm REAL NOT NULL DEFAULT 0.0;",
-          );
-        } catch (_) {}
-        try {
-          final rows = await db.rawQuery(
-            "SELECT id, name, shutter_subtype, measurement FROM ShutterComponents",
-          );
-          for (var row in rows) {
-            final id = row['id'];
-            final name = row['name'].toString();
-            final currentMeas = (row['measurement'] ?? '').toString();
-            if (currentMeas.isEmpty) {
-              final regExp = RegExp(r'\d+(\.\d+)?');
-              final match = regExp.firstMatch(name);
-              if (match != null) {
-                String sizeDigits = match.group(0)!.replaceAll('.', '');
-                await db.rawUpdate(
-                  "UPDATE ShutterComponents SET measurement = ? WHERE id = ?",
-                  [sizeDigits, id],
-                );
-              }
-            }
-            // Seed weight_per_sqm if it is 0.0 or null
-            final subtype = (row['shutter_subtype'] ?? '').toString().toLowerCase();
-            final nameLower = name.toLowerCase();
-            double defaultWeight = 0.0;
-            if (subtype == 'extruded' || nameLower.contains('extruded') || nameLower.contains('إكسترودي')) {
-              defaultWeight = 12.0;
-            } else if (nameLower.contains('55') || currentMeas == '55' || currentMeas == '550' || nameLower.contains('٥٥')) {
-              defaultWeight = 4.0;
-            } else if (nameLower.contains('lame') || nameLower.contains('شريح') || nameLower.contains('شريحة') || nameLower.contains('final')) {
-              defaultWeight = 3.0;
-            }
-            if (defaultWeight > 0.0) {
-              await db.rawUpdate(
-                "UPDATE ShutterComponents SET weight_per_sqm = ? WHERE id = ? AND (weight_per_sqm IS NULL OR weight_per_sqm = 0.0)",
-                [defaultWeight, id],
-              );
-            }
+    // Ensure ShutterComponents has measurement, shutter_subtype, and bar_length_m columns and migrate existing records
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN measurement TEXT DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN motor_diameter TEXT DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN shutter_subtype TEXT NOT NULL DEFAULT 'normal';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN bar_length_m REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN cap_thickness REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN weight_per_sqm REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      final rows = await db.rawQuery(
+        "SELECT id, name, shutter_subtype, measurement FROM ShutterComponents",
+      );
+      for (var row in rows) {
+        final id = row['id'];
+        final name = row['name'].toString();
+        final currentMeas = (row['measurement'] ?? '').toString();
+        if (currentMeas.isEmpty) {
+          final regExp = RegExp(r'\d+(\.\d+)?');
+          final match = regExp.firstMatch(name);
+          if (match != null) {
+            String sizeDigits = match.group(0)!.replaceAll('.', '');
+            await db.rawUpdate(
+              "UPDATE ShutterComponents SET measurement = ? WHERE id = ?",
+              [sizeDigits, id],
+            );
           }
-        } catch (_) {}
+        }
+        // Seed weight_per_sqm if it is 0.0 or null
+        final subtype = (row['shutter_subtype'] ?? '').toString().toLowerCase();
+        final nameLower = name.toLowerCase();
+        double defaultWeight = 0.0;
+        if (subtype == 'extruded' ||
+            nameLower.contains('extruded') ||
+            nameLower.contains('إكسترودي')) {
+          defaultWeight = 12.0;
+        } else if (nameLower.contains('55') ||
+            currentMeas == '55' ||
+            currentMeas == '550' ||
+            nameLower.contains('٥٥')) {
+          defaultWeight = 4.0;
+        } else if (nameLower.contains('lame') ||
+            nameLower.contains('شريح') ||
+            nameLower.contains('شريحة') ||
+            nameLower.contains('final')) {
+          defaultWeight = 3.0;
+        }
+        if (defaultWeight > 0.0) {
+          await db.rawUpdate(
+            "UPDATE ShutterComponents SET weight_per_sqm = ? WHERE id = ? AND (weight_per_sqm IS NULL OR weight_per_sqm = 0.0)",
+            [defaultWeight, id],
+          );
+        }
+      }
+    } catch (_) {}
 
-        // Ensure Glass has color column
-        try {
-          await db.execute(
-            "ALTER TABLE Glass ADD COLUMN color TEXT DEFAULT '';",
-          );
-        } catch (_) {}
+    // Ensure Glass has color column
+    try {
+      await db.execute("ALTER TABLE Glass ADD COLUMN color TEXT DEFAULT '';");
+    } catch (_) {}
 
-        // Ensure Achats has location_id
-        try {
-          await db.execute(
-            "ALTER TABLE Achats ADD COLUMN location_id INTEGER;",
-          );
-        } catch (_) {}
+    // Ensure Achats has location_id
+    try {
+      await db.execute("ALTER TABLE Achats ADD COLUMN location_id INTEGER;");
+    } catch (_) {}
 
-        // Ensure Accessories has new columns
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_moteur_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_caisson_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_batmo_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_bouchon_batmo_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_renfort_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_manivelle_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_gache_simple INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_gache_double INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_gache_porte INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_lock_clef INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_lock_condamnation INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_assembly_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_accessory_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_installation_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Accessories ADD COLUMN is_kit_screw INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
+    // Ensure Accessories has new columns
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_moteur_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_caisson_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_batmo_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_bouchon_batmo_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_renfort_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_manivelle_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_gache_simple INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_gache_double INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_gache_porte INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_lock_clef INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_lock_condamnation INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_assembly_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_accessory_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_installation_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_kit_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
-        // Ensure new tables exist in case of skipped version updates
-        await db.execute('''
+    // Ensure new tables exist in case of skipped version updates
+    await db.execute('''
           CREATE TABLE IF NOT EXISTS Suppliers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -838,7 +857,7 @@ class SqlDatabase {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
           )
         ''');
-        await db.execute('''
+    await db.execute('''
           CREATE TABLE IF NOT EXISTS Locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -847,7 +866,7 @@ class SqlDatabase {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
           )
         ''');
-        await db.execute('''
+    await db.execute('''
           CREATE TABLE IF NOT EXISTS Achats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             invoice_number TEXT NOT NULL,
@@ -861,7 +880,7 @@ class SqlDatabase {
             FOREIGN KEY (location_id) REFERENCES Locations(id) ON DELETE SET NULL
           )
         ''');
-        await db.execute('''
+    await db.execute('''
           CREATE TABLE IF NOT EXISTS Achat_Details (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             achat_id INTEGER NOT NULL,
@@ -874,10 +893,10 @@ class SqlDatabase {
             FOREIGN KEY (achat_id) REFERENCES Achats(id) ON DELETE CASCADE
           )
         ''');
-        await _ensureShutterColorTables(db);
-        // v38: Kit Bundles tables
-        try {
-          await db.execute('''
+    await _ensureShutterColorTables(db);
+    // v38: Kit Bundles tables
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS KitBundles (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL,
@@ -887,9 +906,9 @@ class SqlDatabase {
               is_selling_calculated INTEGER NOT NULL DEFAULT 1
             )
           ''');
-        } catch (_) {}
-        try {
-          await db.execute('''
+    } catch (_) {}
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS KitBundleItems (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               kit_id INTEGER NOT NULL,
@@ -902,9 +921,9 @@ class SqlDatabase {
               FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
-        try {
-          await db.execute('''
+    } catch (_) {}
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS KitItemRanges (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               item_id INTEGER NOT NULL,
@@ -916,9 +935,9 @@ class SqlDatabase {
               FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
-        try {
-          await db.execute('''
+    } catch (_) {}
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS KitItemVariants (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               item_id INTEGER NOT NULL,
@@ -929,14 +948,14 @@ class SqlDatabase {
               FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes_details ADD COLUMN delivered_qty INTEGER DEFAULT 0;",
-          );
-        } catch (_) {}
-        try {
-          await db.execute('''
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN delivered_qty INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS Commandes_deliveries (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               id_commandes INTEGER NOT NULL,
@@ -947,41 +966,41 @@ class SqlDatabase {
               FOREIGN KEY (id_commandes) REFERENCES Commandes(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
-        try {
-          await _cleanShutterComponentEncodings(db);
-        } catch (_) {}
+    } catch (_) {}
+    try {
+      await _cleanShutterComponentEncodings(db);
+    } catch (_) {}
 
-        // Translate Arabic accessory types to French in the Accessories table
-        try {
-          final translationMap = {
-            'مفاصل': 'Paumelles',
-            'مقبض': 'Poignée Fenêtre',
-            'قفل': 'Serrure',
-            'قاش': 'Gâche',
-            'فيرو': 'Verrou',
-            'إسبانيوليت': 'Espagnolette',
-            'كانو': 'Canon',
-            'سيستم أو بي': 'System OB',
-            'ديمي سيستم أو بي': 'Demi System OB',
-            'فيرو سنترال': 'Verrou Central',
-            'كاش بورت': 'Gâche Porte',
-            'كاش كوليسون': 'Gâche Coulissante',
-            'كريمون': 'Crémone',
-            'بوشون بارك لوز': 'Bouchon Parclose',
-            'البراغي': 'Visse',
-          };
-          for (var entry in translationMap.entries) {
-            await db.rawUpdate(
-              "UPDATE Accessories SET type = REPLACE(type, ?, ?) WHERE type LIKE ?;",
-              [entry.key, entry.value, '%${entry.key}%'],
-            );
-          }
-        } catch (_) {}
+    // Translate Arabic accessory types to French in the Accessories table
+    try {
+      final translationMap = {
+        'مفاصل': 'Paumelles',
+        'مقبض': 'Poignée Fenêtre',
+        'قفل': 'Serrure',
+        'قاش': 'Gâche',
+        'فيرو': 'Verrou',
+        'إسبانيوليت': 'Espagnolette',
+        'كانو': 'Canon',
+        'سيستم أو بي': 'System OB',
+        'ديمي سيستم أو بي': 'Demi System OB',
+        'فيرو سنترال': 'Verrou Central',
+        'كاش بورت': 'Gâche Porte',
+        'كاش كوليسون': 'Gâche Coulissante',
+        'كريمون': 'Crémone',
+        'بوشون بارك لوز': 'Bouchon Parclose',
+        'البراغي': 'Visse',
+      };
+      for (var entry in translationMap.entries) {
+        await db.rawUpdate(
+          "UPDATE Accessories SET type = REPLACE(type, ?, ?) WHERE type LIKE ?;",
+          [entry.key, entry.value, '%${entry.key}%'],
+        );
+      }
+    } catch (_) {}
 
-        // v39: Projects table & Commandes project_id
-        try {
-          await db.execute('''
+    // v39: Projects table & Commandes project_id
+    try {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS Projects (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL,
@@ -992,18 +1011,16 @@ class SqlDatabase {
               FOREIGN KEY (client_id) REFERENCES Client(id) ON DELETE CASCADE
             )
           ''');
-        } catch (_) {}
-        try {
-          await db.execute(
-            "ALTER TABLE Commandes ADD COLUMN project_id INTEGER;",
-          );
-        } catch (_) {}
+    } catch (_) {}
+    try {
+      await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
+    } catch (_) {}
 
-        // Run background migration to generate base64 representation of drawings for existing details
-        // so they can sync to the workers
-        Future.delayed(const Duration(seconds: 2), () {
-          backfillBase64Drawings();
-        });
+    // Run background migration to generate base64 representation of drawings for existing details
+    // so they can sync to the workers
+    Future.delayed(const Duration(seconds: 2), () {
+      backfillBase64Drawings();
+    });
   }
 
   Future<void> backfillBase64Drawings() async {
@@ -1023,7 +1040,7 @@ class SqlDatabase {
       for (var row in list) {
         final id = row['id'] as int;
         final path = row['drawing_image_path']?.toString() ?? '';
-        
+
         String? base64Str;
         if (path.isNotEmpty) {
           try {
@@ -1077,7 +1094,7 @@ class SqlDatabase {
   String _cleanEncoding(String val) {
     if (val.isEmpty) return val;
     String cleaned = val;
-    
+
     // Replace CP437/CP1252/UTF-8 mojibake
     cleaned = cleaned
         .replaceAll('├⌐', 'é')
@@ -1094,19 +1111,24 @@ class SqlDatabase {
         .replaceAll('Glissire', 'Glissière');
 
     // Ensure common variations are fully normalized
-    if (cleaned.toLowerCase() == 'lame injectee' || cleaned.toLowerCase() == 'lame injectée') {
+    if (cleaned.toLowerCase() == 'lame injectee' ||
+        cleaned.toLowerCase() == 'lame injectée') {
       cleaned = 'Lame Injectée';
     }
-    if (cleaned.toLowerCase() == 'lame extrudee' || cleaned.toLowerCase() == 'lame extrudée') {
+    if (cleaned.toLowerCase() == 'lame extrudee' ||
+        cleaned.toLowerCase() == 'lame extrudée') {
       cleaned = 'Lame Extrudée';
     }
-    if (cleaned.toLowerCase() == 'glissiere 25' || cleaned.toLowerCase() == 'glissière 25') {
+    if (cleaned.toLowerCase() == 'glissiere 25' ||
+        cleaned.toLowerCase() == 'glissière 25') {
       cleaned = 'Glissière 25';
     }
-    if (cleaned.toLowerCase() == 'glissiere 120' || cleaned.toLowerCase() == 'glissière 120') {
+    if (cleaned.toLowerCase() == 'glissiere 120' ||
+        cleaned.toLowerCase() == 'glissière 120') {
       cleaned = 'Glissière 120';
     }
-    if (cleaned.toLowerCase() == 'glissiere 100' || cleaned.toLowerCase() == 'glissière 100') {
+    if (cleaned.toLowerCase() == 'glissiere 100' ||
+        cleaned.toLowerCase() == 'glissière 100') {
       cleaned = 'Glissière 100';
     }
     return cleaned;
@@ -1120,10 +1142,10 @@ class SqlDatabase {
         final id = row['id'] as int;
         final name = row['name']?.toString() ?? '';
         final type = row['component_type']?.toString() ?? '';
-        
+
         final cleanedName = _cleanEncoding(name);
         final cleanedType = _cleanEncoding(type);
-        
+
         if (cleanedName != name || cleanedType != type) {
           await db.update(
             'ShutterComponents',
@@ -1131,7 +1153,7 @@ class SqlDatabase {
             where: 'id = ?',
             whereArgs: [id],
           );
-          
+
           // Also update any ShutterSqmPrices references using the old name
           await db.update(
             'ShutterSqmPrices',
@@ -1148,10 +1170,10 @@ class SqlDatabase {
         final id = row['id'] as int;
         final name = row['name']?.toString() ?? '';
         final type = row['type']?.toString() ?? '';
-        
+
         final cleanedName = _cleanEncoding(name);
         final cleanedType = _cleanEncoding(type);
-        
+
         if (cleanedName != name || cleanedType != type) {
           await db.update(
             'Accessories',
@@ -1268,22 +1290,33 @@ class SqlDatabase {
       try {
         final dataPath = await _dbFactory.getDatabasesPath();
         final directory = Directory(dataPath);
-        if (await directory.exists()) {
+        final activeFile = File(path);
+        // A file marked as corrupt must never replace a newly created healthy
+        // database. Only consider an old backup when the active file is
+        // genuinely missing, and verify it with SQLite quick_check first.
+        if (!await activeFile.exists() && await directory.exists()) {
           final files = directory.listSync();
-          final corruptFiles = files
-              .where((f) => f.path.contains('$dbName.corrupt_'))
-              .toList()
-            ..sort((a, b) => b.path.compareTo(a.path));
+          final corruptFiles =
+              files.where((f) => f.path.contains('$dbName.corrupt_')).toList()
+                ..sort((a, b) => b.path.compareTo(a.path));
 
           for (var corruptFile in corruptFiles) {
             try {
-              final testDb = await _openEncryptedDb(corruptFile.path, dbPassword);
+              final testDb = await _openEncryptedDb(
+                corruptFile.path,
+                dbPassword,
+              );
+              final check = await testDb.rawQuery('PRAGMA quick_check');
+              final isHealthy =
+                  check.isNotEmpty &&
+                  check.every(
+                    (row) => row.values.any(
+                      (value) => value.toString().toLowerCase() == 'ok',
+                    ),
+                  );
               await testDb.close();
+              if (!isHealthy) continue;
 
-              final activeFile = File(path);
-              if (await activeFile.exists()) {
-                await activeFile.delete();
-              }
               await File(corruptFile.path).rename(path);
               break;
             } catch (_) {}
@@ -1311,6 +1344,67 @@ class SqlDatabase {
       }
       rethrow;
     }
+  }
+
+  static bool isCorruptionError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('database image malformed') ||
+        text.contains('database disk image is malformed') ||
+        text.contains('sqlite_corrupt') ||
+        text.contains('code 11');
+  }
+
+  Future<bool> isDatabaseHealthy() async {
+    try {
+      final currentDb = await db;
+      if (currentDb == null) return false;
+      final check = await currentDb.rawQuery('PRAGMA quick_check');
+      return check.isNotEmpty &&
+          check.every(
+            (row) => row.values.any(
+              (value) => value.toString().toLowerCase() == 'ok',
+            ),
+          );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Preserves the unreadable SQLite file for diagnostics, creates a clean
+  /// database with the same encryption key, and keeps login/workshop settings.
+  Future<String?> recreateCorruptedDatabase() async {
+    const dbName = 'test.db';
+    final path = await getDatabaseFilePath();
+    String? diagnosticBackupPath;
+
+    final currentDb = _db;
+    _db = null;
+    if (currentDb != null) {
+      try {
+        await currentDb.close();
+      } catch (_) {}
+    }
+
+    if (!kIsWeb) {
+      final activeFile = File(path);
+      if (await activeFile.exists()) {
+        diagnosticBackupPath =
+            '$path.corrupt_${DateTime.now().millisecondsSinceEpoch}';
+        try {
+          await activeFile.copy(diagnosticBackupPath);
+        } catch (error) {
+          debugPrint('Could not preserve corrupt database copy: $error');
+          diagnosticBackupPath = null;
+        }
+      }
+    }
+
+    // databaseFactory.deleteDatabase also removes SQLite WAL/SHM sidecar
+    // files, which can otherwise re-corrupt the newly created database.
+    await _dbFactory.deleteDatabase(path);
+    final password = await _resolveDbPassword(dbName);
+    _db = await _openEncryptedDb(path, password);
+    return diagnosticBackupPath;
   }
 
   void _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -1531,7 +1625,6 @@ class SqlDatabase {
           cap_thickness REAL NOT NULL DEFAULT 0.0
         )
       ''');
-
     }
     if (oldVersion < 6) {
       try {
@@ -1895,37 +1988,39 @@ class SqlDatabase {
 
     if (oldVersion < 44) {
       try {
-        await db.execute(
-          "ALTER TABLE Joints ADD COLUMN gasket_type TEXT;",
-        );
+        await db.execute("ALTER TABLE Joints ADD COLUMN gasket_type TEXT;");
       } catch (_) {}
     }
 
     if (oldVersion < 45) {
       try {
-        await db.execute(
-          "ALTER TABLE Suppliers ADD COLUMN latitude REAL;",
-        );
+        await db.execute("ALTER TABLE Suppliers ADD COLUMN latitude REAL;");
       } catch (_) {}
       try {
-        await db.execute(
-          "ALTER TABLE Suppliers ADD COLUMN longitude REAL;",
-        );
+        await db.execute("ALTER TABLE Suppliers ADD COLUMN longitude REAL;");
       } catch (_) {}
     }
 
     if (oldVersion < 46) {
       try {
-        await db.execute("ALTER TABLE Client ADD COLUMN nif TEXT NOT NULL DEFAULT '';");
+        await db.execute(
+          "ALTER TABLE Client ADD COLUMN nif TEXT NOT NULL DEFAULT '';",
+        );
       } catch (_) {}
       try {
-        await db.execute("ALTER TABLE Client ADD COLUMN nis TEXT NOT NULL DEFAULT '';");
+        await db.execute(
+          "ALTER TABLE Client ADD COLUMN nis TEXT NOT NULL DEFAULT '';",
+        );
       } catch (_) {}
       try {
-        await db.execute("ALTER TABLE Client ADD COLUMN rc TEXT NOT NULL DEFAULT '';");
+        await db.execute(
+          "ALTER TABLE Client ADD COLUMN rc TEXT NOT NULL DEFAULT '';",
+        );
       } catch (_) {}
       try {
-        await db.execute("ALTER TABLE Client ADD COLUMN ai TEXT NOT NULL DEFAULT '';");
+        await db.execute(
+          "ALTER TABLE Client ADD COLUMN ai TEXT NOT NULL DEFAULT '';",
+        );
       } catch (_) {}
       try {
         await db.execute('''
@@ -1967,22 +2062,30 @@ class SqlDatabase {
         await db.execute("ALTER TABLE Treasury ADD COLUMN phone TEXT;");
       } catch (_) {}
       try {
-        await db.execute("ALTER TABLE Treasury ADD COLUMN old_balance REAL DEFAULT 0.0;");
+        await db.execute(
+          "ALTER TABLE Treasury ADD COLUMN old_balance REAL DEFAULT 0.0;",
+        );
       } catch (_) {}
       try {
-        await db.execute("ALTER TABLE Treasury ADD COLUMN new_balance REAL DEFAULT 0.0;");
+        await db.execute(
+          "ALTER TABLE Treasury ADD COLUMN new_balance REAL DEFAULT 0.0;",
+        );
       } catch (_) {}
       try {
         await db.execute("ALTER TABLE Treasury ADD COLUMN caisse_name TEXT;");
       } catch (_) {}
       try {
-        await db.execute("ALTER TABLE Treasury ADD COLUMN payment_method TEXT;");
+        await db.execute(
+          "ALTER TABLE Treasury ADD COLUMN payment_method TEXT;",
+        );
       } catch (_) {}
     }
 
     if (oldVersion < 48) {
       try {
-        await db.execute("ALTER TABLE Commandes_deliveries ADD COLUMN is_loaded INTEGER DEFAULT 0;");
+        await db.execute(
+          "ALTER TABLE Commandes_deliveries ADD COLUMN is_loaded INTEGER DEFAULT 0;",
+        );
       } catch (_) {}
     }
   }
@@ -2463,9 +2566,7 @@ class SqlDatabase {
 
   Future<List<Map<String, dynamic>>> readAllProfiles() async {
     Database? myDb = await db;
-    return await myDb!.rawQuery(
-      'SELECT * FROM Profile ORDER BY name ASC',
-    );
+    return await myDb!.rawQuery('SELECT * FROM Profile ORDER BY name ASC');
   }
 
   Future<int> insertProfile(
@@ -2521,7 +2622,9 @@ class SqlDatabase {
     );
   }
 
-  Future<List<Map<String, dynamic>>> readAllSeriesByProfile(int profileId) async {
+  Future<List<Map<String, dynamic>>> readAllSeriesByProfile(
+    int profileId,
+  ) async {
     Database? myDb = await db;
     return await myDb!.query(
       'Series',
@@ -2588,7 +2691,10 @@ class SqlDatabase {
     return 0.0;
   }
 
-  Future<List<Map<String, dynamic>>> getAccessoriesWithPrices(int? seriesId, int? colorId) async {
+  Future<List<Map<String, dynamic>>> getAccessoriesWithPrices(
+    int? seriesId,
+    int? colorId,
+  ) async {
     final myDb = await db;
     if (myDb == null) return [];
 
@@ -2845,7 +2951,20 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.rawInsert(
       'INSERT INTO Client (firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, now, now],
+      [
+        firstname,
+        lastname,
+        phone1,
+        phone2,
+        email,
+        address,
+        nif,
+        nis,
+        rc,
+        ai,
+        now,
+        now,
+      ],
     );
     CloudSyncService().notifyChangeImmediate();
     return res;
@@ -2910,7 +3029,11 @@ class SqlDatabase {
 
   Future<int> deleteMeasurement(int id) async {
     Database? myDb = await db;
-    var res = await myDb!.delete('Measurements', where: 'id = ?', whereArgs: [id]);
+    var res = await myDb!.delete(
+      'Measurements',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -2949,7 +3072,11 @@ class SqlDatabase {
   }
 
   ///////////////////////////////// Projects ////////////////////////////////
-  Future<int> insertProject(String name, int clientId, String? description) async {
+  Future<int> insertProject(
+    String name,
+    int clientId,
+    String? description,
+  ) async {
     Database? myDb = await db;
     final now = DateTime.now().toIso8601String();
     var res = await myDb!.rawInsert(
@@ -2960,7 +3087,12 @@ class SqlDatabase {
     return res;
   }
 
-  Future<int> updateProject(int id, String name, int clientId, String? description) async {
+  Future<int> updateProject(
+    int id,
+    String name,
+    int clientId,
+    String? description,
+  ) async {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Projects',
@@ -2979,7 +3111,10 @@ class SqlDatabase {
 
   Future<int> deleteProject(int id) async {
     Database? myDb = await db;
-    await myDb!.rawUpdate('UPDATE Commandes SET project_id = NULL WHERE project_id = ?', [id]);
+    await myDb!.rawUpdate(
+      'UPDATE Commandes SET project_id = NULL WHERE project_id = ?',
+      [id],
+    );
     var res = await myDb.rawDelete('DELETE FROM Projects WHERE id = ?', [id]);
     CloudSyncService().notifyChangeImmediate();
     return res;
@@ -3028,29 +3163,40 @@ class SqlDatabase {
 
   Future<Map<String, dynamic>?> readProjectById(int id) async {
     Database? myDb = await db;
-    final list = await myDb!.rawQuery('''
+    final list = await myDb!.rawQuery(
+      '''
       SELECT p.*, c.firstname, c.lastname, c.phone1 as phone, c.email
       FROM Projects p
       INNER JOIN Client c ON p.client_id = c.id
       WHERE p.id = ?
-    ''', [id]);
+    ''',
+      [id],
+    );
     return list.isNotEmpty ? list.first : null;
   }
 
-  Future<List<Map<String, dynamic>>> readCommandesForProject(int projectId) async {
+  Future<List<Map<String, dynamic>>> readCommandesForProject(
+    int projectId,
+  ) async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('''
+    return await myDb!.rawQuery(
+      '''
       SELECT co.*, cl.firstname, cl.lastname 
       FROM Commandes co
       INNER JOIN Client cl ON co.client_id = cl.id
       WHERE co.project_id = ?
       ORDER BY co.created_at DESC
-    ''', [projectId]);
+    ''',
+      [projectId],
+    );
   }
 
   Future<List<Map<String, dynamic>>> readProjectsForClient(int clientId) async {
     Database? myDb = await db;
-    return await myDb!.rawQuery('SELECT * FROM Projects WHERE client_id = ? ORDER BY updated_at DESC', [clientId]);
+    return await myDb!.rawQuery(
+      'SELECT * FROM Projects WHERE client_id = ? ORDER BY updated_at DESC',
+      [clientId],
+    );
   }
 
   ///////////////////////////////// Commande ////////////////////////////////
@@ -3073,7 +3219,11 @@ class SqlDatabase {
     ''');
   }
 
-  Future<int> updateCommandeStatus(int id, String newStatus, {bool skipAllocationSync = false}) async {
+  Future<int> updateCommandeStatus(
+    int id,
+    String newStatus, {
+    bool skipAllocationSync = false,
+  }) async {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes',
@@ -3106,7 +3256,9 @@ class SqlDatabase {
               'status': status,
               'updated_at': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
-        debugPrint('--- SqlDatabase: Uploaded order status $orderId ($status) to cloud ---');
+        debugPrint(
+          '--- SqlDatabase: Uploaded order status $orderId ($status) to cloud ---',
+        );
       }
     } catch (e) {
       debugPrint('Error uploading order status to cloud: $e');
@@ -3135,22 +3287,37 @@ class SqlDatabase {
         final cloudStatus = data['status']?.toString() ?? '';
         if (cloudStatus.isEmpty) continue;
 
-        final existing = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
+        final existing = await myDb.query(
+          'Commandes',
+          where: 'id = ?',
+          whereArgs: [orderId],
+        );
         if (existing.isNotEmpty) {
           final currentStatus = existing.first['status']?.toString() ?? '';
           if (currentStatus != cloudStatus) {
-            await myDb.update('Commandes', {'status': cloudStatus}, where: 'id = ?', whereArgs: [orderId]);
+            await myDb.update(
+              'Commandes',
+              {'status': cloudStatus},
+              where: 'id = ?',
+              whereArgs: [orderId],
+            );
             await _syncAllocationsFromOrderStatus(orderId, cloudStatus);
           }
         }
       }
-      debugPrint('--- SqlDatabase: Synced orders status from cloud successfully ---');
+      debugPrint(
+        '--- SqlDatabase: Synced orders status from cloud successfully ---',
+      );
     } catch (e) {
       debugPrint('Error syncing orders status from cloud: $e');
     }
   }
 
-  Future<void> _uploadConfirmedMeasurementsToCloud(int detailId, String instancesJson, String confirmedJson) async {
+  Future<void> _uploadConfirmedMeasurementsToCloud(
+    int detailId,
+    String instancesJson,
+    String confirmedJson,
+  ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -3166,7 +3333,9 @@ class SqlDatabase {
               'confirmed_mesures_json': confirmedJson,
               'updated_at': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
-        debugPrint('--- SqlDatabase: Uploaded confirmed measurements for detail $detailId to cloud ---');
+        debugPrint(
+          '--- SqlDatabase: Uploaded confirmed measurements for detail $detailId to cloud ---',
+        );
       }
     } catch (e) {
       debugPrint('Error uploading confirmed measurements to cloud: $e');
@@ -3196,24 +3365,40 @@ class SqlDatabase {
         final confirmedStr = data['confirmed_mesures_json']?.toString() ?? '';
         if (instancesStr.isEmpty && confirmedStr.isEmpty) continue;
 
-        final existing = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final existing = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (existing.isNotEmpty) {
           Map<String, dynamic> updates = {};
           if (instancesStr.isNotEmpty) updates['instances_json'] = instancesStr;
-          if (confirmedStr.isNotEmpty) updates['confirmed_mesures_json'] = confirmedStr;
+          if (confirmedStr.isNotEmpty)
+            updates['confirmed_mesures_json'] = confirmedStr;
 
           if (updates.isNotEmpty) {
-            await myDb.update('Commandes_details', updates, where: 'id = ?', whereArgs: [detailId]);
+            await myDb.update(
+              'Commandes_details',
+              updates,
+              where: 'id = ?',
+              whereArgs: [detailId],
+            );
           }
         }
       }
-      debugPrint('--- SqlDatabase: Synced confirmed measurements from cloud successfully ---');
+      debugPrint(
+        '--- SqlDatabase: Synced confirmed measurements from cloud successfully ---',
+      );
     } catch (e) {
       debugPrint('Error syncing confirmed measurements from cloud: $e');
     }
   }
 
-  Future<int> updateCommandeDetailConfirmedMesures(int detailId, String instancesJson, String confirmedJson) async {
+  Future<int> updateCommandeDetailConfirmedMesures(
+    int detailId,
+    String instancesJson,
+    String confirmedJson,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
 
@@ -3227,12 +3412,19 @@ class SqlDatabase {
       whereArgs: [detailId],
     );
 
-    await _uploadConfirmedMeasurementsToCloud(detailId, instancesJson, confirmedJson);
+    await _uploadConfirmedMeasurementsToCloud(
+      detailId,
+      instancesJson,
+      confirmedJson,
+    );
     CloudSyncService().notifyChange();
     return res;
   }
 
-  Future<void> _syncAllocationsFromOrderStatus(int orderId, String status) async {
+  Future<void> _syncAllocationsFromOrderStatus(
+    int orderId,
+    String status,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
 
@@ -3242,50 +3434,59 @@ class SqlDatabase {
 
     final sLower = status.trim().toLowerCase();
 
-    final isMfgAll = sLower.contains('full manufacturing') ||
-                     sLower.contains('تصنيع كلي') ||
-                     sLower.contains('التصنيع الكلي') ||
-                     sLower.contains('fabrication totale') ||
-                     sLower.contains('full distribution') ||
-                     sLower.contains('توزيع كلي') ||
-                     sLower.contains('التوزيع الكلي') ||
-                     sLower.contains('livraison totale') ||
-                     sLower.contains('livré') ||
-                     sLower.contains('installation') ||
-                     sLower.contains('التركيب') ||
-                     sLower.contains('pose') ||
-                     sLower.contains('reserve') ||
-                     sLower.contains('محجوزة') ||
-                     sLower.contains('done') ||
-                     sLower.contains('منتهية') ||
-                     sLower.contains('تمت');
+    final isMfgAll =
+        sLower.contains('full manufacturing') ||
+        sLower.contains('تصنيع كلي') ||
+        sLower.contains('التصنيع الكلي') ||
+        sLower.contains('fabrication totale') ||
+        sLower.contains('full distribution') ||
+        sLower.contains('توزيع كلي') ||
+        sLower.contains('التوزيع الكلي') ||
+        sLower.contains('livraison totale') ||
+        sLower.contains('livré') ||
+        sLower.contains('installation') ||
+        sLower.contains('التركيب') ||
+        sLower.contains('pose') ||
+        sLower.contains('reserve') ||
+        sLower.contains('محجوزة') ||
+        sLower.contains('done') ||
+        sLower.contains('منتهية') ||
+        sLower.contains('تمت');
 
-    final isDistAll = sLower.contains('full distribution') ||
-                      sLower.contains('توزيع كلي') ||
-                      sLower.contains('التوزيع الكلي') ||
-                      sLower.contains('livraison totale') ||
-                      sLower.contains('livré') ||
-                      sLower.contains('installation') ||
-                      sLower.contains('التركيب') ||
-                      sLower.contains('pose') ||
-                      sLower.contains('reserve') ||
-                      sLower.contains('محجوزة') ||
-                      sLower.contains('done') ||
-                      sLower.contains('منتهية') ||
-                      sLower.contains('تمت');
+    final isDistAll =
+        sLower.contains('full distribution') ||
+        sLower.contains('توزيع كلي') ||
+        sLower.contains('التوزيع الكلي') ||
+        sLower.contains('livraison totale') ||
+        sLower.contains('livré') ||
+        sLower.contains('installation') ||
+        sLower.contains('التركيب') ||
+        sLower.contains('pose') ||
+        sLower.contains('reserve') ||
+        sLower.contains('محجوزة') ||
+        sLower.contains('done') ||
+        sLower.contains('منتهية') ||
+        sLower.contains('تمت');
 
-    final isMfgPartial = sLower.contains('partial manufacturing') || sLower.contains('تصنيع جزئي') || sLower.contains('التصنيع الجزئي');
-    final isDistPartial = sLower.contains('partial distribution') || sLower.contains('توزيع جزئي') || sLower.contains('التوزيع الجزئي');
+    final isMfgPartial =
+        sLower.contains('partial manufacturing') ||
+        sLower.contains('تصنيع جزئي') ||
+        sLower.contains('التصنيع الجزئي');
+    final isDistPartial =
+        sLower.contains('partial distribution') ||
+        sLower.contains('توزيع جزئي') ||
+        sLower.contains('التوزيع الجزئي');
 
-    final isPreMfg = sLower == 'pending' ||
-                     sLower == 'draft' ||
-                     sLower == 'new' ||
-                     sLower == 'confirmed' ||
-                     sLower == 'in progress' ||
-                     sLower.contains('attente') ||
-                     sLower.contains('انتظار') ||
-                     sLower.contains('مؤكد') ||
-                     sLower.contains('قياسات');
+    final isPreMfg =
+        sLower == 'pending' ||
+        sLower == 'draft' ||
+        sLower == 'new' ||
+        sLower == 'confirmed' ||
+        sLower == 'in progress' ||
+        sLower.contains('attente') ||
+        sLower.contains('انتظار') ||
+        sLower.contains('مؤكد') ||
+        sLower.contains('قياسات');
 
     for (var i = 0; i < details.length; i++) {
       final detailId = (details[i]['id'] as num?)?.toInt() ?? 0;
@@ -3295,7 +3496,11 @@ class SqlDatabase {
         final allocId = (allocs[j]['id'] as num?)?.toInt() ?? 0;
         if (allocId <= 0) continue;
         // Re-read the current DB row to check existing timestamps before overwriting
-        final currentRows = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocId]);
+        final currentRows = await myDb.query(
+          'WorkerAllocations',
+          where: 'id = ?',
+          whereArgs: [allocId],
+        );
         if (currentRows.isEmpty) continue;
         final current = currentRows.first;
         Map<String, dynamic> updates = {};
@@ -3319,12 +3524,14 @@ class SqlDatabase {
         } else if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
           updates['is_manufactured'] = 1;
           // ✅ Only set timestamp if not already recorded (preserve the exact button-press moment)
-          if (current['manufactured_at'] == null || current['manufactured_at'].toString().isEmpty) {
+          if (current['manufactured_at'] == null ||
+              current['manufactured_at'].toString().isEmpty) {
             updates['manufactured_at'] = nowStr;
           }
           updates['is_glass_installed'] = 1;
           // ✅ Only set timestamp if not already recorded
-          if (current['glass_installed_at'] == null || current['glass_installed_at'].toString().isEmpty) {
+          if (current['glass_installed_at'] == null ||
+              current['glass_installed_at'].toString().isEmpty) {
             updates['glass_installed_at'] = nowStr;
           }
         }
@@ -3332,13 +3539,19 @@ class SqlDatabase {
         if (isDistAll || (isDistPartial && i == 0 && j == 0)) {
           updates['is_distributed'] = 1;
           // ✅ Only set timestamp if not already recorded
-          if (current['distributed_at'] == null || current['distributed_at'].toString().isEmpty) {
+          if (current['distributed_at'] == null ||
+              current['distributed_at'].toString().isEmpty) {
             updates['distributed_at'] = nowStr;
           }
         }
 
         if (updates.isNotEmpty) {
-          await myDb.update('WorkerAllocations', updates, where: 'id = ?', whereArgs: [allocId]);
+          await myDb.update(
+            'WorkerAllocations',
+            updates,
+            where: 'id = ?',
+            whereArgs: [allocId],
+          );
           await _uploadAllocationStatusToCloud(allocId);
         }
       }
@@ -3365,13 +3578,16 @@ class SqlDatabase {
 
   Future<int> getPriorConfirmedWindowsCount(int targetOrderId) async {
     Database? myDb = await db;
-    final res = await myDb!.rawQuery('''
+    final res = await myDb!.rawQuery(
+      '''
       SELECT SUM(d.quantity) as total_windows
       FROM Commandes_details d
       JOIN Commandes c ON d.id_commandes = c.id
       WHERE c.id < ? 
         AND c.status NOT IN ('En attente', 'في الانتظار', 'Pending', 'Draft', 'ملغاة')
-    ''', [targetOrderId]);
+    ''',
+      [targetOrderId],
+    );
 
     if (res.isNotEmpty && res.first['total_windows'] != null) {
       return (res.first['total_windows'] as num).toInt();
@@ -3431,9 +3647,14 @@ class SqlDatabase {
     if (myDb == null) return 0;
 
     // 🛡️ 1. Hard constraint check: ensure total allocated quantity for this detail does not exceed detail.quantity
-    final details = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+    final details = await myDb.query(
+      'Commandes_details',
+      where: 'id = ?',
+      whereArgs: [detailId],
+    );
     if (details.isNotEmpty) {
-      final totalAllowedQty = (details.first['quantity'] ?? details.first['nbr'] ?? 1) as int;
+      final totalAllowedQty =
+          (details.first['quantity'] ?? details.first['nbr'] ?? 1) as int;
       final existingAllocs = await readWorkerAllocations(detailId);
 
       int currentAllocatedSum = 0;
@@ -3449,7 +3670,9 @@ class SqlDatabase {
 
       int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
       if (currentAllocatedSum + quantity > maxAllowed) {
-        throw Exception('الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}');
+        throw Exception(
+          'الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}',
+        );
       }
     }
 
@@ -3471,7 +3694,8 @@ class SqlDatabase {
       'transferred_at': null,
     };
     if (unitIndex != null) row['unit_index'] = unitIndex;
-    if (unitPosition != null && unitPosition.isNotEmpty) row['unit_position'] = unitPosition;
+    if (unitPosition != null && unitPosition.isNotEmpty)
+      row['unit_position'] = unitPosition;
     if (unitWidth != null && unitWidth > 0) row['unit_width'] = unitWidth;
     if (unitHeight != null && unitHeight > 0) row['unit_height'] = unitHeight;
 
@@ -3490,14 +3714,24 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       final unitIndex = allocRow.first['unit_index'];
       if (detailId > 0) {
-        final details = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final details = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (details.isNotEmpty) {
-          final totalAllowedQty = (details.first['quantity'] ?? details.first['nbr'] ?? 1) as int;
+          final totalAllowedQty =
+              (details.first['quantity'] ?? details.first['nbr'] ?? 1) as int;
           final existingAllocs = await readWorkerAllocations(detailId);
 
           int currentAllocatedSum = 0;
@@ -3514,7 +3748,9 @@ class SqlDatabase {
 
           int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
           if (currentAllocatedSum + quantity > maxAllowed) {
-            throw Exception('الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}');
+            throw Exception(
+              'الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}',
+            );
           }
         }
       }
@@ -3542,14 +3778,19 @@ class SqlDatabase {
       final workshopId = prefs.getString('workshop_code');
       final userRole = prefs.getString('user_role') ?? 'worker';
       if (workshopId != null && workshopId.isNotEmpty) {
-        final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
+        final workshopRef = FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId);
 
         // 1. كتابة علامة حذف دائمة (tombstone) تمنع restore من إعادة الإسناد المحذوف
         try {
           await workshopRef
               .collection('deleted_allocations')
               .doc(allocationId.toString())
-              .set({'deleted_at': FieldValue.serverTimestamp(), 'id': allocationId})
+              .set({
+                'deleted_at': FieldValue.serverTimestamp(),
+                'id': allocationId,
+              })
               .timeout(const Duration(seconds: 5));
         } catch (e) {
           debugPrint('Error writing deleted_allocations tombstone: $e');
@@ -3594,12 +3835,19 @@ class SqlDatabase {
               if (table == 'WorkerAllocations') {
                 List<dynamic> rows = List<dynamic>.from(data['data'] ?? []);
                 final int initialLen = rows.length;
-                rows.removeWhere((r) => r is Map && ((r['id'] as num?)?.toInt() == allocationId));
+                rows.removeWhere(
+                  (r) =>
+                      r is Map && ((r['id'] as num?)?.toInt() == allocationId),
+                );
                 if (rows.length < initialLen) {
                   if (rows.isEmpty) {
-                    await chunkDoc.reference.delete().timeout(const Duration(seconds: 5));
+                    await chunkDoc.reference.delete().timeout(
+                      const Duration(seconds: 5),
+                    );
                   } else {
-                    await chunkDoc.reference.update({'data': rows}).timeout(const Duration(seconds: 5));
+                    await chunkDoc.reference
+                        .update({'data': rows})
+                        .timeout(const Duration(seconds: 5));
                   }
                 }
               }
@@ -3608,7 +3856,9 @@ class SqlDatabase {
             debugPrint('Error updating chunks for deleted allocation: $e');
           }
         }
-        debugPrint('--- SqlDatabase: Deleted allocation $allocationId from cloud ---');
+        debugPrint(
+          '--- SqlDatabase: Deleted allocation $allocationId from cloud ---',
+        );
       }
     } catch (e) {
       debugPrint('Error deleting allocation from cloud: $e');
@@ -3621,11 +3871,20 @@ class SqlDatabase {
 
     int orderId = 0;
     try {
-      final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+      final allocRow = await myDb.query(
+        'WorkerAllocations',
+        where: 'id = ?',
+        whereArgs: [allocationId],
+      );
       if (allocRow.isNotEmpty) {
-        final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+        final detailId =
+            (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
         if (detailId > 0) {
-          final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+          final detailRow = await myDb.query(
+            'Commandes_details',
+            where: 'id = ?',
+            whereArgs: [detailId],
+          );
           if (detailRow.isNotEmpty) {
             orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           }
@@ -3658,7 +3917,11 @@ class SqlDatabase {
     try {
       Database? myDb = await db;
       if (myDb == null) return;
-      await myDb.delete('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+      await myDb.delete(
+        'WorkerAllocations',
+        where: 'id = ?',
+        whereArgs: [allocationId],
+      );
     } catch (e) {
       debugPrint('deleteWorkerAllocationLocalOnly error: $e');
     }
@@ -3681,7 +3944,12 @@ class SqlDatabase {
     try {
       Database? myDb = await db;
       if (myDb == null) return;
-      await myDb.update('Glass', {'is_active': 0}, where: 'id = ?', whereArgs: [id]);
+      await myDb.update(
+        'Glass',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
     } catch (e) {
       debugPrint('setGlassInactiveLocalOnly error: $e');
     }
@@ -3699,11 +3967,16 @@ class SqlDatabase {
       final workshopId = prefs.getString('workshop_code');
       final userRole = prefs.getString('user_role') ?? 'worker';
       if (workshopId != null && workshopId.isNotEmpty) {
-        final workshopRef = FirebaseFirestore.instance.collection('workshops').doc(workshopId);
+        final workshopRef = FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId);
 
         // 1. Delete all status docs
         try {
-          final statusDocs = await workshopRef.collection('worker_allocations_status').get().timeout(const Duration(seconds: 5));
+          final statusDocs = await workshopRef
+              .collection('worker_allocations_status')
+              .get()
+              .timeout(const Duration(seconds: 5));
           for (var doc in statusDocs.docs) {
             await doc.reference.delete().timeout(const Duration(seconds: 3));
           }
@@ -3713,7 +3986,10 @@ class SqlDatabase {
 
         // 2. Delete all allocs docs
         try {
-          final allocDocs = await workshopRef.collection('allocations').get().timeout(const Duration(seconds: 5));
+          final allocDocs = await workshopRef
+              .collection('allocations')
+              .get()
+              .timeout(const Duration(seconds: 5));
           for (var doc in allocDocs.docs) {
             await doc.reference.delete().timeout(const Duration(seconds: 3));
           }
@@ -3736,7 +4012,9 @@ class SqlDatabase {
                 table = doc.id.replaceAll(RegExp(r'_\d+$'), '');
               }
               if (table == 'WorkerAllocations') {
-                await doc.reference.delete().timeout(const Duration(seconds: 5));
+                await doc.reference.delete().timeout(
+                  const Duration(seconds: 5),
+                );
               }
             }
           } catch (e) {
@@ -3746,7 +4024,9 @@ class SqlDatabase {
           // 4. Update latest backup metadata
           try {
             final latestRef = workshopRef.collection('backups').doc('latest');
-            final latestSnap = await latestRef.get().timeout(const Duration(seconds: 5));
+            final latestSnap = await latestRef.get().timeout(
+              const Duration(seconds: 5),
+            );
             if (latestSnap.exists && latestSnap.data() != null) {
               final map = latestSnap.data()!;
               if (map.containsKey('data_json')) {
@@ -3754,10 +4034,12 @@ class SqlDatabase {
                 try {
                   final Map<String, dynamic> allData = jsonDecode(rawJson);
                   allData['WorkerAllocations'] = [];
-                  await latestRef.set({
-                    'data_json': jsonEncode(allData),
-                    'updated_at': FieldValue.serverTimestamp(),
-                  }, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
+                  await latestRef
+                      .set({
+                        'data_json': jsonEncode(allData),
+                        'updated_at': FieldValue.serverTimestamp(),
+                      }, SetOptions(merge: true))
+                      .timeout(const Duration(seconds: 5));
                 } catch (e) {
                   debugPrint('Error updating cloud backup json: $e');
                 }
@@ -3800,9 +4082,15 @@ class SqlDatabase {
       } catch (_) {}
 
       // 3. حذف أي سجلات مستقلة للزجاج والمشتريات
-      try { await myDb.rawDelete('DELETE FROM GlassOrders'); } catch (_) {}
-      try { await myDb.rawDelete('DELETE FROM Achats'); } catch (_) {}
-      try { await myDb.rawDelete('DELETE FROM Commandes_achat'); } catch (_) {}
+      try {
+        await myDb.rawDelete('DELETE FROM GlassOrders');
+      } catch (_) {}
+      try {
+        await myDb.rawDelete('DELETE FROM Achats');
+      } catch (_) {}
+      try {
+        await myDb.rawDelete('DELETE FROM Commandes_achat');
+      } catch (_) {}
     }
 
     try {
@@ -3815,14 +4103,17 @@ class SqlDatabase {
             .collection('backups')
             .doc('latest');
 
-        final latestSnap = await latestRef.get().timeout(const Duration(seconds: 5));
+        final latestSnap = await latestRef.get().timeout(
+          const Duration(seconds: 5),
+        );
         if (latestSnap.exists && latestSnap.data() != null) {
           final map = latestSnap.data()!;
           if (map.containsKey('data_json')) {
             final rawJson = map['data_json']?.toString() ?? '{}';
             try {
               final Map<String, dynamic> allData = jsonDecode(rawJson);
-              if (allData.containsKey('WorkerAllocations') && allData['WorkerAllocations'] is List) {
+              if (allData.containsKey('WorkerAllocations') &&
+                  allData['WorkerAllocations'] is List) {
                 final List allocs = allData['WorkerAllocations'];
                 for (var a in allocs) {
                   if (a is Map) {
@@ -3843,7 +4134,8 @@ class SqlDatabase {
                 }
                 allData['WorkerAllocations'] = allocs;
               }
-              if (allData.containsKey('Commandes_details') && allData['Commandes_details'] is List) {
+              if (allData.containsKey('Commandes_details') &&
+                  allData['Commandes_details'] is List) {
                 final List details = allData['Commandes_details'];
                 for (var d in details) {
                   if (d is Map) {
@@ -3861,10 +4153,12 @@ class SqlDatabase {
               allData['Achats'] = [];
               allData['Commandes_achat'] = [];
 
-              await latestRef.set({
-                'data_json': jsonEncode(allData),
-                'updated_at': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
+              await latestRef
+                  .set({
+                    'data_json': jsonEncode(allData),
+                    'updated_at': FieldValue.serverTimestamp(),
+                  }, SetOptions(merge: true))
+                  .timeout(const Duration(seconds: 5));
             } catch (e) {
               debugPrint('Error updating cloud backup json: $e');
             }
@@ -3882,8 +4176,12 @@ class SqlDatabase {
   Future<void> clearAllWeeklySettlementsFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
-      await myDb.rawUpdate('UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL');
-      await myDb.rawUpdate('UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL');
+      await myDb.rawUpdate(
+        'UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL',
+      );
+      await myDb.rawUpdate(
+        'UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL',
+      );
       try {
         await myDb.rawDelete('DELETE FROM WorkerSettlements');
       } catch (_) {}
@@ -3906,7 +4204,8 @@ class SqlDatabase {
             final rawJson = map['data_json']?.toString() ?? '{}';
             try {
               final Map<String, dynamic> allData = jsonDecode(rawJson);
-              if (allData.containsKey('WorkerAllocations') && allData['WorkerAllocations'] is List) {
+              if (allData.containsKey('WorkerAllocations') &&
+                  allData['WorkerAllocations'] is List) {
                 final List allocs = allData['WorkerAllocations'];
                 for (var a in allocs) {
                   if (a is Map) {
@@ -3916,7 +4215,8 @@ class SqlDatabase {
                 }
                 allData['WorkerAllocations'] = allocs;
               }
-              if (allData.containsKey('WorkerTransactions') && allData['WorkerTransactions'] is List) {
+              if (allData.containsKey('WorkerTransactions') &&
+                  allData['WorkerTransactions'] is List) {
                 final List txs = allData['WorkerTransactions'];
                 for (var t in txs) {
                   if (t is Map) {
@@ -3953,7 +4253,8 @@ class SqlDatabase {
     final cleanKey = workerUid.trim().toLowerCase();
     if (cleanKey.isEmpty) return [];
 
-    return await myDb.rawQuery('''
+    return await myDb.rawQuery(
+      '''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.id_commandes, cd.partitions_json, cd.drawing_image_path, cd.drawing_image_base64,
              cl.firstname, cl.lastname
       FROM WorkerAllocations wa
@@ -3974,7 +4275,21 @@ class SqlDatabase {
         )
       ) AND (wa.is_settled = 0 OR wa.is_settled IS NULL)
       ORDER BY wa.assigned_at DESC
-    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
+    ''',
+      [
+        workerUid,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+      ],
+    );
   }
 
   Future<List<Map<String, dynamic>>> readWorkerSettledAllocations(
@@ -3986,7 +4301,8 @@ class SqlDatabase {
     final cleanKey = workerUid.trim().toLowerCase();
     if (cleanKey.isEmpty) return [];
 
-    return await myDb.rawQuery('''
+    return await myDb.rawQuery(
+      '''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.id_commandes, cd.partitions_json, cd.drawing_image_path, cd.drawing_image_base64,
              cl.firstname, cl.lastname
       FROM WorkerAllocations wa
@@ -4007,7 +4323,21 @@ class SqlDatabase {
         )
       ) AND wa.is_settled = 1
       ORDER BY wa.settled_at DESC
-    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
+    ''',
+      [
+        workerUid,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+      ],
+    );
   }
 
   Future<List<Map<String, dynamic>>> readWorkerSettledTransactions(
@@ -4019,7 +4349,8 @@ class SqlDatabase {
     final cleanKey = workerUid.trim().toLowerCase();
     if (cleanKey.isEmpty) return [];
 
-    return await myDb.rawQuery('''
+    return await myDb.rawQuery(
+      '''
       SELECT wt.*
       FROM WorkerTransactions wt
       WHERE (
@@ -4036,10 +4367,27 @@ class SqlDatabase {
         )
       ) AND wt.is_settled = 1
       ORDER BY wt.settled_at DESC
-    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
+    ''',
+      [
+        workerUid,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+      ],
+    );
   }
 
-  Future<List<Map<String, dynamic>>> readAllWorkerAllocations(String workerUid, String workerEmail) async {
+  Future<List<Map<String, dynamic>>> readAllWorkerAllocations(
+    String workerUid,
+    String workerEmail,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     final cleanEmail = workerEmail.trim().toLowerCase();
@@ -4048,7 +4396,8 @@ class SqlDatabase {
     // 1. استعلام دقيق يضمن فلترة وحصر الإسنادات المسندة لهذا العامل فقط بدون تسريب إسنادات غيره
     final List<Map<String, dynamic>> results;
     if (cleanEmail.isNotEmpty) {
-      results = await myDb.rawQuery('''
+      results = await myDb.rawQuery(
+        '''
         SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
                cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
                cl.firstname, cl.lastname, e.name as worker_name
@@ -4069,9 +4418,12 @@ class SqlDatabase {
         )
           AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
         ORDER BY wa.assigned_at DESC
-      ''', [workerUid, cleanEmail, cleanUid, cleanEmail, cleanUid, cleanEmail]);
+      ''',
+        [workerUid, cleanEmail, cleanUid, cleanEmail, cleanUid, cleanEmail],
+      );
     } else {
-      results = await myDb.rawQuery('''
+      results = await myDb.rawQuery(
+        '''
         SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json, cd.confirmed_mesures_json,
                cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
                cl.firstname, cl.lastname, e.name as worker_name
@@ -4090,7 +4442,9 @@ class SqlDatabase {
         )
           AND (wa.is_transferred_to_dist IS NULL OR wa.is_transferred_to_dist = 0)
         ORDER BY wa.assigned_at DESC
-      ''', [workerUid, workerUid, workerUid]);
+      ''',
+        [workerUid, workerUid, workerUid],
+      );
     }
 
     return results;
@@ -4117,35 +4471,62 @@ class SqlDatabase {
         bool isMe = false;
         if (currentUid.isNotEmpty && eUid.isNotEmpty && eUid == currentUid) {
           isMe = true;
-        } else if (currentEmail.isNotEmpty && eEmail.isNotEmpty && eEmail == currentEmail) {
+        } else if (currentEmail.isNotEmpty &&
+            eEmail.isNotEmpty &&
+            eEmail == currentEmail) {
           isMe = true;
         }
 
         if (isMe) {
-          debugPrint('relinkCurrentWorkerAllocations: linking empId=$empIdStr, eUid=$eUid -> $currentUid');
+          debugPrint(
+            'relinkCurrentWorkerAllocations: linking empId=$empIdStr, eUid=$eUid -> $currentUid',
+          );
           await myDb.transaction((txn) async {
             if (eUid != currentUid && eUid.isNotEmpty) {
-              await txn.update('Employees', {'uid': currentUid}, where: 'uid = ?', whereArgs: [eUid]);
+              await txn.update(
+                'Employees',
+                {'uid': currentUid},
+                where: 'uid = ?',
+                whereArgs: [eUid],
+              );
             }
             if (empIdStr.isNotEmpty) {
-              await txn.update('WorkerAllocations', {'worker_uid': currentUid}, where: 'worker_uid = ?', whereArgs: [empIdStr]);
+              await txn.update(
+                'WorkerAllocations',
+                {'worker_uid': currentUid},
+                where: 'worker_uid = ?',
+                whereArgs: [empIdStr],
+              );
             }
             if (eEmail.isNotEmpty) {
-              await txn.update('WorkerAllocations', {'worker_uid': currentUid}, where: 'LOWER(worker_uid) = ?', whereArgs: [eEmail]);
+              await txn.update(
+                'WorkerAllocations',
+                {'worker_uid': currentUid},
+                where: 'LOWER(worker_uid) = ?',
+                whereArgs: [eEmail],
+              );
             }
             if (eUid.isNotEmpty && eUid != currentUid) {
-              await txn.update('WorkerAllocations', {'worker_uid': currentUid}, where: 'worker_uid = ?', whereArgs: [eUid]);
+              await txn.update(
+                'WorkerAllocations',
+                {'worker_uid': currentUid},
+                where: 'worker_uid = ?',
+                whereArgs: [eUid],
+              );
             }
           });
         }
       }
 
       if (currentEmail.isNotEmpty) {
-        await myDb.rawUpdate('''
+        await myDb.rawUpdate(
+          '''
           UPDATE WorkerAllocations
           SET worker_uid = ?
           WHERE LOWER(worker_uid) = ?
-        ''', [currentUid, currentEmail]);
+        ''',
+          [currentUid, currentEmail],
+        );
       }
 
       debugPrint('relinkCurrentWorkerAllocations: done for uid=$currentUid');
@@ -4153,7 +4534,6 @@ class SqlDatabase {
       debugPrint('relinkCurrentWorkerAllocations error: $e');
     }
   }
-
 
   Future<List<Map<String, dynamic>>> readAbsoluteAllWorkerAllocations() async {
     Database? myDb = await db;
@@ -4170,7 +4550,8 @@ class SqlDatabase {
     ''');
   }
 
-  Future<List<Map<String, dynamic>>> readAllArchivedAllocationsForManager() async {
+  Future<List<Map<String, dynamic>>>
+  readAllArchivedAllocationsForManager() async {
     Database? myDb = await db;
     if (myDb == null) return [];
     await purgeOldArchivedAllocations();
@@ -4195,14 +4576,21 @@ class SqlDatabase {
       final mutable = Map<String, dynamic>.from(row);
       final transferredAtStr = row['transferred_at']?.toString();
       bool isLocked = (row['archive_locked'] as num?)?.toInt() == 1;
-      if (!isLocked && transferredAtStr != null && transferredAtStr.isNotEmpty) {
+      if (!isLocked &&
+          transferredAtStr != null &&
+          transferredAtStr.isNotEmpty) {
         try {
           final dt = DateTime.parse(transferredAtStr);
           if (now.difference(dt).inDays >= 7) {
             isLocked = true;
             final allocId = (row['id'] as num?)?.toInt() ?? 0;
             if (allocId > 0) {
-              await myDb.update('WorkerAllocations', {'archive_locked': 1}, where: 'id = ?', whereArgs: [allocId]);
+              await myDb.update(
+                'WorkerAllocations',
+                {'archive_locked': 1},
+                where: 'id = ?',
+                whereArgs: [allocId],
+              );
             }
           }
         } catch (_) {}
@@ -4260,7 +4648,9 @@ class SqlDatabase {
                 'reserve_at': alloc['reserve_at'],
                 'updated_at': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true));
-          debugPrint('--- SqlDatabase: Uploaded allocation status $allocationId (reserves & installation) to cloud ---');
+          debugPrint(
+            '--- SqlDatabase: Uploaded allocation status $allocationId (reserves & installation) to cloud ---',
+          );
         }
       }
     } catch (e) {
@@ -4289,7 +4679,11 @@ class SqlDatabase {
           if (allocationId == null) continue;
           final data = doc.data();
 
-          final existing = await txn.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+          final existing = await txn.query(
+            'WorkerAllocations',
+            where: 'id = ?',
+            whereArgs: [allocationId],
+          );
           if (existing.isNotEmpty) {
             final old = existing.first;
             await txn.update(
@@ -4302,33 +4696,61 @@ class SqlDatabase {
                 'unit_position': data['unit_position'] ?? old['unit_position'],
                 'unit_width': data['unit_width'] ?? old['unit_width'],
                 'unit_height': data['unit_height'] ?? old['unit_height'],
-                'is_manufactured': data['is_manufactured'] ?? old['is_manufactured'] ?? 0,
-                'manufactured_at': data.containsKey('manufactured_at') ? data['manufactured_at'] : old['manufactured_at'],
-                'is_glass_installed': data['is_glass_installed'] ?? old['is_glass_installed'] ?? 0,
-                'glass_installed_at': data.containsKey('glass_installed_at') ? data['glass_installed_at'] : old['glass_installed_at'],
-                'is_distributed': data['is_distributed'] ?? old['is_distributed'] ?? 0,
-                'distributed_at': data.containsKey('distributed_at') ? data['distributed_at'] : old['distributed_at'],
-                'is_transferred_to_dist': data['is_transferred_to_dist'] ?? old['is_transferred_to_dist'] ?? 0,
-                'transferred_at': data.containsKey('transferred_at') ? data['transferred_at'] : old['transferred_at'],
-                'is_installed': data['is_installed'] ?? old['is_installed'] ?? 0,
-                'installed_at': data.containsKey('installed_at') ? data['installed_at'] : old['installed_at'],
-                'is_completed': data['is_completed'] ?? old['is_completed'] ?? 0,
-                'completed_at': data.containsKey('completed_at') ? data['completed_at'] : old['completed_at'],
+                'is_manufactured':
+                    data['is_manufactured'] ?? old['is_manufactured'] ?? 0,
+                'manufactured_at': data.containsKey('manufactured_at')
+                    ? data['manufactured_at']
+                    : old['manufactured_at'],
+                'is_glass_installed':
+                    data['is_glass_installed'] ??
+                    old['is_glass_installed'] ??
+                    0,
+                'glass_installed_at': data.containsKey('glass_installed_at')
+                    ? data['glass_installed_at']
+                    : old['glass_installed_at'],
+                'is_distributed':
+                    data['is_distributed'] ?? old['is_distributed'] ?? 0,
+                'distributed_at': data.containsKey('distributed_at')
+                    ? data['distributed_at']
+                    : old['distributed_at'],
+                'is_transferred_to_dist':
+                    data['is_transferred_to_dist'] ??
+                    old['is_transferred_to_dist'] ??
+                    0,
+                'transferred_at': data.containsKey('transferred_at')
+                    ? data['transferred_at']
+                    : old['transferred_at'],
+                'is_installed':
+                    data['is_installed'] ?? old['is_installed'] ?? 0,
+                'installed_at': data.containsKey('installed_at')
+                    ? data['installed_at']
+                    : old['installed_at'],
+                'is_completed':
+                    data['is_completed'] ?? old['is_completed'] ?? 0,
+                'completed_at': data.containsKey('completed_at')
+                    ? data['completed_at']
+                    : old['completed_at'],
                 'has_reserve': data['has_reserve'] ?? old['has_reserve'] ?? 0,
-                'reserve_notes': data.containsKey('reserve_notes') ? data['reserve_notes'] : old['reserve_notes'],
-                'reserve_at': data.containsKey('reserve_at') ? data['reserve_at'] : old['reserve_at'],
+                'reserve_notes': data.containsKey('reserve_notes')
+                    ? data['reserve_notes']
+                    : old['reserve_notes'],
+                'reserve_at': data.containsKey('reserve_at')
+                    ? data['reserve_at']
+                    : old['reserve_at'],
               },
               where: 'id = ?',
               whereArgs: [allocationId],
             );
-          } else if (data['commande_detail_id'] != null && data['worker_uid'] != null) {
+          } else if (data['commande_detail_id'] != null &&
+              data['worker_uid'] != null) {
             await txn.insert('WorkerAllocations', {
               'id': allocationId,
               'commande_detail_id': data['commande_detail_id'],
               'worker_uid': data['worker_uid'],
               'quantity': data['quantity'] ?? 1,
               'worker_price': data['worker_price'] ?? 0.0,
-              'assigned_at': data['assigned_at'] ?? DateTime.now().toIso8601String(),
+              'assigned_at':
+                  data['assigned_at'] ?? DateTime.now().toIso8601String(),
               'unit_index': data['unit_index'],
               'unit_position': data['unit_position'],
               'is_settled': 0,
@@ -4351,7 +4773,9 @@ class SqlDatabase {
           }
         }
       });
-      debugPrint('--- SqlDatabase: Synced allocations status (including reserves and installation) from cloud successfully ---');
+      debugPrint(
+        '--- SqlDatabase: Synced allocations status (including reserves and installation) from cloud successfully ---',
+      );
     } catch (e) {
       debugPrint('Error syncing worker allocations status: $e');
     }
@@ -4362,24 +4786,43 @@ class SqlDatabase {
       Database? myDb = await db;
       if (myDb == null || orderId <= 0) return;
 
-      final allOrderAllocs = await myDb.rawQuery('''
+      final allOrderAllocs = await myDb.rawQuery(
+        '''
         SELECT wa.* 
         FROM WorkerAllocations wa
         INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
         WHERE cd.id_commandes = ?
-      ''', [orderId]);
+      ''',
+        [orderId],
+      );
 
       if (allOrderAllocs.isEmpty) return;
 
       int totalAllocs = allOrderAllocs.length;
-      int mfgAllocs = allOrderAllocs.where((wa) => (wa['is_manufactured'] as num?)?.toInt() == 1).length;
-      int distAllocs = allOrderAllocs.where((wa) => (wa['is_distributed'] as num?)?.toInt() == 1 || (wa['is_transferred_to_dist'] as num?)?.toInt() == 1).length;
-      int installAllocs = allOrderAllocs.where((wa) => (wa['is_installed'] as num?)?.toInt() == 1).length;
-      int reserveAllocs = allOrderAllocs.where((wa) => (wa['has_reserve'] as num?)?.toInt() == 1).length;
-      int completedAllocs = allOrderAllocs.where((wa) => (wa['is_completed'] as num?)?.toInt() == 1).length;
+      int mfgAllocs = allOrderAllocs
+          .where((wa) => (wa['is_manufactured'] as num?)?.toInt() == 1)
+          .length;
+      int distAllocs = allOrderAllocs
+          .where(
+            (wa) =>
+                (wa['is_distributed'] as num?)?.toInt() == 1 ||
+                (wa['is_transferred_to_dist'] as num?)?.toInt() == 1,
+          )
+          .length;
+      int installAllocs = allOrderAllocs
+          .where((wa) => (wa['is_installed'] as num?)?.toInt() == 1)
+          .length;
+      int reserveAllocs = allOrderAllocs
+          .where((wa) => (wa['has_reserve'] as num?)?.toInt() == 1)
+          .length;
+      int completedAllocs = allOrderAllocs
+          .where((wa) => (wa['is_completed'] as num?)?.toInt() == 1)
+          .length;
 
       String? targetStatus;
-      if (completedAllocs >= totalAllocs && totalAllocs > 0 && reserveAllocs == 0) {
+      if (completedAllocs >= totalAllocs &&
+          totalAllocs > 0 &&
+          reserveAllocs == 0) {
         targetStatus = 'Done';
       } else if (reserveAllocs > 0) {
         targetStatus = 'Reserve';
@@ -4396,12 +4839,22 @@ class SqlDatabase {
       }
 
       if (targetStatus != null) {
-        final orderRow = await myDb.query('Commandes', where: 'id = ?', whereArgs: [orderId]);
+        final orderRow = await myDb.query(
+          'Commandes',
+          where: 'id = ?',
+          whereArgs: [orderId],
+        );
         if (orderRow.isNotEmpty) {
           final currentStatus = orderRow.first['status']?.toString() ?? '';
           if (currentStatus != targetStatus) {
-            await updateCommandeStatus(orderId, targetStatus, skipAllocationSync: true);
-            debugPrint('syncOrderAndAllocationsStatus: updated order #$orderId status from $currentStatus to $targetStatus');
+            await updateCommandeStatus(
+              orderId,
+              targetStatus,
+              skipAllocationSync: true,
+            );
+            debugPrint(
+              'syncOrderAndAllocationsStatus: updated order #$orderId status from $currentStatus to $targetStatus',
+            );
           }
         }
       }
@@ -4414,7 +4867,11 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null || orderId <= 0) return false;
 
-    final details = await myDb.query('Commandes_details', where: 'id_commandes = ?', whereArgs: [orderId]);
+    final details = await myDb.query(
+      'Commandes_details',
+      where: 'id_commandes = ?',
+      whereArgs: [orderId],
+    );
     if (details.isEmpty) return false;
 
     int totalRequiredQty = 0;
@@ -4423,26 +4880,33 @@ class SqlDatabase {
     }
     if (totalRequiredQty == 0) return false;
 
-    final manufacturedAllocs = await myDb.rawQuery('''
+    final manufacturedAllocs = await myDb.rawQuery(
+      '''
       SELECT SUM(wa.quantity) as total_mfg_qty
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       WHERE cd.id_commandes = ? AND wa.is_manufactured = 1
-    ''', [orderId]);
+    ''',
+      [orderId],
+    );
 
     int totalMfgQty = 0;
-    if (manufacturedAllocs.isNotEmpty && manufacturedAllocs.first['total_mfg_qty'] != null) {
+    if (manufacturedAllocs.isNotEmpty &&
+        manufacturedAllocs.first['total_mfg_qty'] != null) {
       totalMfgQty = (manufacturedAllocs.first['total_mfg_qty'] as num).toInt();
     }
 
     return totalMfgQty >= totalRequiredQty;
   }
 
-  Future<void> updateWorkerAllocationManufacturing(int allocationId, int isManufactured) async {
+  Future<void> updateWorkerAllocationManufacturing(
+    int allocationId,
+    int isManufactured,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
-    
+
     await myDb.update(
       'WorkerAllocations',
       {
@@ -4453,13 +4917,23 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final detailRow = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          final orderId =
+              (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           if (orderId > 0) {
             await syncOrderAndAllocationsStatus(orderId);
           }
@@ -4471,11 +4945,14 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  Future<void> updateWorkerAllocationGlass(int allocationId, int isGlassInstalled) async {
+  Future<void> updateWorkerAllocationGlass(
+    int allocationId,
+    int isGlassInstalled,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
-    
+
     await myDb.update(
       'WorkerAllocations',
       {
@@ -4486,13 +4963,23 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final detailRow = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          final orderId =
+              (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           if (orderId > 0) {
             await syncOrderAndAllocationsStatus(orderId);
           }
@@ -4504,11 +4991,14 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  Future<void> updateWorkerAllocationDistribution(int allocationId, int isDistributed) async {
+  Future<void> updateWorkerAllocationDistribution(
+    int allocationId,
+    int isDistributed,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
-    
+
     await myDb.update(
       'WorkerAllocations',
       {
@@ -4519,13 +5009,23 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final detailRow = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          final orderId =
+              (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           if (orderId > 0) {
             await syncOrderAndAllocationsStatus(orderId);
           }
@@ -4537,7 +5037,10 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  Future<void> updateWorkerAllocationTransfer(int allocationId, int isTransferred) async {
+  Future<void> updateWorkerAllocationTransfer(
+    int allocationId,
+    int isTransferred,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
@@ -4545,10 +5048,7 @@ class SqlDatabase {
     // ✔️ عند التحويل إلى التوزيع: نضبط حقل التحويل فقط → العنصر ينتقل لصفحة التركيبات الميدانية
     // ✔️ عند الإلغاء (إرجاع من الأرشيف): نصفّر جميع حقول التركيب/الاكتمال حتى يمر العنصر بمرحلة التركيبات الميدانية مرة أخرى
     final Map<String, dynamic> updateFields = isTransferred == 1
-        ? {
-            'is_transferred_to_dist': 1,
-            'transferred_at': nowStr,
-          }
+        ? {'is_transferred_to_dist': 1, 'transferred_at': nowStr}
         : {
             'is_transferred_to_dist': 0,
             'transferred_at': null,
@@ -4570,13 +5070,23 @@ class SqlDatabase {
     // ⚡️ تشغيل syncOrder في الخلفية دون حظر الواجهة (تحسين السرعة)
     () async {
       try {
-        final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+        final allocRow = await myDb.query(
+          'WorkerAllocations',
+          where: 'id = ?',
+          whereArgs: [allocationId],
+        );
         if (allocRow.isNotEmpty) {
-          final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+          final detailId =
+              (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
           if (detailId > 0) {
-            final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+            final detailRow = await myDb.query(
+              'Commandes_details',
+              where: 'id = ?',
+              whereArgs: [detailId],
+            );
             if (detailRow.isNotEmpty) {
-              final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+              final orderId =
+                  (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
               if (orderId > 0) {
                 await syncOrderAndAllocationsStatus(orderId);
               }
@@ -4612,7 +5122,10 @@ class SqlDatabase {
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
-  Future<void> updateWorkerAllocationInstallation(int allocationId, int isInstalled) async {
+  Future<void> updateWorkerAllocationInstallation(
+    int allocationId,
+    int isInstalled,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
@@ -4626,13 +5139,23 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final detailRow = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          final orderId =
+              (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           if (orderId > 0) {
             await syncOrderAndAllocationsStatus(orderId);
           }
@@ -4644,7 +5167,10 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  Future<void> updateWorkerAllocationCompletion(int allocationId, int isCompleted) async {
+  Future<void> updateWorkerAllocationCompletion(
+    int allocationId,
+    int isCompleted,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
@@ -4662,13 +5188,23 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final detailRow = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          final orderId =
+              (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           if (orderId > 0) {
             await syncOrderAndAllocationsStatus(orderId);
           }
@@ -4680,7 +5216,11 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  Future<void> updateWorkerAllocationReserve(int allocationId, int hasReserve, String? reserveNotes) async {
+  Future<void> updateWorkerAllocationReserve(
+    int allocationId,
+    int hasReserve,
+    String? reserveNotes,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
@@ -4695,16 +5235,30 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    final allocRow = await myDb.query('WorkerAllocations', where: 'id = ?', whereArgs: [allocationId]);
+    final allocRow = await myDb.query(
+      'WorkerAllocations',
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
     if (allocRow.isNotEmpty) {
-      final detailId = (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+      final detailId =
+          (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
       if (detailId > 0) {
-        final detailRow = await myDb.query('Commandes_details', where: 'id = ?', whereArgs: [detailId]);
+        final detailRow = await myDb.query(
+          'Commandes_details',
+          where: 'id = ?',
+          whereArgs: [detailId],
+        );
         if (detailRow.isNotEmpty) {
-          final orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+          final orderId =
+              (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
           if (orderId > 0) {
             if (hasReserve == 1) {
-              await updateCommandeStatus(orderId, 'Reserve', skipAllocationSync: true);
+              await updateCommandeStatus(
+                orderId,
+                'Reserve',
+                skipAllocationSync: true,
+              );
             } else {
               await syncOrderAndAllocationsStatus(orderId);
             }
@@ -4741,25 +5295,34 @@ class SqlDatabase {
     try {
       Database? myDb = await db;
       if (myDb == null) return;
-      final sixMonthsAgo = DateTime.now().subtract(const Duration(days: 180)).toIso8601String();
-      await myDb.rawDelete('''
+      final sixMonthsAgo = DateTime.now()
+          .subtract(const Duration(days: 180))
+          .toIso8601String();
+      await myDb.rawDelete(
+        '''
         DELETE FROM WorkerAllocations 
         WHERE is_transferred_to_dist = 1 
           AND transferred_at IS NOT NULL 
           AND transferred_at < ?
-      ''', [sixMonthsAgo]);
+      ''',
+        [sixMonthsAgo],
+      );
     } catch (e) {
       debugPrint('purgeOldArchivedAllocations error: $e');
     }
   }
 
-  Future<List<Map<String, dynamic>>> readWorkerArchivedAllocations(String workerUid, String workerEmail) async {
+  Future<List<Map<String, dynamic>>> readWorkerArchivedAllocations(
+    String workerUid,
+    String workerEmail,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     await purgeOldArchivedAllocations();
     final cleanEmail = workerEmail.trim().toLowerCase();
 
-    final results = await myDb.rawQuery('''
+    final results = await myDb.rawQuery(
+      '''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
              cl.firstname, cl.lastname, e.name as worker_name, c.status as order_status
@@ -4774,7 +5337,9 @@ class SqlDatabase {
         AND wa.is_transferred_to_dist = 1
         AND (wa.is_completed = 1 OR wa.is_installed = 1)
       ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
-    ''', [cleanEmail, workerUid, cleanEmail, cleanEmail]);
+    ''',
+      [cleanEmail, workerUid, cleanEmail, cleanEmail],
+    );
 
     final now = DateTime.now();
     final List<Map<String, dynamic>> processed = [];
@@ -4782,14 +5347,21 @@ class SqlDatabase {
       final mutable = Map<String, dynamic>.from(row);
       final transferredAtStr = row['transferred_at']?.toString();
       bool isLocked = (row['archive_locked'] as num?)?.toInt() == 1;
-      if (!isLocked && transferredAtStr != null && transferredAtStr.isNotEmpty) {
+      if (!isLocked &&
+          transferredAtStr != null &&
+          transferredAtStr.isNotEmpty) {
         try {
           final dt = DateTime.parse(transferredAtStr);
           if (now.difference(dt).inDays >= 7) {
             isLocked = true;
             final allocId = (row['id'] as num?)?.toInt() ?? 0;
             if (allocId > 0) {
-              await myDb.update('WorkerAllocations', {'archive_locked': 1}, where: 'id = ?', whereArgs: [allocId]);
+              await myDb.update(
+                'WorkerAllocations',
+                {'archive_locked': 1},
+                where: 'id = ?',
+                whereArgs: [allocId],
+              );
             }
           }
         } catch (_) {}
@@ -4800,7 +5372,10 @@ class SqlDatabase {
     return processed;
   }
 
-  Future<void> updateWorkerAllocationPrice(int allocationId, double price) async {
+  Future<void> updateWorkerAllocationPrice(
+    int allocationId,
+    double price,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     await myDb.update(
@@ -4814,15 +5389,20 @@ class SqlDatabase {
   }
 
   // ── الحضور والغياب (WorkerAttendance) ──────────────────────────────────────────────
-  Future<List<Map<String, dynamic>>> readWorkerAttendance(String workerUid) async {
+  Future<List<Map<String, dynamic>>> readWorkerAttendance(
+    String workerUid,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     final cleanUid = workerUid.trim().toLowerCase();
-    final results = await myDb.rawQuery('''
+    final results = await myDb.rawQuery(
+      '''
       SELECT * FROM WorkerAttendance 
       WHERE worker_uid = ? OR LOWER(worker_uid) = ?
       ORDER BY attendance_date DESC
-    ''', [workerUid, cleanUid]);
+    ''',
+      [workerUid, cleanUid],
+    );
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
@@ -4856,11 +5436,7 @@ class SqlDatabase {
     if (existing.isNotEmpty) {
       await myDb.update(
         'WorkerAttendance',
-        {
-          'check_in': checkIn,
-          'check_out': checkOut,
-          'note': note,
-        },
+        {'check_in': checkIn, 'check_out': checkOut, 'note': note},
         where: 'worker_uid = ? AND attendance_date = ?',
         whereArgs: [workerUid, date],
       );
@@ -4877,28 +5453,38 @@ class SqlDatabase {
   }
 
   // ── الأعمال اليومية (WorkerDailyJobs - عمل يومي) ──────────────────────────
-  Future<List<Map<String, dynamic>>> readWorkerDailyJobs(String workerUid) async {
+  Future<List<Map<String, dynamic>>> readWorkerDailyJobs(
+    String workerUid,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     final cleanUid = workerUid.trim().toLowerCase();
-    final results = await myDb.rawQuery('''
+    final results = await myDb.rawQuery(
+      '''
       SELECT * FROM WorkerDailyJobs 
       WHERE worker_uid = ? OR LOWER(worker_uid) = ?
       ORDER BY work_date DESC, id DESC
-    ''', [workerUid, cleanUid]);
+    ''',
+      [workerUid, cleanUid],
+    );
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> readWorkerUnsettledDailyJobs(String workerUid) async {
+  Future<List<Map<String, dynamic>>> readWorkerUnsettledDailyJobs(
+    String workerUid,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     final cleanUid = workerUid.trim().toLowerCase();
-    final results = await myDb.rawQuery('''
+    final results = await myDb.rawQuery(
+      '''
       SELECT * FROM WorkerDailyJobs 
       WHERE (worker_uid = ? OR LOWER(worker_uid) = ?)
         AND (is_settled = 0 OR is_settled IS NULL)
       ORDER BY work_date DESC
-    ''', [workerUid, cleanUid]);
+    ''',
+      [workerUid, cleanUid],
+    );
     return results.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
@@ -4972,14 +5558,16 @@ class SqlDatabase {
       "SELECT COALESCE(SUM(quantity * worker_price), 0) as total FROM WorkerAllocations WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL) AND is_manufactured = 1",
       allKeys,
     );
-    final double totalAllocEarned = (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
+    final double totalAllocEarned =
+        (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
 
     // 1b. Calculate total earned from unsettled daily jobs (عمل يومي)
     final List<Map<String, dynamic>> dailyJobs = await myDb.rawQuery(
       "SELECT COALESCE(SUM(price), 0) as total FROM WorkerDailyJobs WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
       allKeys,
     );
-    final double totalDailyEarned = (dailyJobs.first['total'] as num?)?.toDouble() ?? 0.0;
+    final double totalDailyEarned =
+        (dailyJobs.first['total'] as num?)?.toDouble() ?? 0.0;
 
     final double totalEarned = totalAllocEarned + totalDailyEarned;
 
@@ -4988,7 +5576,8 @@ class SqlDatabase {
       "SELECT COALESCE(SUM(amount), 0) as total FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
       allKeys,
     );
-    final double totalPaidBefore = (transactions.first['total'] as num?)?.toDouble() ?? 0.0;
+    final double totalPaidBefore =
+        (transactions.first['total'] as num?)?.toDouble() ?? 0.0;
 
     // Net due to worker before this settlement payment
     final double netDueBefore = totalEarned - totalPaidBefore;
@@ -5055,7 +5644,6 @@ class SqlDatabase {
     CloudSyncService().notifyChangeImmediate();
   }
 
-
   Future<void> updateItemWorkerAllocation(
     int detailId,
     String? workerUid, {
@@ -5067,13 +5655,158 @@ class SqlDatabase {
       {
         'assigned_worker_uid': workerUid,
         'worker_price': workerUid != null ? workerPrice : 0.0,
-        'assigned_at': workerUid != null ? DateTime.now().toIso8601String() : null,
+        'assigned_at': workerUid != null
+            ? DateTime.now().toIso8601String()
+            : null,
       },
       where: 'id = ?',
       whereArgs: [detailId],
     );
   }
 
+  /// Saves the order header and every detail row as one SQLite transaction.
+  /// If any row fails, SQLite rolls the whole operation back so an existing
+  /// order can never keep its total while losing Commandes_details.
+  Future<int> saveCommandeWithDetails({
+    int? idCommande,
+    required int clientId,
+    required String status,
+    required String description,
+    required double remise,
+    required double tva,
+    required double total,
+    required double netPayable,
+    required String createdAt,
+    int? projectId,
+    required List<Map<String, dynamic>> details,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) {
+      throw StateError('قاعدة البيانات غير متاحة.');
+    }
+    if (details.isEmpty) {
+      throw StateError('لا يمكن حفظ طلبية بدون تفاصيل.');
+    }
+    if (!total.isFinite || !netPayable.isFinite) {
+      throw StateError('مجموع الطلبية غير صالح.');
+    }
+
+    // File access is intentionally completed before starting the transaction.
+    // The SQL transaction then stays short and cannot leave half an order.
+    final preparedDetails = <Map<String, dynamic>>[];
+    for (final rawDetail in details) {
+      final detail = Map<String, dynamic>.from(rawDetail)
+        ..remove('id')
+        ..remove('id_commandes');
+      final drawingPath = detail['drawing_image_path']?.toString() ?? '';
+      if (drawingPath.isNotEmpty &&
+          (detail['drawing_image_base64']?.toString().isEmpty ?? true)) {
+        try {
+          final drawingFile = File(drawingPath);
+          if (await drawingFile.exists()) {
+            detail['drawing_image_base64'] = base64Encode(
+              await drawingFile.readAsBytes(),
+            );
+          }
+        } catch (_) {
+          // The model JSON remains authoritative even if a preview image
+          // cannot be read. The order itself must still save atomically.
+        }
+      }
+      preparedDetails.add(detail);
+    }
+
+    final savedId = await myDb.transaction<int>((txn) async {
+      final now = DateTime.now().toIso8601String();
+      late final int orderId;
+
+      if (idCommande == null) {
+        orderId = await txn.insert('Commandes', {
+          'client_id': clientId,
+          'status': status,
+          'description': description,
+          'remise': remise,
+          'tva': tva,
+          'total': total,
+          'net_payable': netPayable,
+          'advance_payment': 0.0,
+          'payment_status': 'Unpaid',
+          'created_at': createdAt,
+          'updated_at': now,
+          'project_id': projectId,
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
+      } else {
+        orderId = idCommande;
+        final existing = await txn.query(
+          'Commandes',
+          columns: ['advance_payment'],
+          where: 'id = ?',
+          whereArgs: [orderId],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          throw StateError('الطلبية رقم $orderId غير موجودة.');
+        }
+        final advance =
+            (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
+        final paymentStatus = advance >= netPayable
+            ? 'Paid'
+            : (advance > 0 ? 'Partial' : 'Unpaid');
+        final updated = await txn.update(
+          'Commandes',
+          {
+            'client_id': clientId,
+            'description': description,
+            'remise': remise,
+            'tva': tva,
+            'total': total,
+            'net_payable': netPayable,
+            'payment_status': paymentStatus,
+            'created_at': createdAt,
+            'updated_at': now,
+            'project_id': projectId,
+          },
+          where: 'id = ?',
+          whereArgs: [orderId],
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        if (updated != 1) {
+          throw StateError('تعذر تحديث رأس الطلبية رقم $orderId.');
+        }
+        await txn.delete(
+          'Commandes_details',
+          where: 'id_commandes = ?',
+          whereArgs: [orderId],
+        );
+      }
+
+      for (final detail in preparedDetails) {
+        await txn.insert(
+          'Commandes_details',
+          {...detail, 'id_commandes': orderId},
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      }
+
+      final countResult = await txn.rawQuery(
+        'SELECT COUNT(*) AS count FROM Commandes_details '
+        'WHERE id_commandes = ?',
+        [orderId],
+      );
+      final savedDetails =
+          (countResult.first['count'] as num?)?.toInt() ?? 0;
+      if (savedDetails != preparedDetails.length) {
+        throw StateError(
+          'لم تُحفظ كل تفاصيل الطلبية '
+          '(${preparedDetails.length} مطلوبة، $savedDetails محفوظة).',
+        );
+      }
+      return orderId;
+    });
+
+    CloudSyncService().notifyChangeImmediate();
+    return savedId;
+  }
 
   Future<int> insertCommande(
     int idClient,
@@ -5310,11 +6043,19 @@ class SqlDatabase {
           name TEXT NOT NULL UNIQUE
         )
       ''');
-      
-      final checkMain = await myDb.query('Caisses', where: "name = 'الصندوق الرئيسي'");
-      if (checkMain.isEmpty) await myDb.insert('Caisses', {'name': 'الصندوق الرئيسي'});
-      final checkSecond = await myDb.query('Caisses', where: "name = 'الصندوق الثاني'");
-      if (checkSecond.isEmpty) await myDb.insert('Caisses', {'name': 'الصندوق الثاني'});
+
+      final checkMain = await myDb.query(
+        'Caisses',
+        where: "name = 'الصندوق الرئيسي'",
+      );
+      if (checkMain.isEmpty)
+        await myDb.insert('Caisses', {'name': 'الصندوق الرئيسي'});
+      final checkSecond = await myDb.query(
+        'Caisses',
+        where: "name = 'الصندوق الثاني'",
+      );
+      if (checkSecond.isEmpty)
+        await myDb.insert('Caisses', {'name': 'الصندوق الثاني'});
       final checkBank = await myDb.query('Caisses', where: "name = 'البنك'");
       if (checkBank.isEmpty) await myDb.insert('Caisses', {'name': 'البنك'});
 
@@ -5327,12 +6068,14 @@ class SqlDatabase {
         final orderId = order['id'] as int;
         final advance = (order['advance_payment'] as num).toDouble();
         final clientId = order['client_id'] as int?;
-        final createdAt = order['created_at']?.toString() ?? DateTime.now().toIso8601String();
+        final createdAt =
+            order['created_at']?.toString() ?? DateTime.now().toIso8601String();
 
         // Check if there is already a Treasury transaction for this order's payment
         final existing = await myDb.query(
           'Treasury',
-          where: "entity_type = 'Client' AND reference_id = ? AND transaction_type = 'Encaissement'",
+          where:
+              "entity_type = 'Client' AND reference_id = ? AND transaction_type = 'Encaissement'",
           whereArgs: [orderId],
         );
 
@@ -5341,11 +6084,16 @@ class SqlDatabase {
           String clientDesc = 'دفعة لطلبية رقم $orderId';
           if (clientId != null) {
             try {
-              final clientRow = await myDb.query('Client', where: 'id = ?', whereArgs: [clientId]);
+              final clientRow = await myDb.query(
+                'Client',
+                where: 'id = ?',
+                whereArgs: [clientId],
+              );
               if (clientRow.isNotEmpty) {
                 final fname = clientRow.first['firstname'] ?? '';
                 final lname = clientRow.first['lastname'] ?? '';
-                clientDesc = 'دفعة لطلبية رقم $orderId من الزبون: $lname $fname';
+                clientDesc =
+                    'دفعة لطلبية رقم $orderId من الزبون: $lname $fname';
               }
             } catch (_) {}
           }
@@ -5413,11 +6161,7 @@ class SqlDatabase {
   Future<int> deleteCaisse(int id, String name) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
-    final res = await myDb.delete(
-      'Caisses',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final res = await myDb.delete('Caisses', where: 'id = ?', whereArgs: [id]);
     final others = await readCaisses();
     if (others.isNotEmpty) {
       final fallbackName = others.first['name'].toString();
@@ -5463,7 +6207,10 @@ class SqlDatabase {
     );
   }
 
-  Future<int> updateCommandeDeliveryIsLoaded(int deliveryId, int isLoaded) async {
+  Future<int> updateCommandeDeliveryIsLoaded(
+    int deliveryId,
+    int isLoaded,
+  ) async {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes_deliveries',
@@ -5820,7 +6567,11 @@ class SqlDatabase {
       }
 
       await txn.delete('Achat_items', where: 'achat_id = ?', whereArgs: [id]);
-      await txn.delete('Treasury', where: "reference_id = ? AND entity_type = 'Supplier'", whereArgs: [id]);
+      await txn.delete(
+        'Treasury',
+        where: "reference_id = ? AND entity_type = 'Supplier'",
+        whereArgs: [id],
+      );
       await txn.delete('Achats', where: 'id = ?', whereArgs: [id]);
     });
 
@@ -5935,7 +6686,12 @@ class SqlDatabase {
     }
 
     if (refundedAmount > 0) {
-      final achatRes = await myDb.query('Achats', columns: ['supplier_id'], where: 'id = ?', whereArgs: [achatId]);
+      final achatRes = await myDb.query(
+        'Achats',
+        columns: ['supplier_id'],
+        where: 'id = ?',
+        whereArgs: [achatId],
+      );
       int? supplierId;
       if (achatRes.isNotEmpty) {
         supplierId = achatRes.first['supplier_id'] as int?;
@@ -6092,7 +6848,7 @@ class SqlDatabase {
   }) async {
     Database? myDb = await db;
     final now = DateTime.now().toIso8601String();
-    
+
     var res = await myDb!.insert('WorkerTransactions', {
       'worker_uid': workerUid,
       'amount': amount,
@@ -6112,8 +6868,10 @@ class SqlDatabase {
         final worker = workers.first;
         final workerId = worker['id'] as int;
         final workerName = worker['name']?.toString() ?? '';
-        
-        String desc = (transactionType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') + workerName;
+
+        String desc =
+            (transactionType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') +
+            workerName;
         if (note.isNotEmpty) desc += ' - $note';
 
         await insertTreasury(
@@ -6144,7 +6902,8 @@ class SqlDatabase {
     final cleanKey = workerUid.trim().toLowerCase();
     if (cleanKey.isEmpty) return [];
 
-    return await myDb.rawQuery('''
+    return await myDb.rawQuery(
+      '''
       SELECT wt.*
       FROM WorkerTransactions wt
       WHERE wt.worker_uid = ?
@@ -6159,7 +6918,21 @@ class SqlDatabase {
           SELECT email FROM Employees WHERE (uid = ? OR LOWER(email) = ? OR CAST(id AS TEXT) = ?)
         )
       ORDER BY wt.created_at DESC
-    ''', [workerUid, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey, cleanKey]);
+    ''',
+      [
+        workerUid,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+        cleanKey,
+      ],
+    );
   }
 
   Future<void> updateWorkerTransaction(
@@ -6179,33 +6952,28 @@ class SqlDatabase {
 
     await myDb.update(
       'WorkerTransactions',
-      {
-        'amount': newAmount,
-        'transaction_type': newType,
-        'note': newNote,
-      },
+      {'amount': newAmount, 'transaction_type': newType, 'note': newNote},
       where: 'id = ?',
       whereArgs: [transactionId],
     );
 
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
-      where: "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+      where:
+          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
       whereArgs: [workerId, oldAmount],
       limit: 1,
     );
 
     if (records.isNotEmpty) {
       final treasuryId = records.first['id'] as int;
-      String desc = (newType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') + workerName;
+      String desc =
+          (newType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') + workerName;
       if (newNote.isNotEmpty) desc += ' - $newNote';
 
       await myDb.update(
         'Treasury',
-        {
-          'amount': newAmount,
-          'description': desc,
-        },
+        {'amount': newAmount, 'description': desc},
         where: 'id = ?',
         whereArgs: [treasuryId],
       );
@@ -6229,22 +6997,18 @@ class SqlDatabase {
 
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
-      where: "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+      where:
+          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
       whereArgs: [workerId, amount],
       limit: 1,
     );
 
     if (records.isNotEmpty) {
       final treasuryId = records.first['id'] as int;
-      await myDb.delete(
-        'Treasury',
-        where: 'id = ?',
-        whereArgs: [treasuryId],
-      );
+      await myDb.delete('Treasury', where: 'id = ?', whereArgs: [treasuryId]);
     }
     CloudSyncService().notifyChange();
   }
-
 
   //////////////////////////////////// Colors //////////////////////////////////////
   Future<List<Map<String, dynamic>>> readColors() async {
@@ -6383,7 +7147,11 @@ class SqlDatabase {
 
     // --- Ensure Antique, Desert Oak, and Gris 9007 exist and are linked to profiles ---
     try {
-      var checkAntique = await myDb.query('Colors', where: "name LIKE '%antique%' OR name LIKE '%انتيك%' OR name LIKE '%╪º┘å╪¬┘è┘â%'");
+      var checkAntique = await myDb.query(
+        'Colors',
+        where:
+            "name LIKE '%antique%' OR name LIKE '%انتيك%' OR name LIKE '%╪º┘å╪¬┘è┘â%'",
+      );
       int antiqueId;
       if (checkAntique.isEmpty) {
         antiqueId = await myDb.insert('Colors', {
@@ -6396,7 +7164,11 @@ class SqlDatabase {
         antiqueId = checkAntique.first['id'] as int;
       }
 
-      var checkDesert = await myDb.query('Colors', where: "name LIKE '%desert%' OR name LIKE '%Oak%' OR name LIKE '%ديزرت%'");
+      var checkDesert = await myDb.query(
+        'Colors',
+        where:
+            "name LIKE '%desert%' OR name LIKE '%Oak%' OR name LIKE '%ديزرت%'",
+      );
       int desertId;
       if (checkDesert.isEmpty) {
         desertId = await myDb.insert('Colors', {
@@ -6409,7 +7181,10 @@ class SqlDatabase {
         desertId = checkDesert.first['id'] as int;
       }
 
-      var checkGris9007 = await myDb.query('Colors', where: "name LIKE '%9007%' OR name LIKE '%رمادي 9007%'");
+      var checkGris9007 = await myDb.query(
+        'Colors',
+        where: "name LIKE '%9007%' OR name LIKE '%رمادي 9007%'",
+      );
       int gris9007Id;
       if (checkGris9007.isEmpty) {
         gris9007Id = await myDb.insert('Colors', {
@@ -6425,17 +7200,38 @@ class SqlDatabase {
       var profiles = await myDb.query('Profiles');
       for (var p in profiles) {
         final pId = p['id'] as int;
-        var linkAntique = await myDb.query('ProfileColors', where: 'profile_id = ? AND color_id = ?', whereArgs: [pId, antiqueId]);
+        var linkAntique = await myDb.query(
+          'ProfileColors',
+          where: 'profile_id = ? AND color_id = ?',
+          whereArgs: [pId, antiqueId],
+        );
         if (linkAntique.isEmpty) {
-          await myDb.insert('ProfileColors', {'profile_id': pId, 'color_id': antiqueId});
+          await myDb.insert('ProfileColors', {
+            'profile_id': pId,
+            'color_id': antiqueId,
+          });
         }
-        var linkDesert = await myDb.query('ProfileColors', where: 'profile_id = ? AND color_id = ?', whereArgs: [pId, desertId]);
+        var linkDesert = await myDb.query(
+          'ProfileColors',
+          where: 'profile_id = ? AND color_id = ?',
+          whereArgs: [pId, desertId],
+        );
         if (linkDesert.isEmpty) {
-          await myDb.insert('ProfileColors', {'profile_id': pId, 'color_id': desertId});
+          await myDb.insert('ProfileColors', {
+            'profile_id': pId,
+            'color_id': desertId,
+          });
         }
-        var linkGris = await myDb.query('ProfileColors', where: 'profile_id = ? AND color_id = ?', whereArgs: [pId, gris9007Id]);
+        var linkGris = await myDb.query(
+          'ProfileColors',
+          where: 'profile_id = ? AND color_id = ?',
+          whereArgs: [pId, gris9007Id],
+        );
         if (linkGris.isEmpty) {
-          await myDb.insert('ProfileColors', {'profile_id': pId, 'color_id': gris9007Id});
+          await myDb.insert('ProfileColors', {
+            'profile_id': pId,
+            'color_id': gris9007Id,
+          });
         }
       }
     } catch (e) {
@@ -6537,11 +7333,10 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (enabled) {
-      await myDb!.insert(
-        'ProfileColors',
-        {'profile_id': profileId, 'color_id': colorId},
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      await myDb!.insert('ProfileColors', {
+        'profile_id': profileId,
+        'color_id': colorId,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     } else {
       await myDb!.delete(
         'ProfileColors',
@@ -6563,23 +7358,15 @@ class SqlDatabase {
 
     await myDb.transaction((txn) async {
       if (enabled) {
-        await txn.insert(
-          'ShutterColorPrices',
-          {
-            'shutter_component_id': shutterComponentId,
-            'color_id': colorId,
-            'price': price,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-        await txn.insert(
-          'ShutterComponentColors',
-          {
-            'shutter_component_id': shutterComponentId,
-            'color_id': colorId,
-          },
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
+        await txn.insert('ShutterColorPrices', {
+          'shutter_component_id': shutterComponentId,
+          'color_id': colorId,
+          'price': price,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('ShutterComponentColors', {
+          'shutter_component_id': shutterComponentId,
+          'color_id': colorId,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       } else {
         await txn.delete(
           'ShutterColorPrices',
@@ -6803,10 +7590,7 @@ class SqlDatabase {
             .doc(workshopId)
             .collection('deleted_glass_ids')
             .doc('$id')
-            .set({
-          'id': id,
-          'deleted_at': FieldValue.serverTimestamp(),
-        });
+            .set({'id': id, 'deleted_at': FieldValue.serverTimestamp()});
       }
     } catch (e) {
       debugPrint('Failed to write glass tombstone: $e');
@@ -6815,22 +7599,24 @@ class SqlDatabase {
     return res;
   }
 
-  Future<void> setGlassColorPrice(int glassId, String colorName, double price) async {
+  Future<void> setGlassColorPrice(
+    int glassId,
+    String colorName,
+    double price,
+  ) async {
     Database? myDb = await db;
-    await myDb!.insert(
-      'GlassColorPrices',
-      {
-        'glass_id': glassId,
-        'color_name': colorName,
-        'price': price,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await myDb!.insert('GlassColorPrices', {
+      'glass_id': glassId,
+      'color_name': colorName,
+      'price': price,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     CloudSyncService().notifyChange();
   }
 
   //////////////////////////////////// ShutterComponents //////////////////////////////////////
-  Future<List<Map<String, dynamic>>> readShutterComponents({bool includeInactive = false}) async {
+  Future<List<Map<String, dynamic>>> readShutterComponents({
+    bool includeInactive = false,
+  }) async {
     Database? myDb = await db;
     try {
       await myDb!.execute(
@@ -6896,12 +7682,14 @@ class SqlDatabase {
     double capThickness = 0.0,
   }) async {
     Database? myDb = await db;
-    final String? cleanMeasurement = (measurement == null ||
+    final String? cleanMeasurement =
+        (measurement == null ||
             measurement.trim().isEmpty ||
             measurement.trim().toLowerCase() == 'null')
         ? null
         : measurement.trim();
-    final String? cleanMotorDiameter = (motorDiameter == null ||
+    final String? cleanMotorDiameter =
+        (motorDiameter == null ||
             motorDiameter.trim().isEmpty ||
             motorDiameter.trim().toLowerCase() == 'null')
         ? null
@@ -6934,12 +7722,14 @@ class SqlDatabase {
     double capThickness = 0.0,
   }) async {
     Database? myDb = await db;
-    final String? cleanMeasurement = (measurement == null ||
+    final String? cleanMeasurement =
+        (measurement == null ||
             measurement.trim().isEmpty ||
             measurement.trim().toLowerCase() == 'null')
         ? null
         : measurement.trim();
-    final String? cleanMotorDiameter = (motorDiameter == null ||
+    final String? cleanMotorDiameter =
+        (motorDiameter == null ||
             motorDiameter.trim().isEmpty ||
             motorDiameter.trim().toLowerCase() == 'null')
         ? null
@@ -7017,18 +7807,18 @@ class SqlDatabase {
     return 0.0;
   }
 
-  Future<int> insertOrUpdateShutterSqmPrice(String bladeType, int colorId, double price) async {
+  Future<int> insertOrUpdateShutterSqmPrice(
+    String bladeType,
+    int colorId,
+    double price,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
-    var res = await myDb.insert(
-      'ShutterSqmPrices',
-      {
-        'blade_type': bladeType,
-        'color_id': colorId,
-        'price_per_sqm': price,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    var res = await myDb.insert('ShutterSqmPrices', {
+      'blade_type': bladeType,
+      'color_id': colorId,
+      'price_per_sqm': price,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -7116,16 +7906,17 @@ class SqlDatabase {
     return res;
   }
 
-  Future<void> linkLocalWorker(String localUid, String newUid, String email) async {
+  Future<void> linkLocalWorker(
+    String localUid,
+    String newUid,
+    String email,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
     await myDb.transaction((txn) async {
       await txn.update(
         'Employees',
-        {
-          'uid': newUid,
-          'email': email,
-        },
+        {'uid': newUid, 'email': email},
         where: 'uid = ?',
         whereArgs: [localUid],
       );
@@ -7150,7 +7941,6 @@ class SqlDatabase {
     });
     CloudSyncService().notifyChange();
   }
-
 
   Future<int> updateEmployeeFullInfo(
     String uid, {
@@ -7181,7 +7971,6 @@ class SqlDatabase {
     return res;
   }
 
-
   Future<int> deleteEmployee(String uid) async {
     Database? myDb = await db;
     var res = await myDb!.delete(
@@ -7207,7 +7996,8 @@ class SqlDatabase {
     // i.e. advance_payment < net_payable (or total if net_payable <= 0)
     final orders = await myDb.query(
       'Commandes',
-      where: 'client_id = ? AND advance_payment < CASE WHEN net_payable > 0 THEN net_payable ELSE total END',
+      where:
+          'client_id = ? AND advance_payment < CASE WHEN net_payable > 0 THEN net_payable ELSE total END',
       whereArgs: [clientId],
       orderBy: 'id ASC', // oldest first
     );
@@ -7220,7 +8010,7 @@ class SqlDatabase {
       final raw = (row['total'] as num?)?.toDouble() ?? 0.0;
       final total = net > 0 ? net : raw;
       final advance = (row['advance_payment'] as num?)?.toDouble() ?? 0.0;
-      
+
       final needed = total - advance;
       if (needed <= 0) continue;
 
@@ -7266,7 +8056,7 @@ class SqlDatabase {
       final purchaseId = row['id'] as int;
       final total = (row['total'] as num?)?.toDouble() ?? 0.0;
       final paid = (row['paid_amount'] as num?)?.toDouble() ?? 0.0;
-      
+
       final needed = total - paid;
       if (needed <= 0) continue;
 
@@ -7326,7 +8116,7 @@ class SqlDatabase {
           'Commandes',
           {
             'advance_payment': newAdvance,
-            'payment_status': newAdvance > 0 ? 'Partial' : 'Unpaid'
+            'payment_status': newAdvance > 0 ? 'Partial' : 'Unpaid',
           },
           where: 'id = ?',
           whereArgs: [orderId],
@@ -7376,11 +8166,19 @@ class SqlDatabase {
     }
   }
 
-  Future<void> deallocateWorkerPayment(int workerId, double amount, String createdAt) async {
+  Future<void> deallocateWorkerPayment(
+    int workerId,
+    double amount,
+    String createdAt,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return;
 
-    final workerRows = await myDb.query('Employees', where: 'id = ?', whereArgs: [workerId]);
+    final workerRows = await myDb.query(
+      'Employees',
+      where: 'id = ?',
+      whereArgs: [workerId],
+    );
     if (workerRows.isEmpty) return;
 
     final emp = workerRows.first;
@@ -7391,7 +8189,8 @@ class SqlDatabase {
 
     List<String> allKeys = [];
     if (workerUid.isNotEmpty) allKeys.add(workerUid);
-    if (workerId > 0 && !allKeys.contains(workerId.toString())) allKeys.add(workerId.toString());
+    if (workerId > 0 && !allKeys.contains(workerId.toString()))
+      allKeys.add(workerId.toString());
     if (email.isNotEmpty && !allKeys.contains(email)) allKeys.add(email);
 
     final placeholders = List.filled(allKeys.length, '?').join(',');
@@ -7456,12 +8255,25 @@ class SqlDatabase {
       'created_at': createdAt ?? DateTime.now().toIso8601String(),
     });
 
-    if (entityType == 'Client' && transactionType == 'Encaissement' && entityId != null && referenceId == null) {
+    if (entityType == 'Client' &&
+        transactionType == 'Encaissement' &&
+        entityId != null &&
+        referenceId == null) {
       await allocateClientPayment(entityId, amount);
-    } else if (entityType == 'Supplier' && transactionType == 'Décaissement' && entityId != null && referenceId == null) {
+    } else if (entityType == 'Supplier' &&
+        transactionType == 'Décaissement' &&
+        entityId != null &&
+        referenceId == null) {
       await allocateSupplierPayment(entityId, amount);
-    } else if (entityType == 'Worker' && transactionType == 'Décaissement' && entityId != null && referenceId == null) {
-      final workerRows = await myDb.query('Employees', where: 'id = ?', whereArgs: [entityId]);
+    } else if (entityType == 'Worker' &&
+        transactionType == 'Décaissement' &&
+        entityId != null &&
+        referenceId == null) {
+      final workerRows = await myDb.query(
+        'Employees',
+        where: 'id = ?',
+        whereArgs: [entityId],
+      );
       if (workerRows.isNotEmpty) {
         final workerUid = (workerRows.first['uid']?.toString() ?? '').isNotEmpty
             ? workerRows.first['uid'].toString()
@@ -7485,7 +8297,7 @@ class SqlDatabase {
         }
       }
     }
-    
+
     CloudSyncService().notifyChangeImmediate();
     return res;
   }
@@ -7506,19 +8318,23 @@ class SqlDatabase {
     final entityType = row['entity_type'] as String?;
     final entityId = row['entity_id'] as int?;
 
-    final res = await myDb.delete(
-      'Treasury',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final res = await myDb.delete('Treasury', where: 'id = ?', whereArgs: [id]);
 
     if (res > 0) {
-      if (entityType == 'Client' && type == 'Encaissement' && entityId != null) {
+      if (entityType == 'Client' &&
+          type == 'Encaissement' &&
+          entityId != null) {
         await deallocateClientPayment(entityId, amount);
-      } else if (entityType == 'Supplier' && type == 'Décaissement' && entityId != null) {
+      } else if (entityType == 'Supplier' &&
+          type == 'Décaissement' &&
+          entityId != null) {
         await deallocateSupplierPayment(entityId, amount);
       } else if (entityType == 'Worker' && entityId != null) {
-        await deallocateWorkerPayment(entityId, amount, row['created_at']?.toString() ?? '');
+        await deallocateWorkerPayment(
+          entityId,
+          amount,
+          row['created_at']?.toString() ?? '',
+        );
       }
       CloudSyncService().notifyChangeImmediate();
     }
@@ -7563,13 +8379,17 @@ class SqlDatabase {
 
     if (res > 0) {
       final delta = newAmount - oldAmount;
-      if (entityType == 'Client' && type == 'Encaissement' && entityId != null) {
+      if (entityType == 'Client' &&
+          type == 'Encaissement' &&
+          entityId != null) {
         if (delta > 0) {
           await allocateClientPayment(entityId, delta);
         } else if (delta < 0) {
           await deallocateClientPayment(entityId, -delta);
         }
-      } else if (entityType == 'Supplier' && type == 'Décaissement' && entityId != null) {
+      } else if (entityType == 'Supplier' &&
+          type == 'Décaissement' &&
+          entityId != null) {
         if (delta > 0) {
           await allocateSupplierPayment(entityId, delta);
         } else if (delta < 0) {
@@ -7598,15 +8418,18 @@ class SqlDatabase {
       ''',
       [clientId],
     );
-    final totalInvoices = (commandesRes.first['invoices'] as num?)?.toDouble() ?? 0.0;
-    final totalAdvances = (commandesRes.first['advances'] as num?)?.toDouble() ?? 0.0;
+    final totalInvoices =
+        (commandesRes.first['invoices'] as num?)?.toDouble() ?? 0.0;
+    final totalAdvances =
+        (commandesRes.first['advances'] as num?)?.toDouble() ?? 0.0;
 
     // إجمالي ما دُفع من خلال معاملات الخزينة المرتبطة بهذا الزبون
     final treasuryRes = await myDb.rawQuery(
       "SELECT COALESCE(SUM(amount), 0) as total FROM Treasury WHERE entity_type = 'Client' AND entity_id = ? AND transaction_type = 'Encaissement'",
       [clientId],
     );
-    final totalTreasuryPaid = (treasuryRes.first['total'] as num?)?.toDouble() ?? 0.0;
+    final totalTreasuryPaid =
+        (treasuryRes.first['total'] as num?)?.toDouble() ?? 0.0;
 
     // الرصيد = (فواتير) - (سلفة) - (مدفوعات خزينة). موجب = الزبون مدين للمحل
     return totalInvoices - totalAdvances - totalTreasuryPaid;
@@ -7678,54 +8501,43 @@ class SqlDatabase {
     final Map<String, dynamic> allData = {};
     if (myDb == null) return allData;
     await _ensureSyncSchema(myDb);
-    final List<String> tables = [
-      'Profile',
-      'Series',
-      'Sections',
-      'Client',
-      'Projects',
-      'Commandes',
-      'Commandes_details',
-      'Commandes_deliveries',
-      'Achats',
-      'Achat_items',
-      'Achat_Details',
-      'Suppliers',
-      'Employees',
-      'Colors',
-      'Accessories',
-      'Joints',
-      'Glass',
-      'GlassColorPrices',
-      'ShutterComponents',
-      'ShutterColorPrices',
-      'ShutterComponentColors',
-      'ShutterSqmPrices',
-      'ShutterBoxLimits',
-      'CaissonTunnelPrices',
-      'SeriesColorPrices',
-      'SectionColorPrices',
-      'AccessoryColorPrices',
-      'ProfileColors',
-      'KitBundles',
-      'KitBundleItems',
-      'KitItemRanges',
-      'KitItemVariants',
-      'Treasury',
-      'WorkerTransactions',
-      'WorkerAllocations',
-      'Locations',
-      'InventoryTransactions',
-      'CurrentStock',
-    ];
+    if (!await isDatabaseHealthy()) {
+      throw StateError(
+        'database image malformed (code 11): '
+        'قاعدة SQLite المحلية تالفة، وتم إيقاف الرفع لحماية النسخة السحابية.',
+      );
+    }
+
+    // Discover the real SQLite schema instead of maintaining a partial list.
+    // This automatically includes new business tables and, importantly,
+    // Caisses, attendance, daily jobs, measurements and table configuration.
+    final schemaRows = await myDb.rawQuery('''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name NOT LIKE 'sqlite_%'
+        AND name != 'android_metadata'
+      ORDER BY name
+    ''');
+    final tables = schemaRows
+        .map((row) => row['name']?.toString() ?? '')
+        .where(_isSafeSqlIdentifier)
+        .toList();
+
+    final failedTables = <String>[];
     for (final table in tables) {
       try {
         final rows = await myDb.query(table);
         allData[table] = rows;
       } catch (_) {
-        // If a table is still unavailable, do not upload an empty replacement
-        // that can wipe another device during restore.
+        failedTables.add(table);
       }
+    }
+    if (failedTables.isNotEmpty) {
+      throw StateError(
+        'تعذر قراءة جداول قاعدة البيانات التالية للنسخ السحابي: '
+        '${failedTables.join(', ')}',
+      );
     }
     return allData;
   }
@@ -7921,8 +8733,13 @@ class SqlDatabase {
   }
 
   Future<Set<String>> _tableColumns(DatabaseExecutor db, String table) async {
+    if (!_isSafeSqlIdentifier(table)) return <String>{};
     final info = await db.rawQuery('PRAGMA table_info($table)');
     return info.map((row) => row['name'].toString()).toSet();
+  }
+
+  static bool _isSafeSqlIdentifier(String value) {
+    return RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value);
   }
 
   dynamic _sanitizeImportValue(dynamic value) {
@@ -7951,15 +8768,21 @@ class SqlDatabase {
     return sanitized;
   }
 
-  Future<void> importAllData(Map<String, dynamic> data) async {
+  Future<void> importAllData(
+    Map<String, dynamic> data, {
+    bool replaceAllData = false,
+    bool mergeAllData = false,
+  }) async {
     Database? myDb = await db;
     if (myDb == null) return;
     final orderedTables = [
       'Profile',
       'Series',
       'Sections',
+      'SeriesTableConfig',
       'Client',
       'Projects',
+      'Measurements',
       'Commandes',
       'Commandes_details',
       'Commandes_deliveries',
@@ -7987,12 +8810,22 @@ class SqlDatabase {
       'KitBundleItems',
       'KitItemRanges',
       'KitItemVariants',
+      'Caisses',
       'Treasury',
       'WorkerTransactions',
       'WorkerAllocations',
+      'WorkerAttendance',
+      'WorkerDailyJobs',
       'Locations',
       'InventoryTransactions',
       'CurrentStock',
+    ];
+    final importTables = <String>[
+      ...orderedTables.where(data.containsKey),
+      ...data.keys.where(
+        (table) =>
+            !orderedTables.contains(table) && _isSafeSqlIdentifier(table),
+      ),
     ];
 
     // الجداول التي تحتوي على بيانات المستخدم الحساسة.
@@ -8009,9 +8842,13 @@ class SqlDatabase {
       'Achat_Details',
       'Suppliers',
       'Employees',
+      'Measurements',
+      'Caisses',
       'Treasury',
       'WorkerTransactions',
       'WorkerAllocations',
+      'WorkerAttendance',
+      'WorkerDailyJobs',
       'InventoryTransactions',
       'CurrentStock',
     };
@@ -8020,12 +8857,14 @@ class SqlDatabase {
       await txn.execute('PRAGMA foreign_keys = OFF');
       await _ensureSyncSchema(txn);
 
-      for (final table in orderedTables.where(data.containsKey)) {
+      for (final table in importTables) {
         final rows = data[table] as List<dynamic>? ?? [];
 
         // حماية: إذا كان الجدول حساساً والـ payload يعيده فارغاً،
         // احتفظ بالبيانات المحلية ولا تمسحها.
-        if (sensitiveTransactionalTables.contains(table) && rows.isEmpty) {
+        if (!replaceAllData &&
+            sensitiveTransactionalTables.contains(table) &&
+            rows.isEmpty) {
           print(
             'importAllData: Skipping wipe of "$table" — payload is empty, keeping local data.',
           );
@@ -8034,7 +8873,10 @@ class SqlDatabase {
 
         // 🛡️ حماية الجداول الحساسة (الصندوق، معاملات العمال، الإسنادات، الطلبيات، الزبائن، إلخ):
         // لا نمسح هذه الجداول محلياً بـ txn.delete(table) بل نعتمد التدميج الذكي (upsert) للحفاظ على المعاملات المحلية الجديدة
-        if (!sensitiveTransactionalTables.contains(table)) {
+        final shouldReplaceTable =
+            replaceAllData ||
+            (!mergeAllData && !sensitiveTransactionalTables.contains(table));
+        if (shouldReplaceTable) {
           try {
             await txn.delete(table);
           } catch (e) {
@@ -8097,7 +8939,9 @@ class SqlDatabase {
   Future<void> exportDatabaseFile(BuildContext context) async {
     try {
       if (kIsWeb) {
-        throw Exception('النسخ الاحتياطي المباشر لملفات قاعدة البيانات غير مدعوم على الويب. يرجى استخدام تصدير JSON.');
+        throw Exception(
+          'النسخ الاحتياطي المباشر لملفات قاعدة البيانات غير مدعوم على الويب. يرجى استخدام تصدير JSON.',
+        );
       }
       final dbPath = await getDatabaseFilePath();
       final dbFile = File(dbPath);
@@ -8114,7 +8958,10 @@ class SqlDatabase {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم تصدير ملف قاعدة البيانات بنجاح!', style: TextStyle(fontFamily: 'Cairo')),
+            content: Text(
+              'تم تصدير ملف قاعدة البيانات بنجاح!',
+              style: TextStyle(fontFamily: 'Cairo'),
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -8123,7 +8970,10 @@ class SqlDatabase {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('فشل التصدير: $e', style: const TextStyle(fontFamily: 'Cairo')),
+          content: Text(
+            'فشل التصدير: $e',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -8136,11 +8986,11 @@ class SqlDatabase {
       final prefs = await SharedPreferences.getInstance();
       final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final lastBackupDate = prefs.getString('last_auto_backup_date');
-      
+
       if (lastBackupDate == todayStr) {
         return;
       }
-      
+
       final dbPath = await getDatabaseFilePath();
       final dbFile = File(dbPath);
       if (!await dbFile.exists()) {
@@ -8191,7 +9041,9 @@ class SqlDatabase {
         final targetFile = File('$targetFolderPath/al_erp_backup.db');
         await dbFile.copy(targetFile.path);
         await prefs.setString('last_auto_backup_date', todayStr);
-        debugPrint('--- AutoBackup: Successfully exported to ${targetFile.path} ---');
+        debugPrint(
+          '--- AutoBackup: Successfully exported to ${targetFile.path} ---',
+        );
       }
     } catch (e) {
       debugPrint('--- AutoBackup: Failed to run auto daily backup: $e ---');
@@ -8201,7 +9053,9 @@ class SqlDatabase {
   Future<void> importDatabaseFile(BuildContext context) async {
     try {
       if (kIsWeb) {
-        throw Exception('استيراد ملف قاعدة البيانات المباشر غير مدعوم على الويب. يرجى استخدام استيراد JSON.');
+        throw Exception(
+          'استيراد ملف قاعدة البيانات المباشر غير مدعوم على الويب. يرجى استخدام استيراد JSON.',
+        );
       }
       final params = const OpenFileDialogParams();
       final filePath = await FlutterFileDialog.pickFile(params: params);
@@ -8217,7 +9071,10 @@ class SqlDatabase {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.', style: TextStyle(fontFamily: 'Cairo')),
+            content: Text(
+              'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
+              style: TextStyle(fontFamily: 'Cairo'),
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -8226,7 +9083,10 @@ class SqlDatabase {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('فشل الاستيراد: $e', style: const TextStyle(fontFamily: 'Cairo')),
+          content: Text(
+            'فشل الاستيراد: $e',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -8241,17 +9101,24 @@ class SqlDatabase {
       if (kIsWeb) {
         // web download helper using Uri data scheme
         // compiles fine on mobile too
-        final urlString = 'data:application/json;charset=utf-8,${Uri.encodeComponent(jsonStr)}';
-        
+        final urlString =
+            'data:application/json;charset=utf-8,${Uri.encodeComponent(jsonStr)}';
+
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('جاري بدء التحميل على المتصفح...', style: TextStyle(fontFamily: 'Cairo')),
+            content: Text(
+              'جاري بدء التحميل على المتصفح...',
+              style: TextStyle(fontFamily: 'Cairo'),
+            ),
             backgroundColor: Colors.blue,
           ),
         );
-        
-        await launchUrl(Uri.parse(urlString), mode: LaunchMode.externalApplication);
+
+        await launchUrl(
+          Uri.parse(urlString),
+          mode: LaunchMode.externalApplication,
+        );
       } else {
         final tempDir = await getTemporaryDirectory();
         final tempFile = File('${tempDir.path}/al_erp_backup.json');
@@ -8263,7 +9130,10 @@ class SqlDatabase {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('تم تصدير نسخة JSON الاحتياطية بنجاح!', style: TextStyle(fontFamily: 'Cairo')),
+              content: Text(
+                'تم تصدير نسخة JSON الاحتياطية بنجاح!',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
               backgroundColor: Colors.green,
             ),
           );
@@ -8273,7 +9143,10 @@ class SqlDatabase {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('فشل تصدير JSON: $e', style: const TextStyle(fontFamily: 'Cairo')),
+          content: Text(
+            'فشل تصدير JSON: $e',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -8295,7 +9168,10 @@ class SqlDatabase {
             if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('تم استيراد نسخة JSON الاحتياطية بنجاح! يرجى إعادة تشغيل التطبيق.', style: TextStyle(fontFamily: 'Cairo')),
+                content: Text(
+                  'تم استيراد نسخة JSON الاحتياطية بنجاح! يرجى إعادة تشغيل التطبيق.',
+                  style: TextStyle(fontFamily: 'Cairo'),
+                ),
                 backgroundColor: Colors.green,
               ),
             );
@@ -8308,7 +9184,10 @@ class SqlDatabase {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('فشل استيراد JSON: $e', style: const TextStyle(fontFamily: 'Cairo')),
+          content: Text(
+            'فشل استيراد JSON: $e',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -8398,7 +9277,8 @@ class SqlDatabase {
         if (row['created_at'] != null) {
           try {
             DateTime dt = DateTime.parse(row['created_at'].toString());
-            if (dt.isAfter(seventyTwoHoursAgo) || dt.isAtSameMomentAs(seventyTwoHoursAgo)) {
+            if (dt.isAfter(seventyTwoHoursAgo) ||
+                dt.isAtSameMomentAs(seventyTwoHoursAgo)) {
               cmdRecent++;
             }
           } catch (_) {}
@@ -8417,7 +9297,8 @@ class SqlDatabase {
         if (row['created_at'] != null) {
           try {
             DateTime dt = DateTime.parse(row['created_at'].toString());
-            if (dt.isAfter(seventyTwoHoursAgo) || dt.isAtSameMomentAs(seventyTwoHoursAgo)) {
+            if (dt.isAfter(seventyTwoHoursAgo) ||
+                dt.isAtSameMomentAs(seventyTwoHoursAgo)) {
               cliRecent++;
             }
           } catch (_) {}
@@ -8450,10 +9331,7 @@ class SqlDatabase {
   Future<Map<String, dynamic>> getOrderStatusStats() async {
     final database = await db;
     if (database == null) {
-      return {
-        'byStatus': <String, int>{},
-        'monthly': <String, int>{},
-      };
+      return {'byStatus': <String, int>{}, 'monthly': <String, int>{}};
     }
     try {
       final rows = await database.query('Commandes');
@@ -8500,7 +9378,8 @@ class SqlDatabase {
     // Query from ShutterComponents (where Lame/Glissiere/blade/track data actually lives)
     final items = await myDb.query(
       'ShutterComponents',
-      where: "component_type IN ('Lame', 'Glissiere', 'blade', 'track') AND (is_active = 1 OR is_active IS NULL)",
+      where:
+          "component_type IN ('Lame', 'Glissiere', 'blade', 'track') AND (is_active = 1 OR is_active IS NULL)",
     );
 
     List<String> lames = [];
@@ -8520,21 +9399,24 @@ class SqlDatabase {
     try {
       final accItems = await myDb.query(
         'Accessories',
-        where: "type IN ('Lame', 'Glissiere', 'blade', 'track') AND (is_active = 1 OR is_active IS NULL)",
+        where:
+            "type IN ('Lame', 'Glissiere', 'blade', 'track') AND (is_active = 1 OR is_active IS NULL)",
       );
       for (var item in accItems) {
         final name = _cleanEncoding(item['name'].toString());
         final type = item['type']?.toString() ?? '';
         if ((type == 'Lame' || type == 'blade') && !lames.contains(name)) {
           lames.add(name);
-        } else if ((type == 'Glissiere' || type == 'track') && !glissieres.contains(name)) {
+        } else if ((type == 'Glissiere' || type == 'track') &&
+            !glissieres.contains(name)) {
           glissieres.add(name);
         }
       }
     } catch (_) {}
 
     if (lames.isEmpty) lames = ['Lame Injectée', 'Lame Extrudée'];
-    if (glissieres.isEmpty) glissieres = ['Glissière 25', 'Glissière 120', 'Glissière 100'];
+    if (glissieres.isEmpty)
+      glissieres = ['Glissière 25', 'Glissière 120', 'Glissière 100'];
 
     return {'lames': lames, 'glissieres': glissieres};
   }
@@ -8606,7 +9488,8 @@ class SqlDatabase {
 
     final stock = await myDb.query(
       'CurrentStock',
-      where: 'item_type = ? AND item_id = ? AND (color_id = ? OR (color_id IS NULL AND ? IS NULL)) AND location_id = ?',
+      where:
+          'item_type = ? AND item_id = ? AND (color_id = ? OR (color_id IS NULL AND ? IS NULL)) AND location_id = ?',
       whereArgs: [itemType, itemId, colorId, colorId, locationId],
     );
 
@@ -8624,10 +9507,7 @@ class SqlDatabase {
     } else {
       res = await myDb.update(
         'CurrentStock',
-        {
-          'min_qty': minQty,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
+        {'min_qty': minQty, 'updated_at': DateTime.now().toIso8601String()},
         where: 'id = ?',
         whereArgs: [stock.first['id']],
       );
@@ -9312,11 +10192,7 @@ class SqlDatabase {
     if (database == null) return;
     await database.update(
       'KitBundles',
-      {
-        'name': name,
-        'description': description,
-        'per_leaf': perLeaf ? 1 : 0,
-      },
+      {'name': name, 'description': description, 'per_leaf': perLeaf ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -9353,7 +10229,7 @@ class SqlDatabase {
     required int kitId,
     required String componentType,
     required String qtyMode, // 'fixed' | 'by_range' | 'by_variant'
-    String? dimension,       // 'leaf_height' | 'leaf_width' | null
+    String? dimension, // 'leaf_height' | 'leaf_width' | null
     double baseQty = 1,
     String unit = 'قطعة',
     int sortOrder = 0,
@@ -9548,11 +10424,7 @@ class SqlDatabase {
   Future<void> deleteKitItemVariant(int id) async {
     final database = await db;
     if (database == null) return;
-    await database.delete(
-      'KitItemVariants',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await database.delete('KitItemVariants', where: 'id = ?', whereArgs: [id]);
   }
 
   /// قراءة كل مركبات Kit مع نطاقاتها ومتغيراتها — للحساب في BOM
@@ -9567,11 +10439,7 @@ class SqlDatabase {
       final itemId = item['id'] as int;
       final ranges = await readKitItemRanges(itemId);
       final variants = await readKitItemVariants(itemId);
-      result.add({
-        ...item,
-        'ranges': ranges,
-        'variants': variants,
-      });
+      result.add({...item, 'ranges': ranges, 'variants': variants});
     }
     return result;
   }
@@ -9592,7 +10460,11 @@ class SqlDatabase {
     ''');
   }
 
-  Future<int> insertShutterBoxLimit(int boxSize, int bladeId, double maxHeight) async {
+  Future<int> insertShutterBoxLimit(
+    int boxSize,
+    int bladeId,
+    double maxHeight,
+  ) async {
     final myDb = await db;
     if (myDb == null) return -1;
     final res = await myDb.insert('ShutterBoxLimits', {
@@ -9604,16 +10476,17 @@ class SqlDatabase {
     return res;
   }
 
-  Future<int> updateShutterBoxLimit(int id, int boxSize, int bladeId, double maxHeight) async {
+  Future<int> updateShutterBoxLimit(
+    int id,
+    int boxSize,
+    int bladeId,
+    double maxHeight,
+  ) async {
     final myDb = await db;
     if (myDb == null) return -1;
     final res = await myDb.update(
       'ShutterBoxLimits',
-      {
-        'box_size': boxSize,
-        'blade_id': bladeId,
-        'max_height': maxHeight,
-      },
+      {'box_size': boxSize, 'blade_id': bladeId, 'max_height': maxHeight},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -9665,14 +10538,17 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return;
-    await myDb.execute('''
+    await myDb.execute(
+      '''
       INSERT INTO CaissonTunnelPrices (color_id, profile_price_per_bar, bottom_cover_price_per_bar, price_per_meter)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(color_id) DO UPDATE SET
         profile_price_per_bar = excluded.profile_price_per_bar,
         bottom_cover_price_per_bar = excluded.bottom_cover_price_per_bar,
         price_per_meter = excluded.price_per_meter
-    ''', [colorId, profilePricePerBar, bottomCoverPricePerBar, pricePerMeter]);
+    ''',
+      [colorId, profilePricePerBar, bottomCoverPricePerBar, pricePerMeter],
+    );
     CloudSyncService().notifyCatalogChange();
   }
 
@@ -9721,7 +10597,8 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return;
-    await myDb.execute('''
+    await myDb.execute(
+      '''
       INSERT INTO SeriesTableConfig (
         series_id, allowed_section_types, allowed_accessory_ids, allowed_accessory_types, excluded_accessory_ids,
         sash_w_deduction_2, sash_w_deduction_3, sash_w_deduction_4, sash_overlap_val, glass_w_deduction, custom_formula_notes, updated_at
@@ -9738,21 +10615,22 @@ class SqlDatabase {
         glass_w_deduction = excluded.glass_w_deduction,
         custom_formula_notes = excluded.custom_formula_notes,
         updated_at = excluded.updated_at
-    ''', [
-      seriesId,
-      allowedSectionTypes,
-      allowedAccessoryIds,
-      allowedAccessoryTypes,
-      excludedAccessoryIds,
-      sashWDeduction2,
-      sashWDeduction3,
-      sashWDeduction4,
-      sashOverlapVal,
-      glassWDeduction,
-      customFormulaNotes,
-      DateTime.now().toIso8601String(),
-    ]);
+    ''',
+      [
+        seriesId,
+        allowedSectionTypes,
+        allowedAccessoryIds,
+        allowedAccessoryTypes,
+        excludedAccessoryIds,
+        sashWDeduction2,
+        sashWDeduction3,
+        sashWDeduction4,
+        sashOverlapVal,
+        glassWDeduction,
+        customFormulaNotes,
+        DateTime.now().toIso8601String(),
+      ],
+    );
     CloudSyncService().notifyChange();
   }
 }
-
