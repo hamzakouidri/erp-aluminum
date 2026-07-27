@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../sql_database.dart';
+import '../services/cloud_sync_service.dart';
 import 'choose_systems.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -18,6 +19,7 @@ import 'dart:convert';
 import 'order_table_edit_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
+import 'package:database_data/Screen/moustiquaire_screen.dart';
 
 class CommandePage extends StatefulWidget {
   final SqlDatabase db;
@@ -593,6 +595,11 @@ class _CommandePageState extends State<CommandePage> {
           volet: p.hasShutter ? 'Yes' : 'No',
         );
       }
+
+      // The order and all of its lines now exist locally. Trigger one
+      // immediate workshop sync instead of waiting for the delayed backup
+      // scheduled by each individual insert above.
+      CloudSyncService().notifyChangeImmediate();
 
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
@@ -1698,8 +1705,18 @@ class _CommandePageState extends State<CommandePage> {
         (p.manualNameOverride?.contains('Caisson Tunnel') == true) ||
         (p.manualNameOverride?.contains('Caisson Tunnel') == true);
 
+    final bool isMoustiquaire = p.isMoustiquaire ||
+        (p.manualNameOverride?.contains('Moustiquaire') == true) ||
+        (p.manualNameOverride?.contains('موستيكير') == true) ||
+        (p.manualNameOverride?.contains('ناموسية') == true);
+
     if (isCaisson) {
       p.isCaissonTunnel = true;
+      p.isReplaced = false;
+    }
+
+    if (isMoustiquaire) {
+      p.isMoustiquaire = true;
       p.isReplaced = false;
     }
 
@@ -1840,6 +1857,37 @@ class _CommandePageState extends State<CommandePage> {
                                         p.caissonPayload = result;
                                         if (suggestedPrice > 0 && p.manualPriceOverride == null) {
                                           p.manualPriceOverride = suggestedPrice;
+                                        }
+                                        _highlightedProduct = p;
+                                      });
+                                      _scrollToHighlightedProduct();
+                                    }
+                                  }
+                                  return;
+                                }
+
+                                if (p.isMoustiquaire || (p.manualNameOverride?.contains('Moustiquaire') == true) || (p.manualNameOverride?.contains('موستيكير') == true)) {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => MoustiquaireScreen(initialPayload: p.moustiquairePayload),
+                                    ),
+                                  );
+                                  if (result != null && result is Map<String, dynamic> && mounted) {
+                                    final double grandTotalArea = (result['grandTotalAreaSqm'] as num? ?? 0.0).toDouble();
+                                    final double grandTotalPrice = (result['grandTotalPrice'] as num? ?? 0.0).toDouble();
+                                    final int grandTotalQty = (result['totalQuantity'] as int? ?? 1);
+                                    final String subType = (result['subType'] as String? ?? 'موستيكير');
+
+                                    if (mounted) {
+                                      setState(() {
+                                        p.isMoustiquaire = true;
+                                        p.isReplaced = false;
+                                        p.manualNameOverride = 'Moustiquaire ($subType)';
+                                        p.description = 'النوع: $subType | المساحة: ${grandTotalArea.toStringAsFixed(2)} m² | العدد: $grandTotalQty';
+                                        p.moustiquairePayload = result;
+                                        if (grandTotalPrice > 0) {
+                                          p.manualPriceOverride = grandTotalPrice;
                                         }
                                         _highlightedProduct = p;
                                       });
@@ -2065,21 +2113,28 @@ class _CommandePageState extends State<CommandePage> {
                                     errorBuilder: (context, error, stackTrace) =>
                                         Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
                                   )
-                                : IgnorePointer(
-                                    child: FittedBox(
-                                      fit: BoxFit.contain,
-                                      child: Opacity(
-                                        opacity: p.isReplaced ? 0.5 : 1.0,
-                                        child: CustomPaint(
-                                          size: Size(
-                                            p.width.toDouble(),
-                                            p.height.toDouble(),
+                                : isMoustiquaire
+                                    ? Image.asset(
+                                        'Icon/media.webp',
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (context, error, stackTrace) =>
+                                            Image.asset('assets/Icon/media.webp', fit: BoxFit.contain),
+                                      )
+                                    : IgnorePointer(
+                                        child: FittedBox(
+                                          fit: BoxFit.contain,
+                                          child: Opacity(
+                                            opacity: p.isReplaced ? 0.5 : 1.0,
+                                            child: CustomPaint(
+                                              size: Size(
+                                                p.width.toDouble(),
+                                                p.height.toDouble(),
+                                              ),
+                                              painter: WindowPainter(model: p),
+                                            ),
                                           ),
-                                          painter: WindowPainter(model: p),
                                         ),
                                       ),
-                                    ),
-                                  ),
                           ),
                         ],
                       ),

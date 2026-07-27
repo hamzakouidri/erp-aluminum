@@ -223,6 +223,54 @@ class AluminumProfileSystem {
   }
 }
 
+/// Series type is the source of truth for the drawing mode. Profile names are
+/// commercial labels (for example, Brolex), so they must not decide whether a
+/// series belongs to the sliding or opening drawing.
+bool isSlidingSeriesForDrawing(AluminumSeries series) {
+  final value = '${series.type} ${series.name}'.toLowerCase().trim();
+  return value.contains('couliss') ||
+      value.contains('sliding') ||
+      value.contains('منزلق') ||
+      value.contains('جرار') ||
+      value.contains('كوليس');
+}
+
+bool isOpeningSeriesForDrawing(
+  AluminumSeries series,
+  AluminumProfileSystem profile,
+) {
+  final value = '${series.type} ${series.name}'.toLowerCase().trim();
+  final isOpening = value.contains('frappe') ||
+      value.contains('battant') ||
+      value.contains('ouvrant') ||
+      value.contains('فتح') ||
+      value.contains('فرنسي');
+  if (isOpening) return true;
+
+  // Legacy PVC catalogues can have an unlabeled opening series. Treat it as
+  // opening only when it is not explicitly a sliding series.
+  return profile.type.toLowerCase().contains('pvc') &&
+      !isSlidingSeriesForDrawing(series);
+}
+
+bool seriesMatchesDrawingMode(
+  AluminumSeries series,
+  AluminumProfileSystem profile,
+  String mode,
+) {
+  switch (mode) {
+    case 'sliding':
+      return isSlidingSeriesForDrawing(series);
+    case 'french':
+      return isOpeningSeriesForDrawing(series, profile);
+    case 'mixed':
+      return isSlidingSeriesForDrawing(series) ||
+          isOpeningSeriesForDrawing(series, profile);
+    default:
+      return true;
+  }
+}
+
 class InnerDimensionHit {
   final String zoneId;
   final bool isWidth;
@@ -1459,6 +1507,8 @@ class WindowModel extends ChangeNotifier {
   bool hasShutter = false;
   bool isCaissonTunnel = false;
   Map<String, dynamic>? caissonPayload;
+  bool isMoustiquaire = false;
+  Map<String, dynamic>? moustiquairePayload;
   bool showBottomWall = true;
   bool showWall = false;
   String wallColor = 'red';
@@ -1726,6 +1776,25 @@ class WindowModel extends ChangeNotifier {
   String? systemMode;
   List<Map<String, dynamic>> availableColors = [];
   List<Map<String, dynamic>> availableAccessoryColors = [];
+
+  Future<void> _loadColorsForProfile(int profileId) async {
+    final previousColorId = _selectedDbColor?['id'];
+    availableColors = await db.getColorsForProfile(profileId);
+
+    Map<String, dynamic>? selectedColor;
+    for (final color in availableColors) {
+      if (color['id'] == previousColorId) {
+        selectedColor = color;
+        break;
+      }
+    }
+    selectedColor ??= availableColors.isNotEmpty ? availableColors.first : null;
+
+    _selectedDbColor = selectedColor;
+    for (final zone in zones) {
+      zone.selectedDbColor = selectedColor;
+    }
+  }
 
 
   WindowModel({
@@ -2356,7 +2425,7 @@ class WindowModel extends ChangeNotifier {
       } catch (_) {}
 
       final profilesData = await db.readProfile();
-      availableColors = await db.readColors();
+      availableColors = [];
       availableAccessoryColors = await db.readAccessoryColors();
       availableSystems.clear();
       bool foundValidSeries = false;
@@ -2440,6 +2509,11 @@ class WindowModel extends ChangeNotifier {
             isMatchingMode = true;
           }
 
+          // Classify by the series type, never by the profile's commercial
+          // name. This preserves the strict separation between opening and
+          // sliding series while applying it to every active profile.
+          isMatchingMode =
+              seriesMatchesDrawingMode(series, system, systemMode);
           if (isMatchingMode) system.series.add(series);
         }
         if (system.series.isNotEmpty) availableSystems.add(system);
@@ -2707,7 +2781,17 @@ class WindowModel extends ChangeNotifier {
           }
         }
       }
-      if (!foundValidSeries) activeSeries = null;
+      if (!foundValidSeries && activeSeries != null) {
+        foundValidSeries = true;
+      }
+      if (!foundValidSeries) {
+        activeSeries = null;
+        availableColors = [];
+        _selectedDbColor = null;
+        for (final zone in zones) {
+          zone.selectedDbColor = null;
+        }
+      }
       notifyListeners();
     } catch (e) {
       debugPrint("Error loading catalog data: $e");
@@ -3800,22 +3884,8 @@ class WindowModel extends ChangeNotifier {
             !covers.any((cover) => cover.id == selectedSideCover!.id))) {
       selectedSideCover = covers.first;
     }
-    availableColors = await db.getColorsForProfile(series.profileId);
+    await _loadColorsForProfile(series.profileId);
     availableAccessoryColors = await db.readAccessoryColors();
-    if (selectedDbColor != null) {
-      bool stillExists = false;
-      for (var c in availableColors) {
-        if (c['id'] == selectedDbColor!['id']) {
-          stillExists = true;
-          break;
-        }
-      }
-      if (!stillExists) {
-        selectedDbColor = availableColors.isNotEmpty
-            ? availableColors.first
-            : null;
-      }
-    }
     
     // فلترة أي اكسسوارات متبقية تنتمي إلى سلسلة أخرى
     if (seriesChanged && d != null) {
@@ -3973,6 +4043,7 @@ class WindowModel extends ChangeNotifier {
       componentOverrides['الشيكان (Chicane)'] = rMap;
     }
 
+    await _loadColorsForProfile(series.profileId);
     final d = await db.db;
     if (d != null) {
       await _loadAccessoryDefaults(d, series.id);

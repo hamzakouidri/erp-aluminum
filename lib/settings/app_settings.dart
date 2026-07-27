@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../sql_database.dart';
 
 bool get isAdmin {
   final user = FirebaseAuth.instance.currentUser;
@@ -28,7 +27,7 @@ class AppSettingsProvider extends ChangeNotifier {
   String _geminiApiKey =
       'AQ.Ab8RN6K0VzsqO944GLUZOKqevI4ncAbuewu7Cx8pEUg3O-xVaA';
 
-  String _userRole = 'manager';
+  String _userRole = 'worker';
   String _workshopCode = '';
   String _userDisplayName = 'مدير الورشة';
   Map<String, dynamic> _workerPermissions = {};
@@ -97,7 +96,9 @@ class AppSettingsProvider extends ChangeNotifier {
         _userRole = 'manager';
         await prefs.setString('user_role', 'manager');
       } else {
-        _userRole = prefs.getString('user_role') ?? 'worker';
+        // Never grant rights from a stale role stored on this device. The
+        // signed-in user's Firestore document below is the source of truth.
+        _userRole = 'worker';
       }
 
       // 🔄 استماع فوري ودائم لتعديلات الصلاحيات والدور من السحابة لجميع الحسابات
@@ -113,40 +114,22 @@ class AppSettingsProvider extends ChangeNotifier {
             _userRole = data['role'].toString();
             prefs.setString('user_role', _userRole);
           }
+          // Firestore is the authority for permissions. A worker's local
+          // database can be older than the change made by the manager.
+          Map<String, dynamic> cloudPermissions = {};
           if (data['permissions_json'] is String && (data['permissions_json'] as String).isNotEmpty) {
             try {
-              _workerPermissions = jsonDecode(data['permissions_json']);
+              final decoded = jsonDecode(data['permissions_json']);
+              if (decoded is Map) {
+                cloudPermissions = Map<String, dynamic>.from(decoded);
+              }
             } catch (_) {}
           } else if (data['permissions'] is Map) {
-            _workerPermissions = Map<String, dynamic>.from(data['permissions']);
+            cloudPermissions = Map<String, dynamic>.from(data['permissions']);
           }
+          _workerPermissions = cloudPermissions;
           notifyListeners();
         }
-      });
-
-      // قراءة احتياطية من قاعدة البيانات المحلية
-      final db = SqlDatabase();
-      db.readEmployees().then((employees) {
-        try {
-          final cleanEmail = (user.email ?? '').trim().toLowerCase();
-          final me = employees.firstWhere((e) =>
-              (user.uid.isNotEmpty && e['uid'] == user.uid) ||
-              (cleanEmail.isNotEmpty && e['email'] != null && e['email'].toString().trim().toLowerCase() == cleanEmail));
-
-          if (user.email != 'kouidrihamza45@gmail.com' && me['job_role'] != null) {
-            final jRole = me['job_role'].toString().toLowerCase();
-            if (jRole.contains('نائب') || jRole.contains('مدير') || jRole.contains('co_manager')) {
-              _userRole = 'co_manager';
-            } else {
-              _userRole = 'worker';
-            }
-            prefs.setString('user_role', _userRole);
-          }
-          if (me['permissions_json'] != null) {
-            _workerPermissions = jsonDecode(me['permissions_json']);
-          }
-          notifyListeners();
-        } catch (_) {}
       });
     }
     notifyListeners();
@@ -162,7 +145,7 @@ class AppSettingsProvider extends ChangeNotifier {
     return false;
   }
 
-  bool _isPermissionTrueOrDefault(dynamic val, {bool defaultValue = true}) {
+  bool _isPermissionTrueOrDefault(dynamic val, {bool defaultValue = false}) {
     if (val == null) return defaultValue;
     if (val == true || val == 1) return true;
     if (val == false || val == 0) return false;
@@ -178,7 +161,7 @@ class AppSettingsProvider extends ChangeNotifier {
     if (isManager) return true;
     if (!canViewMyAccreditations()) return false;
     if (!_workerPermissions.containsKey(key) || _workerPermissions[key] == null) {
-      return true;
+      return false;
     }
     return _isPermissionTrueOrDefault(_workerPermissions[key]);
   }

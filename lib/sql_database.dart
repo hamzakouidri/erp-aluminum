@@ -1206,7 +1206,6 @@ class SqlDatabase {
         UNIQUE(blade_type, color_id)
       )
     ''');
-    await _ensureShutterComponentSeeds(db);
   }
 
   Future<void> _ensureShutterComponentSeeds(DatabaseExecutor db) async {
@@ -1533,23 +1532,6 @@ class SqlDatabase {
         )
       ''');
 
-      final List<Map<String, dynamic>> shutterSeeds = [
-        {
-          'name': 'ستار أبيض',
-          'type': 'Lame',
-          'price': 8000.0,
-          'material_type': 'Aluminium',
-        },
-        {
-          'name': 'ستار خشبي',
-          'type': 'Lame',
-          'price': 12000.0,
-          'material_type': 'Aluminium',
-        },
-      ];
-      for (var seed in shutterSeeds) {
-        await db.insert('ShutterComponents', seed);
-      }
     }
     if (oldVersion < 6) {
       try {
@@ -2315,24 +2297,6 @@ class SqlDatabase {
     )
     ''');
 
-    final List<Map<String, dynamic>> initialShutters = [
-      {
-        'name': 'ستار أبيض',
-        'component_type': 'Lame',
-        'price': 8000.0,
-        'unit': 'sqm',
-      },
-      {
-        'name': 'ستار بني/خشبي',
-        'component_type': 'Lame',
-        'price': 12000.0,
-        'unit': 'sqm',
-      },
-    ];
-    for (var shutter in initialShutters) {
-      await db.insert('ShutterComponents', shutter);
-    }
-
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Suppliers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2883,7 +2847,7 @@ class SqlDatabase {
       'INSERT INTO Client (firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, now, now],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -2920,14 +2884,14 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
   Future<int> deleteClient(int id) async {
     Database? myDb = await db;
     var res = await myDb!.rawDelete('DELETE FROM Client WHERE id = ?', [id]);
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -2992,7 +2956,7 @@ class SqlDatabase {
       'INSERT INTO Projects (name, client_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
       [name, clientId, description, now, now],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -3009,7 +2973,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -3017,7 +2981,7 @@ class SqlDatabase {
     Database? myDb = await db;
     await myDb!.rawUpdate('UPDATE Commandes SET project_id = NULL WHERE project_id = ?', [id]);
     var res = await myDb.rawDelete('DELETE FROM Projects WHERE id = ?', [id]);
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -6285,17 +6249,11 @@ class SqlDatabase {
   //////////////////////////////////// Colors //////////////////////////////////////
   Future<List<Map<String, dynamic>>> readColors() async {
     Database? myDb = await db;
-    var result = await myDb!.query('Colors', where: 'is_active = 1');
-    if (result.isEmpty) {
-      await _insertDefaultColors(myDb);
-      result = await myDb.query('Colors', where: 'is_active = 1');
-    }
-
-    // Clean up any existing duplicates silently
-    await cleanDuplicateColors();
-    result = await myDb.query('Colors');
-
-    return result;
+    return myDb!.query(
+      'Colors',
+      where: 'is_active = 1 OR is_active IS NULL',
+      orderBy: 'name COLLATE NOCASE ASC',
+    );
   }
 
   Future<List<Map<String, dynamic>>> readAccessoryColors() async {
@@ -6498,7 +6456,7 @@ class SqlDatabase {
       'type': type,
       'price': price,
     });
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6516,7 +6474,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6528,7 +6486,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6540,7 +6498,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6556,33 +6514,97 @@ class SqlDatabase {
 
   Future<void> setProfilesForColor(int colorId, List<int> profileIds) async {
     Database? myDb = await db;
-    await myDb!.delete(
-      'ProfileColors',
-      where: 'color_id = ?',
-      whereArgs: [colorId],
-    );
-    for (int profileId in profileIds) {
-      await myDb.insert('ProfileColors', {
-        'profile_id': profileId,
-        'color_id': colorId,
-      });
+    await myDb!.transaction((txn) async {
+      await txn.delete(
+        'ProfileColors',
+        where: 'color_id = ?',
+        whereArgs: [colorId],
+      );
+      for (int profileId in profileIds) {
+        await txn.insert('ProfileColors', {
+          'profile_id': profileId,
+          'color_id': colorId,
+        });
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<void> setColorForProfile({
+    required int profileId,
+    required int colorId,
+    required bool enabled,
+  }) async {
+    final myDb = await db;
+    if (enabled) {
+      await myDb!.insert(
+        'ProfileColors',
+        {'profile_id': profileId, 'color_id': colorId},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    } else {
+      await myDb!.delete(
+        'ProfileColors',
+        where: 'profile_id = ? AND color_id = ?',
+        whereArgs: [profileId, colorId],
+      );
     }
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<void> setShutterColorForComponent({
+    required int shutterComponentId,
+    required int colorId,
+    required bool enabled,
+    double price = 0.0,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+
+    await myDb.transaction((txn) async {
+      if (enabled) {
+        await txn.insert(
+          'ShutterColorPrices',
+          {
+            'shutter_component_id': shutterComponentId,
+            'color_id': colorId,
+            'price': price,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        await txn.insert(
+          'ShutterComponentColors',
+          {
+            'shutter_component_id': shutterComponentId,
+            'color_id': colorId,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      } else {
+        await txn.delete(
+          'ShutterColorPrices',
+          where: 'shutter_component_id = ? AND color_id = ?',
+          whereArgs: [shutterComponentId, colorId],
+        );
+        await txn.delete(
+          'ShutterComponentColors',
+          where: 'shutter_component_id = ? AND color_id = ?',
+          whereArgs: [shutterComponentId, colorId],
+        );
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
   }
 
   Future<List<Map<String, dynamic>>> getColorsForProfile(int profileId) async {
     Database? myDb = await db;
-
-    var all = await myDb!.query('Colors');
-    if (all.isEmpty) {
-      await _insertDefaultColors(myDb);
-    }
-
-    return await myDb.rawQuery(
+    return myDb!.rawQuery(
       '''
-      SELECT c.* FROM Colors c
+      SELECT DISTINCT c.* FROM Colors c
       INNER JOIN ProfileColors pc ON c.id = pc.color_id
-      WHERE pc.profile_id = ? AND c.is_active = 1
-      GROUP BY c.id
+      WHERE pc.profile_id = ?
+        AND (c.is_active = 1 OR c.is_active IS NULL)
+      ORDER BY c.name COLLATE NOCASE ASC
     ''',
       [profileId],
     );
@@ -6895,7 +6917,7 @@ class SqlDatabase {
       'motor_diameter': cleanMotorDiameter,
       'cap_thickness': capThickness,
     });
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6938,7 +6960,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6950,7 +6972,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6961,7 +6983,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -6973,7 +6995,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -7007,7 +7029,7 @@ class SqlDatabase {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -7019,7 +7041,7 @@ class SqlDatabase {
       where: 'blade_type = ? AND color_id = ?',
       whereArgs: [bladeType, colorId],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -7680,6 +7702,7 @@ class SqlDatabase {
       'ShutterComponentColors',
       'ShutterSqmPrices',
       'ShutterBoxLimits',
+      'CaissonTunnelPrices',
       'SeriesColorPrices',
       'SectionColorPrices',
       'AccessoryColorPrices',
@@ -7955,6 +7978,7 @@ class SqlDatabase {
       'ShutterComponentColors',
       'ShutterSqmPrices',
       'ShutterBoxLimits',
+      'CaissonTunnelPrices',
       'SeriesColorPrices',
       'SectionColorPrices',
       'AccessoryColorPrices',
@@ -9576,7 +9600,7 @@ class SqlDatabase {
       'blade_id': bladeId,
       'max_height': maxHeight,
     });
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -9593,7 +9617,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -9605,7 +9629,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -9649,7 +9673,7 @@ class SqlDatabase {
         bottom_cover_price_per_bar = excluded.bottom_cover_price_per_bar,
         price_per_meter = excluded.price_per_meter
     ''', [colorId, profilePricePerBar, bottomCoverPricePerBar, pricePerMeter]);
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
   }
 
   Future<int> deleteCaissonTunnelPrice(int id) async {
@@ -9660,7 +9684,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 

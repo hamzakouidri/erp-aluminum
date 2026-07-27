@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -414,12 +415,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           }).length;
         } catch (_) {}
 
+        final defaultPerms = {
+          'view_clients': true,
+          'create_clients': false,
+          'view_orders': true,
+          'create_orders': false,
+          'view_client_details': true,
+          'view_order_details': true,
+          'view_my_tasks': true,
+          'view_my_accreditations': true,
+          'isBlocked': false,
+        };
+
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
           'email': _emailController.text.trim(),
           'role': 'worker',
           'workshopId': targetWorkshopId,
           'workshopName': workshopNameForWorker,
           'displayName': _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'العامل رقم ${currentWorkerCount + 1}',
+          'permissions': defaultPerms,
+          'permissions_json': jsonEncode(defaultPerms),
           'createdAt': FieldValue.serverTimestamp(),
         });
       } else {
@@ -685,6 +700,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             }
           }
 
+          final defaultPerms = {
+            'view_clients': true,
+            'create_clients': false,
+            'view_orders': true,
+            'create_orders': false,
+            'view_client_details': true,
+            'view_order_details': true,
+            'view_my_tasks': true,
+            'view_my_accreditations': true,
+            'isBlocked': false,
+          };
+
           // Create Worker User
           await FirebaseFirestore.instance.collection('users').doc(uid).set({
             'email': email,
@@ -692,6 +719,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             'workshopId': targetWorkshopId,
             'workshopName': workshopNameForWorker,
             'displayName': user.displayName ?? 'العامل رقم ${currentWorkers + 1}',
+            'permissions': defaultPerms,
+            'permissions_json': jsonEncode(defaultPerms),
             'createdAt': FieldValue.serverTimestamp(),
           });
         } else {

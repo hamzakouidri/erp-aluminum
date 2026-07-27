@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/sql_database.dart';
 
@@ -21,12 +22,34 @@ class CloudSyncService {
 
   String _deviceId = '';
   Timer? _debounceTimer;
+  Timer? _backupRetryTimer;
+  Timer? _catalogDebounceTimer;
+  Timer? _catalogRetryTimer;
+  Timer? _realtimeRetryTimer;
+  Timer? _realtimeHealthTimer;
+  Timer? _pendingTransactionUploadTimer;
   StreamSubscription<DocumentSnapshot>? _listener;
+  StreamSubscription<DocumentSnapshot>? _catalogListener;
   StreamSubscription<QuerySnapshot>? _statusListener;
   StreamSubscription<QuerySnapshot>? _orderStatusListener;
   StreamSubscription<QuerySnapshot>? _measurementsListener;
   StreamSubscription<QuerySnapshot>? _deletionsListener; // ⚡ لحدف الإسنادات فورياً على جميع الأجهزة
-  bool _isRestoring = false;
+  int _restoreDepth = 0;
+  bool _refreshQueuedAfterRestore = false;
+  bool _localSyncQueuedAfterRestore = false;
+  bool get _isRestoring => _restoreDepth > 0;
+  bool _isSilentBackupRunning = false;
+  bool _silentBackupQueued = false;
+  bool _isCheckingCloudChanges = false;
+  String? _lastHandledBackupFingerprint;
+  String? _lastHandledCatalogFingerprint;
+  Future<void>? _activeBackup;
+  Future<void>? _activeCatalogBackup;
+  bool _catalogBackupQueued = false;
+  bool _hasPendingLocalCatalogChanges = false;
+  int _catalogChangeGeneration = 0;
+  bool _hasPendingTransactionalChanges = false;
+  int _transactionChangeGeneration = 0;
 
   final StreamController<String> _dbUpdateController = StreamController<String>.broadcast();
   Stream<String> get dbUpdateStream => _dbUpdateController.stream;
@@ -36,7 +59,155 @@ class CloudSyncService {
 
   String? _workshopId;
   String? get workshopId => _workshopId;
+  String lastBackupUploadSummary = '';
+  String lastCatalogUploadSummary = '';
   String lastRestoreSummary = 'لم يتم الاسترجاع بعد';
+
+  DocumentReference<Map<String, dynamic>> _catalogDocument() {
+    // Product definitions (colours, profiles and shutter components) are a
+    // single shared catalogue. They must not be split between workshops.
+    return _firestore.collection('global_catalog').doc('latest');
+  }
+
+  bool _canPublishGlobalCatalog(String role) {
+    // `admin` is the general manager role. It is already treated as a
+    // manager by AppSettings, so the catalogue service must honour it too.
+    return role == 'manager' || role == 'admin';
+  }
+
+  void _markCatalogDirty() {
+    _hasPendingLocalCatalogChanges = true;
+    _catalogChangeGeneration++;
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setBool('has_pending_catalog_changes', true))
+        .catchError((error) {
+      print('Failed to persist pending catalog change: $error');
+    });
+  }
+
+  Future<bool> _hasUnpublishedCatalogChanges() async {
+    if (_hasPendingLocalCatalogChanges) return true;
+    final prefs = await SharedPreferences.getInstance();
+    _hasPendingLocalCatalogChanges =
+        prefs.getBool('has_pending_catalog_changes') ?? false;
+    return _hasPendingLocalCatalogChanges;
+  }
+
+  Future<void> _markCatalogUploadConfirmed(int uploadedGeneration) async {
+    // A newer colour/profile edit occurred while this upload was in flight.
+    // It must remain dirty so the next queued upload includes it.
+    if (_catalogChangeGeneration != uploadedGeneration) return;
+    _hasPendingLocalCatalogChanges = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('has_pending_catalog_changes', false);
+  }
+
+  String _transactionPendingKey(String workshopId) =>
+      'has_pending_transaction_changes_$workshopId';
+
+  Future<void> _markTransactionalChangesPending(
+    SharedPreferences prefs,
+  ) async {
+    _hasPendingTransactionalChanges = true;
+    _transactionChangeGeneration++;
+    final workshopId = _workshopId ?? prefs.getString('workshop_code');
+    if (workshopId == null || workshopId.isEmpty) {
+      // This can happen only during the first seconds after login. Keep a
+      // temporary marker instead of losing a worker's first change.
+      await prefs.setBool('has_pending_transaction_changes', true);
+      return;
+    }
+    await prefs.setBool(_transactionPendingKey(workshopId), true);
+  }
+
+  Future<bool> _hasPendingTransactions() async {
+    if (_hasPendingTransactionalChanges) return true;
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = _workshopId ?? prefs.getString('workshop_code');
+    _hasPendingTransactionalChanges =
+        (workshopId != null && workshopId.isNotEmpty
+            ? prefs.getBool(_transactionPendingKey(workshopId)) ?? false
+            : false) ||
+        (prefs.getBool('has_pending_transaction_changes') ?? false);
+    return _hasPendingTransactionalChanges;
+  }
+
+  Future<void> _markTransactionalUploadConfirmed(
+    int uploadedGeneration,
+  ) async {
+    // A new save may have happened while this snapshot was uploading. In that
+    // case leave the marker set so the next upload contains the new rows.
+    if (_transactionChangeGeneration != uploadedGeneration) return;
+    _hasPendingTransactionalChanges = false;
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = _workshopId ?? prefs.getString('workshop_code');
+    if (workshopId != null && workshopId.isNotEmpty) {
+      await prefs.setBool(_transactionPendingKey(workshopId), false);
+    }
+    await prefs.setBool('has_pending_transaction_changes', false);
+  }
+
+  void _resumePendingTransactionalUpload() {
+    _pendingTransactionUploadTimer?.cancel();
+    _pendingTransactionUploadTimer = Timer(const Duration(seconds: 2), () async {
+      if (await _hasPendingTransactions()) {
+        await _silentBackup();
+      }
+    });
+  }
+
+  Future<void> _ensureCloudCatalogCanBeApplied(
+    int downloadGeneration,
+    bool discardPendingLocalChanges,
+  ) async {
+    if (discardPendingLocalChanges) return;
+    if (_catalogChangeGeneration != downloadGeneration ||
+        await _hasUnpublishedCatalogChanges()) {
+      throw StateError(
+        'تم تعديل الكتالوج محليًا أثناء التنزيل؛ لن يتم استبداله بالنسخة السحابية.',
+      );
+    }
+  }
+
+  Future<void> _rejectUnexpectedEmptyCatalogTables(
+    Map<String, dynamic> incomingCatalog,
+    bool discardPendingLocalChanges,
+  ) async {
+    // An empty catalogue from an outdated device must never silently erase a
+    // usable colour or shutter catalogue on this device. Empty tables are
+    // allowed only during the first setup (when the local table is empty too).
+    if (discardPendingLocalChanges) return;
+    final localDb = await _db.db;
+    if (localDb == null) return;
+
+    for (final table in const ['Colors', 'ShutterComponents']) {
+      final incomingRows = incomingCatalog[table];
+      if (incomingRows is! List || incomingRows.isNotEmpty) continue;
+      final result = await localDb.rawQuery(
+        'SELECT COUNT(*) AS count FROM $table',
+      );
+      final localCount = (result.first['count'] as num?)?.toInt() ?? 0;
+      if (localCount > 0) {
+        throw StateError(
+          'رفضت الكتالوج السحابي الفارغ حتى لا يمسح $table من هذا الجهاز.',
+        );
+      }
+    }
+  }
+
+  String _describeCloudWriteFailure(Object error) {
+    if (error is FirebaseException) {
+      switch (error.code) {
+        case 'permission-denied':
+          return 'رفضت قواعد Firebase الكتابة. يجب السماح لهذا المستخدم بالكتابة داخل ورشته.';
+        case 'unauthenticated':
+          return 'انتهت جلسة تسجيل الدخول؛ أعد تسجيل الدخول ثم أعد الرفع.';
+        case 'unavailable':
+          return 'خدمة Firebase غير متاحة حالياً أو لا يوجد اتصال ثابت بالإنترنت.';
+      }
+    }
+    return error.toString();
+  }
 
   Future<void> init() async {
     print("--- CloudSyncService: init() started ---");
@@ -62,10 +233,27 @@ class CloudSyncService {
             .timeout(const Duration(seconds: 10));
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
-          final role = data['role']?.toString() ?? 'worker';
+          final rawRole = data['role']?.toString() ?? 'worker';
           final wId = data['workshopId']?.toString() ?? '';
-          if (role == 'worker' && wId.isNotEmpty && wId != user.uid) {
-            _workshopId = wId;
+          final storedWorkshopId = prefs.getString('workshop_code') ?? '';
+          final role = rawRole;
+          final isWorkshopMember = role == 'worker' || role == 'co_manager';
+
+          if (isWorkshopMember && (wId.isEmpty || wId == user.uid)) {
+            // A worker must never upload to a personal workshop path. Use a
+            // previously verified workshop id when available; otherwise stop
+            // and wait for the manager to link the account correctly.
+            if (storedWorkshopId.isNotEmpty && storedWorkshopId != user.uid) {
+              _workshopId = storedWorkshopId;
+            } else {
+              _workshopId = null;
+              lastBackupUploadSummary =
+                  'حساب العامل غير مرتبط بورشة صحيحة في Firebase.';
+              await prefs.setString('workshop_code', '');
+              await prefs.setString('user_role', role);
+              print('Worker sync blocked: missing or invalid workshopId for ${user.uid}');
+              return;
+            }
           } else if (wId.isNotEmpty) {
             _workshopId = wId;
           } else {
@@ -75,10 +263,16 @@ class CloudSyncService {
           await prefs.setString('user_role', role);
         } else {
           _workshopId = prefs.getString('workshop_code') ?? user.uid;
+          if (_workshopId == user.uid) {
+            await prefs.setString('user_role', 'manager');
+          }
         }
       } catch (e) {
         print('Error fetching workshopId: $e');
         _workshopId = prefs.getString('workshop_code') ?? user.uid;
+        if (_workshopId == user.uid) {
+          await prefs.setString('user_role', 'manager');
+        }
       }
     }
     print(
@@ -88,16 +282,37 @@ class CloudSyncService {
 
   void reset() {
     _workshopId = null;
+    _debounceTimer?.cancel();
+    _backupRetryTimer?.cancel();
+    _catalogDebounceTimer?.cancel();
+    _catalogRetryTimer?.cancel();
+    _realtimeRetryTimer?.cancel();
+    _realtimeHealthTimer?.cancel();
+    _pendingTransactionUploadTimer?.cancel();
     _listener?.cancel();
+    _catalogListener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
     _listener = null;
+    _catalogListener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
     _deletionsListener = null;
+    _lastHandledBackupFingerprint = null;
+    _lastHandledCatalogFingerprint = null;
+    _activeBackup = null;
+    _activeCatalogBackup = null;
+    _catalogBackupQueued = false;
+    _hasPendingLocalCatalogChanges = false;
+    _catalogChangeGeneration = 0;
+    _hasPendingTransactionalChanges = false;
+    _transactionChangeGeneration = 0;
+    _restoreDepth = 0;
+    _refreshQueuedAfterRestore = false;
+    _localSyncQueuedAfterRestore = false;
   }
 
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
@@ -117,36 +332,34 @@ class CloudSyncService {
         .listen((doc) async {
       if (!doc.exists || doc.data() == null) return;
 
-      Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
-      String sourceDevice = payload['deviceId']?.toString() ?? '';
-      String status = payload['status']?.toString() ?? '';
+      final Map<String, dynamic> payload =
+          Map<String, dynamic>.from(doc.data() as Map);
+      await _applyLatestBackupUpdate(payload);
+    }, onError: _scheduleRealtimeListenerRetry, onDone: _scheduleRealtimeListenerRetry);
 
-      final prefs = await SharedPreferences.getInstance();
-      final userRole = prefs.getString('user_role') ?? 'worker';
-      final isWorker = (userRole == 'worker');
+    _catalogListener?.cancel();
+    _catalogListener = _catalogDocument().snapshots().listen((doc) async {
+      if (_isRestoring || !doc.exists || doc.data() == null) return;
+      final payload = Map<String, dynamic>.from(doc.data() as Map);
+      if (payload['status']?.toString() != 'completed') return;
 
-      bool shouldAutoRestore = false;
-      if (isWorker) {
-        shouldAutoRestore = (status == 'completed' && !_isRestoring);
-      } else {
-        shouldAutoRestore = (sourceDevice != _deviceId && !_isRestoring && status == 'completed');
+      final fingerprint = _catalogFingerprint(payload);
+      if (fingerprint == _lastHandledCatalogFingerprint) return;
+      if (payload['deviceId']?.toString() == _deviceId) {
+        _lastHandledCatalogFingerprint = fingerprint;
+        return;
       }
-
-      if (shouldAutoRestore) {
-        _isRestoring = true;
-        try {
-          await restoreFromCloud();
-          _dbUpdateController.add('cloud_restored');
-          if (onDataRestored != null) {
-            onDataRestored!();
-          }
-        } catch (e) {
-          print('Error auto-restoring from cloud: $e');
-        } finally {
-          _isRestoring = false;
-        }
+      if (await _hasUnpublishedCatalogChanges()) {
+        print('Ignoring cloud catalog while local catalog changes await upload.');
+        return;
       }
-    });
+      try {
+        await downloadGlobalCatalog();
+        _lastHandledCatalogFingerprint = fingerprint;
+      } catch (e) {
+        print('Automatic catalog download failed: $e');
+      }
+    }, onError: _scheduleRealtimeListenerRetry);
 
     // 2. ⚡ الاستماع الفوري واللحظي لتحديثات حالات الإسناد من أي هاتف في الورشة
     _statusListener?.cancel();
@@ -165,7 +378,7 @@ class CloudSyncService {
       } catch (e) {
         print('Error syncing allocation status real-time: $e');
       }
-    });
+    }, onError: _scheduleRealtimeListenerRetry);
 
     // 3. ⚡ الاستماع الفوري واللحظي لتحديثات حالات الطلبيات من أي هاتف في الورشة
     _orderStatusListener?.cancel();
@@ -183,7 +396,7 @@ class CloudSyncService {
       } catch (e) {
         print('Error syncing order status real-time: $e');
       }
-    });
+    }, onError: _scheduleRealtimeListenerRetry);
 
     // 4. ⚡ الاستماع الفوري واللحظي لتأكيد قياسات الموقع من أي هاتف في الورشة
     _measurementsListener?.cancel();
@@ -201,7 +414,7 @@ class CloudSyncService {
       } catch (e) {
         print('Error syncing confirmed measurements real-time: $e');
       }
-    });
+    }, onError: _scheduleRealtimeListenerRetry);
 
     // 5. ⚡ الاستماع اللحظي لحذف الإسنادات من أي جهاز (بما فيها هاتف العامل)
     _deletionsListener?.cancel();
@@ -228,17 +441,157 @@ class CloudSyncService {
         }
       }
       _dbUpdateController.add('allocation_deleted');
-    });
+    }, onError: _scheduleRealtimeListenerRetry);
+
+    _startRealtimeHealthCheck();
+    _resumePendingTransactionalUpload();
   }
 
   /// إيقاف الاستماع
+  String _backupFingerprint(Map<String, dynamic> payload) {
+    return [
+      payload['timestamp']?.toString() ?? '',
+      payload['deviceId']?.toString() ?? '',
+      payload['status']?.toString() ?? '',
+    ].join('|');
+  }
+
+  String _catalogFingerprint(Map<String, dynamic> payload) {
+    return [
+      payload['timestamp']?.toString() ?? '',
+      payload['deviceId']?.toString() ?? '',
+      payload['status']?.toString() ?? '',
+    ].join('|');
+  }
+
+  Future<void> _applyLatestBackupUpdate(
+    Map<String, dynamic> payload,
+  ) async {
+    if (payload['status']?.toString() != 'completed') return;
+    if (_isRestoring) {
+      _refreshQueuedAfterRestore = true;
+      return;
+    }
+
+    final fingerprint = _backupFingerprint(payload);
+    if (fingerprint.isEmpty || fingerprint == _lastHandledBackupFingerprint) {
+      return;
+    }
+
+    // A device already has the data it just uploaded. Skipping its own
+    // snapshot avoids an unnecessary restore and protects in-progress edits.
+    if (payload['deviceId']?.toString() == _deviceId) {
+      _lastHandledBackupFingerprint = fingerprint;
+      return;
+    }
+
+    // Do not let an incoming full snapshot erase work that a worker or
+    // co-manager has already saved locally but Firebase has not confirmed.
+    if (await _hasPendingTransactions()) {
+      await _silentBackup();
+      return;
+    }
+
+    _beginRestore();
+    try {
+      await restoreFromCloud();
+      _lastHandledBackupFingerprint = fingerprint;
+      _dbUpdateController.add('cloud_restored');
+      onDataRestored?.call();
+    } catch (e) {
+      print('Error auto-restoring from cloud: $e');
+    } finally {
+      _endRestore();
+    }
+  }
+
+  void _beginRestore() {
+    _restoreDepth++;
+  }
+
+  void _endRestore() {
+    if (_restoreDepth > 0) _restoreDepth--;
+    if (_restoreDepth != 0) return;
+
+    if (_localSyncQueuedAfterRestore) {
+      _localSyncQueuedAfterRestore = false;
+      scheduleMicrotask(_silentBackup);
+    }
+
+    if (!_refreshQueuedAfterRestore) return;
+    _refreshQueuedAfterRestore = false;
+    scheduleMicrotask(refreshFromCloudIfChanged);
+  }
+
+  /// Public fallback used on app resume and by the periodic health check.
+  /// It repairs a dropped Firestore listener instead of leaving an old local
+  /// database visible for hours.
+  Future<void> refreshFromCloudIfChanged() async {
+    if (_isRestoring || _isCheckingCloudChanges || _workshopId == null) return;
+    if (_auth.currentUser == null) return;
+
+    // Upload a member's queued local work before accepting another device's
+    // snapshot. This runs on app resume and in the lightweight health check,
+    // so an interrupted worker upload is retried without any manual button.
+    if (await _hasPendingTransactions()) {
+      await _silentBackup();
+      return;
+    }
+
+    _isCheckingCloudChanges = true;
+    try {
+      final doc = await _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .collection('backups')
+          .doc('latest')
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+      if (doc.exists && doc.data() != null) {
+        await _applyLatestBackupUpdate(
+          Map<String, dynamic>.from(doc.data() as Map),
+        );
+      }
+    } catch (e) {
+      print('Cloud sync health check failed: $e');
+    } finally {
+      _isCheckingCloudChanges = false;
+    }
+  }
+
+  void _scheduleRealtimeListenerRetry([
+    Object? error,
+    StackTrace? stackTrace,
+  ]) {
+    if (error != null) {
+      print('Realtime listener stopped: $error');
+    }
+    _realtimeRetryTimer?.cancel();
+    _realtimeRetryTimer = Timer(const Duration(seconds: 5), () async {
+      if (_auth.currentUser == null || _workshopId == null) return;
+      startListeningForUpdates(onDataRestored ?? () {});
+    });
+  }
+
+  void _startRealtimeHealthCheck() {
+    _realtimeHealthTimer?.cancel();
+    _realtimeHealthTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      refreshFromCloudIfChanged();
+    });
+    refreshFromCloudIfChanged();
+  }
+
   void stopListening() {
+    _realtimeRetryTimer?.cancel();
+    _realtimeHealthTimer?.cancel();
     _listener?.cancel();
+    _catalogListener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
     _listener = null;
+    _catalogListener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
@@ -248,22 +601,35 @@ class CloudSyncService {
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
   void notifyChange() async {
     _dbUpdateController.add('');
-    if (_isRestoring) return; // منع التكرار اللانهائي أثناء الاستعادة
+    _backupRetryTimer?.cancel();
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      await _markTransactionalChangesPending(prefs);
       final userRole = prefs.getString('user_role') ?? 'worker';
       if (userRole == 'worker') {
-        // 🛑 العامل لا يعلم علامة "is_local_dirty" كي لا يمنع المزامنة التلقائية للمهام الواردة من المدير
-        return;
+        // Do not mark a worker's local copy as authoritative (that would
+        // block incoming manager updates), but do schedule the upload.
+      } else {
+        await prefs.setBool('is_local_dirty', true);
       }
-      await prefs.setBool('is_local_dirty', true);
     } catch (e) {
       print('Failed to set local dirty flag: $e');
     }
 
+    if (_isRestoring) {
+      // Do not lose a save made while the first cloud restore is still
+      // running. This was especially visible on worker phones just after
+      // opening the app.
+      _localSyncQueuedAfterRestore = true;
+      return;
+    }
+
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 1), () {
+    // A normal save (an order, customer or payment) must reach the workshop
+    // immediately. A short debounce still groups the rows created together
+    // while saving one order, without leaving a worker's change pending.
+    _debounceTimer = Timer(const Duration(milliseconds: 250), () {
       _silentBackup();
     });
   }
@@ -271,10 +637,11 @@ class CloudSyncService {
   /// إشعار بوجود تغيير عاجل محلياً (كعمليات الصندوق والمعاملات المالية) والرفع الفوري للسحابة بدون انتظار
   void notifyChangeImmediate() async {
     _dbUpdateController.add('');
-    if (_isRestoring) return;
+    _backupRetryTimer?.cancel();
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      await _markTransactionalChangesPending(prefs);
       final userRole = prefs.getString('user_role') ?? 'worker';
       if (userRole != 'worker') {
         await prefs.setBool('is_local_dirty', true);
@@ -283,23 +650,96 @@ class CloudSyncService {
       print('Failed to set local dirty flag: $e');
     }
 
+    if (_isRestoring) {
+      _localSyncQueuedAfterRestore = true;
+      return;
+    }
+
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _silentBackup();
   }
 
-  /// الرفع الصامت للسحابة
-  Future<void> _silentBackup() async {
+  /// Publishes product catalog changes for manager accounts. This is separate
+  /// from the workshop backup because product pages deliberately read the
+  /// central catalog, not another device's transactional backup.
+  void notifyCatalogChange() async {
     try {
+      await init();
       final prefs = await SharedPreferences.getInstance();
-      final userRole = prefs.getString('user_role') ?? 'worker';
-      if (userRole == 'worker') {
-        // 🛑 منع العامل من الكتابة الصامتة فوق نسخة الورشة السحابية الخاضعة للمدير
+      if (!_canPublishGlobalCatalog(
+        prefs.getString('user_role') ?? 'worker',
+      )) {
+        // A worker must keep accepting the manager's shared catalogue rather
+        // than marking an unpublishable local edit as pending forever.
+        print('Ignoring global catalog change from a non-manager account.');
         return;
       }
-      await backupToCloud(isSilent: true);
+    } catch (e) {
+      print('Failed to schedule catalog sync: $e');
+      return;
+    }
+
+    // Mark the local edit before the listener can import an older catalogue.
+    _markCatalogDirty();
+    notifyChange();
+    _dbUpdateController.add('catalog_changed');
+
+    _catalogDebounceTimer?.cancel();
+    _catalogDebounceTimer = Timer(const Duration(seconds: 2), () async {
+      try {
+        await backupGlobalCatalog();
+      } catch (e) {
+        print('Automatic catalog sync failed: $e');
+        _scheduleCatalogUploadRetry();
+      }
+    });
+  }
+
+  void _scheduleCatalogUploadRetry() {
+    _catalogRetryTimer?.cancel();
+    _catalogRetryTimer = Timer(const Duration(seconds: 30), () async {
+      if (!await _hasUnpublishedCatalogChanges()) return;
+      try {
+        await backupGlobalCatalog();
+      } catch (error) {
+        print('Catalog upload retry failed: $error');
+        _scheduleCatalogUploadRetry();
+      }
+    });
+  }
+
+  /// الرفع الصامت للسحابة
+  Future<void> _silentBackup() async {
+    if (_isRestoring) {
+      _localSyncQueuedAfterRestore = true;
+      return;
+    }
+    if (_isSilentBackupRunning) {
+      // Preserve only one follow-up upload. It contains the newest local
+      // state and prevents older, overlapping snapshots from winning.
+      _silentBackupQueued = true;
+      return;
+    }
+
+    try {
+      _isSilentBackupRunning = true;
+      do {
+        _silentBackupQueued = false;
+        await backupToCloud(isSilent: true);
+      } while (_silentBackupQueued && !_isRestoring);
     } catch (e) {
       print('Auto-sync backup failed: $e');
+      _scheduleBackupRetry();
+    } finally {
+      _isSilentBackupRunning = false;
     }
+  }
+
+  void _scheduleBackupRetry() {
+    _backupRetryTimer?.cancel();
+    _backupRetryTimer = Timer(const Duration(seconds: 15), () {
+      _silentBackup();
+    });
   }
 
   /// الرفع اليدوي/الأساسي للسحابة بنظام التجزئة لتجاوز حد الـ 1MB
@@ -314,8 +754,33 @@ class CloudSyncService {
   /// (بدون أي قراءة أو حذف مسبق)، فسرعة الرفع تعتمد فقط على حجم بياناتك الحالية.
   /// تنظيف الأجزاء الزائدة (الفائضة عن الرفعة الجديدة) يتم بعد نجاح الرفع وفي
   /// الخلفية دون انتظار المستخدم، وبدون التأثير على نجاح/فشل عملية الرفع نفسها.
-  Future<void> backupToCloud({bool isSilent = false}) async {
+  /// Serializes every upload, including the Settings button, so an older
+  /// database snapshot cannot finish after a newer one and overwrite it.
+  Future<void> backupToCloud({bool isSilent = false}) {
+    final activeBackup = _activeBackup;
+    if (activeBackup != null) {
+      return activeBackup.then<void>(
+        (_) => backupToCloud(isSilent: isSilent),
+        onError: (_, __) => backupToCloud(isSilent: isSilent),
+      );
+    }
+
+    final task = _runSerializedBackup(isSilent: isSilent);
+    _activeBackup = task;
+    return task;
+  }
+
+  Future<void> _runSerializedBackup({required bool isSilent}) async {
+    try {
+      await _performBackupToCloud(isSilent: isSilent);
+    } finally {
+      _activeBackup = null;
+    }
+  }
+
+  Future<void> _performBackupToCloud({bool isSilent = false}) async {
     await init();
+    final uploadedGeneration = _transactionChangeGeneration;
 
     final user = _auth.currentUser;
     if (user == null) {
@@ -328,33 +793,15 @@ class CloudSyncService {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString('user_role') ?? '';
-
-    final bool isWorker = (role == 'worker');
-    if (isWorker) {
-      bool hasBackupPerm = false;
-      try {
-        final userDoc = await _firestore.collection('users').doc(user.uid).get();
-        if (userDoc.exists && userDoc.data() != null) {
-          final pData = userDoc.data()!['permissions'];
-          final pJson = userDoc.data()!['permissions_json'];
-          if (pData is Map && pData['cloud_backup'] == true) {
-            hasBackupPerm = true;
-          } else if (pJson is String && pJson.contains('"cloud_backup":true')) {
-            hasBackupPerm = true;
-          }
-        }
-      } catch (_) {}
-
-      if (!hasBackupPerm) {
-        if (!isSilent) {
-          throw Exception('حسابك لا يملك صلاحية الرفع إلى السحابة. يلزم مفتاح الصلاحية من المدير.');
-        }
-        return;
-      }
-    }
+    // Every workshop member publishes transactional changes (orders,
+    // customers, payments, etc.).  `cloud_backup` is intentionally not used
+    // as a gate here: it must never leave a worker's change on one phone.
 
     Map<String, dynamic> allData = await _db.exportAllData();
+    final expectedRowCounts = <String, int>{
+      for (final entry in allData.entries)
+        entry.key: entry.value is List ? (entry.value as List).length : 0,
+    };
 
     if (isSilent) {
       // فحص أولي: تجاهل الرفع إذا كانت جميع الجداول فارغة
@@ -363,23 +810,6 @@ class CloudSyncService {
       );
       if (!hasAnyData) return;
 
-      // فحص ثانوي أكثر أماناً: لا ترفع إذا كانت جداول المعاملات الرئيسية كلها فارغة.
-      final commandesRows = allData['Commandes'];
-      final clientRows = allData['Client'];
-      final commandesDetailsRows = allData['Commandes_details'];
-      final workerAllocationsRows = allData['WorkerAllocations'];
-      final hasTransactionalData =
-          (commandesRows is List && commandesRows.isNotEmpty) ||
-              (clientRows is List && clientRows.isNotEmpty) ||
-              (commandesDetailsRows is List && commandesDetailsRows.isNotEmpty) ||
-              (workerAllocationsRows is List && workerAllocationsRows.isNotEmpty);
-      if (!hasTransactionalData) {
-        print(
-          'backupToCloud (silent): Aborting — no transactional data on this device. '
-              'Will not overwrite cloud backup with an empty database.',
-        );
-        return;
-      }
     }
 
     final latestDocRef = _firestore
@@ -396,6 +826,7 @@ class CloudSyncService {
         'timestamp': FieldValue.serverTimestamp(),
         'deviceId': _deviceId,
         'status': 'uploading',
+        'tables': allData.keys.toList(),
       }).timeout(const Duration(seconds: 15));
 
       // 2. رفع الأجزاء الجديدة مباشرة (كتابة فوق نفس الأسماء table_0, table_1...)
@@ -406,7 +837,10 @@ class CloudSyncService {
       int batchCount = 0;
       for (String table in allData.keys) {
         List<dynamic> rows = allData[table] ?? [];
-        final chunks = _partitionRowsIntoChunks(rows);
+        final rawChunks = _partitionRowsIntoChunks(rows);
+        final chunks = rawChunks.isEmpty
+            ? <List<dynamic>>[<dynamic>[]]
+            : rawChunks;
         int chunksCount = chunks.length;
         newChunkCounts[table] = chunksCount;
 
@@ -430,11 +864,52 @@ class CloudSyncService {
         await uploadBatch.commit().timeout(const Duration(seconds: 30));
       }
 
+      // A WriteBatch commit already fails when Firestore has not accepted the
+      // write. For automatic sync, do not then read every chunk one-by-one:
+      // on a large workshop that verification delayed a single worker order
+      // for minutes and kept every other phone waiting for `completed`.
+      // The Settings button keeps the full server-side verification below.
+      final verifiedCounts = isSilent
+          ? expectedRowCounts
+          : await _verifyUploadedChunks(
+              chunkRef: chunkRef,
+              expectedChunkCounts: newChunkCounts,
+              expectedRowCounts: expectedRowCounts,
+            );
+
       // 3. إنهاء الرفع وتغيير الحالة إلى "مكتمل" — البيانات الجديدة أصبحت
       // آمنة ومقروءة بالكامل بالسحابة بهذه المرحلة، بغض النظر عمّا سيحدث بعدها.
-      await latestDocRef.update({'status': 'completed'}).timeout(const Duration(seconds: 10));
+      await latestDocRef
+          .update({
+            'status': 'completed',
+            'tableRowCounts': verifiedCounts,
+          })
+          .timeout(const Duration(seconds: 10));
+
+      final confirmation = await latestDocRef
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+      final confirmationData = confirmation.data();
+      if (!confirmation.exists ||
+          confirmationData?['status'] != 'completed' ||
+          confirmationData?['deviceId'] != _deviceId) {
+        throw Exception('لم يؤكد الخادم اكتمال رفع نسخة الورشة.');
+      }
+      final confirmedCounts = confirmationData?['tableRowCounts'];
+      if (confirmedCounts is! Map ||
+          confirmedCounts['Commandes'] != expectedRowCounts['Commandes'] ||
+          confirmedCounts['Client'] != expectedRowCounts['Client']) {
+        throw Exception(
+          'لم يؤكد الخادم وصول الطلبات والزبائن إلى النسخة السحابية.',
+        );
+      }
+      lastBackupUploadSummary =
+          'الطلبات: ${verifiedCounts['Commandes'] ?? 0}، '
+          'الزبائن: ${verifiedCounts['Client'] ?? 0} '
+          '(الورشة: $_workshopId)';
 
       await prefs.setBool('is_local_dirty', false);
+      await _markTransactionalUploadConfirmed(uploadedGeneration);
 
       // 4. حفظ نسخة في الـ History
       if (!isSilent) {
@@ -460,8 +935,12 @@ class CloudSyncService {
       });
 
     } catch (e) {
-      if (!isSilent) rethrow;
       print('backupToCloud failed: $e');
+      throw Exception(
+        'فشل رفع النسخة إلى '
+        'workshops/${_workshopId}/backups/latest: '
+        '${_describeCloudWriteFailure(e)}',
+      );
     }
   }
 
@@ -501,9 +980,21 @@ class CloudSyncService {
 
   /// الاستعادة اليدوية/التلقائية من السحابة بنظام التجميع
   Future<void> fullRecoverySync() async {
-    _isRestoring = true;
+    _beginRestore();
     try {
       await init();
+
+      // If this device was closed while a worker's change was still waiting
+      // for Firebase, publish it before downloading another phone's snapshot.
+      // This keeps clients, orders, projects and task progress durable across
+      // app restarts for every workshop member.
+      if (await _hasPendingTransactions()) {
+        try {
+          await backupToCloud(isSilent: true);
+        } catch (e) {
+          print('Pending transaction upload before restore failed: $e');
+        }
+      }
 
       bool restoreSuccess = false;
       // 1. استرجاع النسخة الاحتياطية الخاصة بالورشة (تمسح الجداول وتعيدها)
@@ -534,7 +1025,7 @@ class CloudSyncService {
       await _legacySync();
       _dbUpdateController.add('');
     } finally {
-      _isRestoring = false;
+      _endRestore();
     }
   }
 
@@ -674,7 +1165,7 @@ class CloudSyncService {
     }
   }
 
-  Future<void> restoreFromCloud() async {
+  Future<void> restoreFromCloud({bool preserveLocalChanges = false}) async {
     print("--- CloudSyncService: restoreFromCloud() started ---");
     await init();
 
@@ -688,8 +1179,10 @@ class CloudSyncService {
     final isDirty = prefs.getBool('is_local_dirty') ?? false;
     final role = prefs.getString('user_role') ?? 'worker';
 
-    // 🛡️ حماية البيانات المحلية: إذا كانت هناك تغييرات محليّة لم تُرفع بعد، ارفعها أولاً للسحابة قبل الاسترجاع!
-    if (isDirty && role != 'worker') {
+    // A restore is an explicit request to receive the cloud version. Do not
+    // let an old local snapshot overwrite a newer order on another device.
+    // Callers that truly need to preserve local edits can opt in explicitly.
+    if (preserveLocalChanges && isDirty && role != 'worker') {
       print("--- CloudSyncService: Local changes exist (is_local_dirty). Uploading local data first before restore... ---");
       try {
         await backupToCloud(isSilent: true);
@@ -705,7 +1198,9 @@ class CloudSyncService {
         .doc('latest');
 
     print("--- CloudSyncService: Fetching workshop/backups/latest... ---");
-    DocumentSnapshot doc = await latestDocRef.get().timeout(
+    DocumentSnapshot doc = await latestDocRef
+        .get(GetOptions(source: Source.server))
+        .timeout(
       const Duration(seconds: 20),
     );
     print("--- CloudSyncService: backups/latest fetched! ---");
@@ -716,7 +1211,7 @@ class CloudSyncService {
 
     Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
 
-    _isRestoring = true;
+    _beginRestore();
     try {
       // التوافقية مع النظام القديم (في حال وجود البيانات في المستند الرئيسي)
       if (payload.containsKey('data')) {
@@ -731,7 +1226,7 @@ class CloudSyncService {
         print("--- CloudSyncService: Fetching workshop backup chunks... ---");
         var snapshot = await latestDocRef
             .collection('chunks')
-            .get()
+            .get(GetOptions(source: Source.server))
             .timeout(const Duration(seconds: 35));
         print(
           "--- CloudSyncService: backup chunks fetched (${snapshot.docs.length}) ---",
@@ -750,6 +1245,14 @@ class CloudSyncService {
           final rows = chunkData['data'];
           if (rows is List) {
             assembledData[table]!.addAll(rows);
+          }
+        }
+        final publishedTables = payload['tables'];
+        if (publishedTables is List) {
+          for (final table in publishedTables) {
+            if (table is String && table.isNotEmpty) {
+              assembledData.putIfAbsent(table, () => []);
+            }
           }
         }
         await _db.importAllData(assembledData);
@@ -775,7 +1278,7 @@ class CloudSyncService {
         print('Failed to clear local dirty flag after restore: $e');
       }
     } finally {
-      _isRestoring = false;
+      _endRestore();
     }
   }
 
@@ -845,50 +1348,79 @@ class CloudSyncService {
     }
   }
 
-  Future<void> backupGlobalCatalog() async {
+  Future<void> backupGlobalCatalog() {
+    final activeCatalogBackup = _activeCatalogBackup;
+    if (activeCatalogBackup != null) {
+      _catalogBackupQueued = true;
+      return activeCatalogBackup;
+    }
+
+    final task = _runSerializedCatalogBackup();
+    _activeCatalogBackup = task;
+    return task;
+  }
+
+  Future<void> _runSerializedCatalogBackup() async {
+    try {
+      do {
+        _catalogBackupQueued = false;
+        await _performGlobalCatalogBackup();
+      } while (_catalogBackupQueued);
+    } finally {
+      _activeCatalogBackup = null;
+    }
+  }
+
+  Future<void> _performGlobalCatalogBackup() async {
     await init();
+    await _hasUnpublishedCatalogChanges();
+    final catalogGeneration = _catalogChangeGeneration;
 
     final user = _auth.currentUser;
     if (user == null) {
       throw Exception('يجب تسجيل الدخول أولاً لرفع الكتالوج العام');
     }
-    // if (!_isGlobalAdmin(user)) return;
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('user_role') ?? 'worker';
+    if (!_canPublishGlobalCatalog(role)) {
+      throw Exception('رفع الكتالوج العام متاح للمدير فقط.');
+    }
 
     Map<String, dynamic> globalData = await _db.exportGlobalCatalog();
-    final catalogRef = _firestore.collection('global_catalog').doc('latest');
+    for (final requiredTable in const ['Colors', 'ShutterComponents']) {
+      if (!globalData.containsKey(requiredTable) ||
+          globalData[requiredTable] is! List) {
+        throw StateError(
+          'تعذر قراءة جدول $requiredTable محلياً؛ لم يتم رفع كتالوج ناقص.',
+        );
+      }
+    }
+    final catalogRef = _catalogDocument();
+    final expectedRowCounts = <String, int>{
+      for (final entry in globalData.entries)
+        entry.key: entry.value is List ? (entry.value as List).length : 0,
+    };
 
     try {
       await catalogRef.set({
         'timestamp': FieldValue.serverTimestamp(),
         'deviceId': _deviceId,
         'status': 'uploading',
+        'tables': globalData.keys.toList(),
       }).timeout(const Duration(seconds: 15));
 
       final chunkRef = catalogRef.collection('chunks');
-      final existingChunks = await chunkRef.get().timeout(const Duration(seconds: 25));
-      if (existingChunks.docs.isNotEmpty) {
-        WriteBatch deleteBatch = _firestore.batch();
-        int count = 0;
-        for (var doc in existingChunks.docs) {
-          deleteBatch.delete(doc.reference);
-          count++;
-          if (count >= 10) {
-            await deleteBatch.commit().timeout(const Duration(seconds: 25));
-            deleteBatch = _firestore.batch();
-            count = 0;
-          }
-        }
-        if (count > 0) {
-          await deleteBatch.commit().timeout(const Duration(seconds: 25));
-        }
-      }
-
+      final newChunkCounts = <String, int>{};
       WriteBatch uploadBatch = _firestore.batch();
       int batchCount = 0;
       for (String table in globalData.keys) {
         List<dynamic> rows = globalData[table] ?? [];
-        final chunks = _partitionRowsIntoChunks(rows);
+        final rawChunks = _partitionRowsIntoChunks(rows);
+        final chunks = rawChunks.isEmpty
+            ? <List<dynamic>>[<dynamic>[]]
+            : rawChunks;
         int chunksCount = chunks.length;
+        newChunkCounts[table] = chunksCount;
 
         for (int i = 0; i < chunksCount; i++) {
           final docRef = chunkRef.doc('${table}_$i');
@@ -899,7 +1431,7 @@ class CloudSyncService {
             'data': chunks[i],
           });
           batchCount++;
-          if (batchCount >= 2) {
+          if (batchCount >= 300) {
             await uploadBatch.commit().timeout(const Duration(seconds: 30));
             uploadBatch = _firestore.batch();
             batchCount = 0;
@@ -910,28 +1442,143 @@ class CloudSyncService {
         await uploadBatch.commit().timeout(const Duration(seconds: 30));
       }
 
-      await catalogRef.update({'status': 'completed'}).timeout(const Duration(seconds: 10));
+      // Do not consider the catalogue uploaded merely because the header was
+      // written. Read every newly written chunk from the server and compare
+      // its row count with the local table before reporting success.
+      final verifiedCounts = await _verifyUploadedChunks(
+        chunkRef: chunkRef,
+        expectedChunkCounts: newChunkCounts,
+        expectedRowCounts: expectedRowCounts,
+      );
+
+      await catalogRef
+          .update({
+            'status': 'completed',
+            'tableRowCounts': verifiedCounts,
+          })
+          .timeout(const Duration(seconds: 10));
+
+      final confirmation = await catalogRef
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+      final confirmationData = confirmation.data();
+      if (!confirmation.exists ||
+          confirmationData?['status'] != 'completed' ||
+          confirmationData?['deviceId'] != _deviceId) {
+        throw Exception('لم يؤكد الخادم اكتمال رفع الكتالوج.');
+      }
+      final confirmedCounts = confirmationData?['tableRowCounts'];
+      if (confirmedCounts is! Map ||
+          confirmedCounts['Colors'] != expectedRowCounts['Colors'] ||
+          confirmedCounts['ShutterComponents'] !=
+              expectedRowCounts['ShutterComponents']) {
+        throw Exception(
+          'لم يؤكد الخادم وصول جدول الألوان ومركبات الستائر.',
+        );
+      }
+      lastCatalogUploadSummary =
+          'الألوان: ${verifiedCounts['Colors'] ?? 0}، '
+          'مركبات الستائر: ${verifiedCounts['ShutterComponents'] ?? 0} '
+          '(الكتالوج العام)';
+      await _markCatalogUploadConfirmed(catalogGeneration);
+      _cleanupObsoleteCloudChunks(chunkRef, newChunkCounts).catchError((e) {
+        print('Background catalog chunk cleanup warning: $e');
+      });
     } catch (e) {
       try {
         await catalogRef.update({'status': 'failed'});
       } catch (_) {}
-      throw Exception('فشل رفع الكتالوج العام: $e');
+      throw Exception(
+        'فشل رفع الكتالوج إلى '
+        'global_catalog/latest: '
+        '${_describeCloudWriteFailure(e)}',
+      );
     }
   }
 
-  Future<void> downloadGlobalCatalog() async {
+  Future<Map<String, int>> _verifyUploadedChunks({
+    required CollectionReference<Map<String, dynamic>> chunkRef,
+    required Map<String, int> expectedChunkCounts,
+    required Map<String, int> expectedRowCounts,
+  }) async {
+    final verifiedCounts = <String, int>{};
+
+    for (final entry in expectedChunkCounts.entries) {
+      final table = entry.key;
+      final expectedChunks = entry.value;
+      var receivedRows = 0;
+
+      for (var index = 0; index < expectedChunks; index++) {
+        final chunk = await chunkRef
+            .doc('${table}_$index')
+            .get(GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 15));
+        final data = chunk.data();
+        if (!chunk.exists ||
+            data == null ||
+            data['table']?.toString() != table ||
+            data['chunkIndex'] != index ||
+            data['totalChunks'] != expectedChunks ||
+            data['data'] is! List) {
+          throw Exception('تعذر التحقق من رفع جدول $table.');
+        }
+        receivedRows += (data['data'] as List).length;
+      }
+
+      final expectedRows = expectedRowCounts[table] ?? 0;
+      if (receivedRows != expectedRows) {
+        throw Exception(
+          'عدد سجلات $table في السحابة ($receivedRows) '
+          'لا يطابق الجهاز ($expectedRows).',
+        );
+      }
+      verifiedCounts[table] = receivedRows;
+    }
+
+    return verifiedCounts;
+  }
+
+  Future<void> downloadGlobalCatalog({bool discardPendingLocalChanges = false}) async {
     print("--- CloudSyncService: downloadGlobalCatalog() started ---");
     await init();
 
-    final catalogRef = _firestore.collection('global_catalog').doc('latest');
+    if (!discardPendingLocalChanges && await _hasUnpublishedCatalogChanges()) {
+      throw StateError(
+        'يوجد تعديل محلي في الكتالوج لم يُرفع بعد؛ لن يتم استبداله ببيانات سحابية قديمة.',
+      );
+    }
+    final downloadGeneration = _catalogChangeGeneration;
+
+    final catalogRef = _catalogDocument();
     print("--- CloudSyncService: Fetching global_catalog/latest... ---");
-    DocumentSnapshot doc = await catalogRef.get().timeout(
+    // The product catalogue must always be read from the server. Reading the
+    // default Firestore cache here can re-import an old set of colours or
+    // shutter components after the manager has already updated the catalogue.
+    DocumentSnapshot doc = await catalogRef
+        .get(GetOptions(source: Source.server))
+        .timeout(
       const Duration(seconds: 15),
     );
     print("--- CloudSyncService: global_catalog/latest fetched! ---");
 
     if (!doc.exists || doc.data() == null) {
-      throw Exception('لم يتم العثور على الكتالوج العالمي في السيرفر.');
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('user_role') ?? 'worker';
+      if (role == 'worker') {
+        throw Exception(
+          'الكتالوج العام لم يُنشر بعد. افتح صفحة المنتجات من هاتف المدير أولاً.',
+        );
+      }
+
+      // First use: publish the manager's shared catalogue, then read that
+      // confirmed server copy.
+      await backupGlobalCatalog();
+      doc = await catalogRef
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+      if (!doc.exists || doc.data() == null) {
+        throw Exception('تعذر إنشاء الكتالوج العام في السحابة.');
+      }
     }
 
     Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
@@ -942,19 +1589,28 @@ class CloudSyncService {
       );
     }
 
-    _isRestoring = true;
+    _beginRestore();
     try {
       if (payload.containsKey('data')) {
         final raw = payload['data'];
         if (raw is! Map) {
           throw Exception('صيغة بيانات الكتالوج غير صالحة على السيرفر.');
         }
-        await _db.importGlobalCatalog(Map<String, dynamic>.from(raw));
+        await _ensureCloudCatalogCanBeApplied(
+          downloadGeneration,
+          discardPendingLocalChanges,
+        );
+        final catalogData = Map<String, dynamic>.from(raw);
+        await _rejectUnexpectedEmptyCatalogTables(
+          catalogData,
+          discardPendingLocalChanges,
+        );
+        await _db.importGlobalCatalog(catalogData);
       } else {
         print("--- CloudSyncService: Fetching catalog chunks... ---");
         var snapshot = await catalogRef
             .collection('chunks')
-            .get()
+            .get(GetOptions(source: Source.server))
             .timeout(const Duration(seconds: 30));
         print(
           "--- CloudSyncService: chunks fetched (${snapshot.docs.length}) ---",
@@ -984,11 +1640,30 @@ class CloudSyncService {
           throw Exception('لم يتم العثور على أجزاء كتالوج صالحة للتحميل.');
         }
 
+        final publishedTables = payload['tables'];
+        if (publishedTables is List) {
+          for (final table in publishedTables) {
+            if (table is String && table.isNotEmpty) {
+              assembledData.putIfAbsent(table, () => []);
+            }
+          }
+        }
+
+        await _ensureCloudCatalogCanBeApplied(
+          downloadGeneration,
+          discardPendingLocalChanges,
+        );
+        await _rejectUnexpectedEmptyCatalogTables(
+          assembledData,
+          discardPendingLocalChanges,
+        );
         await _db.importGlobalCatalog(assembledData);
       }
     } finally {
-      _isRestoring = false;
+      _endRestore();
     }
+    _lastHandledCatalogFingerprint = _catalogFingerprint(payload);
+    _dbUpdateController.add('catalog_downloaded');
   }
 
   Future<bool> hasBackup() async {

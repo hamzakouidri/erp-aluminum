@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../services/cloud_sync_service.dart';
 
 class SystemModeItem {
   final String id;
@@ -52,12 +53,27 @@ class SelectedSystemsScreen extends StatefulWidget {
 
 class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with SingleTickerProviderStateMixin {
   final SqlDatabase _db = SqlDatabase();
+  final CloudSyncService _cloudSync = CloudSyncService();
   bool _isLoading = true;
+  bool _isSyncing = false;
   String _searchQuery = '';
   late TabController _tabController;
 
   List<SystemModeItem> _systemModes = [];
   List<ProfileSystemItem> _profileSystems = [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canSelectSystems()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
 
   final List<Map<String, dynamic>> _presetModes = [
     {
@@ -99,6 +115,14 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
       'iconPath': 'Icon/caisson_tunnel.jpg',
       'defaultIcon': Icons.square_rounded,
       'category': 'تونيل',
+    },
+    {
+      'id': 'moustiquaire',
+      'title': 'Moustiquaire (موستيكير / الناموسية)',
+      'subtitle': 'أنظمة ناموسية الحشرات (ملفوفة، مطوية أكورديون، ثابتة، ومنزلقة)',
+      'iconPath': 'Icon/media.webp',
+      'defaultIcon': Icons.grid_4x4_rounded,
+      'category': 'ناموسية',
     },
     {
       'id': 'precadre',
@@ -206,6 +230,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     setState(() => item.isActive = newValue);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('system_active_${item.id}', newValue);
+    // ✅ حفظ في السحابة
+    await _syncToCloud();
     if (!mounted) return;
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -247,7 +273,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     } catch (e) {
       debugPrint('Error updating Profile/Series is_active: $e');
     }
-
+    // ✅ حفظ في السحابة
+    await _syncToCloud();
     if (!mounted) return;
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -274,6 +301,36 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
         prefs.setBool('system_active_${mode.id}', enable);
       }
     });
+    await _syncToCloud();
+  }
+
+  // ✅ مساعد: يجمع الحالة الحالية ويرسلها للسحابة
+  Future<void> _syncToCloud() async {
+    final systemModes = {for (var m in _systemModes) m.id: m.isActive};
+    final activeProfileIds = _profileSystems
+        .where((p) => p.isActive)
+        .map((p) => p.id)
+        .toList();
+    await _cloudSync.saveWorkshopSystems(
+      systemModes: systemModes,
+      activeProfileIds: activeProfileIds,
+    );
+  }
+
+  // ✅ جلب الإعدادات من السحابة (للعمال أو المدير على جهاز آخر)
+  Future<void> _pullFromCloud() async {
+    setState(() => _isSyncing = true);
+    await _cloudSync.loadAndApplyWorkshopSystems();
+    await _loadData();
+    if (!mounted) return;
+    setState(() => _isSyncing = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تم تحديث الأنظمة من السحابة', style: TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: Colors.teal,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _setAllProfiles(bool enable) async {
@@ -331,6 +388,19 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
         elevation: 0,
         backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade700,
         foregroundColor: Colors.white,
+        actions: [
+          // زر المزامنة من السحابة (مدير أو عامل)
+          _isSyncing
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.cloud_download_rounded),
+                  tooltip: 'مزامنة من السحابة',
+                  onPressed: _pullFromCloud,
+                ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.amberAccent,

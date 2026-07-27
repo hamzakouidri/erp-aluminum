@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'workshop_profile_screen.dart';
 import 'selected_systems_screen.dart';
 import 'package:flutter/services.dart';
@@ -12,20 +11,16 @@ import '../sql_database.dart';
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
-  String _getCostMethodLabel(CostMethod method, AppLanguage lang) {
-    if (method == CostMethod.linearMeter) {
-      return Localization.translate('linear_meter', lang);
-    } else if (method == CostMethod.squareMeter) {
-      return Localization.translate('square_meter', lang);
-    } else if (method == CostMethod.percentage) {
-      return Localization.translate('percentage', lang);
-    }
-    return '';
-  }
-
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canAccessSettings()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -122,7 +117,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 10),
 
           // Cloud Sync Backup/Restore
-          if (settings.isManager) ...[
+          if (settings.isManager || settings.canBackupToCloud()) ...[
             Card(
               elevation: 2,
               child: Padding(
@@ -177,7 +172,14 @@ class SettingsScreen extends StatelessWidget {
                                 bool success = false;
                                 String errorMsg = '';
                                 try {
-                                  await CloudSyncService().backupToCloud();
+                                  final cloudSync = CloudSyncService();
+                                  cloudSync.lastBackupUploadSummary = '';
+                                  cloudSync.lastCatalogUploadSummary = '';
+                                  await cloudSync.backupToCloud();
+                                  if (settings.userRole == 'manager' ||
+                                      settings.userRole == 'admin') {
+                                    await cloudSync.backupGlobalCatalog();
+                                  }
                                   success = true;
                                 } catch (e) {
                                   errorMsg = e.toString().replaceAll('Exception: ', '');
@@ -185,10 +187,22 @@ class SettingsScreen extends StatelessWidget {
                                   if (context.mounted) {
                                     Navigator.of(context, rootNavigator: true).pop();
                                     if (success) {
+                                      final backupSummary =
+                                          CloudSyncService()
+                                              .lastBackupUploadSummary;
+                                      final catalogSummary =
+                                          CloudSyncService()
+                                              .lastCatalogUploadSummary;
+                                      final summary = [
+                                        backupSummary,
+                                        catalogSummary,
+                                      ].where((value) => value.isNotEmpty).join(' — ');
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
                                           content: Text(
-                                            Localization.translate('تم الرفع إلى السحابة بنجاح!', lang),
+                                            summary.isEmpty
+                                                ? Localization.translate('تم الرفع إلى السحابة بنجاح!', lang)
+                                                : 'تم الرفع إلى السحابة بنجاح. $summary',
                                             style: const TextStyle(fontFamily: 'Cairo'),
                                           ),
                                           backgroundColor: Colors.green,
@@ -316,7 +330,7 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // Local Backup/Restore
-          if (settings.isManager) ...[
+          if (settings.isManager || settings.canBackupToCloud() || settings.canAccessLocalJsonBackup()) ...[
             Card(
               elevation: 2,
               child: Padding(
@@ -346,6 +360,7 @@ class SettingsScreen extends StatelessWidget {
                           runSpacing: 12.0,
                           alignment: WrapAlignment.center,
                           children: [
+                            if (settings.isManager || settings.canBackupToCloud()) ...[
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: isDark ? Colors.black : Colors.teal,
@@ -418,78 +433,81 @@ class SettingsScreen extends StatelessWidget {
                                 }
                               },
                             ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark ? Colors.black : Colors.green,
-                                foregroundColor: Colors.white,
-                                side: isDark ? const BorderSide(color: Colors.white, width: 1.5) : BorderSide.none,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                shape: isDark ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) : null,
+                            ],
+                            if (settings.canAccessLocalJsonBackup()) ...[
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.black : Colors.green,
+                                  foregroundColor: Colors.white,
+                                  side: isDark ? const BorderSide(color: Colors.white, width: 1.5) : BorderSide.none,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  shape: isDark ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) : null,
+                                ),
+                                icon: const Icon(Icons.download),
+                                label: Text(
+                                  Localization.translate('تصدير نسخة JSON', lang),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                                ),
+                                onPressed: () async {
+                                  await SqlDatabase().exportJsonBackup(context);
+                                },
                               ),
-                              icon: const Icon(Icons.download),
-                              label: Text(
-                                Localization.translate('تصدير نسخة JSON', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                              ),
-                              onPressed: () async {
-                                await SqlDatabase().exportJsonBackup(context);
-                              },
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark ? Colors.black : Colors.amber[800],
-                                foregroundColor: Colors.white,
-                                side: isDark ? const BorderSide(color: Colors.white, width: 1.5) : BorderSide.none,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                shape: isDark ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) : null,
-                              ),
-                              icon: const Icon(Icons.upload),
-                              label: Text(
-                                Localization.translate('استيراد نسخة JSON', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                              ),
-                              onPressed: () async {
-                                bool? confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: Text(
-                                      Localization.translate('استيراد نسخة JSON', lang),
-                                      style: const TextStyle(fontFamily: 'Cairo'),
-                                    ),
-                                    content: Text(
-                                      Localization.translate('سيتم دمج وتحديث البيانات الحالية بالبيانات المكتوبة بملف JSON. هل أنت متأكد؟', lang),
-                                      style: const TextStyle(fontFamily: 'Cairo'),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, false),
-                                        child: Text(
-                                          Localization.translate('إلغاء', lang),
-                                          style: const TextStyle(fontFamily: 'Cairo'),
-                                        ),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.black : Colors.amber[800],
+                                  foregroundColor: Colors.white,
+                                  side: isDark ? const BorderSide(color: Colors.white, width: 1.5) : BorderSide.none,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  shape: isDark ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) : null,
+                                ),
+                                icon: const Icon(Icons.upload),
+                                label: Text(
+                                  Localization.translate('استيراد نسخة JSON', lang),
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                                ),
+                                onPressed: () async {
+                                  bool? confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: Text(
+                                        Localization.translate('استيراد نسخة JSON', lang),
+                                        style: const TextStyle(fontFamily: 'Cairo'),
                                       ),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red,
-                                        ),
-                                        onPressed: () => Navigator.pop(ctx, true),
-                                        child: Text(
-                                          Localization.translate('استيراد', lang),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontFamily: 'Cairo',
+                                      content: Text(
+                                        Localization.translate('سيتم دمج وتحديث البيانات الحالية بالبيانات المكتوبة بملف JSON. هل أنت متأكد؟', lang),
+                                        style: const TextStyle(fontFamily: 'Cairo'),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: Text(
+                                            Localization.translate('إلغاء', lang),
+                                            style: const TextStyle(fontFamily: 'Cairo'),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirm == true) {
-                                  if (!context.mounted) return;
-                                  await SqlDatabase().importJsonBackup(context);
-                                }
-                              },
-                            ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                          ),
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          child: Text(
+                                            Localization.translate('استيراد', lang),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm == true) {
+                                    if (!context.mounted) return;
+                                    await SqlDatabase().importJsonBackup(context);
+                                  }
+                                },
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -502,7 +520,7 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // Global Catalog Sync
-          if (settings.isManager)
+          if (settings.isManager || settings.canSyncGlobalCatalog())
             Card(
               elevation: 4,
               child: Padding(
@@ -588,8 +606,7 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 10),
-          if (FirebaseAuth.instance.currentUser?.email ==
-              'kouidrihamza45@gmail.com')
+          if (settings.userRole == 'manager' || settings.userRole == 'admin')
             Card(
               color: Theme.of(context).cardColor,
               elevation: 2,
@@ -646,10 +663,15 @@ class SettingsScreen extends StatelessWidget {
                             if (context.mounted) {
                               Navigator.of(context, rootNavigator: true).pop();
                               if (success) {
+                                final catalogSummary =
+                                    CloudSyncService()
+                                        .lastCatalogUploadSummary;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      Localization.translate('تم رفع الكتالوج المركزي بنجاح!', lang),
+                                      catalogSummary.isEmpty
+                                          ? Localization.translate('تم رفع الكتالوج المركزي بنجاح!', lang)
+                                          : 'تم رفع الكتالوج بنجاح. $catalogSummary',
                                       style: const TextStyle(fontFamily: 'Cairo'),
                                     ),
                                     backgroundColor: Colors.green,
@@ -673,56 +695,7 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
 
-          Card(
-            elevation: 2,
-            child: ListTile(
-              leading: const Icon(Icons.calculate, color: Colors.blue),
-              title: Text(
-                Localization.translate('cost_calculation_method', lang),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Cairo',
-                ),
-              ),
-              subtitle: Text(
-                _getCostMethodLabel(settings.costMethod, lang),
-                style: const TextStyle(color: Colors.blue, fontFamily: 'Cairo'),
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (context) {
-                    return AlertDialog(
-                      title: Text(
-                        Localization.translate('cost_calculation_method', lang),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: CostMethod.values.map((method) {
-                          return RadioListTile<CostMethod>(
-                            title: Text(
-                              _getCostMethodLabel(method, lang),
-                              style: const TextStyle(fontFamily: 'Cairo'),
-                            ),
-                            value: method,
-                            groupValue: settings.costMethod,
-                            onChanged: (CostMethod? value) {
-                              if (value != null) {
-                                settings.setCostMethod(value);
-                                Navigator.pop(context);
-                              }
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
+
 
           if (settings.costMethod == CostMethod.percentage)
             Card(

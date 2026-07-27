@@ -46,6 +46,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   final _lengthController = TextEditingController();
   final _widthController = TextEditingController();
   final _locationController = TextEditingController(text: 'المطبخ');
+  final _orderGroupController = TextEditingController();
   final _noteController = TextEditingController();
 
   // Focus Nodes
@@ -56,6 +57,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   // Form State Values
   List<Map<String, dynamic>> _allColors = [];
   Map<String, dynamic>? _selectedColor;
+
+  List<Map<String, dynamic>> _allProfiles = [];
+  Map<String, dynamic>? _selectedProfile;
 
   String _openingSystem = 'French'; // French (Battante) or Sliding (Coulissante)
   bool _shutterExists = false;
@@ -80,13 +84,17 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   bool _speechInitialized = false;
   String _textBeforeSpeech = '';
 
-  // Measurements list
+  // Measurements list & batch state
   List<Map<String, dynamic>> _savedMeasurements = [];
+  final Set<int> _selectedMeasurementIds = {};
+  bool _isMultiSelectMode = false;
+  String _selectedGroupFilter = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _loadAllColors();
+    _loadAllProfiles();
     _loadSavedMeasurements();
   }
 
@@ -95,6 +103,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     _lengthController.dispose();
     _widthController.dispose();
     _locationController.dispose();
+    _orderGroupController.dispose();
     _noteController.dispose();
     _lengthFocus.dispose();
     _widthFocus.dispose();
@@ -123,6 +132,20 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     }
   }
 
+  Future<void> _loadAllProfiles() async {
+    try {
+      final profilesData = await widget.db.readAllProfiles();
+      setState(() {
+        _allProfiles = profilesData;
+        if (_allProfiles.isNotEmpty && _selectedProfile == null) {
+          _selectedProfile = _allProfiles.first;
+        }
+      });
+    } catch (e) {
+      debugPrint('Error loading profiles: $e');
+    }
+  }
+
   Future<void> _loadSavedMeasurements() async {
     try {
       final data = await widget.db.readMeasurements();
@@ -141,12 +164,24 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       _lengthController.text = (item['length'] ?? '').toString();
       _widthController.text = (item['width'] ?? '').toString();
       _locationController.text = (item['window_location'] ?? '').toString();
+      _orderGroupController.text = (item['order_group_name'] ?? '').toString();
       _openingSystem = (item['opening_system'] ?? 'French').toString();
       _shutterExists = (item['shutter_exists'] ?? 0) == 1;
       _shutterMotorManeuver = (item['shutter_motor_maneuver'] ?? 0) == 1;
       _glassType = (item['glass_type'] ?? 'Double').toString();
       _bottomFrameExists = (item['bottom_frame_exists'] ?? 1) == 1;
       _noteController.text = (item['note'] ?? '').toString();
+
+      final pId = item['profile_id'];
+      final pName = (item['profile_name'] ?? '').toString();
+      if (_allProfiles.isNotEmpty) {
+        try {
+          _selectedProfile = _allProfiles.firstWhere(
+            (p) => (pId != null && p['id'] == pId) || p['name'].toString().toLowerCase() == pName.toLowerCase(),
+            orElse: () => _allProfiles.first,
+          );
+        } catch (_) {}
+      }
 
       final frameType = (item['frame_type'] ?? '').toString();
       if (frameType.isNotEmpty && _allColors.isNotEmpty) {
@@ -176,7 +211,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   }
 
   // ── Convert Measurement(s) to Order ──────────────────────────────────
-  WindowModel _createWindowModelFromMeasurement(Map<String, dynamic> item) {
+  Future<WindowModel> _createWindowModelFromMeasurement(Map<String, dynamic> item) async {
     final double w = (item['width'] as num?)?.toDouble() ?? 0.0;
     final double h = (item['length'] as num?)?.toDouble() ?? 0.0;
     final String location = (item['window_location'] ?? '').toString();
@@ -195,6 +230,84 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     model.hasShutter = shutterExists;
     model.hasBottomFrame = bottomFrame;
 
+    final profileId = item['profile_id'] as int?;
+    final profileName = (item['profile_name'] ?? '').toString();
+
+    if (profileId != null) {
+      try {
+        final seriesData = await widget.db.readSeriesByProfile(profileId);
+        if (seriesData.isNotEmpty) {
+          Map<String, dynamic>? slidingSeries;
+          Map<String, dynamic>? frenchSeries;
+
+          for (var s in seriesData) {
+            final type = (s['type'] ?? '').toString().toLowerCase();
+            final name = (s['name'] ?? '').toString().toLowerCase();
+            if (type.contains('couliss') || type.contains('sliding') || type.contains('منزلق') || name.contains('couliss') || name.contains('sliding')) {
+              slidingSeries ??= s;
+            } else {
+              frenchSeries ??= s;
+            }
+          }
+
+          slidingSeries ??= seriesData.first;
+          frenchSeries ??= seriesData.first;
+
+          if (isSliding) {
+            model.loadedSlidingSeriesId = slidingSeries['id'] as int?;
+            model.loadedSlidingSeriesName = slidingSeries['name'] as String?;
+            model.loadedSeriesId = frenchSeries['id'] as int?;
+            model.loadedSeriesName = frenchSeries['name'] as String?;
+          } else {
+            model.loadedSeriesId = frenchSeries['id'] as int?;
+            model.loadedSeriesName = frenchSeries['name'] as String?;
+            model.loadedSlidingSeriesId = slidingSeries['id'] as int?;
+            model.loadedSlidingSeriesName = slidingSeries['name'] as String?;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error matching series for profile: $e');
+      }
+    } else if (profileName.isNotEmpty && _allProfiles.isNotEmpty) {
+      try {
+        final pMatch = _allProfiles.firstWhere(
+          (p) => p['name'].toString().toLowerCase() == profileName.toLowerCase(),
+          orElse: () => <String, dynamic>{},
+        );
+        if (pMatch.isNotEmpty && pMatch['id'] != null) {
+          final pId = pMatch['id'] as int;
+          final seriesData = await widget.db.readSeriesByProfile(pId);
+          if (seriesData.isNotEmpty) {
+            Map<String, dynamic>? slidingSeries;
+            Map<String, dynamic>? frenchSeries;
+            for (var s in seriesData) {
+              final type = (s['type'] ?? '').toString().toLowerCase();
+              final name = (s['name'] ?? '').toString().toLowerCase();
+              if (type.contains('couliss') || type.contains('sliding') || type.contains('منزلق') || name.contains('couliss') || name.contains('sliding')) {
+                slidingSeries ??= s;
+              } else {
+                frenchSeries ??= s;
+              }
+            }
+            slidingSeries ??= seriesData.first;
+            frenchSeries ??= seriesData.first;
+
+            if (isSliding) {
+              model.loadedSlidingSeriesId = slidingSeries['id'] as int?;
+              model.loadedSlidingSeriesName = slidingSeries['name'] as String?;
+              model.loadedSeriesId = frenchSeries['id'] as int?;
+              model.loadedSeriesName = frenchSeries['name'] as String?;
+            } else {
+              model.loadedSeriesId = frenchSeries['id'] as int?;
+              model.loadedSeriesName = frenchSeries['name'] as String?;
+              model.loadedSlidingSeriesId = slidingSeries['id'] as int?;
+              model.loadedSlidingSeriesName = slidingSeries['name'] as String?;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     // Apply color if available
     final frameType = (item['frame_type'] ?? '').toString();
     if (frameType.isNotEmpty && _allColors.isNotEmpty) {
@@ -210,7 +323,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     // Auto-draw 2-sash window zone
     if (w > 0 && h > 0) {
       final double profileT = model.profileThickness;
-      final double shutterH = shutterExists ? 155.0 : 0.0; // default shutter box height
+      final double shutterH = shutterExists ? 155.0 : 0.0;
       final double bottomOffset = bottomFrame ? profileT : 0.0;
       final Rect fullZone = Rect.fromLTRB(
         profileT,
@@ -220,7 +333,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       );
 
       if (isSliding) {
-        // Sliding system: one zone with slidingSash content and 2 sashes
         model.zones.add(WindowZone(
           id: UniqueKey().toString(),
           boundary: fullZone,
@@ -229,7 +341,6 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
           sashThickness: model.profileThickness,
         ));
       } else {
-        // French (Battante) system: one zone with doubleSash content
         model.zones.add(WindowZone(
           id: UniqueKey().toString(),
           boundary: fullZone,
@@ -242,8 +353,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     return model;
   }
 
-  void _convertMeasurementToOrder(Map<String, dynamic> item) {
-    final model = _createWindowModelFromMeasurement(item);
+  Future<void> _convertMeasurementToOrder(Map<String, dynamic> item) async {
+    final model = await _createWindowModelFromMeasurement(item);
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -255,18 +367,44 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     );
   }
 
-  void _convertAllMeasurementsToOrder() {
-    if (_savedMeasurements.isEmpty) return;
-    final models = _savedMeasurements.map((item) => _createWindowModelFromMeasurement(item)).toList();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CommandePage(
-          db: widget.db,
-          initialProducts: models,
-        ),
-      ),
+  Future<void> _convertSelectedMeasurementsToOrder(List<Map<String, dynamic>> items) async {
+    if (items.isEmpty) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
+
+    try {
+      final models = <WindowModel>[];
+      for (final item in items) {
+        final m = await _createWindowModelFromMeasurement(item);
+        models.add(m);
+      }
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CommandePage(
+            db: widget.db,
+            initialProducts: models,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      debugPrint('Error converting measurements to order: $e');
+    }
+  }
+
+  Future<void> _convertAllMeasurementsToOrder() async {
+    await _convertSelectedMeasurementsToOrder(_savedMeasurements);
   }
 
   // ── Media handling ────────────────────────────────────────────────────
@@ -473,6 +611,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       'length': double.tryParse(_lengthController.text) ?? 0.0,
       'width': double.tryParse(_widthController.text) ?? 0.0,
       'frame_type': _selectedColor != null ? _selectedColor!['name'].toString() : '',
+      'profile_id': _selectedProfile?['id'],
+      'profile_name': _selectedProfile?['name'] ?? '',
+      'order_group_name': _orderGroupController.text.trim(),
       'opening_system': _openingSystem,
       'shutter_exists': _shutterExists ? 1 : 0,
       'shutter_side': 'Inside',
@@ -618,6 +759,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         'length': item['length'],
         'width': item['width'],
         'frame_type': item['frame_type'] ?? '',
+        'profile_id': item['profile_id'],
+        'profile_name': item['profile_name'] ?? '',
+        'order_group_name': item['order_group_name'] ?? '',
         'opening_system': item['opening_system'] ?? '',
         'shutter_exists': item['shutter_exists'] ?? 0,
         'shutter_side': 'Inside',
@@ -737,6 +881,21 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       Localization.translate('تيراس', lang),
     ];
 
+    // Unique order group names for filtering
+    final Set<String> groupNames = {};
+    for (var m in _savedMeasurements) {
+      final g = (m['order_group_name'] ?? '').toString().trim();
+      if (g.isNotEmpty) groupNames.add(g);
+    }
+    final List<String> availableGroupFilters = ['ALL', ...groupNames];
+
+    // Filtered measurements
+    final List<Map<String, dynamic>> displayedMeasurements = _savedMeasurements.where((item) {
+      if (_selectedGroupFilter == 'ALL') return true;
+      final g = (item['order_group_name'] ?? '').toString().trim();
+      return g == _selectedGroupFilter;
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -768,6 +927,18 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // اسم الطلب / المشروع / الزبون (لتجميع القياسات)
+                        TextFormField(
+                          controller: _orderGroupController,
+                          decoration: InputDecoration(
+                            labelText: Localization.translate('اسم الطلب / المشروع (مثال: طلبية شقة الحاج علي)', lang),
+                            hintText: Localization.translate('لتجميع القياسات وتحويلها كطلبية واحدة', lang),
+                            prefixIcon: const Icon(Icons.folder_special_outlined, color: Colors.blue),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
                         // الطول والعرض
                         Row(
                           children: [
@@ -800,7 +971,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // موقع النافذة (أزرار اختيار منفصلة لكل خيار)
+                        // موقع النافذة
                         Text(
                           Localization.translate('موقع النافذة', lang),
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
@@ -825,6 +996,50 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                             );
                           }).toList(),
                         ),
+                        const Divider(height: 32),
+
+                        // 🟢 اختيار نظام الألمنيوم / البروفيل (System Profile)
+                        Row(
+                          children: [
+                            const Icon(Icons.settings_suggest_rounded, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Text(
+                              Localization.translate('نظام الألمنيوم / البروفيل (Profile System)', lang),
+                              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _allProfiles.isEmpty
+                            ? Text(Localization.translate('جاري تحميل الأنظمة...', lang))
+                            : Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _allProfiles.map((prof) {
+                                  final isSel = _selectedProfile?['id'] == prof['id'];
+                                  return ChoiceChip(
+                                    avatar: isSel
+                                        ? const Icon(Icons.check, size: 16, color: Colors.blue)
+                                        : const Icon(Icons.dashboard_outlined, size: 16),
+                                    label: Text(
+                                      prof['name'].toString(),
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                    selected: isSel,
+                                    selectedColor: Colors.blue.withValues(alpha: 0.2),
+                                    onSelected: (selected) {
+                                      if (selected) {
+                                        setState(() {
+                                          _selectedProfile = prof;
+                                        });
+                                      }
+                                    },
+                                  );
+                                }).toList(),
+                              ),
                         const Divider(height: 32),
 
                         // الألوان المتوفرة للبروفيلات
@@ -856,7 +1071,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               ),
                         const Divider(height: 32),
 
-                        // نظام الفتح (مستقل وبدون overflow)
+                        // نظام الفتح
                         Text(
                           Localization.translate('نظام الفتح', lang),
                           style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
@@ -867,12 +1082,12 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                           runSpacing: 8,
                           children: [
                             _buildToggleChip(
-                              Localization.translate('Coulissante', lang),
+                              Localization.translate('Coulissante (منزلق)', lang),
                               _openingSystem == 'Sliding',
                               () => setState(() => _openingSystem = 'Sliding'),
                             ),
                             _buildToggleChip(
-                              Localization.translate('Battante', lang),
+                              Localization.translate('Battante (مفصلي/فتح)', lang),
                               _openingSystem == 'French',
                               () => setState(() => _openingSystem = 'French'),
                             ),
@@ -1096,10 +1311,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
 
               const SizedBox(height: 24),
 
-              // ── قائمة القياسات السابقة ──────────────────────────────
+              // ── قائمة القياسات السابقة وتعديل التحويل الجماعي ──────────────────────────────
               Row(
                 children: [
-                  const Icon(Icons.history),
+                  const Icon(Icons.history_rounded, color: Colors.blue),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1107,45 +1322,200 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                       style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                   ),
-                  if (_savedMeasurements.isNotEmpty)
+                  if (_savedMeasurements.isNotEmpty) ...[
+                    IconButton(
+                      tooltip: _isMultiSelectMode ? Localization.translate('إلغاء الوضع', lang) : Localization.translate('تحديد متعدد', lang),
+                      icon: Icon(
+                        _isMultiSelectMode ? Icons.check_box : Icons.check_box_outlined,
+                        color: Colors.blue,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isMultiSelectMode = !_isMultiSelectMode;
+                          if (!_isMultiSelectMode) _selectedMeasurementIds.clear();
+                        });
+                      },
+                    ),
                     TextButton.icon(
                       onPressed: _convertAllMeasurementsToOrder,
                       icon: const Icon(Icons.add_shopping_cart, size: 18),
                       label: Text(
-                        Localization.translate('تحويل الكل إلى طلبية', lang),
+                        Localization.translate('تحويل الكل كطلبية', lang),
                         style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                     ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
 
-              _savedMeasurements.isEmpty
+              // شريط تصفية بحسب "اسم الطلب / المشروع"
+              if (availableGroupFilters.length > 2) ...[
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: availableGroupFilters.map((group) {
+                      final isSel = _selectedGroupFilter == group;
+                      final String label = group == 'ALL' ? Localization.translate('جميع الطلبيات', lang) : group;
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 6.0),
+                        child: FilterChip(
+                          label: Text(label, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                          selected: isSel,
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() {
+                                _selectedGroupFilter = group;
+                              });
+                            }
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // شريط إجراءات التحديد المتعدد
+              if (_isMultiSelectMode && _selectedMeasurementIds.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${Localization.translate('محدد:', lang)} ${_selectedMeasurementIds.length}',
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.blue),
+                      ),
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.shopping_cart_checkout_rounded, size: 18),
+                        label: Text(
+                          '${Localization.translate('تحويل المحددة كطلبية واحدة', lang)} (${_selectedMeasurementIds.length})',
+                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () {
+                          final selectedItems = _savedMeasurements.where((item) {
+                            final id = item['id'] as int?;
+                            return id != null && _selectedMeasurementIds.contains(id);
+                          }).toList();
+                          _convertSelectedMeasurementsToOrder(selectedItems);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              displayedMeasurements.isEmpty
                   ? Text(Localization.translate('لا توجد قياسات مسجلة بعد.', lang))
                   : ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _savedMeasurements.length,
+                      itemCount: displayedMeasurements.length,
                       itemBuilder: (ctx, idx) {
-                        final item = _savedMeasurements[idx];
+                        final item = displayedMeasurements[idx];
+                        final itemId = item['id'] as int;
+                        final isChecked = _selectedMeasurementIds.contains(itemId);
+
+                        final String profileName = (item['profile_name'] ?? '').toString();
+                        final String groupName = (item['order_group_name'] ?? '').toString();
+
                         return Card(
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
-                            onTap: () => _populateFormFromMeasurement(item),
+                            onTap: () {
+                              if (_isMultiSelectMode) {
+                                setState(() {
+                                  if (isChecked) {
+                                    _selectedMeasurementIds.remove(itemId);
+                                  } else {
+                                    _selectedMeasurementIds.add(itemId);
+                                  }
+                                });
+                              } else {
+                                _populateFormFromMeasurement(item);
+                              }
+                            },
+                            leading: _isMultiSelectMode
+                                ? Checkbox(
+                                    value: isChecked,
+                                    onChanged: (val) {
+                                      setState(() {
+                                        if (val == true) {
+                                          _selectedMeasurementIds.add(itemId);
+                                        } else {
+                                          _selectedMeasurementIds.remove(itemId);
+                                        }
+                                      });
+                                    },
+                                  )
+                                : CircleAvatar(
+                                    backgroundColor: Colors.blue.shade50,
+                                    child: Icon(
+                                      (item['opening_system'] == 'Sliding') ? Icons.view_column_rounded : Icons.sensor_door_rounded,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
                             title: Text(
                               '${Localization.translate((item['window_location'] ?? '').toString(), lang)} - ${item['length']} × ${item['width']} ${Localization.translate('مم', lang)}',
                               style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                             ),
-                            subtitle: Text(
-                              '${Localization.translate('نظام', lang)}: ${Localization.translate((item['opening_system'] ?? '').toString(), lang)} | ${Localization.translate('ستار', lang)}: ${item['shutter_exists'] == 1 ? Localization.translate('نعم', lang) : Localization.translate('لا', lang)}\n${Localization.translate('ملاحظة', lang)}: ${item['note'] ?? ''}',
-                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    if (profileName.isNotEmpty) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(6)),
+                                        child: Text(
+                                          profileName,
+                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    if (groupName.isNotEmpty) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6)),
+                                        child: Text(
+                                          '📁 $groupName',
+                                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Text(
+                                      '${Localization.translate('نظام', lang)}: ${Localization.translate((item['opening_system'] ?? '').toString(), lang)}',
+                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  '${Localization.translate('ستار', lang)}: ${item['shutter_exists'] == 1 ? Localization.translate('نعم', lang) : Localization.translate('لا', lang)} | ${Localization.translate('ملاحظة', lang)}: ${item['note'] ?? ''}',
+                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                                ),
+                              ],
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.add_shopping_cart, color: Colors.green),
-                                  tooltip: Localization.translate('تحويل إلى طلبية', lang),
+                                  tooltip: Localization.translate('تحويل إلى طلبية منفردة', lang),
                                   onPressed: () => _convertMeasurementToOrder(item),
                                 ),
                                 IconButton(
@@ -1156,7 +1526,8 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.delete, color: Colors.red),
                                   onPressed: () async {
-                                    await widget.db.deleteMeasurement(item['id'] as int);
+                                    await widget.db.deleteMeasurement(itemId);
+                                    _selectedMeasurementIds.remove(itemId);
                                     _loadSavedMeasurements();
                                   },
                                 ),

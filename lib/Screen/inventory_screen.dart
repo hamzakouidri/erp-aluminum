@@ -37,6 +37,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Color get _divider => Theme.of(context).dividerColor;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canAccessInventory()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadLocations();

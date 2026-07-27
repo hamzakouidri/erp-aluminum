@@ -20,6 +20,19 @@ class _ClientChronoSearchScreenState extends State<ClientChronoSearchScreen> {
   String _searchQuery = '';
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canViewClientLedger()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadClients();

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../sql_database.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
@@ -18,11 +21,26 @@ class _ColorsScreenState extends State<ColorsScreen> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _profiles = [];
   Map<int, List<int>> _profileColorsMap = {};
+  StreamSubscription<String>? _dbSubscription;
+  Timer? _reloadDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadItems();
+    _dbSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+      _reloadDebounce?.cancel();
+      _reloadDebounce = Timer(const Duration(milliseconds: 250), () {
+        if (mounted) _loadItems();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _reloadDebounce?.cancel();
+    _dbSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadItems() async {
@@ -41,7 +59,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
           pcMap[pId]!.add(cId);
         }
       } catch (e) {
-        Text("Error reading ProfileColors: $e");
+        debugPrint('Error reading ProfileColors: $e');
       }
     }
 
@@ -54,48 +72,54 @@ class _ColorsScreenState extends State<ColorsScreen> {
     }
   }
 
-  
   DecorationImage? _getDecorationImageFromName(String name) {
     name = name.toLowerCase();
-    
-    if (name.contains('أنتيك') || name.contains('antique') || name.contains('انتيك')) {
+
+    if (name.contains('أنتيك') ||
+        name.contains('antique') ||
+        name.contains('انتيك')) {
       return const DecorationImage(
         image: AssetImage('assets/images/wood_texture_antique.png'),
         fit: BoxFit.cover,
       );
     }
-    
-    if (name.contains('فوبوا كلير') || name.contains('clair') || name.contains('خشبي فاتح')) {
+
+    if (name.contains('فوبوا كلير') ||
+        name.contains('clair') ||
+        name.contains('خشبي فاتح')) {
       return const DecorationImage(
         image: AssetImage('assets/images/wood_texture_d0.png'),
         fit: BoxFit.cover,
       );
     }
-    
-    if (name.contains('خشبي داكن') || name.contains('foncé') || name.contains('dark')) {
+
+    if (name.contains('خشبي داكن') ||
+        name.contains('foncé') ||
+        name.contains('dark')) {
       return const DecorationImage(
         image: AssetImage('assets/images/wood_texture_dark.png'),
         fit: BoxFit.cover,
       );
     }
 
-    if (name.contains('خشبي') || name.contains('bois') || name.contains('wood') || name.contains('فوبوا')) {
+    if (name.contains('خشبي') ||
+        name.contains('bois') ||
+        name.contains('wood') ||
+        name.contains('فوبوا')) {
       return const DecorationImage(
         image: AssetImage('assets/images/wood_texture.png'),
         fit: BoxFit.cover,
       );
     }
-    
+
     return null;
   }
 
   LinearGradient _getGradientFromName(String name, [String? hexCode]) {
     name = name.toLowerCase();
-    
+
     // Check standard colors first to preserve their beautiful, handcrafted gradients
-    if (name.contains('خام') ||
-        name.contains('brut') ||
-        name.contains('raw')) {
+    if (name.contains('خام') || name.contains('brut') || name.contains('raw')) {
       return LinearGradient(
         colors: [Colors.grey.shade300, Colors.grey.shade500],
         begin: Alignment.topLeft,
@@ -147,8 +171,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
         end: Alignment.bottomRight,
       );
     }
-    if (name.contains('بيج') ||
-        name.contains('beige')) {
+    if (name.contains('بيج') || name.contains('beige')) {
       return const LinearGradient(
         colors: [Color(0xFFF5F5DC), Color(0xFFDCDCB4)],
         begin: Alignment.topLeft,
@@ -234,8 +257,12 @@ class _ColorsScreenState extends State<ColorsScreen> {
         final color = Color(intVal);
         final hsl = HSLColor.fromColor(color);
         final double lightnessDiff = 0.15;
-        final light = hsl.withLightness((hsl.lightness + lightnessDiff).clamp(0.0, 1.0)).toColor();
-        final dark = hsl.withLightness((hsl.lightness - lightnessDiff).clamp(0.0, 1.0)).toColor();
+        final light = hsl
+            .withLightness((hsl.lightness + lightnessDiff).clamp(0.0, 1.0))
+            .toColor();
+        final dark = hsl
+            .withLightness((hsl.lightness - lightnessDiff).clamp(0.0, 1.0))
+            .toColor();
         return LinearGradient(
           colors: [light, dark],
           begin: Alignment.topLeft,
@@ -311,7 +338,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
   void _showEditDialog(Map<String, dynamic> item) {
     TextEditingController nameCtrl = TextEditingController(
-      text: Localization.translate(item['name'].toString().trim(), Provider.of<AppSettingsProvider>(context, listen: false).language),
+      text: Localization.translate(
+        item['name'].toString().trim(),
+        Provider.of<AppSettingsProvider>(context, listen: false).language,
+      ),
     );
 
     showDialog(
@@ -445,39 +475,30 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                 color['name'].toString(),
                                 color['hex_code']?.toString(),
                               ),
-                              image: _getDecorationImageFromName(color['name'].toString()),
+                              image: _getDecorationImageFromName(
+                                color['name'].toString(),
+                              ),
                               border: Border.all(color: Colors.grey.shade400),
                             ),
                           ),
                           value: isChecked,
                           onChanged: (bool? val) async {
-                            final dbInstance = await widget.db.db;
-                            if (dbInstance == null) return;
-                            if (val == true) {
-                              await dbInstance.insert('ProfileColors', {
-                                'profile_id': selectedProfileId,
-                                'color_id': cId,
-                              });
-                            } else {
-                              await dbInstance.delete(
-                                'ProfileColors',
-                                where: 'profile_id = ? AND color_id = ?',
-                                whereArgs: [selectedProfileId, cId],
-                              );
-                            }
+                            final profileId = selectedProfileId;
+                            if (profileId == null) return;
+                            await widget.db.setColorForProfile(
+                              profileId: profileId,
+                              colorId: cId,
+                              enabled: val == true,
+                            );
 
                             setStateDialog(() {
                               if (val == true) {
-                                if (!_profileColorsMap.containsKey(
-                                  selectedProfileId,
-                                )) {
-                                  _profileColorsMap[selectedProfileId!] = [];
+                                if (!_profileColorsMap.containsKey(profileId)) {
+                                  _profileColorsMap[profileId] = [];
                                 }
-                                _profileColorsMap[selectedProfileId!]!.add(cId);
+                                _profileColorsMap[profileId]!.add(cId);
                               } else {
-                                _profileColorsMap[selectedProfileId]?.remove(
-                                  cId,
-                                );
+                                _profileColorsMap[profileId]?.remove(cId);
                               }
                             });
                             _loadItems();
@@ -507,9 +528,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
   void _showCustomizeGlassDialog() async {
     final glasses = await widget.db.readGlass();
-    
+
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -532,35 +553,49 @@ class _ColorsScreenState extends State<ColorsScreen> {
                   final gId = glass['id'] as int;
                   final gName = glass['name'].toString();
                   final gType = glass['type'].toString();
-                  
+
                   String displayType = gType;
-                  if (gType == 'Glass') displayType = 'زجاج';
-                  else if (gType == 'Intercall') displayType = 'إنتركال';
-                  else if (gType == 'Gas') displayType = 'غاز';
-                  else if (gType == 'Panneau') displayType = 'بانو';
-                  else if (gType == 'Baguette') displayType = 'باجيت';
-                  else if (gType == 'Rosette') displayType = 'وردة';
-                  
+                  if (gType == 'Glass') {
+                    displayType = 'زجاج';
+                  } else if (gType == 'Intercall')
+                    displayType = 'إنتركال';
+                  else if (gType == 'Gas')
+                    displayType = 'غاز';
+                  else if (gType == 'Panneau')
+                    displayType = 'بانو';
+                  else if (gType == 'Baguette')
+                    displayType = 'باجيت';
+                  else if (gType == 'Rosette')
+                    displayType = 'وردة';
+
                   final colorsStr = glass['color']?.toString() ?? '';
-                  final count = colorsStr.isEmpty ? 0 : colorsStr.split(',').length;
-                  
+                  final count = colorsStr.isEmpty
+                      ? 0
+                      : colorsStr.split(',').length;
+
                   return ListTile(
                     title: Text(
                       gName,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                     subtitle: Text(
                       '$displayType | ${glass['thickness']} مم | الألوان المخصصة: $count',
                       style: const TextStyle(fontSize: 12),
                     ),
-                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                    trailing: const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 16,
+                    ),
                     onTap: () async {
                       final selectedColors = colorsStr
                           .split(',')
                           .map((c) => c.trim())
                           .where((c) => c.isNotEmpty)
                           .toSet();
-                          
+
                       await showDialog(
                         context: context,
                         builder: (subContext) => StatefulBuilder(
@@ -575,8 +610,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                   itemBuilder: (context, idx) {
                                     final color = _items[idx];
                                     final cName = color['name'].toString();
-                                    final isChecked = selectedColors.contains(cName);
-                                    
+                                    final isChecked = selectedColors.contains(
+                                      cName,
+                                    );
+
                                     return CheckboxListTile(
                                       title: Text(cName),
                                       secondary: Container(
@@ -588,7 +625,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                             cName,
                                             color['hex_code']?.toString(),
                                           ),
-                                          border: Border.all(color: Colors.grey.shade400),
+                                          border: Border.all(
+                                            color: Colors.grey.shade400,
+                                          ),
                                         ),
                                       ),
                                       value: isChecked,
@@ -608,36 +647,61 @@ class _ColorsScreenState extends State<ColorsScreen> {
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(subContext),
-                                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                                  child: const Text(
+                                    'إلغاء',
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
                                 ),
                                 ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                  ),
                                   onPressed: () async {
                                     try {
-                                      final newColorsStr = selectedColors.join(',');
+                                      final newColorsStr = selectedColors.join(
+                                        ',',
+                                      );
                                       await widget.db.updateGlass(
                                         gId,
                                         glass['name']?.toString() ?? '',
                                         glass['type']?.toString() ?? '',
-                                        (glass['thickness'] as num?)?.toDouble() ?? 0.0,
-                                        (glass['price_per_sqm'] as num?)?.toDouble() ?? 0.0,
+                                        (glass['thickness'] as num?)
+                                                ?.toDouble() ??
+                                            0.0,
+                                        (glass['price_per_sqm'] as num?)
+                                                ?.toDouble() ??
+                                            0.0,
                                         color: newColorsStr,
-                                        imagePath: glass['image_path']?.toString() ?? '',
-                                        subtype: glass['subtype']?.toString() ?? '',
-                                        height: (glass['height'] as num?)?.toDouble() ?? 0.0,
-                                        visibleWidth: (glass['visible_width'] as num?)?.toDouble(),
+                                        imagePath:
+                                            glass['image_path']?.toString() ??
+                                            '',
+                                        subtype:
+                                            glass['subtype']?.toString() ?? '',
+                                        height:
+                                            (glass['height'] as num?)
+                                                ?.toDouble() ??
+                                            0.0,
+                                        visibleWidth:
+                                            (glass['visible_width'] as num?)
+                                                ?.toDouble(),
                                       );
-                                      final updatedGlasses = await widget.db.readGlass();
+                                      final updatedGlasses = await widget.db
+                                          .readGlass();
                                       setStateDialog(() {
                                         glasses.clear();
                                         glasses.addAll(updatedGlasses);
                                       });
                                       Navigator.pop(subContext);
                                     } catch (e) {
-                                      print("Error saving glass color customisation: $e");
+                                      print(
+                                        "Error saving glass color customisation: $e",
+                                      );
                                     }
                                   },
-                                  child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+                                  child: const Text(
+                                    'حفظ',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
                                 ),
                               ],
                             );
@@ -705,8 +769,12 @@ class _ColorsScreenState extends State<ColorsScreen> {
             }).toList();
 
             // Ensure the currently selected item is in the list to avoid assertion errors
-            if (selectedAccId != null && !filteredAccs.any((acc) => acc['id'] == selectedAccId)) {
-              final originalAcc = accessories.firstWhere((acc) => acc['id'] == selectedAccId, orElse: () => {});
+            if (selectedAccId != null &&
+                !filteredAccs.any((acc) => acc['id'] == selectedAccId)) {
+              final originalAcc = accessories.firstWhere(
+                (acc) => acc['id'] == selectedAccId,
+                orElse: () => {},
+              );
               if (originalAcc.isNotEmpty) {
                 filteredAccs.insert(0, originalAcc);
               }
@@ -727,10 +795,16 @@ class _ColorsScreenState extends State<ColorsScreen> {
                   children: [
                     TextField(
                       decoration: InputDecoration(
-                        labelText: Localization.translate('بحث عن إكسسوار...', lang),
+                        labelText: Localization.translate(
+                          'بحث عن إكسسوار...',
+                          lang,
+                        ),
                         prefixIcon: const Icon(Icons.search),
                         border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                       onChanged: (val) {
                         setStateDialog(() {
@@ -991,8 +1065,6 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                     ),
                                     value: isMapped,
                                     onChanged: (val) async {
-                                      final db = await widget.db.db;
-                                      if (db == null) return;
                                       if (val == true) {
                                         final sh = shutterComponents.firstWhere(
                                           (s) => s['id'] == selectedShutId,
@@ -1000,27 +1072,14 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                         final basePrice = (sh['price'] is num)
                                             ? (sh['price'] as num).toDouble()
                                             : 0.0;
-                                        await db.insert(
-                                          'ShutterColorPrices',
-                                          {
-                                            'shutter_component_id':
-                                                selectedShutId,
-                                            'color_id': cId,
-                                            'price': basePrice,
-                                          },
-                                          conflictAlgorithm:
-                                              ConflictAlgorithm.replace,
-                                        );
-                                        await db.insert(
-                                          'ShutterComponentColors',
-                                          {
-                                            'shutter_component_id':
-                                                selectedShutId,
-                                            'color_id': cId,
-                                          },
-                                          conflictAlgorithm:
-                                              ConflictAlgorithm.replace,
-                                        );
+                                        await widget.db
+                                            .setShutterColorForComponent(
+                                              shutterComponentId:
+                                                  selectedShutId!,
+                                              colorId: cId,
+                                              enabled: true,
+                                              price: basePrice,
+                                            );
                                         setStateDialog(() {
                                           shutColorMap
                                               .putIfAbsent(
@@ -1030,18 +1089,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                               .add(cId);
                                         });
                                       } else {
-                                        await db.delete(
-                                          'ShutterColorPrices',
-                                          where:
-                                              'shutter_component_id = ? AND color_id = ?',
-                                          whereArgs: [selectedShutId, cId],
-                                        );
-                                        await db.delete(
-                                          'ShutterComponentColors',
-                                          where:
-                                              'shutter_component_id = ? AND color_id = ?',
-                                          whereArgs: [selectedShutId, cId],
-                                        );
+                                        await widget.db
+                                            .setShutterColorForComponent(
+                                              shutterComponentId:
+                                                  selectedShutId!,
+                                              colorId: cId,
+                                              enabled: false,
+                                            );
                                         setStateDialog(() {
                                           shutColorMap[selectedShutId]?.remove(
                                             cId,
@@ -1134,8 +1188,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.blue.shade600,
                               foregroundColor: Colors.white,
-                              side: Theme.of(context).brightness == Brightness.dark
-                                  ? const BorderSide(color: Colors.white54, width: 1.2)
+                              side:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const BorderSide(
+                                      color: Colors.white54,
+                                      width: 1.2,
+                                    )
                                   : null,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
@@ -1165,8 +1224,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.orange.shade600,
                               foregroundColor: Colors.white,
-                              side: Theme.of(context).brightness == Brightness.dark
-                                  ? const BorderSide(color: Colors.white54, width: 1.2)
+                              side:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const BorderSide(
+                                      color: Colors.white54,
+                                      width: 1.2,
+                                    )
                                   : null,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
@@ -1197,8 +1261,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.amber.shade700,
                               foregroundColor: Colors.white,
-                              side: Theme.of(context).brightness == Brightness.dark
-                                  ? const BorderSide(color: Colors.white54, width: 1.2)
+                              side:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const BorderSide(
+                                      color: Colors.white54,
+                                      width: 1.2,
+                                    )
                                   : null,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
@@ -1225,8 +1294,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.deepPurple,
                               foregroundColor: Colors.white,
-                              side: Theme.of(context).brightness == Brightness.dark
-                                  ? const BorderSide(color: Colors.white54, width: 1.2)
+                              side:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const BorderSide(
+                                      color: Colors.white54,
+                                      width: 1.2,
+                                    )
                                   : null,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
@@ -1271,10 +1345,18 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: _getGradientFromName(
-                                Localization.translate(item['name'].toString().trim(), lang),
+                                Localization.translate(
+                                  item['name'].toString().trim(),
+                                  lang,
+                                ),
                                 item['hex_code']?.toString(),
                               ),
-                              image: _getDecorationImageFromName(Localization.translate(item['name'].toString().trim(), lang)),
+                              image: _getDecorationImageFromName(
+                                Localization.translate(
+                                  item['name'].toString().trim(),
+                                  lang,
+                                ),
+                              ),
                               border: Border.all(
                                 color: Colors.grey.shade400,
                                 width: 1,
@@ -1289,7 +1371,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             ),
                           ),
                           title: Text(
-                            Localization.translate(item['name'].toString().trim(), lang),
+                            Localization.translate(
+                              item['name'].toString().trim(),
+                              lang,
+                            ),
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           trailing: isUserAdmin
@@ -1297,11 +1382,17 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
-                                      icon: Icon(Icons.edit, color: Colors.blue),
+                                      icon: Icon(
+                                        Icons.edit,
+                                        color: Colors.blue,
+                                      ),
                                       onPressed: () => _showEditDialog(item),
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.delete, color: Colors.red),
+                                      icon: Icon(
+                                        Icons.delete,
+                                        color: Colors.red,
+                                      ),
                                       onPressed: () => _showDeleteDialog(item),
                                     ),
                                   ],

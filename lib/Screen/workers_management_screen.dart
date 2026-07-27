@@ -62,6 +62,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       );
 
       final user = FirebaseAuth.instance.currentUser;
+      String? workshopId;
 
       // Remove manager if accidentally added to local DB
       if (user != null) {
@@ -69,6 +70,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
         final managerUid = (prefs.getString('workshop_code')?.isNotEmpty == true)
             ? prefs.getString('workshop_code')!
             : user.uid;
+        workshopId = managerUid;
 
         final doc = await FirebaseFirestore.instance
             .collection('users')
@@ -94,6 +96,9 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
         return uid.startsWith('local_worker_') || email.isEmpty || email == 'no email' || email == 'no_email';
       });
 
+      if (workshopId != null && workshopId.isNotEmpty) {
+        await _repairWorkerWorkshopLinks(data, workshopId);
+      }
 
       setState(() {
         _workers = data;
@@ -102,6 +107,37 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       print('Error loading workers: $e');
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// Repairs older worker documents that were created without the manager's
+  /// workshop id. Without this value a worker would upload to a private path
+  /// instead of the shared workshop backup.
+  Future<void> _repairWorkerWorkshopLinks(
+    List<Map<String, dynamic>> workers,
+    String workshopId,
+  ) async {
+    try {
+      var batch = FirebaseFirestore.instance.batch();
+      var count = 0;
+      for (final worker in workers) {
+        final uid = worker['uid']?.toString() ?? '';
+        if (uid.isEmpty || uid.startsWith('local_worker_')) continue;
+        batch.set(
+          FirebaseFirestore.instance.collection('users').doc(uid),
+          {'workshopId': workshopId},
+          SetOptions(merge: true),
+        );
+        count++;
+        if (count == 400) {
+          await batch.commit();
+          batch = FirebaseFirestore.instance.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) await batch.commit();
+    } catch (e) {
+      debugPrint('Unable to repair worker workshop links: $e');
     }
   }
 
@@ -393,10 +429,20 @@ class _WorkerCardState extends State<WorkerCard> {
   }
 
   void _initPerms() {
+    perms = {};
     try {
-      perms = jsonDecode(widget.worker['permissions_json'] ?? '{}');
+      final rawPermissions = widget.worker['permissions_json'];
+      if (rawPermissions is String && rawPermissions.isNotEmpty) {
+        final decoded = jsonDecode(rawPermissions);
+        if (decoded is Map) {
+          perms = Map<String, dynamic>.from(decoded);
+        }
+      }
     } catch (e) {
       perms = {};
+    }
+    if (perms.isEmpty && widget.worker['permissions'] is Map) {
+      perms = Map<String, dynamic>.from(widget.worker['permissions'] as Map);
     }
     final defaults = {
       'view_clients': false,
@@ -426,6 +472,8 @@ class _WorkerCardState extends State<WorkerCard> {
       'pass_to_next_stage': false,
       'duplicate_orders': false,
       'view_my_tasks': false,
+      'view_all_worker_tasks': false,
+      'view_all_tasks': false,
       'view_my_accreditations': false,
       'view_profiles': false,
       'view_glass': false,
@@ -440,6 +488,7 @@ class _WorkerCardState extends State<WorkerCard> {
       'settings': false,
       'select_systems': false,
       'change_prices': false,
+      'view_cost_price': false,
       'change_transaction_dates': false,
       'treasury': false,
       'manage_workers': false,
@@ -449,9 +498,16 @@ class _WorkerCardState extends State<WorkerCard> {
       'add_purchases': false,
       'edit_purchases': false,
       'delete_purchases': false,
+      'edit_payments': false,
+      'delete_payments': false,
+      'manage_caisses': false,
       'statistics': false,
+      'accelerate_confirmed_invoices': false,
       'isBlocked': false,
       'view_suppliers': false,
+      'cloud_backup': false,
+      'sync_global_catalog': false,
+      'local_json_backup': false,
       'full_manager_permissions': false,
       'co_manager': false,
     };
@@ -461,30 +517,47 @@ class _WorkerCardState extends State<WorkerCard> {
   }
 
   Future<void> _updatePermission(String key, bool val) async {
+    final previousPerms = Map<String, dynamic>.from(perms);
+    final updatedPerms = Map<String, dynamic>.from(perms)..[key] = val;
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = prefs.getString('workshop_code') ?? '';
     setState(() {
-      perms[key] = val;
+      perms = updatedPerms;
     });
-    await widget.db.updateEmployeePermissions(
-      widget.worker['uid'],
-      jsonEncode(perms),
-    );
 
     try {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.worker['uid'])
           .set({
-            'isBlocked': perms['isBlocked'] ?? false,
-            'permissions': perms,
-            'permissions_json': jsonEncode(perms),
+            'isBlocked': updatedPerms['isBlocked'] ?? false,
+            'permissions': updatedPerms,
+            'permissions_json': jsonEncode(updatedPerms),
+            if (workshopId.isNotEmpty) 'workshopId': workshopId,
           }, SetOptions(merge: true));
+      await widget.db.updateEmployeePermissions(
+        widget.worker['uid'],
+        jsonEncode(updatedPerms),
+      );
     } catch (e) {
       debugPrint('Error updating permissions in Firebase: $e');
+      if (mounted) {
+        setState(() {
+          perms = previousPerms;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   /// 👑 منح أو إلغاء صلاحيات كمدير بالكامل لهذا الشخص
   Future<void> _toggleFullManagerPermissions(bool grant) async {
+    final previousPerms = Map<String, dynamic>.from(perms);
     final Map<String, dynamic> updatedPerms = Map<String, dynamic>.from(perms);
 
     updatedPerms['full_manager_permissions'] = grant;
@@ -496,6 +569,10 @@ class _WorkerCardState extends State<WorkerCard> {
           updatedPerms[k] = true;
         }
       });
+    } else {
+      // A demoted co-manager must not retain the individual permissions that
+      // were enabled when full access was granted.
+      updatedPerms.updateAll((key, value) => key == 'isBlocked' ? value : false);
     }
 
     setState(() {
@@ -503,29 +580,43 @@ class _WorkerCardState extends State<WorkerCard> {
     });
 
     final uid = widget.worker['uid'].toString();
-
-    await widget.db.updateEmployeePermissions(uid, jsonEncode(updatedPerms));
-
-    if (grant) {
-      await widget.db.updateEmployeeFullInfo(
-        uid,
-        name: widget.worker['name']?.toString() ?? '',
-        email: widget.worker['email']?.toString() ?? '',
-        phone: widget.worker['phone']?.toString() ?? '',
-        address: widget.worker['address']?.toString() ?? '',
-        jobRole: 'نائب مدير (صلاحيات كاملة)',
-      );
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = prefs.getString('workshop_code') ?? '';
 
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'role': grant ? 'co_manager' : 'worker',
         'permissions': updatedPerms,
         'permissions_json': jsonEncode(updatedPerms),
+        if (workshopId.isNotEmpty) 'workshopId': workshopId,
         if (grant) 'job_role': 'نائب مدير (صلاحيات كاملة)',
       }, SetOptions(merge: true));
+      await widget.db.updateEmployeePermissions(uid, jsonEncode(updatedPerms));
+
+      if (grant) {
+        await widget.db.updateEmployeeFullInfo(
+          uid,
+          name: widget.worker['name']?.toString() ?? '',
+          email: widget.worker['email']?.toString() ?? '',
+          phone: widget.worker['phone']?.toString() ?? '',
+          address: widget.worker['address']?.toString() ?? '',
+          jobRole: 'نائب مدير (صلاحيات كاملة)',
+        );
+      }
     } catch (e) {
       debugPrint('Error updating co_manager in Firebase: $e');
+      if (mounted) {
+        setState(() {
+          perms = previousPerms;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر حفظ صلاحيات المدير في السحابة؛ لم يتم تغييرها.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
     }
 
     widget.onRefresh();
@@ -1285,6 +1376,11 @@ class _WorkerCardState extends State<WorkerCard> {
                   onChanged: (val) => _updatePermission('change_prices', val),
                 ),
                 SwitchListTile(
+                  title: Text(_tr('رؤية سعر التكلفة', 'Voir le prix de revient', 'View cost price', lang), style: switchTitleStyle),
+                  value: perms['view_cost_price'] ?? false,
+                  onChanged: (val) => _updatePermission('view_cost_price', val),
+                ),
+                SwitchListTile(
                   title: Text(_tr('تغيير تواريخ المعاملات (الصندوق والمالية)', 'Modifier la date des transactions (Trésorerie)', 'Change transaction dates (Treasury & Finances)', lang), style: switchTitleStyle),
                   subtitle: Text(
                     _tr('السماح للعامل بتغيير وتعديل تاريخ المعاملات والمدفوعات', 'Autoriser la modification de la date des opérations', 'Allows changing dates of financial transactions', lang),
@@ -1297,6 +1393,21 @@ class _WorkerCardState extends State<WorkerCard> {
                   title: Text(_tr('التعامل مع الصندوق (الخزينة)', 'Accès à la trésorerie', 'Treasury access', lang), style: switchTitleStyle),
                   value: perms['treasury'] ?? false,
                   onChanged: (val) => _updatePermission('treasury', val),
+                ),
+                SwitchListTile(
+                  title: Text(_tr('إدارة الصناديق', 'Gérer les caisses', 'Manage cash boxes', lang), style: switchTitleStyle),
+                  value: perms['manage_caisses'] ?? false,
+                  onChanged: (val) => _updatePermission('manage_caisses', val),
+                ),
+                SwitchListTile(
+                  title: Text(_tr('تعديل المدفوعات والمعاملات', 'Modifier les paiements', 'Edit payments and transactions', lang), style: switchTitleStyle),
+                  value: perms['edit_payments'] ?? false,
+                  onChanged: (val) => _updatePermission('edit_payments', val),
+                ),
+                SwitchListTile(
+                  title: Text(_tr('حذف المدفوعات والمعاملات', 'Supprimer les paiements', 'Delete payments and transactions', lang), style: switchTitleStyle),
+                  value: perms['delete_payments'] ?? false,
+                  onChanged: (val) => _updatePermission('delete_payments', val),
                 ),
                 SwitchListTile(
                   title: Text(_tr('إدارة شؤون وأجور العمال', 'Gestion des salaires des ouvriers', 'Worker finances & wages', lang), style: switchTitleStyle),
@@ -1379,4 +1490,3 @@ class _WorkerCardState extends State<WorkerCard> {
     );
   }
 }
-

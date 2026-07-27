@@ -127,11 +127,12 @@ class SubscriptionChecker extends StatelessWidget {
 
          // Sync role to SharedPreferences and trigger AppSettingsProvider
         // ✅ الافتراضي هو 'worker' وليس 'manager' لمنع الوصول غير المصرح به
+        final rawRole = data['role']?.toString();
         final role = isAdmin
             ? 'admin'
-            : ((data['role'] == 'manager' || data['workshopId'] == user.uid)
+            : ((rawRole == 'manager' || data['workshopId'] == user.uid)
                 ? 'manager'
-                : 'worker');
+                : (rawRole == 'co_manager' ? 'co_manager' : 'worker'));
         final workshopId = data['workshopId']?.toString() ?? '';
         final workshopName = data['workshopName']?.toString() ?? '';
 
@@ -147,18 +148,54 @@ class SubscriptionChecker extends StatelessWidget {
           final currentWorkshop = prefs.getString('workshop_code');
           final currentWorkshopName = prefs.getString('workshop_name');
           final currentDisplayName = prefs.getString('user_display_name');
-          final logoBase64 = data['workshopLogoUrl']?.toString() ?? data['logoUrl']?.toString() ?? '';
+          
+          String logoBase64 = data['workshopLogoUrl']?.toString() ?? data['logoUrl']?.toString() ?? '';
+          String resolvedWorkshopName = workshopName;
+          if (resolvedWorkshopName == workshopId) {
+            resolvedWorkshopName = ''; // إذا كان اسم الورشة مساوياً للكود، نعيد تعيينه لجلبه الصحيح من حساب المدير
+          }
+
+          // ✅ بالنسبة للعامل — إذا كان اللوغو أو اسم الورشة غير موجود في حسابه، نجلب معلومات مدير الورشة
+          if ((logoBase64.isEmpty || resolvedWorkshopName.isEmpty) && workshopId.isNotEmpty && role == 'worker') {
+            try {
+              final managerDoc = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(workshopId)
+                  .get();
+              if (managerDoc.exists && managerDoc.data() != null) {
+                final mData = managerDoc.data()!;
+                if (logoBase64.isEmpty) {
+                  logoBase64 = mData['workshopLogoUrl']?.toString() ?? mData['logoUrl']?.toString() ?? '';
+                }
+                final mName = mData['workshopName']?.toString() ?? '';
+                if (mName.isNotEmpty && mName != workshopId) {
+                  resolvedWorkshopName = mName;
+                  // تحديث حقل اسم الورشة لدى العامل في الفايربيس لتفادي جلب الكود باسم الورشة
+                  FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                    'workshopName': resolvedWorkshopName,
+                  }).catchError((_) {});
+                }
+              }
+            } catch (e) {
+              debugPrint('Error fetching manager details for worker logo & name: $e');
+            }
+          }
+
           final currentLogo = prefs.getString('workshop_logo_base64');
           if (currentRole != role ||
               currentWorkshop != workshopId ||
-              currentWorkshopName != workshopName ||
+              currentWorkshopName != resolvedWorkshopName ||
               currentDisplayName != displayName ||
               currentLogo != logoBase64) {
             await prefs.setString('user_role', role);
             await prefs.setString('workshop_code', workshopId);
-            await prefs.setString('workshop_name', workshopName);
+            if (resolvedWorkshopName.isNotEmpty) {
+              await prefs.setString('workshop_name', resolvedWorkshopName);
+            }
             await prefs.setString('user_display_name', displayName);
-            await prefs.setString('workshop_logo_base64', logoBase64);
+            if (logoBase64.isNotEmpty) {
+              await prefs.setString('workshop_logo_base64', logoBase64);
+            }
             if (context.mounted) {
               Provider.of<AppSettingsProvider>(
                 context,
@@ -226,7 +263,7 @@ class SubscriptionChecker extends StatelessWidget {
         // -------------------------------------------------------------
         // 2. معالجة حالة العامل (ربط العامل باشتراك المدير لغلق الثغرة)
         // -------------------------------------------------------------
-        if (data['role'] == 'worker') {
+        if (data['role'] == 'worker' || data['role'] == 'co_manager') {
           final managerId = data['workshopId']?.toString();
 
           if (managerId == null || managerId.isEmpty) {
@@ -479,33 +516,36 @@ class _SyncGatewayState extends State<SyncGateway> {
       final userRole = prefs.getString('user_role') ?? 'worker';
       final isWorker = userRole == 'worker';
 
-      if (isWorker) {
-        // ✅ العامل: نزامن دائماً عند كل دخول للتطبيق
-        // ضروري لاستقبال إسنادات العمل الجديدة من المدير
-        setState(() {
-          _isSyncing = true;
-          _syncStatus = 'جاري تحميل مهامك وبيانات الورشة...';
-        });
-        await CloudSyncService().fullRecoverySync();
-      } else {
-        // المدير: نزامن فقط إذا كانت قاعدة البيانات فارغة
+      // فحص هل توجد بيانات سابقة في قاعدة البيانات المحلية أم هي فارغة
+      bool hasLocalData = false;
+      try {
         final profiles = await myDb.query('Profile', limit: 1);
         final series = await myDb.query('Series', limit: 1);
+        final clients = await myDb.query('Client', limit: 1);
+        final orders = await myDb.query('Commandes', limit: 1);
+        hasLocalData = profiles.isNotEmpty || series.isNotEmpty || clients.isNotEmpty || orders.isNotEmpty;
+      } catch (_) {}
 
-        if (profiles.isEmpty && series.isEmpty) {
-          setState(() {
-            _isSyncing = true;
-            _syncStatus = 'جاري مزامنة وتحميل بيانات الورشة من السحابة...';
-          });
-          await CloudSyncService().fullRecoverySync();
-        }
+      if (hasLocalData) {
+        // ✅ إذا كانت قاعدة البيانات تحتوي على بيانات: الدخول فوراً للتطبيق بدون انتظار!
+        _enterApp();
+        // تشغيل المزامنة في الخلفية بصمت
+        CloudSyncService().fullRecoverySync().timeout(const Duration(seconds: 45), onTimeout: () {}).catchError((_) {});
+        CloudSyncService().loadAndApplyWorkshopSystems().timeout(const Duration(seconds: 20), onTimeout: () {}).catchError((_) {});
+      } else {
+        // ⏳ إذا كانت القاعدة فارغة تماماً (أول مرة): إظهار شاشة التحميل للمزامنة الأولى
+        setState(() {
+          _isSyncing = true;
+          _syncStatus = isWorker ? 'جاري تهيئة بيانات الورشة لأول مرة...' : 'جاري مزامنة بيانات الورشة...';
+        });
+        await CloudSyncService().fullRecoverySync().timeout(const Duration(seconds: 45), onTimeout: () {});
+        await CloudSyncService().loadAndApplyWorkshopSystems().timeout(const Duration(seconds: 20), onTimeout: () {});
+        _enterApp();
       }
-      // تشغيل النسخ الاحتياطي التلقائي اليومي
-      await db.runAutoDailyBackup();
+      db.runAutoDailyBackup().catchError((_) {});
       _hasSyncedOnce = true;
     } catch (e) {
       debugPrint('Sync gateway error: $e');
-    } finally {
       _enterApp();
     }
   }
@@ -571,4 +611,3 @@ class _SyncGatewayState extends State<SyncGateway> {
     return const AppWorkspaceShell();
   }
 }
-

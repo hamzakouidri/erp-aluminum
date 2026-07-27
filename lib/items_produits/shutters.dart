@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../sql_database.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
@@ -17,11 +20,26 @@ class ShuttersScreen extends StatefulWidget {
 class _ShuttersScreenState extends State<ShuttersScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _showArchived = false;
+  StreamSubscription<String>? _dbSubscription;
+  Timer? _reloadDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadItems();
+    _dbSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+      _reloadDebounce?.cancel();
+      _reloadDebounce = Timer(const Duration(milliseconds: 250), () {
+        if (mounted) _loadItems();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _reloadDebounce?.cancel();
+    _dbSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadItems() async {

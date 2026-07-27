@@ -98,6 +98,16 @@ class PdfInvoiceApi {
               imageWidgets[i] = pw.MemoryImage(bytes);
             } catch (_) {}
           }
+        } else if (item.title.contains('Moustiquaire') || item.title.contains('موستيكير') || (path != null && path.contains('moustiquaire'))) {
+          try {
+            final bytes = (await rootBundle.load('Icon/media.webp')).buffer.asUint8List();
+            imageWidgets[i] = pw.MemoryImage(bytes);
+          } catch (_) {
+            try {
+              final bytes = (await rootBundle.load('assets/Icon/media.webp')).buffer.asUint8List();
+              imageWidgets[i] = pw.MemoryImage(bytes);
+            } catch (_) {}
+          }
         } else if (path != null && path.isNotEmpty) {
           try {
             final file = File(path);

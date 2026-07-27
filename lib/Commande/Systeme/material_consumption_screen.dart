@@ -14,6 +14,7 @@ import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'; //
 import 'package:provider/provider.dart'; // لإدارة حالة الإعدادات العامة (اللغة...)
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart'; // دالة الترجمة حسب اللغة
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // نوع Database لاستعلامات SQL المباشرة
 import 'package:shared_preferences/shared_preferences.dart'; // تخزين إعدادات التسعير محليًا (نسبة الربح...)
@@ -5819,11 +5820,12 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
           );
           final hasColorPrices = (countRes.first['count'] as int? ?? 0) > 0;
           if (hasColorPrices && colorId != null) {
-            await db.insert('ShutterColorPrices', {
-              'shutter_component_id': dbId,
-              'color_id': colorId,
-              'price': newPrice,
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
+            await SqlDatabase().setShutterColorForComponent(
+              shutterComponentId: dbId,
+              colorId: colorId,
+              enabled: true,
+              price: newPrice,
+            );
           } else {
             await db.update(
               'ShutterComponents',
@@ -5915,6 +5917,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       }
     } catch (e) {
       errorMsg = 'خطأ أثناء التحديث: $e'; // أي خطأ غير متوقع يُلتقط هنا
+    }
+    if (success) {
+      CloudSyncService().notifyCatalogChange();
     }
     // عرض رسالة نجاح أو فشل للمستخدم عبر SnackBar
     if (mounted) {

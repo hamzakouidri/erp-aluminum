@@ -23,6 +23,19 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   Map<String, dynamic>? _selectedProfile;
   Map<String, dynamic>? _selectedSeries;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
   bool _loadingProfiles = true;
   bool _loadingSeries = false;
   bool _loadingDetails = false;

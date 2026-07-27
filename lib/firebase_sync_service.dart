@@ -20,12 +20,10 @@ class FirebaseSyncService {
       final clients = await localDb.readClient();
       final clientBatch = _firestore.batch();
       for (var client in clients) {
-        // [تم الإصلاح]: التحقق من صحة البيانات قبل الرفع
         if (client['id'] != null) {
           final docRef = userDoc
               .collection('Client')
               .doc(client['id'].toString());
-          // [تم الإصلاح]: إزالة الحقول الحساسة قبل الرفع
           final sanitizedClient = _sanitizeData(client, [
             'password',
             'secret',
@@ -72,7 +70,31 @@ class FirebaseSyncService {
       }
       await achatsBatch.commit();
 
-      // (يمكن إضافة باقي الجداول بنفس الطريقة مثل Colors, Series, Sections, الخ)
+      // Sync Colors
+      final colors = await localDb.readColors();
+      final colorsBatch = _firestore.batch();
+      for (var color in colors) {
+        if (color['id'] != null) {
+          final docRef = userDoc
+              .collection('Colors')
+              .doc(color['id'].toString());
+          colorsBatch.set(docRef, color);
+        }
+      }
+      await colorsBatch.commit();
+
+      // Sync ShutterComponents
+      final shutterComps = await localDb.readShutterComponents(includeInactive: true);
+      final shutterBatch = _firestore.batch();
+      for (var comp in shutterComps) {
+        if (comp['id'] != null) {
+          final docRef = userDoc
+              .collection('ShutterComponents')
+              .doc(comp['id'].toString());
+          shutterBatch.set(docRef, comp);
+        }
+      }
+      await shutterBatch.commit();
 
       // حفظ وقت آخر مزامنة
       await userDoc.set({
@@ -97,7 +119,6 @@ class FirebaseSyncService {
       final clientsSnapshot = await userDoc.collection('Client').get();
       for (var doc in clientsSnapshot.docs) {
         final data = doc.data();
-        // [تم الإصلاح]: التحقق من صحة البيانات قبل الاستيراد
         if (data['id'] != null) {
           var res = await db.query(
             'Client',
@@ -162,6 +183,68 @@ class FirebaseSyncService {
           }
         }
       }
+
+      // Retrieve Colors from Cloud
+      final colorsSnapshot = await userDoc.collection('Colors').get();
+      for (var doc in colorsSnapshot.docs) {
+        final data = doc.data();
+        if (data['id'] != null) {
+          var res = await db.query(
+            'Colors',
+            where: 'id = ?',
+            whereArgs: [data['id']],
+          );
+          if (res.isEmpty) {
+            await db.insert('Colors', data);
+          } else {
+            await db.update(
+              'Colors',
+              data,
+              where: 'id = ?',
+              whereArgs: [data['id']],
+            );
+          }
+        }
+      }
+
+      // Retrieve ProfileColors from Cloud
+      final profileColorsSnapshot = await userDoc.collection('ProfileColors').get();
+      for (var doc in profileColorsSnapshot.docs) {
+        final data = doc.data();
+        if (data['profile_id'] != null && data['color_id'] != null) {
+          var res = await db.query(
+            'ProfileColors',
+            where: 'profile_id = ? AND color_id = ?',
+            whereArgs: [data['profile_id'], data['color_id']],
+          );
+          if (res.isEmpty) {
+            await db.insert('ProfileColors', data);
+          }
+        }
+      }
+
+      // Retrieve ShutterComponents from Cloud
+      final shutterSnapshot = await userDoc.collection('ShutterComponents').get();
+      for (var doc in shutterSnapshot.docs) {
+        final data = doc.data();
+        if (data['id'] != null) {
+          var res = await db.query(
+            'ShutterComponents',
+            where: 'id = ?',
+            whereArgs: [data['id']],
+          );
+          if (res.isEmpty) {
+            await db.insert('ShutterComponents', data);
+          } else {
+            await db.update(
+              'ShutterComponents',
+              data,
+              where: 'id = ?',
+              whereArgs: [data['id']],
+            );
+          }
+        }
+      }
     } catch (e) {
       throw Exception('فشلت استعادة البيانات من السحابة: $e');
     }
@@ -179,3 +262,4 @@ class FirebaseSyncService {
     return sanitized;
   }
 }
+

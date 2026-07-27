@@ -8,6 +8,7 @@ import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/selected_systems_screen.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
+import 'package:database_data/Screen/moustiquaire_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChooseSysteme extends StatefulWidget {
@@ -27,6 +28,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     'mixed': true,
     'rolling': true,
     'caisson_tunnel': true,
+    'moustiquaire': true,
     'precadre': true,
     'verre': true,
   };
@@ -47,6 +49,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         'mixed': prefs.getBool('system_active_mixed') ?? true,
         'rolling': prefs.getBool('system_active_rolling') ?? true,
         'caisson_tunnel': prefs.getBool('system_active_caisson_tunnel') ?? true,
+        'moustiquaire': prefs.getBool('system_active_moustiquaire') ?? true,
         'precadre': prefs.getBool('system_active_precadre') ?? true,
         'verre': prefs.getBool('system_active_verre') ?? true,
       };
@@ -135,6 +138,19 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           title: 'Caisson Tunnel',
           iconPath: 'Icon/caisson_tunnel.jpg',
           onTap: () => _navigateToSystem(context, 'caisson_tunnel'),
+        ),
+      );
+    }
+
+    if (_activeModes['moustiquaire'] ?? true) {
+      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      systemItems.add(
+        ItemBuildSystem(
+          width: 60,
+          height: 60,
+          title: 'Moustiquaire (موستيكير)',
+          iconPath: 'Icon/media.webp',
+          onTap: () => _navigateToSystem(context, 'moustiquaire'),
         ),
       );
     }
@@ -351,6 +367,35 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         model.caissonPayload = caissonResult;
         if (suggestedPrice > 0) {
           model.manualPriceOverride = suggestedPrice;
+        }
+
+        Navigator.pop(context, model);
+      }
+      return;
+    }
+
+    if (systemType == 'moustiquaire') {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const MoustiquaireScreen()),
+      );
+      if (result != null && result is Map<String, dynamic> && context.mounted) {
+        final double grandTotalArea = (result['grandTotalAreaSqm'] as num? ?? 0.0).toDouble();
+        final double grandTotalPrice = (result['grandTotalPrice'] as num? ?? 0.0).toDouble();
+        final int grandTotalQty = (result['totalQuantity'] as int? ?? 1);
+        final String subType = (result['subType'] as String? ?? 'موستيكير');
+        final double wMm = (result['widthMm'] as num? ?? 1000.0).toDouble();
+        final double hMm = (result['heightMm'] as num? ?? 1200.0).toDouble();
+
+        final model = _makeModel(w: wMm, h: hMm);
+        model.isMoustiquaire = true;
+        model.isReplaced = false;
+        model.manualNameOverride = 'Moustiquaire ($subType)';
+        model.description = 'النوع: $subType | المساحة: ${grandTotalArea.toStringAsFixed(2)} m² | العدد: $grandTotalQty';
+        model.quantity = 1;
+        model.moustiquairePayload = result;
+        if (grandTotalPrice > 0) {
+          model.manualPriceOverride = grandTotalPrice;
         }
 
         Navigator.pop(context, model);

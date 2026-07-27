@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/add_commande.dart'; // تأكد من المسار الصحيح لصفحة CommandePage
 import 'package:database_data/settings/localization.dart';
@@ -32,18 +34,32 @@ class _CommandeState extends State<Commande> {
   late Future<List<Map<String, dynamic>>> _data;
   String _searchQuery = '';
   BuildContext? _loadingDialogContext;
+  StreamSubscription? _dbUpdateSubscription;
+  Timer? _syncRefreshDebounce;
+  bool _permissionRedirectScheduled = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final settings = Provider.of<AppSettingsProvider>(context);
-    if (!settings.isManager && !settings.canViewOrders()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-      });
+    if (settings.isManager || settings.canViewOrders()) {
+      _permissionRedirectScheduled = false;
+      return;
     }
+
+    // didChangeDependencies can run more than once while a route is closing.
+    // Capture the navigator while this context is active; do not look it up
+    // from the deactivated page context in the post-frame callback.
+    if (_permissionRedirectScheduled) return;
+    _permissionRedirectScheduled = true;
+    final navigator = Navigator.maybeOf(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _permissionRedirectScheduled = false;
+      if (!mounted || navigator == null || !navigator.mounted) return;
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    });
   }
 
   String formatDate(Map<String, dynamic> order) {
@@ -126,6 +142,26 @@ class _CommandeState extends State<Commande> {
   void initState() {
     super.initState();
     _data = db.readCommandesWithClients();
+    _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+      _scheduleCloudRefresh();
+    });
+  }
+
+  void _scheduleCloudRefresh() {
+    _syncRefreshDebounce?.cancel();
+    _syncRefreshDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      setState(() {
+        _data = db.readCommandesWithClients();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncRefreshDebounce?.cancel();
+    _dbUpdateSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -366,6 +402,7 @@ class _CommandeState extends State<Commande> {
                                     builder: (context) => CommandePage(db: db),
                                   ),
                                 );
+                                if (!mounted) return;
                                 if (result == true) {
                                   setState(() {
                                     _data = db.readCommandesWithClients();
@@ -578,6 +615,7 @@ class _CommandeState extends State<Commande> {
                   context,
                   MaterialPageRoute(builder: (context) => CommandePage(db: db)),
                 );
+                if (!mounted) return;
                 if (result == true) {
                   setState(() {
                     _data = db.readCommandesWithClients();

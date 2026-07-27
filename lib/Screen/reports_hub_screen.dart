@@ -20,11 +20,11 @@ class ReportsHubScreen extends StatelessWidget {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
 
-    // List of reports
+    // List of reports — كل الصفحات تُفتح بوضع القراءة فقط (readOnly: true)
     final List<Map<String, dynamic>> reports = [];
 
     // 1. Global Consumption Report
-    if (settings.canViewStatistics()) {
+    if (settings.canViewGlobalConsumption()) {
       reports.add({
         'title': Localization.translate('تقرير النواقص الشامل', lang),
         'subtitle': Localization.translate('نواقص كل الطلبيات (Aluminium, Verre, Acc)', lang),
@@ -37,49 +37,55 @@ class ReportsHubScreen extends StatelessWidget {
       });
     }
 
-    // 2. Worker Finances (Salaries and Advances)
-    if (settings.canViewStatistics()) {
+    // 2. Worker Finances (Salaries and Advances) — عرض فقط، بدون إضافة أو حذف
+    if (settings.canViewWorkerFinances()) {
       reports.add({
         'title': Localization.translate('أجور وسلفيات العمال', lang),
-        'subtitle': Localization.translate('إدارة رواتب العمال والخصم من الصندوق', lang),
+        'subtitle': Localization.translate('عرض رواتب العمال والمعاملات المالية', lang),
         'icon': Icons.engineering_rounded,
         'color': Colors.orange,
         'onTap': () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => WorkerFinancesScreen(db: db)),
+          MaterialPageRoute(
+            builder: (_) => WorkerFinancesScreen(db: db, readOnly: true),
+          ),
         ),
       });
     }
 
-    // 2b. Worker Weekly Settlement (Calcul Hebdomadaire)
-    if (settings.canViewStatistics()) {
+    // 3. Worker Weekly Settlement — عرض فقط
+    if (settings.canViewWorkerWeeklySettlement()) {
       reports.add({
         'title': Localization.translate('المحاسبة الأسبوعية للعمال', lang),
-        'subtitle': Localization.translate('حساب مستحقات العمال أسبوعياً ودفع الأجور', lang),
+        'subtitle': Localization.translate('مستحقات العمال أسبوعياً والأجور المدفوعة', lang),
         'icon': Icons.calculate_rounded,
         'color': Colors.purple,
         'onTap': () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => WorkerWeeklySettlementScreen(db: db)),
+          MaterialPageRoute(
+            builder: (_) => WorkerWeeklySettlementScreen(db: db, readOnly: true),
+          ),
         ),
       });
     }
 
-    // 3. Purchase Invoices
-    if (settings.canRegisterPurchases()) {
+    // 4. Purchase Report — عرض فقط بصلاحية التقارير، لا يتحكم في المشتريات
+    if (settings.canViewStatistics()) {
       reports.add({
-        'title': Localization.translate('مشتريات الورشة', lang),
-        'subtitle': Localization.translate('فواتير الشراء وإدارة المصاريف', lang),
+        'title': Localization.translate('تقرير المشتريات', lang),
+        'subtitle': Localization.translate('عرض فواتير الشراء والمرتجعات', lang),
         'icon': Icons.shopping_cart_rounded,
         'color': Colors.teal,
         'onTap': () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => AchatScreen(db: db)),
+          MaterialPageRoute(
+            builder: (_) => AchatScreen(db: db, readOnly: true),
+          ),
         ),
       });
     }
 
-    // 4. Supplier Accounts
+    // 5. Supplier Accounts — عرض فقط
     if (settings.canViewSuppliers()) {
       reports.add({
         'title': Localization.translate('حسابات الموردين', lang),
@@ -93,16 +99,18 @@ class ReportsHubScreen extends StatelessWidget {
       });
     }
 
-    // 5. Treasury (Customer Payments & Expenses)
+    // 6. Treasury — عرض فقط، بدون إضافة أو حذف معاملات
     if (settings.canAccessTreasury()) {
       reports.add({
         'title': Localization.translate('الخزينة والمالية', lang),
-        'subtitle': Localization.translate('الصندوق، مدفوعات الزبائن، والأرباح', lang),
+        'subtitle': Localization.translate('عرض الصندوق ومدفوعات الزبائن والأرباح', lang),
         'icon': Icons.account_balance_wallet_rounded,
         'color': Colors.green,
         'onTap': () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => TreasuryScreen(db: db)),
+          MaterialPageRoute(
+            builder: (_) => TreasuryScreen(db: db, readOnly: true),
+          ),
         ),
       });
     }

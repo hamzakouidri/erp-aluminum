@@ -10,8 +10,10 @@ import 'package:provider/provider.dart';
 
 class AchatScreen extends StatefulWidget {
   final SqlDatabase db;
+  /// وضع العرض فقط — يخفي FAB وأزرار التعديل/الحذف
+  final bool readOnly;
 
-  const AchatScreen({super.key, required this.db});
+  const AchatScreen({super.key, required this.db, this.readOnly = false});
 
   @override
   State<AchatScreen> createState() => _AchatScreenState();
@@ -215,7 +217,7 @@ class _AchatScreenState extends State<AchatScreen>
           ],
         ),
         floatingActionButton:
-            Provider.of<AppSettingsProvider>(context).canAddPurchases()
+            (!widget.readOnly && Provider.of<AppSettingsProvider>(context).canAddPurchases())
             ? FloatingActionButton.extended(
                 onPressed: _showAddAchatDialog,
                 backgroundColor: _blue,
@@ -709,7 +711,7 @@ class _AchatScreenState extends State<AchatScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (Provider.of<AppSettingsProvider>(
+                        if (!widget.readOnly && Provider.of<AppSettingsProvider>(
                           context,
                           listen: false,
                         ).canEditPurchases())
@@ -735,7 +737,7 @@ class _AchatScreenState extends State<AchatScreen>
                             ),
                           ),
                         const SizedBox(width: 8),
-                        if (Provider.of<AppSettingsProvider>(
+                        if (!widget.readOnly && Provider.of<AppSettingsProvider>(
                           context,
                           listen: false,
                         ).canDeletePurchases())

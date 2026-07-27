@@ -12,6 +12,7 @@ import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
+import 'package:database_data/services/cloud_sync_service.dart';
 
 class WindowView extends StatefulWidget {
   final WindowModel model;
@@ -104,6 +105,8 @@ class _WindowViewState extends State<WindowView> {
   List<Map<String, dynamic>> _shutterCoulisseOptions = [];
   List<Map<String, dynamic>> _shutterCaissonOptions = [];
   bool _loadingShutterOptions = false;
+  StreamSubscription<String>? _catalogSubscription;
+  Timer? _catalogReloadDebounce;
 
   List<Map<String, dynamic>> _frameProfiles = [];
   List<Map<String, dynamic>> _sashProfiles = [];
@@ -450,6 +453,8 @@ class _WindowViewState extends State<WindowView> {
   void dispose() {
     _drawingTimer?.cancel();
     _paintbrushTimer?.cancel();
+    _catalogReloadDebounce?.cancel();
+    _catalogSubscription?.cancel();
     widget.model.removeListener(_onModelChanged);
     _glassScrollController.dispose();
     _leftDrawerScrollController.dispose();
@@ -854,6 +859,19 @@ class _WindowViewState extends State<WindowView> {
       _loadAvailableProfiles();
     }
     _loadShutterOptions(); // Preload shutter options from database
+    _catalogSubscription = CloudSyncService().dbUpdateStream.listen((update) {
+      if (update != 'catalog_changed' &&
+          update != 'catalog_downloaded' &&
+          update != 'cloud_restored') {
+        return;
+      }
+      _catalogReloadDebounce?.cancel();
+      _catalogReloadDebounce = Timer(const Duration(milliseconds: 250), () {
+        if (!mounted) return;
+        unawaited(widget.model.loadCatalogData(widget.systemMode));
+        _loadShutterOptions();
+      });
+    });
     SharedPreferences.getInstance().then((prefs) {
       final name = prefs.getString('workshop_name');
       if (name != null && name
@@ -5871,6 +5889,9 @@ class _WindowViewState extends State<WindowView> {
 
   AppBar _buildAppBar(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primarySeries = widget.systemMode == 'sliding'
+        ? widget.model.activeSlidingSeries
+        : widget.model.activeSeries;
     return AppBar(
       backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
       foregroundColor: isDark ? Colors.white : Colors.black,
@@ -5891,7 +5912,7 @@ class _WindowViewState extends State<WindowView> {
                 ),
                 child: DropdownButton<AluminumSeries>(
                   isExpanded: true,
-                  value: activeSeriesForSystem,
+                  value: primarySeries,
                   dropdownColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
                   hint: Text(
                     widget.systemMode == 'mixed'
@@ -5921,12 +5942,32 @@ class _WindowViewState extends State<WindowView> {
                             type.contains('فرنسي') || type.contains('ouvrant');
                       })
                           : system.series;
-                      list.addAll(filtered);
+                      final selectorMode = widget.systemMode == 'sliding'
+                          ? 'sliding'
+                          : 'french';
+                      list.addAll(filtered.where((series) =>
+                          seriesMatchesDrawingMode(
+                              series, system, selectorMode)));
+                      for (final series in system.series) {
+                        if (seriesMatchesDrawingMode(
+                                series, system, selectorMode) &&
+                            !list.any((item) => item.id == series.id)) {
+                          list.add(series);
+                        }
+                      }
                     }
-                    if (activeSeriesForSystem != null &&
+                      if (primarySeries != null &&
+                        seriesMatchesDrawingMode(
+                            primarySeries,
+                            widget.model.availableSystems.firstWhere(
+                              (system) => system.series.any(
+                                  (series) => series.id == primarySeries.id),
+                              orElse: () => widget.model.availableSystems.first,
+                            ),
+                            widget.systemMode == 'sliding' ? 'sliding' : 'french') &&
                         !list.any((s) =>
-                        s.id == activeSeriesForSystem!.id)) {
-                      list.add(activeSeriesForSystem!);
+                        s.id == primarySeries.id)) {
+                      list.add(primarySeries);
                     }
                     return list.map((series) {
                       final system = widget.model.availableSystems.firstWhere(
@@ -5980,8 +6021,7 @@ class _WindowViewState extends State<WindowView> {
                       size: 18,
                     ),
                     items: () {
-                      final activeSystemId = activeSeriesForSystem
-                          ?.profileId;
+                      final activeSystemId = widget.model.activeSeries?.profileId;
                       if (activeSystemId == null) {
                         return <DropdownMenuItem<
                           AluminumSeries>>[];
@@ -6001,9 +6041,20 @@ class _WindowViewState extends State<WindowView> {
                             type.contains('sliding') || type.contains('منزلق');
                       }).toList();
 
-                      final displayList = list.isNotEmpty ? list : system.series
-                          .toList();
+                      // Never fall back to every series here: this selector
+                      // is specifically for Coulissant/Sliding series.
+                      final displayList = list;
+                      for (final series in system.series) {
+                        if (isSlidingSeriesForDrawing(series) &&
+                            !displayList.any((item) => item.id == series.id)) {
+                          displayList.add(series);
+                        }
+                      }
                       if (widget.model.activeSlidingSeries != null &&
+                          isSlidingSeriesForDrawing(
+                              widget.model.activeSlidingSeries!) &&
+                          widget.model.activeSlidingSeries!.profileId ==
+                              activeSystemId &&
                           !displayList.any((s) =>
                           s.id == widget.model.activeSlidingSeries!.id)) {
                         displayList.add(widget.model.activeSlidingSeries!);

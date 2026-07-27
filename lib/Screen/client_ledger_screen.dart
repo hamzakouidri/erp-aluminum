@@ -30,6 +30,19 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
   double _netBalance = 0.0;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canViewClientLedger()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadLedgerData();
@@ -543,6 +556,19 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                                 ),
                                 onTap: () {
                                   if (type == 'Order') {
+                                    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+                                    if (!settings.canViewOrderDetails()) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            Localization.translate('رؤية تفاصيل الطلبية غير مفعلة لديك', lang),
+                                            style: const TextStyle(fontFamily: 'Cairo'),
+                                          ),
+                                          backgroundColor: Colors.orange,
+                                        ),
+                                      );
+                                      return;
+                                    }
                                     // Navigate to order details screen
                                     Navigator.push(
                                       context,

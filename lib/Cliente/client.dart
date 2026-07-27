@@ -21,6 +21,19 @@ class _CustomersState extends State<Customers> {
 
   late Future<List<Map<String, dynamic>>> _data;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canViewClients()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
   String formatDate(String date) {
     try {
       final parsed = DateTime.parse(date);
@@ -163,7 +176,8 @@ class _CustomersState extends State<Customers> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -441,17 +455,21 @@ class _CustomersState extends State<Customers> {
                         margin: const EdgeInsets.symmetric(vertical: 6),
                         child: ListTile(
                           contentPadding: const EdgeInsets.all(15),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ShowClient(clientId: id),
-                              ),
-                            ).then((_) => _refreshData());
-                          },
-                          onLongPress: () {
-                            _showUpdateClientDialog(context, item);
-                          },
+                          onTap: settings.canViewClientDetails()
+                              ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ShowClient(clientId: id),
+                                    ),
+                                  ).then((_) => _refreshData());
+                                }
+                              : null,
+                          onLongPress: settings.canEditClients()
+                              ? () {
+                                  _showUpdateClientDialog(context, item);
+                                }
+                              : null,
                           leading: CircleAvatar(
                             radius: 25,
                                   backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade100,
@@ -517,50 +535,52 @@ class _CustomersState extends State<Customers> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue),
-                                onPressed: () {
-                                  _showUpdateClientDialog(context, item);
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                onPressed: () async {
-                                  final confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: Text(
-                                        Localization.translate("Delete Client", lang),
-                                      ),
-                                      content: Text(
-                                        Localization.translate(
-                                          "Are you sure you want to delete this client?",
-                                          lang,
+                              if (settings.canEditClients())
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () {
+                                    _showUpdateClientDialog(context, item);
+                                  },
+                                ),
+                              if (settings.canDeleteClients())
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: Text(
+                                          Localization.translate("Delete Client", lang),
                                         ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx, false),
-                                          child: Text(
-                                            Localization.translate("Cancel", lang),
+                                        content: Text(
+                                          Localization.translate(
+                                            "Are you sure you want to delete this client?",
+                                            lang,
                                           ),
                                         ),
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx, true),
-                                          child: Text(
-                                            Localization.translate("Delete", lang),
-                                            style: const TextStyle(color: Colors.red),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: Text(
+                                              Localization.translate("Cancel", lang),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                  if (confirm == true) {
-                                    await db.deleteClient(id);
-                                    _refreshData();
-                                  }
-                                },
-                              ),
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            child: Text(
+                                              Localization.translate("Delete", lang),
+                                              style: const TextStyle(color: Colors.red),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      await db.deleteClient(id);
+                                      _refreshData();
+                                    }
+                                  },
+                                ),
                             ],
                           ),
                         ),
@@ -574,20 +594,22 @@ class _CustomersState extends State<Customers> {
         ],
       ),
 
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddClientDialog(context),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? Colors.black
-            : Theme.of(context).floatingActionButtonTheme.backgroundColor ?? Colors.blue,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: Theme.of(context).brightness == Brightness.dark
-              ? const BorderSide(color: Colors.white, width: 1.5)
-              : BorderSide.none,
-        ),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      floatingActionButton: settings.canCreateClients()
+          ? FloatingActionButton(
+              onPressed: () => _showAddClientDialog(context),
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black
+                  : Theme.of(context).floatingActionButtonTheme.backgroundColor ?? Colors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: Theme.of(context).brightness == Brightness.dark
+                    ? const BorderSide(color: Colors.white, width: 1.5)
+                    : BorderSide.none,
+              ),
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
     );
   }
 }

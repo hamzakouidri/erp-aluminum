@@ -627,10 +627,19 @@ class DevisBuilder {
         (item['game']?.toString().contains('Caisson Tunnel') == true) ||
         (displaySeries.toLowerCase().contains('caisson tunnel'));
 
+    final bool isMoustiquaire = map['isMoustiquaire'] == true ||
+        (item['game']?.toString().contains('Moustiquaire') == true) ||
+        (item['game']?.toString().contains('موستيكير') == true) ||
+        (displaySeries.toLowerCase().contains('moustiquaire')) ||
+        (displaySeries.contains('موستيكير')) ||
+        (displaySeries.contains('ناموسية'));
+
     // Build DevisLineItem Title
     final String title;
     if (isCaissonTunnel) {
       title = 'Caisson Tunnel';
+    } else if (isMoustiquaire) {
+      title = 'Moustiquaire (موستيكير)';
     } else if (isShutterOnly) {
       title = 'Volet roulant';
     } else {
@@ -704,6 +713,54 @@ class DevisBuilder {
         width: 0,
         height: 0,
         color: itemProfColor,
+        detailId: detailId,
+      );
+    }
+
+    // ── Moustiquaire: build details from moustiquairePayload ────────────────
+    if (isMoustiquaire) {
+      final payload = (map['moustiquairePayload'] is Map)
+          ? (map['moustiquairePayload'] as Map<String, dynamic>)
+          : map;
+      final rawItems = payload['items'] as List?;
+
+      details.clear();
+      final subTypeStr = payload['subType']?.toString() ?? 'موستيكير';
+      final itemColorStr = (payload['frameColor']?.toString() != null && payload['frameColor']!.toString().isNotEmpty)
+          ? payload['frameColor']!.toString()
+          : itemProfColor;
+
+      if (rawItems != null && rawItems.isNotEmpty) {
+        for (int i = 0; i < rawItems.length; i++) {
+          final it = rawItems[i];
+          if (it is Map) {
+            final double wMm = (it['widthMm'] as num? ?? 0.0).toDouble();
+            final double hMm = (it['heightMm'] as num? ?? 0.0).toDouble();
+            final int qty = (it['quantity'] as num? ?? 1).toInt();
+            final double area = (it['totalAreaSqm'] as num? ?? (wMm * hMm / 1000000.0 * qty)).toDouble();
+            final String wStr = (wMm / 10.0).toStringAsFixed(0);
+            final String hStr = (hMm / 10.0).toStringAsFixed(0);
+            final String fColor = it['frameColor']?.toString() ?? itemColorStr;
+            details.add('Moustiquaire N°${i + 1}: القياس: $wStr × $hStr سم | المساحة: ${area.toStringAsFixed(2)} m² | اللون: $fColor | العدد: $qty');
+          }
+        }
+      } else {
+        final totalArea = (payload['grandTotalAreaSqm'] as num? ?? 0.0).toDouble();
+        final totalQty = (payload['totalQuantity'] as num? ?? 1).toInt();
+        details.add('النوع: $subTypeStr | المساحة الكلية: ${totalArea.toStringAsFixed(2)} m² | اللون: $itemColorStr | العدد: $totalQty');
+      }
+
+      return DevisLineItem(
+        imagePath: 'assets/Icon/media.webp',
+        title: title,
+        details: details,
+        unitPrice: unitPrice,
+        quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+        isReplaced: isReplaced,
+        replacementReason: replacementReason,
+        width: width,
+        height: height,
+        color: itemColorStr,
         detailId: detailId,
       );
     }

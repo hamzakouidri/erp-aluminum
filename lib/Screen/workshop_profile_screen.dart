@@ -285,20 +285,37 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
             Center(
               child: GestureDetector(
                 onTap: _pickImage,
-                child: CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.grey.shade300,
-                  backgroundImage:
-                      _logoBase64 != null && _logoBase64!.isNotEmpty
-                      ? MemoryImage(base64Decode(_logoBase64!))
-                      : null,
-                  child: _logoBase64 == null || _logoBase64!.isEmpty
-                      ? const Icon(
-                          Icons.add_a_photo,
-                          size: 40,
-                          color: Colors.grey,
-                        )
-                      : null,
+                child: Builder(
+                  builder: (context) {
+                    ImageProvider? logoProvider;
+                    if (_logoBase64 != null && _logoBase64!.isNotEmpty) {
+                      if (_logoBase64!.startsWith('http')) {
+                        logoProvider = NetworkImage(_logoBase64!);
+                      } else {
+                        try {
+                          final bytes = base64Decode(_logoBase64!);
+                          if (bytes.isNotEmpty) {
+                            logoProvider = MemoryImage(bytes);
+                          }
+                        } catch (e) {
+                          debugPrint('Error decoding profile logo base64: $e');
+                        }
+                      }
+                    }
+
+                    return CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.grey.shade300,
+                      backgroundImage: logoProvider,
+                      child: logoProvider == null
+                          ? const Icon(
+                              Icons.add_a_photo,
+                              size: 40,
+                              color: Colors.grey,
+                            )
+                          : null,
+                    );
+                  },
                 ),
               ),
             ),

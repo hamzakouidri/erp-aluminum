@@ -886,16 +886,17 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
               ],
             ],
           ),
+          DraggableFloatingActionButton(
+            onPressed: () => _openAddDialog(),
+            label: Localization.translate('إضافة كيسون', lang),
+            icon: Icons.add,
+            backgroundColor: _accentOrange,
+            initialOffset: Offset(
+              (MediaQuery.of(context).size.width - 165.0).clamp(10.0, 500.0),
+              (MediaQuery.of(context).size.height - 160.0).clamp(60.0, 1000.0),
+            ),
+          ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openAddDialog(),
-        backgroundColor: _accentOrange,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          Localization.translate('إضافة كيسون', lang),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white),
-        ),
       ),
     );
   }

@@ -1548,13 +1548,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       context,
       listen: false,
     ).language;
-    final dbInstance = (await db.db)!;
-    await dbInstance.insert('ShutterColorPrices', {
-      'shutter_component_id': shutterId,
-      'color_id': colorId,
-      'price': price,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    CloudSyncService().notifyChange();
+    await db.setShutterColorForComponent(
+      shutterComponentId: shutterId,
+      colorId: colorId,
+      enabled: true,
+      price: price,
+    );
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1960,20 +1959,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       context,
       listen: false,
     ).language;
-    final dbInstance = (await db.db)!;
-    if (isSelected) {
-      await dbInstance.insert('ProfileColors', {
-        'profile_id': profileId,
-        'color_id': colorId,
-      });
-    } else {
-      await dbInstance.delete(
-        'ProfileColors',
-        where: 'profile_id = ? AND color_id = ?',
-        whereArgs: [profileId, colorId],
-      );
-    }
-    CloudSyncService().notifyChange();
+    await db.setColorForProfile(
+      profileId: profileId,
+      colorId: colorId,
+      enabled: isSelected,
+    );
     _loadAllData();
   }
 
@@ -3234,40 +3224,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                     secondary: _buildColorCircle(color, size: 24),
                                     value: isMapped,
                                     onChanged: (val) async {
-                                      final dbInstance = (await db.db)!;
                                       if (val == true) {
                                         final shut = shutterList.firstWhere((s) => s['id'] == selectedShutId);
                                         final basePrice = (shut['price'] is num) ? (shut['price'] as num).toDouble() : 0.0;
-                                        await dbInstance.insert(
-                                          'ShutterColorPrices',
-                                          {
-                                            'shutter_component_id': selectedShutId,
-                                            'color_id': cId,
-                                            'price': basePrice,
-                                          },
-                                          conflictAlgorithm: ConflictAlgorithm.replace,
-                                        );
-                                        await dbInstance.insert(
-                                          'ShutterComponentColors',
-                                          {
-                                            'shutter_component_id': selectedShutId,
-                                            'color_id': cId,
-                                          },
-                                          conflictAlgorithm: ConflictAlgorithm.replace,
+                                        await db.setShutterColorForComponent(
+                                          shutterComponentId: selectedShutId!,
+                                          colorId: cId,
+                                          enabled: true,
+                                          price: basePrice,
                                         );
                                       } else {
-                                        await dbInstance.delete(
-                                          'ShutterColorPrices',
-                                          where: 'shutter_component_id = ? AND color_id = ?',
-                                          whereArgs: [selectedShutId, cId],
-                                        );
-                                        await dbInstance.delete(
-                                          'ShutterComponentColors',
-                                          where: 'shutter_component_id = ? AND color_id = ?',
-                                          whereArgs: [selectedShutId, cId],
+                                        await db.setShutterColorForComponent(
+                                          shutterComponentId: selectedShutId!,
+                                          colorId: cId,
+                                          enabled: false,
                                         );
                                       }
-                                      CloudSyncService().notifyChange();
                                       await _loadAllData();
                                       setStateDialog(() {});
                                     },

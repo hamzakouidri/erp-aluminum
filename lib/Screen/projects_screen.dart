@@ -21,6 +21,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.isManager && !settings.canViewProjects()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _fetchProjects();

@@ -65,10 +65,20 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   void _openScreen(String title, IconData icon, Widget screen, {String? titleKey}) {
+    // The drawer's context is deactivated as soon as it closes. Keep the
+    // application's navigator context before closing it, then use that stable
+    // context to open the requested workspace page on the next frame.
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final navigationContext = rootNavigator.context;
     Navigator.pop(context);
-    Future.delayed(Duration.zero, () {
-      if (!mounted) return;
-      openAdaptiveScreen(context, title: titleKey ?? title, icon: icon, screen: screen);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!rootNavigator.mounted) return;
+      openAdaptiveScreen(
+        navigationContext,
+        title: titleKey ?? title,
+        icon: icon,
+        screen: screen,
+      );
     });
   }
 

@@ -121,7 +121,8 @@ class _ShowClientState extends State<ShowClient> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -379,60 +380,61 @@ class _ShowClientState extends State<ShowClient> {
 
                 const SizedBox(height: 10),
 
-                Card(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  color: Theme.of(context).cardColor,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ClientLedgerScreen(clientId: widget.clientId),
+                if (settings.canViewClientLedger()) ...[
+                  Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    color: Theme.of(context).cardColor,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ClientLedgerScreen(clientId: widget.clientId),
+                          ),
+                        ).then((_) => setState(() {}));
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Theme.of(context).primaryColor.withValues(alpha: 0.15)
+                                    : Colors.blue.shade50,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.history_edu_rounded, color: Colors.blue.shade700, size: 24),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    Localization.translate('عرض كشف الحساب التفصيلي (Chrono)', lang),
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo'),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    Localization.translate('سجل الطلبيات والمدفوعات مرتبة زمنياً', lang),
+                                    style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 11, fontFamily: 'Cairo'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right, color: Colors.blue.shade300),
+                          ],
                         ),
-                      ).then((_) => setState(() {}));
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Theme.of(context).primaryColor.withValues(alpha: 0.15)
-                                  : Colors.blue.shade50,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.history_edu_rounded, color: Colors.blue.shade700, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  Localization.translate('عرض كشف الحساب التفصيلي (Chrono)', lang),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo'),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  Localization.translate('سجل الطلبيات والمدفوعات مرتبة زمنياً', lang),
-                                  style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 11, fontFamily: 'Cairo'),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.chevron_right, color: Colors.blue.shade300),
-                        ],
                       ),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
 
                 // ─── Orders List ──────────────────────────────────────
                 _SectionCard(
