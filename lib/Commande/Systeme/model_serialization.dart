@@ -73,8 +73,16 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     ),
     decorH: (map['decorH'] as num?)?.toInt() ?? 0,
     decorV: (map['decorV'] as num?)?.toInt() ?? 0,
-    decorHPositions: (map['decorHPositions'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? const [],
-    decorVPositions: (map['decorVPositions'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? const [],
+    decorHPositions:
+        (map['decorHPositions'] as List?)
+            ?.map((e) => (e as num).toDouble())
+            .toList() ??
+        const [],
+    decorVPositions:
+        (map['decorVPositions'] as List?)
+            ?.map((e) => (e as num).toDouble())
+            .toList() ??
+        const [],
     decorColor: map['decorColor']?.toString() ?? 'white',
     decorThickness: (map['decorThickness'] as num?)?.toDouble() ?? 6.0,
     hasRosettes: map['hasRosettes'] as bool? ?? false,
@@ -85,8 +93,10 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     panneauProductId: map['panneauProductId'] as int?,
     thicknessOuter: (map['thicknessOuter'] as num?)?.toDouble(),
     thicknessInner: (map['thicknessInner'] as num?)?.toDouble(),
-    laminatedColorOuter: map['laminatedColorOuter']?.toString() ?? 'transparent',
-    laminatedColorInner: map['laminatedColorInner']?.toString() ?? 'transparent',
+    laminatedColorOuter:
+        map['laminatedColorOuter']?.toString() ?? 'transparent',
+    laminatedColorInner:
+        map['laminatedColorInner']?.toString() ?? 'transparent',
     rosetteShape: (map['rosetteShape'] as num?)?.toInt() ?? 1,
     jointTwoSides: map['jointTwoSides'] as bool? ?? true,
     temperedOuter: map['temperedOuter'] as bool? ?? false,
@@ -189,19 +199,23 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     slidingSashesCount: map['slidingSashesCount'] ?? 2,
     rightInnerH: map['rightInnerH'] ?? 0,
     rightInnerV: map['rightInnerV'] ?? 0,
-    innerHPositions: (map['innerHPositions'] as List<dynamic>?)
+    innerHPositions:
+        (map['innerHPositions'] as List<dynamic>?)
             ?.map((e) => (e as num).toDouble())
             .toList() ??
         const [],
-    innerVPositions: (map['innerVPositions'] as List<dynamic>?)
+    innerVPositions:
+        (map['innerVPositions'] as List<dynamic>?)
             ?.map((e) => (e as num).toDouble())
             .toList() ??
         const [],
-    rightInnerHPositions: (map['rightInnerHPositions'] as List<dynamic>?)
+    rightInnerHPositions:
+        (map['rightInnerHPositions'] as List<dynamic>?)
             ?.map((e) => (e as num).toDouble())
             .toList() ??
         const [],
-    rightInnerVPositions: (map['rightInnerVPositions'] as List<dynamic>?)
+    rightInnerVPositions:
+        (map['rightInnerVPositions'] as List<dynamic>?)
             ?.map((e) => (e as num).toDouble())
             .toList() ??
         const [],
@@ -220,7 +234,8 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
           (k, v) => MapEntry(k, v as bool),
         ) ??
         {},
-    cellSashOverrides: (map['cellSashOverrides'] as Map<String, dynamic>?)?.map(
+    cellSashOverrides:
+        (map['cellSashOverrides'] as Map<String, dynamic>?)?.map(
           (k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)),
         ) ??
         const {},
@@ -234,23 +249,30 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
             orElse: () => LockType.none,
           )
         : LockType.none,
-    slidingMontantReinforced: (map['slidingMontantReinforced'] as Map<String, dynamic>?)?.map(
-      (k, v) => MapEntry(k, v as bool),
-    ),
-    disabledVerticalDivisions: (map['disabledVerticalDivisions'] as Map<String, dynamic>?)?.map(
-      (k, v) => MapEntry(k, v as bool),
-    ) ?? const {},
-    disabledHorizontalDivisions: (map['disabledHorizontalDivisions'] as Map<String, dynamic>?)?.map(
-      (k, v) => MapEntry(k, v as bool),
-    ) ?? const {},
+    slidingMontantReinforced:
+        (map['slidingMontantReinforced'] as Map<String, dynamic>?)?.map(
+          (k, v) => MapEntry(k, v as bool),
+        ),
+    disabledVerticalDivisions:
+        (map['disabledVerticalDivisions'] as Map<String, dynamic>?)?.map(
+          (k, v) => MapEntry(k, v as bool),
+        ) ??
+        const {},
+    disabledHorizontalDivisions:
+        (map['disabledHorizontalDivisions'] as Map<String, dynamic>?)?.map(
+          (k, v) => MapEntry(k, v as bool),
+        ) ??
+        const {},
     isSubdivided: map['isSubdivided'] ?? false,
     hasSashPlintheBottom: map['hasSashPlintheBottom'] ?? false,
-    cellGlassSpec: (map['cellGlassSpec'] as Map?)?.map(
-      (k, v) => MapEntry(
-        k.toString(),
-        glassSpecificationFromMap(Map<String, dynamic>.from(v as Map)),
-      ),
-    ) ?? const {},
+    cellGlassSpec:
+        (map['cellGlassSpec'] as Map?)?.map(
+          (k, v) => MapEntry(
+            k.toString(),
+            glassSpecificationFromMap(Map<String, dynamic>.from(v as Map)),
+          ),
+        ) ??
+        const {},
   );
 }
 
@@ -266,6 +288,7 @@ extension WindowModelSerialization on WindowModel {
       'manualNameOverride': manualNameOverride,
       'manualPriceOverride': manualPriceOverride,
       'description': description,
+      'invoiceTableEdited': invoiceTableEdited,
       'position': position,
       'isCustomProduct': isCustomProduct,
       'archHeight': archHeight,
@@ -281,6 +304,10 @@ extension WindowModelSerialization on WindowModel {
       'hasShutter': hasShutter,
       'isCaissonTunnel': isCaissonTunnel,
       'caissonPayload': caissonPayload,
+      'isMoustiquaire': isMoustiquaire,
+      'moustiquairePayload': moustiquairePayload,
+      'isGlassWork': isGlassWork,
+      'glassWorkPayload': glassWorkPayload,
       'caissonTunnelHeight': caissonTunnelHeight,
       'showBottomWall': showBottomWall,
       'showWall': showWall,
@@ -347,6 +374,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.manualNameOverride = map['manualNameOverride']?.toString();
   model.manualPriceOverride = (map['manualPriceOverride'] as num?)?.toDouble();
   model.description = map['description']?.toString();
+  model.invoiceTableEdited =
+      map['invoiceTableEdited'] == true ||
+      map['invoiceTableEdited']?.toString().toLowerCase() == 'true';
   model.position = map['position']?.toString();
   model.archHeight = (map['archHeight'] as num?)?.toDouble() ?? 0.0;
   model.topSlantLeftY = (map['topSlantLeftY'] as num?)?.toDouble() ?? 0.0;
@@ -377,6 +407,18 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       'sizeCalculations': map['sizeCalculations'],
     };
   }
+  model.isMoustiquaire = map['isMoustiquaire'] ?? false;
+  if (map['moustiquairePayload'] is Map) {
+    model.moustiquairePayload = Map<String, dynamic>.from(
+      map['moustiquairePayload'] as Map,
+    );
+  }
+  model.isGlassWork = map['isGlassWork'] ?? false;
+  if (map['glassWorkPayload'] is Map) {
+    model.glassWorkPayload = Map<String, dynamic>.from(
+      map['glassWorkPayload'] as Map,
+    );
+  }
   model.showBottomWall = map['showBottomWall'] ?? true;
   model.showWall = map['showWall'] ?? true;
   model.wallColor = map['wallColor'] ?? 'red';
@@ -391,16 +433,19 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.shutterGlissiere = map['shutterGlissiere'] ?? 'Glissière 25';
   model.shutterPosition = (map['shutterPosition'] as num?)?.toDouble() ?? 0.5;
   model.shutterDriveSide = map['shutterDriveSide'] ?? 'right';
-  model.customShutterBoxHeight = (map['customShutterBoxHeight'] as num?)?.toDouble();
+  model.customShutterBoxHeight = (map['customShutterBoxHeight'] as num?)
+      ?.toDouble();
   model.selectedShutterLameId = (map['selectedShutterLameId'] as num?)?.toInt();
   model.selectedShutterKitId = (map['selectedShutterKitId'] as num?)?.toInt();
-  model.selectedShutterMotorId = (map['selectedShutterMotorId'] as num?)?.toInt();
+  model.selectedShutterMotorId = (map['selectedShutterMotorId'] as num?)
+      ?.toInt();
   model.hasSideCovers = map['hasSideCovers'] ?? true;
   model.sideCoverUseSecondWidth = map['sideCoverUseSecondWidth'] ?? false;
   model.isFrame140 = map['isFrame140'] ?? false;
   model.isShutterOnly = map['isShutterOnly'] ?? false;
   model.primaryMullionAxis = map['primaryMullionAxis'];
-  model.caissonTunnelHeight = (map['caissonTunnelHeight'] as num?)?.toDouble() ?? 300.0;
+  model.caissonTunnelHeight =
+      (map['caissonTunnelHeight'] as num?)?.toDouble() ?? 300.0;
 
   if (map['removedShutterSides'] != null) {
     model.removedShutterSides = Set<String>.from(map['removedShutterSides']);
@@ -475,7 +520,10 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   }
 }
 
-Future<void> applyWindowModelAndLoadCatalog(WindowModel model, Map<String, dynamic> map) async {
+Future<void> applyWindowModelAndLoadCatalog(
+  WindowModel model,
+  Map<String, dynamic> map,
+) async {
   applyWindowModelFromMap(model, map);
   await model.loadCatalogData(model.systemMode ?? '');
 }

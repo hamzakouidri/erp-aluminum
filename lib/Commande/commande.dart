@@ -9,6 +9,7 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:database_data/Commande/pdf_fiche_coupe_api.dart';
 import 'package:database_data/Commande/order_date_utils.dart';
 import 'package:database_data/Commande/devis_builder.dart';
@@ -753,53 +754,25 @@ class _CommandeState extends State<Commande> {
                 title: Text(Localization.translate('doc_devis_menu', lang)),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
+                    final rawItems = await db
+                        .readCommandeDetails(orderData['id'])
+                        .timeout(const Duration(seconds: 10));
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
 
-                    for (var item in items) {
-                      final path = item['drawing_image_path']?.toString() ?? '';
-                      if (path.isEmpty || !File(path).existsSync()) {
-                        final jsonRaw = item['partitions_json'];
-                        if (jsonRaw != null) {
-                          try {
-                            Map<String, dynamic> modelMap = {};
-                            if (jsonRaw is Map<String, dynamic>) {
-                              modelMap = jsonRaw;
-                            } else if (jsonRaw is Map) {
-                              modelMap = Map<String, dynamic>.from(jsonRaw);
-                            } else {
-                              final str = jsonRaw.toString().trim();
-                              if (str.length >= 5) {
-                                modelMap = jsonDecode(str) as Map<String, dynamic>;
-                              }
-                            }
-                            if (modelMap.isNotEmpty) {
-                              final model = WindowModel(db: db);
-                              await applyWindowModelAndLoadCatalog(model, modelMap);
-                              final newPath = await saveWindowImageToDisk(model);
-                              if (newPath.isNotEmpty) {
-                                await db.updateCommandeDetailImagePath(item['id'] as int, newPath);
-                                item['drawing_image_path'] = newPath;
-                              }
-                            }
-                          } catch (err) {
-                            debugPrint('Error generating missing image: $err');
-                          }
-                        }
-                      }
-                    }
+                    await _restoreDocumentImagesFromStoredBytes(items);
 
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
+                    final workshop = await DevisBuilder.loadWorkshopInfo()
+                        .timeout(const Duration(seconds: 6));
                     final devis = await DevisBuilder.build(
                       order: orderData,
                       items: items,
                       workshop: workshop,
                       documentTitleKey: 'doc_devis',
-                    );
-                    if (!mounted) return;
+                    ).timeout(const Duration(seconds: 10));
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -807,8 +780,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -827,7 +800,7 @@ class _CommandeState extends State<Commande> {
                 title: Text(Localization.translate('فاتورة رسمية / أولية', lang)),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
                     final rawItems = await db.readCommandeDetails(orderData['id']);
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -838,8 +811,8 @@ class _CommandeState extends State<Commande> {
                       workshop: workshop,
                       isProForma: true,
                     );
-                    if (!mounted) return;
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -847,8 +820,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -869,7 +842,7 @@ class _CommandeState extends State<Commande> {
                 title: Text(lang == AppLanguage.french ? 'Facture de Vente' : 'فاتورة بيع / Facture de Vente'),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
                     final rawItems = await db.readCommandeDetails(orderData['id']);
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -881,8 +854,8 @@ class _CommandeState extends State<Commande> {
                       isProForma: false,
                       documentTitleKey: 'FACTURE_VENTE',
                     );
-                    if (!mounted) return;
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -890,8 +863,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -910,7 +883,7 @@ class _CommandeState extends State<Commande> {
                 title: Text(lang == AppLanguage.french ? 'Bon de Route' : 'بون دو روت / Bon de Route'),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
                     final rawItems = await db.readCommandeDetails(orderData['id']);
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -922,8 +895,8 @@ class _CommandeState extends State<Commande> {
                       isProForma: false,
                       documentTitleKey: 'BON_ROUTE',
                     );
-                    if (!mounted) return;
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -931,8 +904,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد المستند: $e'),
@@ -952,7 +925,7 @@ class _CommandeState extends State<Commande> {
                 title: Text(Localization.translate('doc_bon_livraison_menu', lang)),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
                     final rawItems = await db.readCommandeDetails(orderData['id']);
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -998,8 +971,8 @@ class _CommandeState extends State<Commande> {
                       hidePrices: false,
                       documentTitleKey: 'doc_bon_livraison',
                     );
-                    if (!mounted) return;
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -1007,8 +980,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -1027,7 +1000,7 @@ class _CommandeState extends State<Commande> {
                 title: Text(Localization.translate('doc_bon_livraison_sans_prix_menu', lang)),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
                     final rawItems = await db.readCommandeDetails(orderData['id']);
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -1073,8 +1046,8 @@ class _CommandeState extends State<Commande> {
                       hidePrices: true,
                       documentTitleKey: 'doc_bon_livraison_sans_prix',
                     );
-                    if (!mounted) return;
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -1082,8 +1055,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -1318,7 +1291,7 @@ class _CommandeState extends State<Commande> {
                     }
 
                     if (selectedResult is Map<String, dynamic>) {
-                      _showHeavyLoadingDialog(context, lang);
+                      await _showHeavyLoadingDialog(context, lang);
                       try {
                         final itemsJsonStr = selectedResult['items_json']?.toString() ?? '[]';
                         final List<dynamic> rawDecoded = jsonDecode(itemsJsonStr);
@@ -1365,8 +1338,8 @@ class _CommandeState extends State<Commande> {
                           hidePrices: true,
                           documentTitleKey: 'BON_CHARGE',
                         );
-                        if (!mounted) return;
                         _dismissHeavyLoadingDialog();
+                        if (!mounted) return;
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -1378,8 +1351,8 @@ class _CommandeState extends State<Commande> {
                           ),
                         );
                       } catch (e) {
+                        _dismissHeavyLoadingDialog();
                         if (mounted) {
-                          _dismissHeavyLoadingDialog();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -1393,7 +1366,7 @@ class _CommandeState extends State<Commande> {
                   }
 
                   // Full loading flow (FULL)
-                  _showHeavyLoadingDialog(context, lang);
+                  await _showHeavyLoadingDialog(context, lang);
                   try {
                     final rawItems = await db.readCommandeDetails(orderData['id']);
                     final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -1439,8 +1412,8 @@ class _CommandeState extends State<Commande> {
                       hidePrices: true,
                       documentTitleKey: 'BON_CHARGE',
                     );
-                    if (!mounted) return;
                     _dismissHeavyLoadingDialog();
+                    if (!mounted) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -1448,8 +1421,8 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   } catch (e) {
+                    _dismissHeavyLoadingDialog();
                     if (mounted) {
-                      _dismissHeavyLoadingDialog();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('خطأ أثناء توليد الفاتورة: $e'),
@@ -1653,8 +1626,36 @@ class _CommandeState extends State<Commande> {
                             ),
                           ),
                         );
-                        final allConfirmed = await _areAllMeasurementsConfirmed(orderData['id']);
-                        if (mounted) Navigator.of(context, rootNavigator: true).pop();
+                        await WidgetsBinding.instance.endOfFrame;
+                        var allConfirmed = false;
+                        Object? measurementCheckError;
+                        try {
+                          allConfirmed = await _areAllMeasurementsConfirmed(
+                            orderData['id'],
+                          ).timeout(const Duration(seconds: 15));
+                        } catch (error) {
+                          measurementCheckError = error;
+                        } finally {
+                          if (mounted) {
+                            Navigator.of(context, rootNavigator: true).pop();
+                          }
+                        }
+                        if (measurementCheckError != null) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Impossible de vérifier les mesures de cette commande.'
+                                      : 'تعذر التحقق من قياسات هذه الطلبية. راجع بيانات القياسات ثم حاول مجددًا.',
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                          return;
+                        }
                         if (!allConfirmed) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1706,9 +1707,37 @@ class _CommandeState extends State<Commande> {
                         ),
                       );
 
-                      await db.updateCommandeStatus(orderData['id'], nextStatus);
-                      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+                      await WidgetsBinding.instance.endOfFrame;
+                      Object? statusUpdateError;
+                      try {
+                        await db
+                            .updateCommandeStatus(orderData['id'], nextStatus)
+                            .timeout(const Duration(seconds: 30));
+                      } catch (error) {
+                        statusUpdateError = error;
+                      } finally {
+                        if (mounted) {
+                          Navigator.of(context, rootNavigator: true).pop();
+                        }
+                      }
 
+                      if (statusUpdateError != null) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                lang == AppLanguage.french
+                                    ? 'Échec du passage à l’étape suivante. Veuillez réessayer.'
+                                    : 'تعذر نقل الطلبية إلى المرحلة التالية. يرجى المحاولة مجددًا.',
+                                style: const TextStyle(fontFamily: 'Cairo'),
+                              ),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
+                        }
+                        return;
+                      }
+                      if (!mounted) return;
                       setState(() {
                         _data = db.readCommandesWithClients();
                       });
@@ -1863,49 +1892,52 @@ class _CommandeState extends State<Commande> {
   }
 
   Future<void> _duplicateOrder(Map<String, dynamic> orderData) async {
-    final oldId = orderData['id'];
-    final clientId = orderData['client_id'];
-    final orderType = orderData['order_type'] ?? 'Quotation';
-    final description = orderData['description'] ?? '';
+    final oldId = (orderData['id'] as num?)?.toInt();
+    final clientId = (orderData['client_id'] as num?)?.toInt();
+    if (oldId == null || clientId == null) {
+      throw StateError('بيانات الطلبية أو العميل غير صالحة.');
+    }
+
+    final description = orderData['description']?.toString() ?? '';
     final remise = (orderData['remise'] as num?)?.toDouble() ?? 0.0;
     final tva = (orderData['tva'] as num?)?.toDouble() ?? 0.0;
     final total = (orderData['total'] as num?)?.toDouble() ?? 0.0;
-    final status = 'New';
-
-    // Read commandlines
     final items = await db.readCommandeDetails(oldId);
-
-    // Create new order (Notice: client_id should ideally be passed, but the DB insertCommande doesn't explicitly take orderType in this version.
-    // wait, insertCommande signature: insertCommande(int idClient, String status, String description, double remise, double tva, double total, {double advancePayment})
-    final newOrderId = await db.insertCommande(
-      clientId ?? 0, // Fallback if no client
-      status,
-      description,
-      remise,
-      tva,
-      total,
-      advancePayment: 0.0, // duplicated order shouldn't carry over payments
-    );
-
-    // Create new lines
-    for (var item in items) {
-      await db.insertCommandeDetail(
-        idCommande: newOrderId,
-        largeur: (item['largeur'] as num?)?.toDouble() ?? 0.0,
-        hauteur: (item['hauteur'] as num?)?.toDouble() ?? 0.0,
-        game: item['game']?.toString() ?? '',
-        quantity: (item['quantity'] as num?)?.toInt() ?? 1,
-        glass: item['glass']?.toString() ?? '',
-        color: item['color']?.toString() ?? '',
-        volet: item['volet']?.toString() ?? '',
-        accessories: item['accessories']?.toString() ?? '',
-        description: item['description']?.toString() ?? '',
-        price: (item['price'] as num?)?.toDouble() ?? 0.0,
-        windowType: item['window_type']?.toString() ?? '',
-        partitionsJson: item['partitions_json']?.toString() ?? '[]',
-        drawingImagePath: item['drawing_image_path']?.toString() ?? '',
+    if (items.isEmpty) {
+      throw StateError(
+        'لا يمكن نسخ هذه الطلبية لأنها لا تحتوي على سطور تفاصيل محفوظة.',
       );
     }
+
+    final copiedDetails = items.map((item) => <String, dynamic>{
+      'largeur': (item['largeur'] as num?)?.toInt() ?? 0,
+      'hauteur': (item['hauteur'] as num?)?.toInt() ?? 0,
+      'game': item['game']?.toString() ?? '',
+      'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
+      'glass': item['glass']?.toString() ?? '',
+      'color': item['color']?.toString() ?? '',
+      'volet': item['volet']?.toString() ?? '',
+      'accessories': item['accessories']?.toString() ?? '',
+      'description': item['description']?.toString() ?? '',
+      'price': (item['price'] as num?)?.toDouble() ?? 0.0,
+      'window_type': item['window_type']?.toString() ?? '',
+      'partitions_json': item['partitions_json']?.toString() ?? '{}',
+      'drawing_image_path': item['drawing_image_path']?.toString() ?? '',
+      if (item['drawing_image_base64'] != null)
+        'drawing_image_base64': item['drawing_image_base64'],
+    }).toList(growable: false);
+
+    await db.saveCommandeWithDetails(
+      clientId: clientId,
+      status: 'New',
+      description: description,
+      remise: remise,
+      tva: tva,
+      total: total,
+      netPayable: total - remise + ((total * tva) / 100),
+      createdAt: DateTime.now().toIso8601String(),
+      details: copiedDetails,
+    );
   }
 
   void _showDeleteConfirmDialog(int id) async {
@@ -2018,6 +2050,68 @@ class _CommandeState extends State<Commande> {
       }
     }
     return true;
+  }
+
+  Future<void> _restoreDocumentImagesFromStoredBytes(
+    List<Map<String, dynamic>> items,
+  ) async {
+    final missingImages = items.where((item) {
+      final path = item['drawing_image_path']?.toString() ?? '';
+      return path.isEmpty || !File(path).existsSync();
+    }).toList(growable: false);
+    if (missingImages.isEmpty) return;
+
+    // A path uploaded by another phone is not valid on this device. Use the
+    // image bytes already stored with the row instead of rebuilding the whole
+    // window model, which can be very expensive for complex orders.
+    late final Directory cacheDirectory;
+    try {
+      cacheDirectory = await getTemporaryDirectory().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (_) {
+      for (final item in missingImages) {
+        item['drawing_image_path'] = '';
+      }
+      return;
+    }
+
+    final writes = missingImages.map((item) async {
+      item['drawing_image_path'] = '';
+      final raw = item['drawing_image_base64']?.toString().trim() ?? '';
+      if (raw.isEmpty) return;
+
+      try {
+        final separator = raw.indexOf(',');
+        final encoded = raw.startsWith('data:image') && separator >= 0
+            ? raw.substring(separator + 1)
+            : raw;
+        final bytes = base64Decode(encoded);
+        if (bytes.isEmpty) return;
+
+        final detailId =
+            (item['id'] as num?)?.toInt() ?? encoded.hashCode.abs();
+        final file = File(
+          '${cacheDirectory.path}${Platform.pathSeparator}'
+          'devis_item_$detailId.img',
+        );
+        if (!await file.exists() || await file.length() != bytes.length) {
+          await file.writeAsBytes(bytes, flush: false).timeout(
+            const Duration(seconds: 4),
+          );
+        }
+        item['drawing_image_path'] = file.path;
+      } catch (error) {
+        debugPrint('Unable to restore Devis image: $error');
+      }
+    });
+
+    try {
+      await Future.wait(writes).timeout(const Duration(seconds: 10));
+    } catch (error) {
+      // A single problematic image must never prevent the Devis from opening.
+      debugPrint('Devis image restoration timed out: $error');
+    }
   }
 
   void _showChangeStatusDialog(Map<String, dynamic> orderData) {
@@ -2200,12 +2294,19 @@ class _CommandeState extends State<Commande> {
     );
   }
 
-  void _showHeavyLoadingDialog(BuildContext context, AppLanguage lang) {
-    showDialog(
+  Future<void> _showHeavyLoadingDialog(
+    BuildContext context,
+    AppLanguage lang,
+  ) async {
+    final ready = Completer<void>();
+    BuildContext? shownDialogContext;
+    final dialogFuture = showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogCtx) {
+        shownDialogContext = dialogCtx;
         _loadingDialogContext = dialogCtx;
+        if (!ready.isCompleted) ready.complete();
         return PopScope(
           canPop: false,
           child: AlertDialog(
@@ -2223,12 +2324,21 @@ class _CommandeState extends State<Commande> {
         );
       },
     );
+    unawaited(
+      dialogFuture.whenComplete(() {
+        if (identical(_loadingDialogContext, shownDialogContext)) {
+          _loadingDialogContext = null;
+        }
+        if (!ready.isCompleted) ready.complete();
+      }),
+    );
+    await ready.future;
   }
 
   void _dismissHeavyLoadingDialog() {
-    if (_loadingDialogContext != null) {
-      Navigator.of(_loadingDialogContext!).pop();
-      _loadingDialogContext = null;
-    }
+    final dialogContext = _loadingDialogContext;
+    _loadingDialogContext = null;
+    if (dialogContext == null || !dialogContext.mounted) return;
+    Navigator.of(dialogContext).pop();
   }
 }

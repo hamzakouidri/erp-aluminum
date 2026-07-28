@@ -56,6 +56,7 @@ class CloudSyncService {
   CloudSyncService._internal();
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+
   FirebaseAuth get _auth => FirebaseAuth.instance;
   final SqlDatabase _db = SqlDatabase();
 
@@ -69,6 +70,7 @@ class CloudSyncService {
   Timer? _pendingTransactionUploadTimer;
   StreamSubscription<DocumentSnapshot>? _listener;
   StreamSubscription<DocumentSnapshot>? _catalogListener;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _deltaListener;
   StreamSubscription<QuerySnapshot>? _statusListener;
   StreamSubscription<QuerySnapshot>? _orderStatusListener;
   StreamSubscription<QuerySnapshot>? _measurementsListener;
@@ -81,7 +83,9 @@ class CloudSyncService {
   int _localWriteDepth = 0;
   bool _refreshQueuedAfterLocalWrite = false;
   bool _backupQueuedAfterLocalWrite = false;
+
   bool get _isRestoring => _restoreDepth > 0;
+
   bool get _isLocalWriteInProgress => _localWriteDepth > 0;
   bool _isSilentBackupRunning = false;
   bool _silentBackupQueued = false;
@@ -89,6 +93,12 @@ class CloudSyncService {
   String? _lastHandledBackupFingerprint;
   String? _lastHandledCatalogFingerprint;
   final Set<String> _ownUploadIds = <String>{};
+  final Set<String> _handledDeltaIds = <String>{};
+  final Set<String> _processingDeltaIds = <String>{};
+  Future<void> _deltaApplyChain = Future<void>.value();
+  String? _loadedDeltaWorkshopId;
+  DateTime? _latestFullSnapshotCompletedAt;
+  final Set<String> _latestFullCompactedDeltaIds = <String>{};
   String? _lastAnnouncedListenerWorkshopId;
   DateTime? _lastRealtimeErrorFeedbackAt;
   Future<void>? _activeBackup;
@@ -101,9 +111,11 @@ class CloudSyncService {
 
   final StreamController<String> _dbUpdateController =
       StreamController<String>.broadcast();
+
   Stream<String> get dbUpdateStream => _dbUpdateController.stream;
   final StreamController<CloudSyncFeedback> _syncFeedbackController =
       StreamController<CloudSyncFeedback>.broadcast();
+
   Stream<CloudSyncFeedback> get syncFeedbackStream =>
       _syncFeedbackController.stream;
 
@@ -111,6 +123,7 @@ class CloudSyncService {
   Function()? onDataRestored;
 
   String? _workshopId;
+
   String? get workshopId => _workshopId;
   String lastBackupUploadSummary = '';
   String lastCatalogUploadSummary = '';
@@ -706,12 +719,14 @@ class CloudSyncService {
     _pendingTransactionUploadTimer?.cancel();
     _listener?.cancel();
     _catalogListener?.cancel();
+    _deltaListener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
     _listener = null;
     _catalogListener = null;
+    _deltaListener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
@@ -719,6 +734,12 @@ class CloudSyncService {
     _lastHandledBackupFingerprint = null;
     _lastHandledCatalogFingerprint = null;
     _ownUploadIds.clear();
+    _handledDeltaIds.clear();
+    _processingDeltaIds.clear();
+    _deltaApplyChain = Future<void>.value();
+    _loadedDeltaWorkshopId = null;
+    _latestFullSnapshotCompletedAt = null;
+    _latestFullCompactedDeltaIds.clear();
     _lastAnnouncedListenerWorkshopId = null;
     _lastRealtimeErrorFeedbackAt = null;
     _activeBackup = null;
@@ -772,6 +793,23 @@ class CloudSyncService {
             );
             await _applyLatestBackupUpdate(payload);
           },
+          onError: _scheduleRealtimeListenerRetry,
+          onDone: _scheduleRealtimeListenerRetry,
+        );
+
+    // Small immutable delta documents carry only rows changed by a phone.
+    // Keeping each delta as its own document means several phones can publish
+    // together without overwriting one another or waiting for the full-backup
+    // queue.
+    _deltaListener?.cancel();
+    _deltaListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('backups')
+        .where('kind', isEqualTo: 'delta')
+        .snapshots()
+        .listen(
+          _queueDeltaSnapshot,
           onError: _scheduleRealtimeListenerRetry,
           onDone: _scheduleRealtimeListenerRetry,
         );
@@ -922,8 +960,208 @@ class CloudSyncService {
     ].join('|');
   }
 
+  String _handledDeltasPreferenceKey(String workshopId) =>
+      'handled_cloud_deltas_$workshopId';
+
+  DateTime? _firestoreDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  void _rememberFullSnapshotMetadata(Map<String, dynamic> payload) {
+    _latestFullSnapshotCompletedAt = _firestoreDate(
+      payload['completedAt'] ?? payload['timestamp'],
+    );
+    final rawCompactedIds = payload['compactedDeltaIds'];
+    _latestFullCompactedDeltaIds
+      ..clear()
+      ..addAll(
+        (rawCompactedIds is List ? rawCompactedIds : const <dynamic>[])
+            .map((value) => value.toString())
+            .where((value) => value.isNotEmpty),
+      );
+  }
+
+  Future<void> _ensureHandledDeltasLoaded() async {
+    final workshopId = _workshopId;
+    if (workshopId == null ||
+        workshopId.isEmpty ||
+        _loadedDeltaWorkshopId == workshopId) {
+      return;
+    }
+    _loadedDeltaWorkshopId = workshopId;
+    _handledDeltaIds.clear();
+    final prefs = await SharedPreferences.getInstance();
+    _handledDeltaIds.addAll(
+      prefs.getStringList(_handledDeltasPreferenceKey(workshopId)) ??
+          const <String>[],
+    );
+  }
+
+  Future<void> _markDeltaHandled(String deltaId) async {
+    if (deltaId.isEmpty) return;
+    await _ensureHandledDeltasLoaded();
+    _handledDeltaIds.add(deltaId);
+    while (_handledDeltaIds.length > 400) {
+      _handledDeltaIds.remove(_handledDeltaIds.first);
+    }
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _handledDeltasPreferenceKey(workshopId),
+      _handledDeltaIds.toList(),
+    );
+  }
+
+  Future<DateTime?> _readLatestFullSnapshotWatermark() async {
+    if (_latestFullSnapshotCompletedAt != null) {
+      return _latestFullSnapshotCompletedAt;
+    }
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) return null;
+    try {
+      final latest = await _firestore
+          .collection('workshops')
+          .doc(workshopId)
+          .collection('backups')
+          .doc('latest')
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 10));
+      final payload = latest.data();
+      if (payload?['status']?.toString() == 'completed') {
+        _rememberFullSnapshotMetadata(payload!);
+      }
+    } catch (error) {
+      print('Could not read full snapshot watermark: $error');
+    }
+    return _latestFullSnapshotCompletedAt;
+  }
+
+  void _queueDeltaSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    final completed =
+        snapshot.docChanges
+            .map((change) => change.doc)
+            .where((doc) => doc.data()!['status']?.toString() == 'completed')
+            .toList()
+          ..sort((left, right) {
+            final leftTime =
+                _firestoreDate(
+                  left.data()!['completedAt'],
+                )?.millisecondsSinceEpoch ??
+                0;
+            final rightTime =
+                _firestoreDate(
+                  right.data()!['completedAt'],
+                )?.millisecondsSinceEpoch ??
+                0;
+            final timeResult = leftTime.compareTo(rightTime);
+            return timeResult != 0 ? timeResult : left.id.compareTo(right.id);
+          });
+
+    for (final document in completed) {
+      final deltaId = document.id;
+      if (_processingDeltaIds.contains(deltaId) ||
+          _handledDeltaIds.contains(deltaId)) {
+        continue;
+      }
+      _processingDeltaIds.add(deltaId);
+      _deltaApplyChain = _deltaApplyChain
+          .catchError((Object error, StackTrace stackTrace) {
+            print('Previous cloud delta failed: $error');
+          })
+          .then((_) => _applyDeltaDocument(document))
+          .whenComplete(() => _processingDeltaIds.remove(deltaId));
+    }
+  }
+
+  Future<void> _applyDeltaDocument(
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) async {
+    final payload = document.data();
+    if (payload == null || payload['status']?.toString() != 'completed') {
+      return;
+    }
+    await _ensureHandledDeltasLoaded();
+    if (_handledDeltaIds.contains(document.id)) return;
+
+    final uploadId = payload['uploadId']?.toString() ?? '';
+    if (uploadId.isNotEmpty && _ownUploadIds.contains(uploadId)) {
+      await _markDeltaHandled(document.id);
+      return;
+    }
+
+    await _readLatestFullSnapshotWatermark();
+    if (_latestFullCompactedDeltaIds.contains(document.id)) {
+      // This change is already contained in the newer full recovery snapshot.
+      await _markDeltaHandled(document.id);
+      return;
+    }
+
+    while (_isLocalWriteInProgress) {
+      await Future<void>.delayed(const Duration(milliseconds: 75));
+    }
+
+    _beginRestore();
+    try {
+      final chunks = await document.reference
+          .collection('chunks')
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 30));
+      final assembledData = _assembleChunkedData(chunks, uploadId: uploadId);
+      final expectedCounts = payload['tableRowCounts'];
+      if (expectedCounts is Map) {
+        for (final entry in expectedCounts.entries) {
+          final expected = (entry.value as num?)?.toInt();
+          if (expected == null) continue;
+          final actual = assembledData[entry.key.toString()]?.length ?? 0;
+          if (actual != expected) {
+            throw StateError(
+              'Incomplete delta table ${entry.key}: '
+              'expected $expected, received $actual.',
+            );
+          }
+        }
+      }
+
+      await _db.importAllData(assembledData, mergeAllData: true);
+      await _markDeltaHandled(document.id);
+      _dbUpdateController.add('cloud_delta_applied');
+      onDataRestored?.call();
+      if (await _hasPendingTransactions()) {
+        _localSyncQueuedAfterRestore = true;
+      }
+    } catch (error) {
+      print('Could not apply cloud delta ${document.id}: $error');
+      rethrow;
+    } finally {
+      _endRestore();
+    }
+  }
+
+  Future<Set<String>> _refreshDeltasFromCloud() async {
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) return <String>{};
+    final snapshot = await _firestore
+        .collection('workshops')
+        .doc(workshopId)
+        .collection('backups')
+        .where('kind', isEqualTo: 'delta')
+        .get(GetOptions(source: Source.server))
+        .timeout(const Duration(seconds: 20));
+    _queueDeltaSnapshot(snapshot);
+    await _deltaApplyChain;
+    return snapshot.docs
+        .where((doc) => doc.data()['status']?.toString() == 'completed')
+        .map((doc) => doc.id)
+        .toSet();
+  }
+
   Future<void> _applyLatestBackupUpdate(Map<String, dynamic> payload) async {
     if (payload['status']?.toString() != 'completed') return;
+    _rememberFullSnapshotMetadata(payload);
     if (_isLocalWriteInProgress) {
       _refreshQueuedAfterLocalWrite = true;
       return;
@@ -1128,12 +1366,14 @@ class CloudSyncService {
     _realtimeHealthTimer?.cancel();
     _listener?.cancel();
     _catalogListener?.cancel();
+    _deltaListener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
     _listener = null;
     _catalogListener = null;
+    _deltaListener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
@@ -1289,9 +1529,235 @@ class CloudSyncService {
 
   void _scheduleBackupRetry() {
     _backupRetryTimer?.cancel();
-    _backupRetryTimer = Timer(const Duration(seconds: 15), () {
+    _backupRetryTimer = Timer(const Duration(seconds: 5), () {
       _silentBackup();
     });
+  }
+
+  Future<void> _acquireWorkshopUploadLease(
+    DocumentReference<Map<String, dynamic>> latestDocRef,
+    String uploadId,
+  ) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    var acquiredLease = false;
+    try {
+      while (DateTime.now().isBefore(deadline)) {
+        final acquired = await _firestore
+            .runTransaction<bool>((transaction) async {
+              final snapshot = await transaction.get(latestDocRef);
+              final data = snapshot.data();
+              final now = DateTime.now();
+
+              final queue = <String, Map<String, dynamic>>{};
+              final rawQueue = data?['syncUploadQueue'];
+              if (rawQueue is Map) {
+                for (final entry in rawQueue.entries) {
+                  if (entry.value is! Map) continue;
+                  final item = Map<String, dynamic>.from(entry.value as Map);
+                  final rawItemExpiry = item['expiresAt'];
+                  final itemExpiry = rawItemExpiry is Timestamp
+                      ? rawItemExpiry.toDate()
+                      : null;
+                  if (itemExpiry != null && itemExpiry.isAfter(now)) {
+                    queue[entry.key.toString()] = item;
+                  }
+                }
+              }
+
+              var queueSequence =
+                  (data?['syncQueueSequence'] as num?)?.toInt() ?? 0;
+              int? inheritedSequence;
+              final duplicateEntries = queue.entries
+                  .where(
+                    (entry) =>
+                        entry.key != uploadId &&
+                        entry.value['deviceId']?.toString() == _deviceId,
+                  )
+                  .toList();
+              for (final duplicate in duplicateEntries) {
+                final sequence =
+                    (duplicate.value['sequence'] as num?)?.toInt() ?? 0;
+                if (sequence > 0 &&
+                    (inheritedSequence == null ||
+                        sequence < inheritedSequence)) {
+                  inheritedSequence = sequence;
+                }
+                queue.remove(duplicate.key);
+              }
+
+              final existingQueueItem = queue[uploadId];
+              if (existingQueueItem == null) {
+                final sequence = inheritedSequence ?? ++queueSequence;
+                queue[uploadId] = <String, dynamic>{
+                  'sequence': sequence,
+                  'deviceId': _deviceId,
+                  'expiresAt': Timestamp.fromDate(
+                    now.add(const Duration(seconds: 30)),
+                  ),
+                };
+              } else {
+                existingQueueItem['deviceId'] = _deviceId;
+                existingQueueItem['expiresAt'] = Timestamp.fromDate(
+                  now.add(const Duration(seconds: 30)),
+                );
+              }
+
+              final orderedQueue = queue.entries.toList()
+                ..sort((left, right) {
+                  final leftSequence =
+                      (left.value['sequence'] as num?)?.toInt() ?? 0;
+                  final rightSequence =
+                      (right.value['sequence'] as num?)?.toInt() ?? 0;
+                  final sequenceResult = leftSequence.compareTo(rightSequence);
+                  return sequenceResult != 0
+                      ? sequenceResult
+                      : left.key.compareTo(right.key);
+                });
+              final isThisPhonesTurn =
+                  orderedQueue.isNotEmpty && orderedQueue.first.key == uploadId;
+
+              final currentOwner = data?['syncLockOwner']?.toString() ?? '';
+              final rawLockExpiry = data?['syncLockExpiresAt'];
+              final lockExpiry = rawLockExpiry is Timestamp
+                  ? rawLockExpiry.toDate()
+                  : null;
+              final lockIsFree =
+                  currentOwner.isEmpty ||
+                  currentOwner == uploadId ||
+                  lockExpiry == null ||
+                  lockExpiry.isBefore(now);
+
+              if (lockIsFree && isThisPhonesTurn) {
+                queue.remove(uploadId);
+                transaction.set(latestDocRef, {
+                  'syncLockOwner': uploadId,
+                  'syncLockExpiresAt': Timestamp.fromDate(
+                    now.add(const Duration(seconds: 40)),
+                  ),
+                  'syncUploadQueue': queue,
+                  'syncQueueSequence': queueSequence,
+                }, SetOptions(merge: true));
+                return true;
+              }
+
+              transaction.set(latestDocRef, {
+                'syncUploadQueue': queue,
+                'syncQueueSequence': queueSequence,
+              }, SetOptions(merge: true));
+              return false;
+            })
+            .timeout(const Duration(seconds: 8));
+        if (acquired) {
+          acquiredLease = true;
+          return;
+        }
+        await Future<void>.delayed(
+          Duration(milliseconds: 600 + Random().nextInt(300)),
+        );
+      }
+    } finally {
+      if (!acquiredLease) {
+        await _removeWorkshopUploadQueueEntry(latestDocRef, uploadId);
+      }
+    }
+    throw TimeoutException(
+      'طال انتظار دور هذا الهاتف في مزامنة الورشة. ستتم إعادة المحاولة تلقائياً.',
+    );
+  }
+
+  Future<void> _removeWorkshopUploadQueueEntry(
+    DocumentReference<Map<String, dynamic>> latestDocRef,
+    String uploadId,
+  ) async {
+    try {
+      await _firestore
+          .runTransaction<void>((transaction) async {
+            final snapshot = await transaction.get(latestDocRef);
+            final data = snapshot.data();
+            final rawQueue = data?['syncUploadQueue'];
+            if (rawQueue is! Map || !rawQueue.containsKey(uploadId)) return;
+            final queue = Map<String, dynamic>.from(rawQueue);
+            queue.remove(uploadId);
+            transaction.update(latestDocRef, {'syncUploadQueue': queue});
+          })
+          .timeout(const Duration(seconds: 10));
+    } catch (error) {
+      print('Could not remove workshop sync queue entry: $error');
+    }
+  }
+
+  Future<void> _renewWorkshopUploadLease(
+    DocumentReference<Map<String, dynamic>> latestDocRef,
+    String uploadId,
+  ) async {
+    try {
+      await _firestore
+          .runTransaction<void>((transaction) async {
+            final snapshot = await transaction.get(latestDocRef);
+            if (snapshot.data()?['syncLockOwner']?.toString() != uploadId)
+              return;
+            transaction.update(latestDocRef, {
+              'syncLockExpiresAt': Timestamp.fromDate(
+                DateTime.now().add(const Duration(seconds: 40)),
+              ),
+            });
+          })
+          .timeout(const Duration(seconds: 8));
+    } catch (error) {
+      print('Could not renew workshop sync lease: $error');
+    }
+  }
+
+  Future<void> _releaseWorkshopUploadLease(
+    DocumentReference<Map<String, dynamic>> latestDocRef,
+    String uploadId,
+  ) async {
+    try {
+      await _firestore
+          .runTransaction<void>((transaction) async {
+            final snapshot = await transaction.get(latestDocRef);
+            if (snapshot.data()?['syncLockOwner']?.toString() != uploadId) {
+              return;
+            }
+            transaction.update(latestDocRef, {
+              'syncLockOwner': FieldValue.delete(),
+              'syncLockExpiresAt': FieldValue.delete(),
+            });
+          })
+          .timeout(const Duration(seconds: 10));
+    } catch (error) {
+      // The lease expires automatically, so a release failure cannot block
+      // the workshop permanently.
+      print('Could not release workshop sync lease: $error');
+    }
+  }
+
+  Future<void> _mergeLatestWorkshopBeforeUpload(
+    DocumentReference<Map<String, dynamic>> latestDocRef,
+    String uploadId,
+  ) async {
+    final latest = await latestDocRef
+        .get(GetOptions(source: Source.server))
+        .timeout(const Duration(seconds: 20));
+    final payload = latest.data();
+    if (!latest.exists ||
+        payload == null ||
+        payload['status']?.toString() != 'completed' ||
+        payload['uploadId']?.toString() == uploadId) {
+      return;
+    }
+
+    _beginRestore();
+    try {
+      // Local rows use distributed IDs, so incoming additions and still-local
+      // additions can coexist even when both phones saved at the same moment.
+      await restoreFromCloud(keepPendingChanges: true);
+      _lastHandledBackupFingerprint = _backupFingerprint(payload);
+      _dbUpdateController.add('cloud_restored');
+      onDataRestored?.call();
+    } finally {
+      _endRestore();
+    }
   }
 
   /// الرفع اليدوي/الأساسي للسحابة بنظام التجزئة لتجاوز حد الـ 1MB
@@ -1311,6 +1777,10 @@ class CloudSyncService {
   Future<void> backupToCloud({bool isSilent = false}) {
     final activeBackup = _activeBackup;
     if (activeBackup != null) {
+      if (isSilent) {
+        _silentBackupQueued = true;
+        return activeBackup;
+      }
       return activeBackup.then<void>(
         (_) => backupToCloud(isSilent: isSilent),
         onError: (_, __) => backupToCloud(isSilent: isSilent),
@@ -1330,7 +1800,112 @@ class CloudSyncService {
     }
   }
 
+  /// Publishes only rows captured by the local insert/update/delete triggers.
+  ///
+  /// A false result means the pending marker predates the change log (or the
+  /// changed table has no stable `id`), so one full recovery snapshot is
+  /// required to guarantee that no database table is omitted.
+  Future<bool> _performDeltaBackupToCloud() async {
+    await init();
+    final uploadedGeneration = _transactionChangeGeneration;
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('Cloud delta upload requires an authenticated user.');
+    }
+    if (_workshopId == null || _workshopId!.isEmpty) {
+      throw StateError('Cloud delta upload requires a valid workshop.');
+    }
+
+    final pending = await _db.exportPendingCloudChanges();
+    if (pending.isEmpty) {
+      return !await _hasPendingTransactions();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final uploadId = _newUploadId();
+    final deltaId = 'delta_$uploadId';
+    _rememberOwnUpload(uploadId);
+    final deltaRef = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('backups')
+        .doc(deltaId);
+    final expectedRowCounts = <String, int>{
+      for (final entry in pending.data.entries)
+        entry.key: entry.value is List ? (entry.value as List).length : 0,
+    };
+    var uploadStage = 'preparing changed rows';
+
+    try {
+      uploadStage = 'opening delta upload';
+      await deltaRef
+          .set({
+            'kind': 'delta',
+            'status': 'uploading',
+            'uploadId': uploadId,
+            'deviceId': _deviceId,
+            'uploaderUid': user.uid,
+            'uploaderRole': prefs.getString('user_role') ?? 'worker',
+            'createdAt': FieldValue.serverTimestamp(),
+            'tables': pending.data.keys.toList(),
+            'changedRows': pending.changedRows,
+            'deletedRows': pending.deletedRows,
+          })
+          .timeout(const Duration(seconds: 10));
+
+      uploadStage = 'uploading changed rows';
+      final chunkCounts = await _uploadChunkedTables(
+        data: pending.data,
+        chunkRef: deltaRef.collection('chunks'),
+        setStage: (stage) => uploadStage = stage,
+        uploadId: uploadId,
+      );
+
+      uploadStage = 'completing delta upload';
+      await deltaRef
+          .update({
+            'status': 'completed',
+            'completedAt': FieldValue.serverTimestamp(),
+            'tableChunkCounts': chunkCounts,
+            'tableRowCounts': expectedRowCounts,
+          })
+          .timeout(const Duration(seconds: 10));
+
+      await _db.acknowledgePendingCloudChanges(pending.acknowledgements);
+      await _markDeltaHandled(deltaId);
+      final stillPending = await _db.hasPendingCloudChanges();
+      if (stillPending) {
+        _silentBackupQueued = true;
+      } else {
+        await prefs.setBool('is_local_dirty', false);
+        await _markTransactionalUploadConfirmed(uploadedGeneration);
+      }
+      lastBackupUploadSummary =
+          'Changes: ${pending.changedRows}, deletions: ${pending.deletedRows}';
+      return true;
+    } catch (error) {
+      print('Delta upload failed at $uploadStage: $error');
+      try {
+        await deltaRef
+            .update({
+              'status': 'failed',
+              'failedAt': FieldValue.serverTimestamp(),
+            })
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
   Future<void> _performBackupToCloud({bool isSilent = false}) async {
+    if (isSilent) {
+      final handledAsDelta = await _performDeltaBackupToCloud();
+      if (handledAsDelta) return;
+    }
+    await _performFullBackupToCloud(isSilent: isSilent);
+  }
+
+  Future<void> _performFullBackupToCloud({bool isSilent = false}) async {
     await init();
     final uploadedGeneration = _transactionChangeGeneration;
 
@@ -1362,46 +1937,61 @@ class CloudSyncService {
     // customers, payments, etc.).  `cloud_backup` is intentionally not used
     // as a gate here: it must never leave a worker's change on one phone.
 
-    Map<String, dynamic> allData = await _db.exportAllData();
-    final expectedRowCounts = <String, int>{
-      for (final entry in allData.entries)
-        entry.key: entry.value is List ? (entry.value as List).length : 0,
-    };
-
-    if (isSilent) {
-      // فحص أولي: تجاهل الرفع إذا كانت جميع الجداول فارغة
-      final hasAnyData = allData.values.any(
-        (rows) => rows is List && rows.isNotEmpty,
-      );
-      if (!hasAnyData) {
-        _sendSyncFeedback(
-          CloudSyncFeedbackType.uploadSkipped,
-          'لا توجد بيانات محلية لرفعها الآن.',
-          details: 'الورشة: $_workshopId',
-        );
-        return;
-      }
-    }
-
-    final uploadDetails = _describeBackupContents(allData);
-    _sendSyncFeedback(
-      CloudSyncFeedbackType.uploadStarted,
-      'يتم الآن رفع بيانات الورشة إلى السحابة…',
-      details: uploadDetails,
-    );
-
     final latestDocRef = _firestore
         .collection('workshops')
         .doc(_workshopId)
         .collection('backups')
         .doc('latest');
-
     final chunkRef = latestDocRef.collection('chunks');
     var uploadStage = 'بدء الاتصال بـ Firebase';
     final uploadId = _newUploadId();
     _rememberOwnUpload(uploadId);
+    Timer? leaseHeartbeat;
+    var leaseAcquired = false;
 
     try {
+      // Only one workshop device may publish a full snapshot at a time. The
+      // second phone waits, downloads the first phone's completed snapshot,
+      // merges it into its pending local additions, then publishes both.
+      uploadStage = 'انتظار دور المزامنة داخل الورشة';
+      await _acquireWorkshopUploadLease(latestDocRef, uploadId);
+      leaseAcquired = true;
+      leaseHeartbeat = Timer.periodic(const Duration(seconds: 10), (_) {
+        _renewWorkshopUploadLease(latestDocRef, uploadId);
+      });
+
+      uploadStage = 'دمج أحدث إضافات الأجهزة الأخرى';
+      await _mergeLatestWorkshopBeforeUpload(latestDocRef, uploadId);
+      final compactedDeltaIds = await _refreshDeltasFromCloud();
+
+      final fullChangeSnapshot = await _db.exportPendingCloudChanges();
+      final allData = await _db.exportAllData();
+      final expectedRowCounts = <String, int>{
+        for (final entry in allData.entries)
+          entry.key: entry.value is List ? (entry.value as List).length : 0,
+      };
+
+      if (isSilent) {
+        final hasAnyData = allData.values.any(
+          (rows) => rows is List && rows.isNotEmpty,
+        );
+        if (!hasAnyData) {
+          _sendSyncFeedback(
+            CloudSyncFeedbackType.uploadSkipped,
+            'لا توجد بيانات محلية لرفعها الآن.',
+            details: 'الورشة: $_workshopId',
+          );
+          return;
+        }
+      }
+
+      final uploadDetails = _describeBackupContents(allData);
+      _sendSyncFeedback(
+        CloudSyncFeedbackType.uploadStarted,
+        'يتم الآن رفع بيانات الورشة إلى السحابة…',
+        details: uploadDetails,
+      );
+
       // 1. تغيير الحالة إلى "جاري الرفع"
       uploadStage = 'بدء جلسة الرفع في السحابة';
       await latestDocRef
@@ -1413,7 +2003,7 @@ class CloudSyncService {
             'uploaderRole': prefs.getString('user_role') ?? 'worker',
             'status': 'uploading',
             'tables': allData.keys.toList(),
-          })
+          }, SetOptions(merge: true))
           .timeout(const Duration(seconds: 15));
 
       // 2. رفع الأجزاء الجديدة مباشرة (كتابة فوق نفس الأسماء table_0, table_1...)
@@ -1450,6 +2040,7 @@ class CloudSyncService {
             'completedAt': FieldValue.serverTimestamp(),
             'tableChunkCounts': newChunkCounts,
             'tableRowCounts': verifiedCounts,
+            'compactedDeltaIds': compactedDeltaIds.toList(),
           })
           .timeout(const Duration(seconds: 10));
 
@@ -1479,6 +2070,9 @@ class CloudSyncService {
       }
       lastBackupUploadSummary = uploadDetails;
 
+      await _db.acknowledgePendingCloudChanges(
+        fullChangeSnapshot.acknowledgements,
+      );
       await prefs.setBool('is_local_dirty', false);
       await _markTransactionalUploadConfirmed(uploadedGeneration);
       _sendSyncFeedback(
@@ -1521,6 +2115,11 @@ class CloudSyncService {
         'workshops/${_workshopId}/backups/latest: '
         '${_describeCloudWriteFailure(e)}',
       );
+    } finally {
+      leaseHeartbeat?.cancel();
+      if (leaseAcquired) {
+        await _releaseWorkshopUploadLease(latestDocRef, uploadId);
+      }
     }
   }
 
@@ -1798,6 +2397,7 @@ class CloudSyncService {
     }
 
     Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
+    _rememberFullSnapshotMetadata(payload);
     if (payload['status']?.toString() != 'completed') {
       throw StateError(
         'النسخة السحابية ما زالت قيد الرفع؛ سيعاد فحصها عند اكتمالها.',

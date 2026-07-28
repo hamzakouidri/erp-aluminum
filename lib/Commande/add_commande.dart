@@ -16,10 +16,12 @@ import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/order_date_utils.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'order_table_edit_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
+import 'package:database_data/Screen/tempered_glass_work_screen.dart';
 
 class CommandePage extends StatefulWidget {
   final SqlDatabase db;
@@ -117,6 +119,140 @@ class _CommandePageState extends State<CommandePage> {
       m.shutterGlissiere = s['shutterGlissiere'];
     if (s['shutterMechanism'] != null)
       m.shutterMechanism = s['shutterMechanism'];
+  }
+
+  List<WindowModel> _modelsFromMoustiquairePayload(
+    Map<String, dynamic> payload,
+  ) {
+    final rawItems = payload['items'];
+    if (rawItems is! List) return const [];
+    final models = <WindowModel>[];
+    for (final rawItem in rawItems) {
+      if (rawItem is! Map) continue;
+      final item = Map<String, dynamic>.from(rawItem);
+      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
+      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
+      if (width <= 0 || height <= 0) continue;
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      final area =
+          (item['areaSqm'] as num?)?.toDouble() ??
+          ((width / 1000) * (height / 1000));
+      final totalArea =
+          (item['totalAreaSqm'] as num?)?.toDouble() ?? area * quantity;
+      final totalPrice = (item['estimatedPrice'] as num?)?.toDouble() ?? 0;
+      final subtype =
+          item['type']?.toString() ?? payload['subType']?.toString() ?? '';
+      final frameColor =
+          item['frameColor']?.toString() ??
+          payload['frameColor']?.toString() ??
+          '';
+      final meshColor =
+          item['meshColor']?.toString() ??
+          payload['meshColor']?.toString() ??
+          '';
+      final singlePayload = <String, dynamic>{
+        ...payload,
+        'subType': subtype,
+        'itemsCount': 1,
+        'totalQuantity': quantity,
+        'grandTotalAreaSqm': totalArea,
+        'grandTotalPrice': totalPrice,
+        'widthMm': width,
+        'heightMm': height,
+        'frameColor': frameColor,
+        'meshColor': meshColor,
+        'items': [item],
+      };
+      final model = WindowModel(
+        width: width,
+        height: height,
+        profileThickness: 60,
+        db: widget.db,
+      );
+      model.isMoustiquaire = true;
+      model.isReplaced = false;
+      model.manualNameOverride = 'Moustiquaire ($subtype)';
+      model.description =
+          'النوع: $subtype | القياس: ${width.toStringAsFixed(0)} × '
+          '${height.toStringAsFixed(0)} mm | الإطار: $frameColor | '
+          'الشبكة: $meshColor';
+      model.quantity = quantity < 1 ? 1 : quantity;
+      model.moustiquairePayload = singlePayload;
+      model.manualPriceOverride = model.quantity > 0
+          ? totalPrice / model.quantity
+          : totalPrice;
+      models.add(model);
+    }
+    return models;
+  }
+
+  List<WindowModel> _modelsFromGlassWorkPayload(Map<String, dynamic> payload) {
+    final rawItems = payload['items'];
+    if (rawItems is! List) return const [];
+    final models = <WindowModel>[];
+    for (final rawItem in rawItems) {
+      if (rawItem is! Map) continue;
+      final item = Map<String, dynamic>.from(rawItem);
+      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
+      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
+      if (width <= 0 || height <= 0) continue;
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      final area =
+          (item['areaSqm'] as num?)?.toDouble() ??
+          ((width / 1000) * (height / 1000));
+      final unitPrice =
+          (item['unitPrice'] as num?)?.toDouble() ??
+          area * ((item['pricePerSqm'] as num?)?.toDouble() ?? 0);
+      final totalPrice =
+          (item['totalPrice'] as num?)?.toDouble() ?? unitPrice * quantity;
+      final workLabel = payload['workTypeLabel']?.toString() ?? 'عمل زجاجي';
+      final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
+      final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
+      final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
+      final notes = payload['notes']?.toString() ?? '';
+      final singlePayload = <String, dynamic>{
+        ...payload,
+        'itemsCount': 1,
+        'totalQuantity': quantity,
+        'grandTotalAreaSqm': area * quantity,
+        'grandTotalPrice': totalPrice,
+        'items': [item],
+      };
+      final model = WindowModel(
+        width: width,
+        height: height,
+        profileThickness: 60,
+        db: widget.db,
+      );
+      model.isGlassWork = true;
+      model.isReplaced = false;
+      model.manualNameOverride = 'Verre Trempé - $workLabel';
+      model.description =
+          '$finishLabel ${thickness.toStringAsFixed(0)} mm | $stickerLabel | '
+          '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm'
+          '${notes.isEmpty ? '' : ' | $notes'}';
+      model.quantity = quantity < 1 ? 1 : quantity;
+      model.glassWorkPayload = singlePayload;
+      model.manualPriceOverride = unitPrice;
+      models.add(model);
+    }
+    return models;
+  }
+
+  void _replaceProductWithIndependentModels(
+    WindowModel current,
+    List<WindowModel> models,
+  ) {
+    if (models.isEmpty) return;
+    final currentIndex = addedProducts.indexOf(current);
+    final firstMap = models.first.toMap();
+    applyWindowModelFromMap(current, firstMap);
+    if (currentIndex < 0 || models.length == 1) {
+      _highlightedProduct = current;
+      return;
+    }
+    addedProducts.insertAll(currentIndex + 1, models.skip(1));
+    _highlightedProduct = models.last;
   }
 
   Map<String, dynamic>? selectedProject;
@@ -598,10 +734,19 @@ class _CommandePageState extends State<CommandePage> {
       final preparedDetails = <Map<String, dynamic>>[];
       for (var index = 0; index < addedProducts.length; index++) {
         final p = addedProducts[index];
-        final newImagePath = await saveWindowImageToDisk(p);
         final previous = index < existingDetails.length
             ? existingDetails[index]
             : null;
+        final selectedGlassImagePath =
+            p.glassWorkPayload?['imagePath']?.toString() ?? '';
+        final mustKeepSyncedGlassImage =
+            p.isGlassWork &&
+            selectedGlassImagePath.isNotEmpty &&
+            !File(selectedGlassImagePath).existsSync() &&
+            (previous?['drawing_image_base64']?.toString().isNotEmpty ?? false);
+        final newImagePath = mustKeepSyncedGlassImage
+            ? ''
+            : await saveWindowImageToDisk(p);
         final drawingPath = newImagePath.isNotEmpty
             ? newImagePath
             : previous?['drawing_image_path']?.toString() ?? '';
@@ -612,25 +757,29 @@ class _CommandePageState extends State<CommandePage> {
               ? 'Volet roulant'
               : (p.manualNameOverride ?? ''),
           'quantity': p.quantity,
-          'glass':
-              p.zones.isNotEmpty &&
-                  p.zones.first.glass.structure == GlassStructure.double
-              ? 'Double'
-              : 'Single',
-          'color': p.frameColor.toString().split('.').last,
+          'glass': p.isGlassWork
+              ? '${p.glassWorkPayload?['glassFinishLabel'] ?? 'Verre'} '
+                    '${((p.glassWorkPayload?['thicknessMm'] as num?)?.toDouble() ?? 10).toStringAsFixed(0)} mm'
+              : (p.zones.isNotEmpty &&
+                        p.zones.first.glass.structure == GlassStructure.double
+                    ? 'Double'
+                    : 'Single'),
+          'color': p.isGlassWork
+              ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
+              : p.frameColor.toString().split('.').last,
           'volet': p.hasShutter ? 'Yes' : 'No',
           'accessories': '',
           'description': p.description ?? '',
           'price': p.manualPriceOverride ?? p.totalCost,
-          'window_type': p.zones.any(
-            (z) => z.content == ZoneContent.doubleSash,
-          )
-              ? 'Double Sash'
-              : 'Single Sash',
+          'window_type': p.isGlassWork
+              ? (p.glassWorkPayload?['workTypeLabel']?.toString() ??
+                    'Verre Trempé')
+              : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
+                    ? 'Double Sash'
+                    : 'Single Sash'),
           'partitions_json': jsonEncode(p.toMap()),
           'drawing_image_path': drawingPath,
-          if (newImagePath.isEmpty &&
-              previous?['drawing_image_base64'] != null)
+          if (newImagePath.isEmpty && previous?['drawing_image_base64'] != null)
             'drawing_image_base64': previous!['drawing_image_base64'],
         });
       }
@@ -1192,11 +1341,17 @@ class _CommandePageState extends State<CommandePage> {
                           ChooseSysteme(initialSettings: _lastUsedSettings),
                     ),
                   );
-                  if (result != null && result is WindowModel) {
+                  if (result is WindowModel) {
                     _saveLastSettings(result);
                     setState(() {
                       addedProducts.add(result);
                       _highlightedProduct = result;
+                    });
+                    _scrollToHighlightedProduct();
+                  } else if (result is List<WindowModel> && result.isNotEmpty) {
+                    setState(() {
+                      addedProducts.addAll(result);
+                      _highlightedProduct = result.last;
                     });
                     _scrollToHighlightedProduct();
                   }
@@ -1850,6 +2005,10 @@ class _CommandePageState extends State<CommandePage> {
         (p.manualNameOverride?.contains('Moustiquaire') == true) ||
         (p.manualNameOverride?.contains('موستيكير') == true) ||
         (p.manualNameOverride?.contains('ناموسية') == true);
+    final bool isGlassWork =
+        p.isGlassWork ||
+        (p.manualNameOverride?.contains('Verre Trempé') == true) ||
+        (p.manualNameOverride?.contains('عمل زجاجي') == true);
 
     if (isCaisson) {
       p.isCaissonTunnel = true;
@@ -1858,6 +2017,10 @@ class _CommandePageState extends State<CommandePage> {
 
     if (isMoustiquaire) {
       p.isMoustiquaire = true;
+      p.isReplaced = false;
+    }
+    if (isGlassWork) {
+      p.isGlassWork = true;
       p.isReplaced = false;
     }
 
@@ -2043,6 +2206,36 @@ class _CommandePageState extends State<CommandePage> {
                                   return;
                                 }
 
+                                if (p.isGlassWork ||
+                                    (p.manualNameOverride?.contains(
+                                          'Verre Trempé',
+                                        ) ==
+                                        true)) {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          TemperedGlassWorkScreen(
+                                            initialPayload: p.glassWorkPayload,
+                                          ),
+                                    ),
+                                  );
+                                  if (result is Map<String, dynamic> &&
+                                      mounted) {
+                                    final models = _modelsFromGlassWorkPayload(
+                                      result,
+                                    );
+                                    setState(() {
+                                      _replaceProductWithIndependentModels(
+                                        p,
+                                        models,
+                                      );
+                                    });
+                                    _scrollToHighlightedProduct();
+                                  }
+                                  return;
+                                }
+
                                 if (p.isMoustiquaire ||
                                     (p.manualNameOverride?.contains(
                                           'Moustiquaire',
@@ -2060,40 +2253,17 @@ class _CommandePageState extends State<CommandePage> {
                                       ),
                                     ),
                                   );
-                                  if (result != null &&
-                                      result is Map<String, dynamic> &&
+                                  if (result is Map<String, dynamic> &&
                                       mounted) {
-                                    final double grandTotalArea =
-                                        (result['grandTotalAreaSqm'] as num? ??
-                                                0.0)
-                                            .toDouble();
-                                    final double grandTotalPrice =
-                                        (result['grandTotalPrice'] as num? ??
-                                                0.0)
-                                            .toDouble();
-                                    final int grandTotalQty =
-                                        (result['totalQuantity'] as int? ?? 1);
-                                    final String subType =
-                                        (result['subType'] as String? ??
-                                        'موستيكير');
-
-                                    if (mounted) {
-                                      setState(() {
-                                        p.isMoustiquaire = true;
-                                        p.isReplaced = false;
-                                        p.manualNameOverride =
-                                            'Moustiquaire ($subType)';
-                                        p.description =
-                                            'النوع: $subType | المساحة: ${grandTotalArea.toStringAsFixed(2)} m² | العدد: $grandTotalQty';
-                                        p.moustiquairePayload = result;
-                                        if (grandTotalPrice > 0) {
-                                          p.manualPriceOverride =
-                                              grandTotalPrice;
-                                        }
-                                        _highlightedProduct = p;
-                                      });
-                                      _scrollToHighlightedProduct();
-                                    }
+                                    final models =
+                                        _modelsFromMoustiquairePayload(result);
+                                    setState(() {
+                                      _replaceProductWithIndependentModels(
+                                        p,
+                                        models,
+                                      );
+                                    });
+                                    _scrollToHighlightedProduct();
                                   }
                                   return;
                                 }
@@ -2306,7 +2476,11 @@ class _CommandePageState extends State<CommandePage> {
                       Column(
                         children: [
                           Text(
-                            t('شكل النافذة'),
+                            isGlassWork
+                                ? t('صورة العمل الزجاجي')
+                                : (isMoustiquaire
+                                      ? t('صورة الموستيكير')
+                                      : t('شكل النافذة')),
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
@@ -2343,6 +2517,33 @@ class _CommandePageState extends State<CommandePage> {
                                               'assets/Icon/media.webp',
                                               fit: BoxFit.contain,
                                             ),
+                                  )
+                                : isGlassWork
+                                ? Builder(
+                                    builder: (context) {
+                                      final path = p
+                                          .glassWorkPayload?['imagePath']
+                                          ?.toString();
+                                      if (path != null &&
+                                          path.isNotEmpty &&
+                                          File(path).existsSync()) {
+                                        return Image.file(
+                                          File(path),
+                                          fit: BoxFit.contain,
+                                        );
+                                      }
+                                      return Image.asset(
+                                        'Icon/verre.png',
+                                        fit: BoxFit.contain,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                const Icon(
+                                                  Icons.window_rounded,
+                                                  color: Colors.cyan,
+                                                  size: 56,
+                                                ),
+                                      );
+                                    },
                                   )
                                 : IgnorePointer(
                                     child: FittedBox(

@@ -5,9 +5,9 @@ import 'package:database_data/settings/localization.dart';
 
 enum MoustiquaireType {
   enroulable, // ملفوفة / سحاب زبرك
-  plissee,    // مطوية / أكورديون
-  coulissante,// منزلقة / جرار
-  fixe,       // ثابتة
+  plissee, // مطوية / أكورديون
+  coulissante, // منزلقة / جرار
+  fixe, // ثابتة
 }
 
 enum InputUnit {
@@ -75,12 +75,66 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
     'ديزرت اوك',
   ];
 
-  final List<String> _meshColors = [
-    'رمادي',
-    'أسود',
-  ];
+  final List<String> _meshColors = ['رمادي', 'أسود'];
 
   final List<MoustiquaireItem> _items = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final payload = widget.initialPayload;
+    final rawItems = payload?['items'];
+    if (rawItems is! List) return;
+    for (final rawItem in rawItems) {
+      if (rawItem is! Map) continue;
+      final item = Map<String, dynamic>.from(rawItem);
+      final type = MoustiquaireType.values.firstWhere(
+        (value) => value.name == item['type']?.toString(),
+        orElse: () => MoustiquaireType.enroulable,
+      );
+      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
+      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
+      if (width <= 0 || height <= 0) continue;
+      final area =
+          (item['areaSqm'] as num?)?.toDouble() ??
+          ((width / 1000) * (height / 1000));
+      final estimatedPrice = (item['estimatedPrice'] as num?)?.toDouble() ?? 0;
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      final pricePerSqm =
+          (item['pricePerSqm'] as num?)?.toDouble() ??
+          (area > 0 && quantity > 0
+              ? estimatedPrice / (area * quantity)
+              : 6000);
+      _items.add(
+        MoustiquaireItem(
+          id:
+              item['id']?.toString() ??
+              '${DateTime.now().microsecondsSinceEpoch}_${_items.length}',
+          name: item['name']?.toString() ?? 'ناموسية',
+          type: type,
+          widthMm: width,
+          heightMm: height,
+          quantity: quantity,
+          frameColor: item['frameColor']?.toString() ?? 'أبيض',
+          meshColor: item['meshColor']?.toString() ?? 'رمادي',
+          pricePerSqm: pricePerSqm,
+        ),
+      );
+    }
+    if (_items.isNotEmpty) {
+      final first = _items.first;
+      if (!_frameColors.contains(first.frameColor)) {
+        _frameColors.add(first.frameColor);
+      }
+      if (!_meshColors.contains(first.meshColor)) {
+        _meshColors.add(first.meshColor);
+      }
+      _selectedType = first.type;
+      _selectedFrameColor = first.frameColor;
+      _selectedMeshColor = first.meshColor;
+      _priceController.text = first.pricePerSqm.toString();
+    }
+  }
 
   @override
   void dispose() {
@@ -116,7 +170,10 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
     final double wMm = _selectedUnit == InputUnit.cm ? rawW * 10.0 : rawW;
     final double hMm = _selectedUnit == InputUnit.cm ? rawH * 10.0 : rawH;
 
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final String typeName = _getTypeLabel(_selectedType, lang);
     final String customName = _nameController.text.trim().isNotEmpty
         ? _nameController.text.trim()
@@ -140,7 +197,9 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(Localization.translate('تمت إضافة الناموسية إلى القائمة بنجاح', lang)),
+        content: Text(
+          Localization.translate('تمت إضافة الناموسية إلى القائمة بنجاح', lang),
+        ),
         backgroundColor: Colors.teal,
         duration: const Duration(seconds: 2),
       ),
@@ -148,11 +207,19 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
   }
 
   void _finishAndReturn() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     if (_items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(Localization.translate('يرجى إضافة ناموسية واحدة على الأقل أولاً', lang)),
+          content: Text(
+            Localization.translate(
+              'يرجى إضافة ناموسية واحدة على الأقل أولاً',
+              lang,
+            ),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -181,19 +248,24 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
       'heightMm': firstItem.heightMm,
       'frameColor': firstItem.frameColor,
       'meshColor': firstItem.meshColor,
-      'items': _items.map((i) => {
-        'id': i.id,
-        'name': i.name,
-        'type': i.type.name,
-        'widthMm': i.widthMm,
-        'heightMm': i.heightMm,
-        'quantity': i.quantity,
-        'areaSqm': i.areaSqm,
-        'totalAreaSqm': i.totalAreaSqm,
-        'frameColor': i.frameColor,
-        'meshColor': i.meshColor,
-        'estimatedPrice': i.estimatedPrice,
-      }).toList(),
+      'items': _items
+          .map(
+            (i) => {
+              'id': i.id,
+              'name': i.name,
+              'type': i.type.name,
+              'widthMm': i.widthMm,
+              'heightMm': i.heightMm,
+              'quantity': i.quantity,
+              'areaSqm': i.areaSqm,
+              'totalAreaSqm': i.totalAreaSqm,
+              'frameColor': i.frameColor,
+              'meshColor': i.meshColor,
+              'pricePerSqm': i.pricePerSqm,
+              'estimatedPrice': i.estimatedPrice,
+            },
+          )
+          .toList(),
     };
 
     Navigator.pop(context, payload);
@@ -218,7 +290,10 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
       appBar: AppBar(
         title: Text(
           Localization.translate('نظام الموستيكير (Moustiquaire)', lang),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+          ),
         ),
         backgroundColor: Colors.teal.shade700,
         foregroundColor: Colors.white,
@@ -232,25 +307,46 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
             // بطاقة تعليمية / إرشادات
             Card(
               color: Colors.teal.shade50,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Row(
                   children: [
-                    const Icon(Icons.grid_4x4_rounded, color: Colors.teal, size: 32),
+                    const Icon(
+                      Icons.grid_4x4_rounded,
+                      color: Colors.teal,
+                      size: 32,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            Localization.translate('نظام ناموسيات الحشرات (Moustiquaire)', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.teal, fontSize: 14),
+                            Localization.translate(
+                              'نظام ناموسيات الحشرات (Moustiquaire)',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              color: Colors.teal,
+                              fontSize: 14,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            Localization.translate('اختر نوع الناموسية (ملفوفة، مطوية أكورديون، منزلقة، ثابتة) وأدخل الأبعاد لتلقائياً إضافتها إلى الطلبية.', lang),
-                            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.teal.shade900),
+                            Localization.translate(
+                              'اختر نوع الناموسية (ملفوفة، مطوية أكورديون، منزلقة، ثابتة) وأدخل الأبعاد لتلقائياً إضافتها إلى الطلبية.',
+                              lang,
+                            ),
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                              color: Colors.teal.shade900,
+                            ),
                           ),
                         ],
                       ),
@@ -266,7 +362,9 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
               key: _formKey,
               child: Card(
                 elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -277,8 +375,15 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                           const Icon(Icons.tune_rounded, color: Colors.teal),
                           const SizedBox(width: 8),
                           Text(
-                            Localization.translate('نوع الناموسية (Subtype)', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                            Localization.translate(
+                              'نوع الناموسية (Subtype)',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                           ),
                         ],
                       ),
@@ -289,8 +394,20 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         children: MoustiquaireType.values.map((t) {
                           final isSel = _selectedType == t;
                           return ChoiceChip(
-                            avatar: isSel ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
-                            label: Text(_getTypeLabel(t, lang), style: TextStyle(fontFamily: 'Cairo', color: isSel ? Colors.white : null)),
+                            avatar: isSel
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                            label: Text(
+                              _getTypeLabel(t, lang),
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                color: isSel ? Colors.white : null,
+                              ),
+                            ),
                             selected: isSel,
                             selectedColor: Colors.teal.shade700,
                             onSelected: (selected) {
@@ -310,13 +427,28 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         children: [
                           Text(
                             Localization.translate('وحدة القياس:', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           SegmentedButton<InputUnit>(
                             segments: [
-                              ButtonSegment(value: InputUnit.mm, label: Text(Localization.translate('مم (mm)', lang), style: const TextStyle(fontFamily: 'Cairo'))),
-                              ButtonSegment(value: InputUnit.cm, label: Text(Localization.translate('سم (cm)', lang), style: const TextStyle(fontFamily: 'Cairo'))),
+                              ButtonSegment(
+                                value: InputUnit.mm,
+                                label: Text(
+                                  Localization.translate('مم (mm)', lang),
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                              ),
+                              ButtonSegment(
+                                value: InputUnit.cm,
+                                label: Text(
+                                  Localization.translate('سم (cm)', lang),
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                              ),
                             ],
                             selected: {_selectedUnit},
                             onSelectionChanged: (val) {
@@ -335,24 +467,44 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                           Expanded(
                             child: TextFormField(
                               controller: _widthController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: InputDecoration(
-                                labelText: Localization.translate('العرض (${_selectedUnit == InputUnit.mm ? 'مم' : 'سم'})', lang),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                labelText: Localization.translate(
+                                  'العرض (${_selectedUnit == InputUnit.mm ? 'مم' : 'سم'})',
+                                  lang,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                               ),
-                              validator: (val) => val == null || val.isEmpty ? Localization.translate('مطلوب', lang) : null,
+                              validator: (val) => val == null || val.isEmpty
+                                  ? Localization.translate('مطلوب', lang)
+                                  : null,
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: TextFormField(
                               controller: _heightController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: InputDecoration(
-                                labelText: Localization.translate('الارتفاع (${_selectedUnit == InputUnit.mm ? 'مم' : 'سم'})', lang),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                labelText: Localization.translate(
+                                  'الارتفاع (${_selectedUnit == InputUnit.mm ? 'مم' : 'سم'})',
+                                  lang,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                               ),
-                              validator: (val) => val == null || val.isEmpty ? Localization.translate('مطلوب', lang) : null,
+                              validator: (val) => val == null || val.isEmpty
+                                  ? Localization.translate('مطلوب', lang)
+                                  : null,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -362,10 +514,17 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                               controller: _quantityController,
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
-                                labelText: Localization.translate('العدد', lang),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                labelText: Localization.translate(
+                                  'العدد',
+                                  lang,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                               ),
-                              validator: (val) => val == null || val.isEmpty ? Localization.translate('مطلوب', lang) : null,
+                              validator: (val) => val == null || val.isEmpty
+                                  ? Localization.translate('مطلوب', lang)
+                                  : null,
                             ),
                           ),
                         ],
@@ -379,14 +538,41 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(Localization.translate('لون إطار الألمنيوم', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12)),
+                                Text(
+                                  Localization.translate(
+                                    'لون إطار الألمنيوم',
+                                    lang,
+                                  ),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
                                   value: _selectedFrameColor,
-                                  decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                                  items: _frameColors.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontFamily: 'Cairo')))).toList(),
+                                  decoration: InputDecoration(
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  items: _frameColors
+                                      .map(
+                                        (c) => DropdownMenuItem(
+                                          value: c,
+                                          child: Text(
+                                            c,
+                                            style: const TextStyle(
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
                                   onChanged: (val) {
-                                    if (val != null) setState(() => _selectedFrameColor = val);
+                                    if (val != null)
+                                      setState(() => _selectedFrameColor = val);
                                   },
                                 ),
                               ],
@@ -397,14 +583,41 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(Localization.translate('لون شبكة الناموس', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12)),
+                                Text(
+                                  Localization.translate(
+                                    'لون شبكة الناموس',
+                                    lang,
+                                  ),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
                                   value: _selectedMeshColor,
-                                  decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                                  items: _meshColors.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontFamily: 'Cairo')))).toList(),
+                                  decoration: InputDecoration(
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  items: _meshColors
+                                      .map(
+                                        (c) => DropdownMenuItem(
+                                          value: c,
+                                          child: Text(
+                                            c,
+                                            style: const TextStyle(
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
                                   onChanged: (val) {
-                                    if (val != null) setState(() => _selectedMeshColor = val);
+                                    if (val != null)
+                                      setState(() => _selectedMeshColor = val);
                                   },
                                 ),
                               ],
@@ -417,11 +630,21 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                       // السعر المتر المربع
                       TextFormField(
                         controller: _priceController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: InputDecoration(
-                          labelText: Localization.translate('سعر المتر المربع (د.ج / m²)', lang),
-                          prefixIcon: const Icon(Icons.attach_money_rounded, color: Colors.teal),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          labelText: Localization.translate(
+                            'سعر المتر المربع (د.ج / m²)',
+                            lang,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.attach_money_rounded,
+                            color: Colors.teal,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -432,14 +655,23 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         child: ElevatedButton.icon(
                           icon: const Icon(Icons.add_circle_outline_rounded),
                           label: Text(
-                            Localization.translate('إضافة هذه الناموسية إلى القائمة', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15),
+                            Localization.translate(
+                              'إضافة هذه الناموسية إلى القائمة',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.teal.shade700,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           onPressed: _addItem,
                         ),
@@ -454,7 +686,11 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
             // قائمة العناصر المضافة
             Text(
               '${Localization.translate('قائمة الناموسيات المضافة', lang)} (${_items.length})',
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 8),
 
@@ -463,8 +699,14 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Text(
-                        Localization.translate('لم تقم بإضافة أي ناموسيات بعد. قم بتعيين الأبعاد وانقر على زر الإضافة.', lang),
-                        style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                        Localization.translate(
+                          'لم تقم بإضافة أي ناموسيات بعد. قم بتعيين الأبعاد وانقر على زر الإضافة.',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          color: Colors.grey,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -480,25 +722,41 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: Colors.teal.shade50,
-                            child: const Icon(Icons.grid_4x4_rounded, color: Colors.teal),
+                            child: const Icon(
+                              Icons.grid_4x4_rounded,
+                              color: Colors.teal,
+                            ),
                           ),
                           title: Text(
                             '${item.name} (${item.quantity}×) - ${item.widthMm.toInt()}×${item.heightMm.toInt()} مم',
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           subtitle: Text(
                             '${Localization.translate('النوع:', lang)} ${_getTypeLabel(item.type, lang)} | ${Localization.translate('إطار:', lang)} ${item.frameColor} | ${Localization.translate('المساحة:', lang)} ${item.totalAreaSqm.toStringAsFixed(2)} m²',
-                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                            ),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 '${item.estimatedPrice.toStringAsFixed(0)} د.ج',
-                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.teal),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.teal,
+                                ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () {
                                   setState(() {
                                     _items.removeAt(idx);
@@ -518,7 +776,9 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
             if (_items.isNotEmpty) ...[
               Card(
                 color: isDark ? Colors.grey.shade900 : Colors.teal.shade900,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -528,11 +788,18 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         children: [
                           Text(
                             Localization.translate('إجمالي عدد القطع:', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.white,
+                            ),
                           ),
                           Text(
                             '$grandTotalQty قطعة',
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.amberAccent, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.amberAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -541,12 +808,22 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            Localization.translate('إجمالي المساحة الكلية:', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
+                            Localization.translate(
+                              'إجمالي المساحة الكلية:',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.white,
+                            ),
                           ),
                           Text(
                             '${grandTotalArea.toStringAsFixed(2)} m²',
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.amberAccent, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.amberAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -555,12 +832,25 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            Localization.translate('إجمالي السعر التقديري:', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            Localization.translate(
+                              'إجمالي السعر التقديري:',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                           Text(
                             '${grandTotalPrice.toStringAsFixed(0)} د.ج',
-                            style: const TextStyle(fontFamily: 'Cairo', color: Colors.lightGreenAccent, fontWeight: FontWeight.bold, fontSize: 18),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              color: Colors.lightGreenAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                           ),
                         ],
                       ),
@@ -570,14 +860,23 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         child: ElevatedButton.icon(
                           icon: const Icon(Icons.check_circle_rounded),
                           label: Text(
-                            Localization.translate('تأكيد وإضافة الموستيكير إلى الطلبية', lang),
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                            Localization.translate(
+                              'تأكيد وإضافة الموستيكير إلى الطلبية',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.tealAccent.shade400,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           onPressed: _finishAndReturn,
                         ),

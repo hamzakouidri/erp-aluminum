@@ -915,6 +915,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       // Update dimensions in description automatically before saving
       final currentDesc = _descControllers[i]!.text.trim();
       p.description = _updateDimensionsInDescription(currentDesc, newW, newH, p);
+      // This edited table is the exact source of the Devis row.
+      p.invoiceTableEdited = true;
     }
     Navigator.pop(context, true);
   }

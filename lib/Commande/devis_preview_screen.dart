@@ -38,7 +38,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   bool _isLoaded = false;
   static const _blue = Color(0xFF1565C0);
   static const _headerBlue = Color(0xFF1976D2);
-  bool _isLoading = true;
+  // The visual Devis is already available from DevisData. PDF bytes are
+  // prepared in the background and must not block opening the preview.
+  bool _isLoading = false;
   Uint8List? _pdfBytes;
 
   String t(String key) {
@@ -112,8 +114,13 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Future<void> _initPdfGeneration() async {
     try {
-      await PdfInvoiceApi.preloadFonts();
-      final bytes = await PdfInvoiceApi.buildPdfBytes(_currentDevisData, overrideLang: _invoiceLanguage);
+      await PdfInvoiceApi.preloadFonts().timeout(
+        const Duration(seconds: 15),
+      );
+      final bytes = await PdfInvoiceApi.buildPdfBytes(
+        _currentDevisData,
+        overrideLang: _invoiceLanguage,
+      ).timeout(const Duration(seconds: 45));
       if (mounted) {
         setState(() {
           _pdfBytes = bytes;
@@ -158,7 +165,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         chequeNumber: _chequeNumber,
       );
 
-      final bytes = await PdfInvoiceApi.buildPdfBytes(rebuiltData, overrideLang: newLang);
+      final bytes = await PdfInvoiceApi.buildPdfBytes(
+        rebuiltData,
+        overrideLang: newLang,
+      ).timeout(const Duration(seconds: 45));
       
       if (mounted) {
         setState(() {

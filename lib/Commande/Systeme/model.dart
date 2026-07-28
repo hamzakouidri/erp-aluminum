@@ -240,7 +240,8 @@ bool isOpeningSeriesForDrawing(
   AluminumProfileSystem profile,
 ) {
   final value = '${series.type} ${series.name}'.toLowerCase().trim();
-  final isOpening = value.contains('frappe') ||
+  final isOpening =
+      value.contains('frappe') ||
       value.contains('battant') ||
       value.contains('ouvrant') ||
       value.contains('فتح') ||
@@ -358,7 +359,7 @@ class GlassSpecification {
     this.jointTwoSides = true,
   });
 
-   GlassSpecification clone() => GlassSpecification(
+  GlassSpecification clone() => GlassSpecification(
     structure: structure,
     finishOuter: finishOuter,
     finishInner: finishInner,
@@ -479,8 +480,11 @@ class GlassSpecification {
         final match = allGlassCache.firstWhere(
           (g) =>
               g['type'].toString().toLowerCase() == 'panneau' &&
-              (g['subtype']?.toString().toLowerCase() == panneauSubtype!.toLowerCase() ||
-               g['name'].toString().toLowerCase().contains(panneauSubtype!.toLowerCase())),
+              (g['subtype']?.toString().toLowerCase() ==
+                      panneauSubtype!.toLowerCase() ||
+                  g['name'].toString().toLowerCase().contains(
+                    panneauSubtype!.toLowerCase(),
+                  )),
           orElse: () => <String, dynamic>{},
         );
         if (match.isNotEmpty) {
@@ -513,16 +517,18 @@ class GlassSpecification {
       final match = allGlassCache.firstWhere(
         (g) =>
             g['type'].toString().toLowerCase() == 'panneau' &&
-            finishKws.any((kw) =>
-                g['type'].toString().toLowerCase().contains(kw) ||
-                g['name'].toString().toLowerCase().contains(kw)),
+            finishKws.any(
+              (kw) =>
+                  g['type'].toString().toLowerCase().contains(kw) ||
+                  g['name'].toString().toLowerCase().contains(kw),
+            ),
         orElse: () => <String, dynamic>{},
       );
       if (match.isNotEmpty) {
         final double? thick = (match['thickness'] as num?)?.toDouble();
         if (thick != null && thick > 0) return thick;
       }
-      
+
       return 0.0;
     }
 
@@ -549,7 +555,6 @@ class GlassSpecification {
       return thicknessOuter ?? 5.0;
     }
   }
-
 }
 
 class WindowZone {
@@ -591,6 +596,7 @@ class WindowZone {
   String? rightPrimaryDivisionAxis;
   bool isSubdivided;
   bool hasSashPlintheBottom;
+
   /// Per-cell glass overrides — key is cellKey like 'main_cell_0_0'
   Map<String, GlassSpecification> cellGlassSpec;
 
@@ -714,7 +720,9 @@ class WindowZone {
     rightPrimaryDivisionAxis: rightPrimaryDivisionAxis,
     isSubdivided: isSubdivided,
     hasSashPlintheBottom: hasSashPlintheBottom,
-    cellGlassSpec: Map.from(cellGlassSpec.map((k, v) => MapEntry(k, v.clone()))),
+    cellGlassSpec: Map.from(
+      cellGlassSpec.map((k, v) => MapEntry(k, v.clone())),
+    ),
   );
 
   WindowZone copyWith({
@@ -806,7 +814,9 @@ class WindowZone {
         rightPrimaryDivisionAxis ?? this.rightPrimaryDivisionAxis,
     isSubdivided: isSubdivided ?? this.isSubdivided,
     hasSashPlintheBottom: hasSashPlintheBottom ?? this.hasSashPlintheBottom,
-    cellGlassSpec: cellGlassSpec ?? Map.from(this.cellGlassSpec.map((k, v) => MapEntry(k, v.clone()))),
+    cellGlassSpec:
+        cellGlassSpec ??
+        Map.from(this.cellGlassSpec.map((k, v) => MapEntry(k, v.clone()))),
   );
 
   Map<String, String> getMergedCellMap({
@@ -1388,6 +1398,7 @@ class WindowModel extends ChangeNotifier {
   String? manualNameOverride;
   double? manualPriceOverride;
   String? description;
+  bool invoiceTableEdited = false;
   String? position;
   String? loadedSeriesName;
   String? loadedSlidingSeriesName;
@@ -1398,7 +1409,11 @@ class WindowModel extends ChangeNotifier {
   Future<void> loadSeriesTableConfig() async {
     final myDb = db;
     if (myDb == null) return;
-    final sId = loadedSlidingSeriesId ?? loadedSeriesId ?? activeSlidingSeries?.id ?? activeSeries?.id;
+    final sId =
+        loadedSlidingSeriesId ??
+        loadedSeriesId ??
+        activeSlidingSeries?.id ??
+        activeSeries?.id;
     if (sId != null) {
       try {
         seriesTableConfig = await myDb.getSeriesTableConfig(sId);
@@ -1421,8 +1436,9 @@ class WindowModel extends ChangeNotifier {
       bottomSlantLeftY != 0 ||
       bottomSlantRightY != 0;
 
-  bool get isDoor =>
-      zones.any((z) => z.lockType == LockType.clef || z.lockType == LockType.condamnation);
+  bool get isDoor => zones.any(
+    (z) => z.lockType == LockType.clef || z.lockType == LockType.condamnation,
+  );
 
   bool get canBeArchedOrSlanted =>
       !zones.any((z) => z.content == ZoneContent.slidingSash);
@@ -1454,7 +1470,9 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isPVC {
-    final series = (systemMode == 'sliding') ? activeSlidingSeries : activeSeries;
+    final series = (systemMode == 'sliding')
+        ? activeSlidingSeries
+        : activeSeries;
     if (series == null) return false;
     try {
       final system = availableSystems.firstWhere(
@@ -1509,6 +1527,8 @@ class WindowModel extends ChangeNotifier {
   Map<String, dynamic>? caissonPayload;
   bool isMoustiquaire = false;
   Map<String, dynamic>? moustiquairePayload;
+  bool isGlassWork = false;
+  Map<String, dynamic>? glassWorkPayload;
   bool showBottomWall = true;
   bool showWall = false;
   String wallColor = 'red';
@@ -1650,7 +1670,8 @@ class WindowModel extends ChangeNotifier {
     if (frameOverride != null) {
       final nameLower = (frameOverride!['name'] ?? '').toString().toLowerCase();
       final typeLower = (frameOverride!['type'] ?? '').toString().toLowerCase();
-      final double cjW = (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ?? 0.0;
+      final double cjW =
+          (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ?? 0.0;
       if (cjW > 0 ||
           nameLower.contains('مدمج') ||
           nameLower.contains('intégré') ||
@@ -1666,15 +1687,16 @@ class WindowModel extends ChangeNotifier {
     final nameLower = frame.name.toLowerCase();
     final codeLower = frame.code.toLowerCase();
     return nameLower.contains('مدمج') ||
-           nameLower.contains('intégré') ||
-           nameLower.contains('integre') ||
-           nameLower.contains('monobloc') ||
-           codeLower.contains('103');
+        nameLower.contains('intégré') ||
+        nameLower.contains('integre') ||
+        nameLower.contains('monobloc') ||
+        codeLower.contains('103');
   }
 
   double get sideCoverWidth {
     if (frameOverride != null) {
-      final double? w = (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ??
+      final double? w =
+          (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ??
           (frameOverride!['visible_width'] as num?)?.toDouble();
       if (w != null && w > 0) return w;
     }
@@ -1682,7 +1704,8 @@ class WindowModel extends ChangeNotifier {
     final frame = getSectionByType('frame');
     if (frame != null) {
       if (frame.couvreJointWidth > 0) return frame.couvreJointWidth;
-      if (isIntegratedFrame && (frame.visibleWidth ?? 0) > 0) return frame.visibleWidth!;
+      if (isIntegratedFrame && (frame.visibleWidth ?? 0) > 0)
+        return frame.visibleWidth!;
     }
 
     if (selectedSideCover != null) {
@@ -1690,7 +1713,8 @@ class WindowModel extends ChangeNotifier {
       final w2 = selectedSideCover!.visibleWidth;
       if (w2 > 0) return w2;
       if (w1 > 0) return w1;
-    }    return 40.0;
+    }
+    return 40.0;
   }
 
   FrameColor _frameColor = FrameColor.white;
@@ -1758,7 +1782,8 @@ class WindowModel extends ChangeNotifier {
   Size? lastLayoutSize;
   Offset? drawingStart;
   Offset? drawingCurrent;
-  Offset? pendingDrawStart; // set on touch-down, committed to drawingStart only after real drag
+  Offset?
+  pendingDrawStart; // set on touch-down, committed to drawingStart only after real drag
   double? drawnLeft;
   double? drawnTop;
   bool? _lastIsEmpty;
@@ -1795,7 +1820,6 @@ class WindowModel extends ChangeNotifier {
       zone.selectedDbColor = selectedColor;
     }
   }
-
 
   WindowModel({
     required this.db,
@@ -1988,7 +2012,15 @@ class WindowModel extends ChangeNotifier {
   List<String> getColorKeywords(GlassColor color) {
     switch (color) {
       case GlassColor.transparent:
-        return ['شفاف', 'transparent', 'بدون لون', 'clair', 'clear', 'صافي', ''];
+        return [
+          'شفاف',
+          'transparent',
+          'بدون لون',
+          'clair',
+          'clear',
+          'صافي',
+          '',
+        ];
       case GlassColor.blue:
         return ['أزرق', 'ازرق', 'azur', 'bleu', 'blue'];
       case GlassColor.brown:
@@ -2057,7 +2089,11 @@ class WindowModel extends ChangeNotifier {
     });
   }
 
-  double getPriceForFinish(GlassFinish finish, GlassColor color, {double? chosenThickness}) {
+  double getPriceForFinish(
+    GlassFinish finish,
+    GlassColor color, {
+    double? chosenThickness,
+  }) {
     List<String> finishKws = getFinishKeywords(finish);
     List<String> colorKws = getColorKeywords(color);
 
@@ -2081,7 +2117,8 @@ class WindowModel extends ChangeNotifier {
         }
         return c == kw || c.contains(kw) || n.contains(kw);
       });
-      bool matchesThickness = chosenThickness == null || thick == chosenThickness;
+      bool matchesThickness =
+          chosenThickness == null || thick == chosenThickness;
       return matchesFinish && matchesColor && matchesThickness;
     }, orElse: () => <String, dynamic>{});
 
@@ -2258,8 +2295,13 @@ class WindowModel extends ChangeNotifier {
       final c = (g['color'] ?? '').toString().toLowerCase();
       final double thick = (g['thickness'] as num?)?.toDouble() ?? 0.0;
 
-      final isLaminatedProduct = t.contains('مورق') || t.contains('laminated') || t.contains('strat') ||
-                                 n.contains('مورق') || n.contains('laminated') || n.contains('strat');
+      final isLaminatedProduct =
+          t.contains('مورق') ||
+          t.contains('laminated') ||
+          t.contains('strat') ||
+          n.contains('مورق') ||
+          n.contains('laminated') ||
+          n.contains('strat');
       if (!isLaminatedProduct) return false;
 
       if (thick != thickness) return false;
@@ -2267,11 +2309,26 @@ class WindowModel extends ChangeNotifier {
       // Color mapping: transparent/clair, white/opale/opaque/milky, blue
       bool matchesColor = false;
       if (laminatedColor == 'transparent') {
-        matchesColor = c.isEmpty || c.contains('clair') || c.contains('transparent') || n.contains('clair') || n.contains('transparent');
+        matchesColor =
+            c.isEmpty ||
+            c.contains('clair') ||
+            c.contains('transparent') ||
+            n.contains('clair') ||
+            n.contains('transparent');
       } else if (laminatedColor == 'white') {
-        matchesColor = c.contains('blanc') || c.contains('أبيض') || c.contains('opale') || c.contains('opaque') || n.contains('blanc') || n.contains('أبيض');
+        matchesColor =
+            c.contains('blanc') ||
+            c.contains('أبيض') ||
+            c.contains('opale') ||
+            c.contains('opaque') ||
+            n.contains('blanc') ||
+            n.contains('أبيض');
       } else if (laminatedColor == 'blue') {
-        matchesColor = c.contains('bleu') || c.contains('أزرق') || n.contains('bleu') || n.contains('أزرق');
+        matchesColor =
+            c.contains('bleu') ||
+            c.contains('أزرق') ||
+            n.contains('bleu') ||
+            n.contains('أزرق');
       }
 
       return matchesColor;
@@ -2285,8 +2342,13 @@ class WindowModel extends ChangeNotifier {
       final t = g['type'].toString().toLowerCase();
       final n = g['name'].toString().toLowerCase();
       final double thick = (g['thickness'] as num?)?.toDouble() ?? 0.0;
-      final isLaminatedProduct = t.contains('مورق') || t.contains('laminated') || t.contains('strat') ||
-                                 n.contains('مورق') || n.contains('laminated') || n.contains('strat');
+      final isLaminatedProduct =
+          t.contains('مورق') ||
+          t.contains('laminated') ||
+          t.contains('strat') ||
+          n.contains('مورق') ||
+          n.contains('laminated') ||
+          n.contains('strat');
       return isLaminatedProduct && thick == thickness;
     }, orElse: () => <String, dynamic>{});
 
@@ -2300,19 +2362,23 @@ class WindowModel extends ChangeNotifier {
     // Search in componentOverrides or query directly from database. But since we have componentOverrides,
     // let's look for an accessory named e.g. "تقسية" or "trempe" containing the thickness
     final String thickStr = thickness.toStringAsFixed(0); // e.g. "4" or "6"
-    
+
     // We can check in componentOverrides
     for (var entry in componentOverrides.entries) {
       final name = entry.key.toLowerCase();
-      final isTempering = name.contains('تقسية') || name.contains('tempering') || name.contains('trempe');
+      final isTempering =
+          name.contains('تقسية') ||
+          name.contains('tempering') ||
+          name.contains('trempe');
       if (isTempering && name.contains(thickStr)) {
         final val = entry.value;
         if (val is Map) {
-          return ((val['calculated_price'] ?? val['price'] ?? 0.0) as num).toDouble();
+          return ((val['calculated_price'] ?? val['price'] ?? 0.0) as num)
+              .toDouble();
         }
       }
     }
-    
+
     // Fallback search in allGlassCache or a default value
     return 0.0;
   }
@@ -2324,24 +2390,34 @@ class WindowModel extends ChangeNotifier {
       if (glass.processingOuter == GlassProcessing.laminated) {
         price = getLaminatedPrice(thick, glass.laminatedColorOuter);
       } else {
-        price = getPriceForFinish(glass.finishOuter, glass.colorOuter, chosenThickness: thick);
+        price = getPriceForFinish(
+          glass.finishOuter,
+          glass.colorOuter,
+          chosenThickness: thick,
+        );
       }
-      
+
       // Add tempering price if enabled
-      if (glass.processingOuter == GlassProcessing.tempered || glass.temperedOuter) {
+      if (glass.processingOuter == GlassProcessing.tempered ||
+          glass.temperedOuter) {
         price += getTemperingPricePerSqm(thick);
       }
     } else if (glass.structure == GlassStructure.double) {
       final thickInner = glass.thicknessInner ?? 4.0;
       final thickOuter = glass.thicknessOuter ?? 4.0;
-      
+
       double innerPrice = 0.0;
       if (glass.processingInner == GlassProcessing.laminated) {
         innerPrice = getLaminatedPrice(thickInner, glass.laminatedColorInner);
       } else {
-        innerPrice = getPriceForFinish(glass.finishInner, glass.colorInner, chosenThickness: thickInner);
+        innerPrice = getPriceForFinish(
+          glass.finishInner,
+          glass.colorInner,
+          chosenThickness: thickInner,
+        );
       }
-      if (glass.processingInner == GlassProcessing.tempered || glass.temperedInner) {
+      if (glass.processingInner == GlassProcessing.tempered ||
+          glass.temperedInner) {
         innerPrice += getTemperingPricePerSqm(thickInner);
       }
 
@@ -2349,9 +2425,14 @@ class WindowModel extends ChangeNotifier {
       if (glass.processingOuter == GlassProcessing.laminated) {
         outerPrice = getLaminatedPrice(thickOuter, glass.laminatedColorOuter);
       } else {
-        outerPrice = getPriceForFinish(glass.finishOuter, glass.colorOuter, chosenThickness: thickOuter);
+        outerPrice = getPriceForFinish(
+          glass.finishOuter,
+          glass.colorOuter,
+          chosenThickness: thickOuter,
+        );
       }
-      if (glass.processingOuter == GlassProcessing.tempered || glass.temperedOuter) {
+      if (glass.processingOuter == GlassProcessing.tempered ||
+          glass.temperedOuter) {
         outerPrice += getTemperingPricePerSqm(thickOuter);
       }
 
@@ -2411,7 +2492,8 @@ class WindowModel extends ChangeNotifier {
               // Preserve existing saved data, only update is_selling_calculated
               final existing = componentOverrides[kbName];
               if (existing is Map<String, dynamic>) {
-                existing['is_selling_calculated'] = kb['is_selling_calculated'] ?? 1;
+                existing['is_selling_calculated'] =
+                    kb['is_selling_calculated'] ?? 1;
               }
             } else {
               componentOverrides[kbName] = {
@@ -2440,7 +2522,6 @@ class WindowModel extends ChangeNotifier {
           series.sections = sectionsData
               .map((e) => AluminumSection.fromMap(e))
               .toList();
-
 
           bool isLoadedSeries = false;
           final Set<String> matchQueries = {};
@@ -2473,11 +2554,13 @@ class WindowModel extends ChangeNotifier {
           if (!isLoadedSeries) {
             if (loadedSeriesId != null && series.id == loadedSeriesId) {
               isLoadedSeries = true;
-            } else if (loadedSlidingSeriesId != null && series.id == loadedSlidingSeriesId) {
+            } else if (loadedSlidingSeriesId != null &&
+                series.id == loadedSlidingSeriesId) {
               isLoadedSeries = true;
             } else if (activeSeries != null && series.id == activeSeries!.id) {
               isLoadedSeries = true;
-            } else if (activeSlidingSeries != null && series.id == activeSlidingSeries!.id) {
+            } else if (activeSlidingSeries != null &&
+                series.id == activeSlidingSeries!.id) {
               isLoadedSeries = true;
             }
           }
@@ -2495,10 +2578,10 @@ class WindowModel extends ChangeNotifier {
                 searchString.contains('فتح') ||
                 searchString.contains('فرنسي') ||
                 (searchString.contains('pvc') &&
-                 !searchString.contains('coulissant') &&
-                 !searchString.contains('sliding') &&
-                 !searchString.contains('منزلق') &&
-                 !searchString.contains('كوليس'));
+                    !searchString.contains('coulissant') &&
+                    !searchString.contains('sliding') &&
+                    !searchString.contains('منزلق') &&
+                    !searchString.contains('كوليس'));
           } else if (systemMode == 'sliding') {
             isMatchingMode =
                 searchString.contains('coulissant') ||
@@ -2512,8 +2595,7 @@ class WindowModel extends ChangeNotifier {
           // Classify by the series type, never by the profile's commercial
           // name. This preserves the strict separation between opening and
           // sliding series while applying it to every active profile.
-          isMatchingMode =
-              seriesMatchesDrawingMode(series, system, systemMode);
+          isMatchingMode = seriesMatchesDrawingMode(series, system, systemMode);
           if (isMatchingMode) system.series.add(series);
         }
         if (system.series.isNotEmpty) availableSystems.add(system);
@@ -2555,8 +2637,9 @@ class WindowModel extends ChangeNotifier {
                   resolvedActive = s;
                   // Inject into availableSystems so downstream logic works
                   if (availableSystems.isNotEmpty) {
-                    final alreadyIn = availableSystems
-                        .any((sys) => sys.series.any((sr) => sr.id == s.id));
+                    final alreadyIn = availableSystems.any(
+                      (sys) => sys.series.any((sr) => sr.id == s.id),
+                    );
                     if (!alreadyIn) availableSystems.first.series.add(s);
                   }
                   break outer0;
@@ -2591,8 +2674,9 @@ class WindowModel extends ChangeNotifier {
                       .map((e) => AluminumSection.fromMap(e))
                       .toList();
                   resolvedActive = s;
-                  final alreadyIn = availableSystems
-                      .any((sys) => sys.series.any((sr) => sr.id == s.id));
+                  final alreadyIn = availableSystems.any(
+                    (sys) => sys.series.any((sr) => sr.id == s.id),
+                  );
                   if (!alreadyIn && availableSystems.isNotEmpty) {
                     availableSystems.first.series.add(s);
                   }
@@ -2871,13 +2955,16 @@ class WindowModel extends ChangeNotifier {
     if (result == null) {
       if (normalizedType == 'sash' && selectedSashCode.isNotEmpty) {
         for (var sec in series.sections) {
-          if (sec.type.toLowerCase() == 'sash' && sec.code == selectedSashCode) {
+          if (sec.type.toLowerCase() == 'sash' &&
+              sec.code == selectedSashCode) {
             result = sec;
             break;
           }
         }
       }
-      if (result == null && normalizedType == 'frame' && selectedFrameCode != null) {
+      if (result == null &&
+          normalizedType == 'frame' &&
+          selectedFrameCode != null) {
         for (var sec in series.sections) {
           if ((sec.type.toLowerCase() == 'frame' || sec.isFrame) &&
               sec.code == selectedFrameCode) {
@@ -2901,7 +2988,8 @@ class WindowModel extends ChangeNotifier {
     if (normalizedType == 'frame' && result != null && zones.length > 1) {
       // If the matched frame is integrated, swap it with the non-integrated frame
       // of the same profile family (same thickness first, then any non-integrated)
-      bool isIntegrated = result.couvreJointWidth > 0 ||
+      bool isIntegrated =
+          result.couvreJointWidth > 0 ||
           result.name.toLowerCase().contains('cadre cj') ||
           result.code.toLowerCase().contains('103');
       if (isIntegrated) {
@@ -2909,7 +2997,8 @@ class WindowModel extends ChangeNotifier {
         AluminumSection? sameFamily;
         for (var sec in series.sections) {
           if (sec.type.toLowerCase() == 'frame' || sec.isFrame) {
-            bool secIntegrated = sec.couvreJointWidth > 0 ||
+            bool secIntegrated =
+                sec.couvreJointWidth > 0 ||
                 sec.name.toLowerCase().contains('cadre cj') ||
                 sec.code.toLowerCase().contains('103');
             if (!secIntegrated && sec.thickness == result.thickness) {
@@ -2922,7 +3011,8 @@ class WindowModel extends ChangeNotifier {
         if (sameFamily == null) {
           for (var sec in series.sections) {
             if (sec.type.toLowerCase() == 'frame' || sec.isFrame) {
-              bool secIntegrated = sec.couvreJointWidth > 0 ||
+              bool secIntegrated =
+                  sec.couvreJointWidth > 0 ||
                   sec.name.toLowerCase().contains('cadre cj') ||
                   sec.code.toLowerCase().contains('103');
               if (!secIntegrated) {
@@ -2976,7 +3066,9 @@ class WindowModel extends ChangeNotifier {
     final bool seriesChanged =
         (activeSeries != null && activeSeries!.id != series.id) ||
         (activeSeries == null && loadedSeriesId == null) ||
-        (activeSeries == null && loadedSeriesId != null && loadedSeriesId != series.id);
+        (activeSeries == null &&
+            loadedSeriesId != null &&
+            loadedSeriesId != series.id);
     activeSeries = series;
 
     if (systemMode == 'sliding' && activeSlidingSeries == null) {
@@ -3017,7 +3109,8 @@ class WindowModel extends ChangeNotifier {
       if (!hasPlintheInNewSeries) {
         // New series has no plinthe — reset plinthe flags and restore bottom frame
         if (hasFramePlintheBottom || zones.any((z) => z.hasSashPlintheBottom)) {
-          final oldPlintheHeight = plintheHeight; // still from old series/overrides
+          final oldPlintheHeight =
+              plintheHeight; // still from old series/overrides
           hasFramePlintheBottom = false;
           hasBottomFrame = true;
           for (var z in zones) {
@@ -3323,7 +3416,8 @@ class WindowModel extends ChangeNotifier {
       if (!componentOverrides.containsKey('تقسيم الزجاج (Mullion)')) {
         final mullRes = await d.query(
           'Sections',
-          where: 'series_id = ? AND (LOWER(type) = ? OR LOWER(type) = ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ?)',
+          where:
+              'series_id = ? AND (LOWER(type) = ? OR LOWER(type) = ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ?)',
           whereArgs: [series.id, 'mullion', 'traverse', '%mullion%', '%تقسيم%'],
           limit: 1,
         );
@@ -3337,7 +3431,9 @@ class WindowModel extends ChangeNotifier {
           componentOverrides['تقسيم الزجاج (Mullion)'] = rMap;
 
           // 🟢 تحميل حديد التقسيم الافتراضي (Renfort Mullion) مع سعره
-          if (!componentOverrides.containsKey('حديد التقسيم (Renfort Mullion)')) {
+          if (!componentOverrides.containsKey(
+            'حديد التقسيم (Renfort Mullion)',
+          )) {
             if (rMap['linked_renfort_id'] != null) {
               final renRes = await d.query(
                 'Sections',
@@ -3356,8 +3452,17 @@ class WindowModel extends ChangeNotifier {
               // Fallback search
               final renRes = await d.query(
                 'Sections',
-                where: 'series_id = ? AND (type LIKE ? OR name LIKE ?) AND (type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?)',
-                whereArgs: [series.id, '%renfort%', '%حديد%', '%mullion%', '%mullion%', '%تقسيم%', '%تقسيم%'],
+                where:
+                    'series_id = ? AND (type LIKE ? OR name LIKE ?) AND (type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?)',
+                whereArgs: [
+                  series.id,
+                  '%renfort%',
+                  '%حديد%',
+                  '%mullion%',
+                  '%mullion%',
+                  '%تقسيم%',
+                  '%تقسيم%',
+                ],
                 limit: 1,
               );
               if (renRes.isNotEmpty) {
@@ -3377,7 +3482,8 @@ class WindowModel extends ChangeNotifier {
       if (!componentOverrides.containsKey('باكيت الزجاج (Parclose)')) {
         final parRes = await d.query(
           'Sections',
-          where: 'series_id = ? AND (LOWER(type) = ? OR name LIKE ? OR type LIKE ?)',
+          where:
+              'series_id = ? AND (LOWER(type) = ? OR name LIKE ? OR type LIKE ?)',
           whereArgs: [series.id, 'parclose', '%باكيت%', '%parclose%'],
           limit: 1,
         );
@@ -3395,7 +3501,6 @@ class WindowModel extends ChangeNotifier {
       // Load default accessories
       await _loadAccessoryDefaults(d, series.id);
     }
-
 
     // Set Batmo
     if (!componentOverrides.containsKey('الباتمو (Batmo)')) {
@@ -3445,7 +3550,8 @@ class WindowModel extends ChangeNotifier {
       var bouchons = series.sections.where((s) {
         final t = s.type.toLowerCase().trim();
         final n = s.name.toLowerCase().trim();
-        final isBouchon = t.contains('bouchon') ||
+        final isBouchon =
+            t.contains('bouchon') ||
             n.contains('bouchon') ||
             t.contains('بوشون') ||
             n.contains('بوشون') ||
@@ -3489,9 +3595,24 @@ class WindowModel extends ChangeNotifier {
               '(type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?) AND '
               '(type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?)',
           whereArgs: [
-            '%bouchon%', '%bouchon%', '%بوشون%', '%بوشون%', '%bochon%', '%bochon%',
-            '%batmo%', '%batmo%', '%battement%', '%battement%', '%meneau%', '%meneau%',
-            '%باطم%', '%باطم%', '%باطو%', '%باطو%', '%منو%', '%منو%',
+            '%bouchon%',
+            '%bouchon%',
+            '%بوشون%',
+            '%بوشون%',
+            '%bochon%',
+            '%bochon%',
+            '%batmo%',
+            '%batmo%',
+            '%battement%',
+            '%battement%',
+            '%meneau%',
+            '%meneau%',
+            '%باطم%',
+            '%باطم%',
+            '%باطو%',
+            '%باطو%',
+            '%منو%',
+            '%منو%',
           ],
         );
         if (res.isEmpty) {
@@ -3613,7 +3734,9 @@ class WindowModel extends ChangeNotifier {
                 for (var row in res) {
                   final name = row['name'].toString().toLowerCase();
                   if (name.contains('43') || name.contains('x')) {
-                    if (!name.contains('final') && !name.contains('finale') && !name.contains('نهائي')) {
+                    if (!name.contains('final') &&
+                        !name.contains('finale') &&
+                        !name.contains('نهائي')) {
                       bestMatch = row;
                       break;
                     }
@@ -3628,7 +3751,8 @@ class WindowModel extends ChangeNotifier {
                     break;
                   }
                 }
-              } else if (overrideName == 'الشريحة النهائية (Lame Finale)' || overrideName.contains('نهائ')) {
+              } else if (overrideName == 'الشريحة النهائية (Lame Finale)' ||
+                  overrideName.contains('نهائ')) {
                 // Search for 45
                 for (var row in res) {
                   final name = row['name'].toString().toLowerCase();
@@ -3637,13 +3761,15 @@ class WindowModel extends ChangeNotifier {
                     break;
                   }
                 }
-              } else if (overrideName == 'المحور (Axe)' || overrideName.contains('محور')) {
+              } else if (overrideName == 'المحور (Axe)' ||
+                  overrideName.contains('محور')) {
                 // Determine target diameter
                 final bool isMotor = shutterMechanism == 'محرك';
                 String targetDiam = '60'; // Default manual axle is 60
                 if (isMotor) {
                   final motorComp = componentOverrides['المحرك (Moteur)'];
-                  final motorDiamRaw = motorComp?['motor_diameter']?.toString() ?? '';
+                  final motorDiamRaw =
+                      motorComp?['motor_diameter']?.toString() ?? '';
                   if (motorDiamRaw.isNotEmpty) {
                     final match = RegExp(r'(\d+)').firstMatch(motorDiamRaw);
                     if (match != null) {
@@ -3656,11 +3782,14 @@ class WindowModel extends ChangeNotifier {
 
                 for (var row in res) {
                   final name = row['name'].toString().toLowerCase();
-                  final motorDiamField = row['motor_diameter']?.toString() ?? '';
+                  final motorDiamField =
+                      row['motor_diameter']?.toString() ?? '';
                   final nameMatch = RegExp(r'(\d+)').firstMatch(name);
                   final nameDiam = nameMatch != null ? nameMatch.group(1) : '';
 
-                  if (motorDiamField == targetDiam || nameDiam == targetDiam || name.contains(targetDiam)) {
+                  if (motorDiamField == targetDiam ||
+                      nameDiam == targetDiam ||
+                      name.contains(targetDiam)) {
                     bestMatch = row;
                     break;
                   }
@@ -3804,8 +3933,10 @@ class WindowModel extends ChangeNotifier {
     var mullions = series.sections.where((s) {
       final t = s.type.toLowerCase().trim();
       final n = s.name.toLowerCase().trim();
-      if (t.contains('sash') || t.contains('ouvrant') || t.contains('ظلفة')) return false;
-      if (n.contains('sash') || n.contains('ouvrant') || n.contains('ظلفة')) return false;
+      if (t.contains('sash') || t.contains('ouvrant') || t.contains('ظلفة'))
+        return false;
+      if (n.contains('sash') || n.contains('ouvrant') || n.contains('ظلفة'))
+        return false;
       return t.contains('mullion') ||
           t.contains('traverse') ||
           t.contains('تقسيم');
@@ -3860,8 +3991,13 @@ class WindowModel extends ChangeNotifier {
     var bardages = series.sections.where((s) {
       final t = s.type.toLowerCase().trim();
       final n = s.name.toLowerCase().trim();
-      return t == 'bardage' || t.contains('bardage') || t.contains('بارداج') || t.contains('بارداش') ||
-             n.contains('bardage') || n.contains('بارداج') || n.contains('بارداش');
+      return t == 'bardage' ||
+          t.contains('bardage') ||
+          t.contains('بارداج') ||
+          t.contains('بارداش') ||
+          n.contains('bardage') ||
+          n.contains('بارداج') ||
+          n.contains('بارداش');
     }).toList();
     if (bardages.isNotEmpty &&
         !componentOverrides.containsKey('البارداج (Bardage)')) {
@@ -3886,12 +4022,12 @@ class WindowModel extends ChangeNotifier {
     }
     await _loadColorsForProfile(series.profileId);
     availableAccessoryColors = await db.readAccessoryColors();
-    
+
     // فلترة أي اكسسوارات متبقية تنتمي إلى سلسلة أخرى
     if (seriesChanged && d != null) {
       await _filterComponentsByActiveSeries(series, d);
     }
-    
+
     notifyListeners();
   }
 
@@ -3900,7 +4036,9 @@ class WindowModel extends ChangeNotifier {
     final bool seriesChanged =
         (activeSlidingSeries != null && activeSlidingSeries!.id != series.id) ||
         (activeSlidingSeries == null && loadedSlidingSeriesId == null) ||
-        (activeSlidingSeries == null && loadedSlidingSeriesId != null && loadedSlidingSeriesId != series.id);
+        (activeSlidingSeries == null &&
+            loadedSlidingSeriesId != null &&
+            loadedSlidingSeriesId != series.id);
     activeSlidingSeries = series;
 
     if (seriesChanged) {
@@ -4297,7 +4435,9 @@ class WindowModel extends ChangeNotifier {
               for (var row in res) {
                 final name = row['name'].toString().toLowerCase();
                 if (name.contains('43') || name.contains('x')) {
-                  if (!name.contains('final') && !name.contains('finale') && !name.contains('نهائي')) {
+                  if (!name.contains('final') &&
+                      !name.contains('finale') &&
+                      !name.contains('نهائي')) {
                     bestMatch = row;
                     break;
                   }
@@ -4312,7 +4452,8 @@ class WindowModel extends ChangeNotifier {
                   break;
                 }
               }
-            } else if (overrideName == 'الشريحة النهائية (Lame Finale)' || overrideName.contains('نهائ')) {
+            } else if (overrideName == 'الشريحة النهائية (Lame Finale)' ||
+                overrideName.contains('نهائ')) {
               // Search for 45
               for (var row in res) {
                 final name = row['name'].toString().toLowerCase();
@@ -4321,13 +4462,15 @@ class WindowModel extends ChangeNotifier {
                   break;
                 }
               }
-            } else if (overrideName == 'المحور (Axe)' || overrideName.contains('محور')) {
+            } else if (overrideName == 'المحور (Axe)' ||
+                overrideName.contains('محور')) {
               // Determine target diameter
               final bool isMotor = shutterMechanism == 'محرك';
               String targetDiam = '60'; // Default manual axle is 60
               if (isMotor) {
                 final motorComp = componentOverrides['المحرك (Moteur)'];
-                final motorDiamRaw = motorComp?['motor_diameter']?.toString() ?? '';
+                final motorDiamRaw =
+                    motorComp?['motor_diameter']?.toString() ?? '';
                 if (motorDiamRaw.isNotEmpty) {
                   final match = RegExp(r'(\d+)').firstMatch(motorDiamRaw);
                   if (match != null) {
@@ -4344,7 +4487,9 @@ class WindowModel extends ChangeNotifier {
                 final nameMatch = RegExp(r'(\d+)').firstMatch(name);
                 final nameDiam = nameMatch != null ? nameMatch.group(1) : '';
 
-                if (motorDiamField == targetDiam || nameDiam == targetDiam || name.contains(targetDiam)) {
+                if (motorDiamField == targetDiam ||
+                    nameDiam == targetDiam ||
+                    name.contains(targetDiam)) {
                   bestMatch = row;
                   break;
                 }
@@ -4420,13 +4565,25 @@ class WindowModel extends ChangeNotifier {
 
       // Ensure Lames, Coulisse, Lame Finale, and Axe exist
       if (!componentOverrides.containsKey('الشرائح (Lames)')) {
-        await assignShutterDefault('الشرائح (Lames)', ['blade', 'شريح', 'lame']);
+        await assignShutterDefault('الشرائح (Lames)', [
+          'blade',
+          'شريح',
+          'lame',
+        ]);
       }
       if (!componentOverrides.containsKey('الشريحة النهائية (Lame Finale)')) {
-        await assignShutterDefault('الشريحة النهائية (Lame Finale)', ['final_blade', 'lame final', 'نهائي']);
+        await assignShutterDefault('الشريحة النهائية (Lame Finale)', [
+          'final_blade',
+          'lame final',
+          'نهائي',
+        ]);
       }
       if (!componentOverrides.containsKey('السكك (Coulisses)')) {
-        await assignShutterDefault('السكك (Coulisses)', ['track', 'سك', 'coulisse']);
+        await assignShutterDefault('السكك (Coulisses)', [
+          'track',
+          'سك',
+          'coulisse',
+        ]);
       }
 
       // Check if Axe needs to be updated due to mechanism change (e.g. manual 60 vs motor 40/45)
@@ -4441,12 +4598,16 @@ class WindowModel extends ChangeNotifier {
         final bool isMotor = shutterMechanism == 'محرك';
         if (isMotor) {
           // If motorized, axle should NOT be 60mm
-          if (nameDiam == '60' || name.contains('60') || motorDiamField == '60') {
+          if (nameDiam == '60' ||
+              name.contains('60') ||
+              motorDiamField == '60') {
             axeMismatch = true;
           }
         } else {
           // If manual, axle SHOULD be 60mm
-          if (nameDiam != '60' && !name.contains('60') && motorDiamField != '60') {
+          if (nameDiam != '60' &&
+              !name.contains('60') &&
+              motorDiamField != '60') {
             axeMismatch = true;
           }
         }
@@ -4538,7 +4699,7 @@ class WindowModel extends ChangeNotifier {
       if (isPVC) {
         zone.usePvcHandleOnAlu = false;
         zone.useClassicHandle = false;
-        
+
         if (zone.content == ZoneContent.doubleSash) {
           // Double sash PVC window: only none/window handle allowed
           zone.lockType = LockType.none;
@@ -4549,11 +4710,13 @@ class WindowModel extends ChangeNotifier {
             // PVC Door: clef, condamnation, rouleau
             // Forbid clef and condamnation if shutter is present
             if (hasShutter == true) {
-              if (zone.lockType == LockType.clef || zone.lockType == LockType.condamnation) {
+              if (zone.lockType == LockType.clef ||
+                  zone.lockType == LockType.condamnation) {
                 zone.lockType = LockType.none;
               }
             }
-            if (zone.lockType == LockType.rouleau && (hasBottomFrame == true || hasShutter == true)) {
+            if (zone.lockType == LockType.rouleau &&
+                (hasBottomFrame == true || hasShutter == true)) {
               zone.lockType = LockType.none;
             }
             if (zone.lockType != LockType.none &&
@@ -4591,20 +4754,23 @@ class WindowModel extends ChangeNotifier {
 
           // Forbid clef and condamnation if shutter is present (Aluminium thick sash)
           if (hasShutter == true) {
-            if (zone.lockType == LockType.clef || zone.lockType == LockType.condamnation) {
+            if (zone.lockType == LockType.clef ||
+                zone.lockType == LockType.condamnation) {
               zone.lockType = LockType.none;
             }
           }
 
           // Maréchal height and constraint checks
-          if (zone.lockType == LockType.rouleau || zone.lockType == LockType.rouleau2000) {
+          if (zone.lockType == LockType.rouleau ||
+              zone.lockType == LockType.rouleau2000) {
             if (hasBottomFrame == true || hasShutter == true) {
               zone.lockType = LockType.none;
             } else {
               final double doorHeight = zone.boundary.height;
               if (doorHeight < 1250.0) {
                 zone.lockType = LockType.none;
-              } else if (doorHeight <= 2000.0 && zone.lockType == LockType.rouleau2000) {
+              } else if (doorHeight <= 2000.0 &&
+                  zone.lockType == LockType.rouleau2000) {
                 // Downgrade 2m handle to 1.25m handle if door height is <= 2m
                 zone.lockType = LockType.rouleau;
               }
@@ -4628,7 +4794,8 @@ class WindowModel extends ChangeNotifier {
           } else {
             // Single sash thin: Cremone (none), Octo (useOctoHandle), Point Lock (point)
             zone.usePvcHandleOnAlu = false;
-            if (zone.lockType != LockType.none && zone.lockType != LockType.point) {
+            if (zone.lockType != LockType.none &&
+                zone.lockType != LockType.point) {
               zone.lockType = LockType.none;
             }
           }
@@ -4645,10 +4812,15 @@ class WindowModel extends ChangeNotifier {
 
   void refreshUI() => notifyListeners();
 
-  void _rescaleZonesInternal(double oldW, double oldH, double newW, double newH) {
+  void _rescaleZonesInternal(
+    double oldW,
+    double oldH,
+    double newW,
+    double newH,
+  ) {
     // Calculate topOffset for old height and new height correctly by temporarily setting height
     final double originalHeight = height;
-    
+
     height = oldH;
     double oldTopOffset = (hasShutter && !hasArchOrSlant && !isCaissonTunnel)
         ? shutterBoxHeight
@@ -4658,7 +4830,7 @@ class WindowModel extends ChangeNotifier {
     double newTopOffset = (hasShutter && !hasArchOrSlant && !isCaissonTunnel)
         ? shutterBoxHeight
         : 0.0;
-        
+
     height = originalHeight;
 
     double bottomOffset = hasBottomFrame ? profileThickness : 0.0;
@@ -4696,7 +4868,10 @@ class WindowModel extends ChangeNotifier {
         .expand((z) => [z.boundary.left, z.boundary.right])
         .toSet()
         .toList();
-    xCoords = xCoords.map((x) => x.clamp(oldInnerLeft, oldInnerRight)).toSet().toList();
+    xCoords = xCoords
+        .map((x) => x.clamp(oldInnerLeft, oldInnerRight))
+        .toSet()
+        .toList();
     xCoords.sort();
 
     // Collect and sort unique Y coordinates
@@ -4704,7 +4879,10 @@ class WindowModel extends ChangeNotifier {
         .expand((z) => [z.boundary.top, z.boundary.bottom])
         .toSet()
         .toList();
-    yCoords = yCoords.map((y) => y.clamp(oldInnerTop, oldInnerBottom)).toSet().toList();
+    yCoords = yCoords
+        .map((y) => y.clamp(oldInnerTop, oldInnerBottom))
+        .toSet()
+        .toList();
     yCoords.sort();
 
     if (xCoords.length < 2 || yCoords.length < 2) {
@@ -5026,7 +5204,8 @@ class WindowModel extends ChangeNotifier {
     // تجنب إعادة الحساب أثناء الرسم النشط لمنع تحريف الإحداثيات
     if (drawingStart != null) return;
 
-    bool stateChanged = _lastIsEmpty != zones.isEmpty ||
+    bool stateChanged =
+        _lastIsEmpty != zones.isEmpty ||
         _lastWidth != width ||
         _lastHeight != height ||
         _lastDrawnLeft != drawnLeft ||
@@ -5036,7 +5215,8 @@ class WindowModel extends ChangeNotifier {
     if (lastLayoutSize == widgetSize &&
         !stateChanged &&
         canvasScale > 0 &&
-        (canvasDx != 0 || canvasDy != 0)) return;
+        (canvasDx != 0 || canvasDy != 0))
+      return;
 
     lastLayoutSize = widgetSize;
     _lastIsEmpty = zones.isEmpty;
@@ -5186,7 +5366,8 @@ class WindowModel extends ChangeNotifier {
     }
     for (var z in zones) {
       if (z.boundary.contains(pos)) {
-        if (isDrawingMode && drawingMode == 'split' &&
+        if (isDrawingMode &&
+            drawingMode == 'split' &&
             (z.content == ZoneContent.singleSash ||
                 z.content == ZoneContent.doubleSash)) {
           final sashT = z.sashThickness ?? _calculateSashThickness(z.isSash105);
@@ -5294,14 +5475,20 @@ class WindowModel extends ChangeNotifier {
           showZoneMenu = isLongPress ? false : true;
           final count = z.slidingSashesCount;
 
-          double getSlidingSectionWidth(String typeName, String fallbackName, double defaultVal) {
+          double getSlidingSectionWidth(
+            String typeName,
+            String fallbackName,
+            double defaultVal,
+          ) {
             final series = activeSlidingSeries ?? activeSeries;
             if (series == null) return defaultVal;
             final String tName = typeName.toLowerCase();
             String? altType;
             if (tName == 'traverse') {
               altType = 'sash_traverse';
-            } else if (tName == 'chicane' || tName == 'central' || tName == 'centrale') {
+            } else if (tName == 'chicane' ||
+                tName == 'central' ||
+                tName == 'centrale') {
               altType = 'sash_central';
             } else if (tName == 'lateral') {
               altType = 'sash_lateral';
@@ -5323,8 +5510,13 @@ class WindowModel extends ChangeNotifier {
             return defaultVal;
           }
 
-          final double chicaneT = getSlidingSectionWidth('chicane', 'centrale', 45.0);
-          final double sashWidth = (z.boundary.width + (count - 1) * chicaneT) / count;
+          final double chicaneT = getSlidingSectionWidth(
+            'chicane',
+            'centrale',
+            45.0,
+          );
+          final double sashWidth =
+              (z.boundary.width + (count - 1) * chicaneT) / count;
 
           int selectedSashIndex = -1;
           List<int> tracks;
@@ -5345,7 +5537,12 @@ class WindowModel extends ChangeNotifier {
             for (int i = 0; i < count; i++) {
               if (tracks[i] == tg) {
                 double left = z.boundary.left + i * (sashWidth - chicaneT);
-                Rect sashRect = Rect.fromLTRB(left, z.boundary.top, left + sashWidth, z.boundary.bottom);
+                Rect sashRect = Rect.fromLTRB(
+                  left,
+                  z.boundary.top,
+                  left + sashWidth,
+                  z.boundary.bottom,
+                );
                 if (sashRect.contains(pos)) {
                   selectedSashIndex = i;
                   Rect glassR = sashRect.deflate(sashT);
@@ -5640,7 +5837,9 @@ class WindowModel extends ChangeNotifier {
 
       if (cellId != null && cellId.contains('cell_')) {
         // Store per-cell spec override
-        final updatedCellGlass = Map<String, GlassSpecification>.from(zone.cellGlassSpec);
+        final updatedCellGlass = Map<String, GlassSpecification>.from(
+          zone.cellGlassSpec,
+        );
         updatedCellGlass[cellId] = spec.clone();
         zone.cellGlassSpec = updatedCellGlass;
 
@@ -5658,7 +5857,9 @@ class WindowModel extends ChangeNotifier {
           zone.cellIsPanel = updatedCells;
 
           // إذا كانت الخلية زجاجاً في زون من نوع ضلفة → نعود للمحتوى الأصلي
-          final updatedCellGlass2 = Map<String, GlassSpecification>.from(zone.cellGlassSpec);
+          final updatedCellGlass2 = Map<String, GlassSpecification>.from(
+            zone.cellGlassSpec,
+          );
           updatedCellGlass2[cellId] = spec.clone();
           zone.cellGlassSpec = updatedCellGlass2;
         }
@@ -5688,8 +5889,6 @@ class WindowModel extends ChangeNotifier {
       notifyListeners();
     } catch (_) {}
   }
-
-
 
   void paintAllZonesSpec(GlassSpecification spec) {
     _saveSnapshot();
@@ -6307,7 +6506,9 @@ class WindowModel extends ChangeNotifier {
           return InnerDimensionHit(z.id, true, isDoubleSashRight: true);
         }
       } else {
-        if (!isFullWidth && z.content != ZoneContent.singleSash && z.content != ZoneContent.slidingSash) {
+        if (!isFullWidth &&
+            z.content != ZoneContent.singleSash &&
+            z.content != ZoneContent.slidingSash) {
           if (Rect.fromCenter(
             center: Offset(r.center.dx, r.top + 20),
             width: 150,
@@ -6317,7 +6518,10 @@ class WindowModel extends ChangeNotifier {
           }
         }
       }
-      if (!isFullHeight && z.content != ZoneContent.singleSash && z.content != ZoneContent.doubleSash && z.content != ZoneContent.slidingSash) {
+      if (!isFullHeight &&
+          z.content != ZoneContent.singleSash &&
+          z.content != ZoneContent.doubleSash &&
+          z.content != ZoneContent.slidingSash) {
         if (Rect.fromCenter(
           center: Offset(r.left + 20, r.center.dy),
           width: 80,
@@ -7107,7 +7311,8 @@ class WindowModel extends ChangeNotifier {
       for (var sec in sashes) {
         final n = sec.name.toLowerCase();
         final c = sec.code.toLowerCase();
-        final isThick = n.contains('porte') ||
+        final isThick =
+            n.contains('porte') ||
             n.contains('door') ||
             n.contains('grand') ||
             n.contains('large') ||
@@ -7137,7 +7342,8 @@ class WindowModel extends ChangeNotifier {
       for (var sec in sashes) {
         final n = sec.name.toLowerCase();
         final c = sec.code.toLowerCase();
-        final isThin = n.contains('fenetre') ||
+        final isThin =
+            n.contains('fenetre') ||
             n.contains('window') ||
             n.contains('petit') ||
             n.contains('رقيقة') ||
@@ -7420,7 +7626,7 @@ class WindowModel extends ChangeNotifier {
 
   bool _determineIsSash105FromSashOverride() {
     if (sashOverride == null) return false;
-    
+
     // If it's PVC, fallback to standard name checks because PVC uses different series naming logic
     if (isPVC) {
       final code = sashOverride!['code']?.toString().toLowerCase() ?? '';
@@ -7441,8 +7647,9 @@ class WindowModel extends ChangeNotifier {
     }
 
     // For Aluminium: Compare visible widths of all sashes in the active series
-    final double currentWidth = (sashOverride!['visible_width'] as num?)?.toDouble() ?? 0.0;
-    
+    final double currentWidth =
+        (sashOverride!['visible_width'] as num?)?.toDouble() ?? 0.0;
+
     final series = activeSeries;
     if (series != null) {
       // Find all sash/ouvrant sections in this series
@@ -7471,7 +7678,8 @@ class WindowModel extends ChangeNotifier {
         // If we have a range of widths:
         if (maxVisibleWidth > minVisibleWidth) {
           // If the selected sash's width is closer to the max width, it is the thick sash
-          if ((currentWidth - maxVisibleWidth).abs() < (currentWidth - minVisibleWidth).abs()) {
+          if ((currentWidth - maxVisibleWidth).abs() <
+              (currentWidth - minVisibleWidth).abs()) {
             return true;
           } else {
             return false;
@@ -7484,7 +7692,7 @@ class WindowModel extends ChangeNotifier {
     if (currentWidth >= 90.0) {
       return true;
     }
-    
+
     // Fallback to name check
     final code = sashOverride!['code']?.toString().toLowerCase() ?? '';
     final name = sashOverride!['name']?.toString().toLowerCase() ?? '';
@@ -7713,8 +7921,8 @@ class WindowModel extends ChangeNotifier {
             final int? linkedId =
                 currentParclose['linked_parclose_double_id'] as int?;
             if (linkedId != null && linkedId > 0) {
-               final d = await dbInstance.db;
-               final res = await d?.query(
+              final d = await dbInstance.db;
+              final res = await d?.query(
                 'Sections',
                 where: 'id = ?',
                 whereArgs: [linkedId],
@@ -7729,8 +7937,8 @@ class WindowModel extends ChangeNotifier {
                 componentOverrides['باكيت الزجاج (Parclose)'] = newP;
               }
             } else {
-               final d = await dbInstance.db;
-               final res = await d?.query(
+              final d = await dbInstance.db;
+              final res = await d?.query(
                 'Sections',
                 where:
                     'series_id = ? AND (type = ? OR type LIKE ? OR name LIKE ?) AND max_glass_thickness > 10.0',
@@ -7785,19 +7993,25 @@ class WindowModel extends ChangeNotifier {
     double? resolvedThicknessInner = thicknessInner;
 
     if (targetStructure == GlassStructure.double) {
-      resolvedThicknessOuter ??= baseSpec.thicknessOuter ?? getThicknessForFinish(
-        finishOuter ?? baseSpec.finishOuter,
-        colorOuter ?? baseSpec.colorOuter,
-      );
-      resolvedThicknessInner ??= baseSpec.thicknessInner ?? getThicknessForFinish(
-        finishInner ?? baseSpec.finishInner,
-        colorInner ?? baseSpec.colorInner,
-      );
+      resolvedThicknessOuter ??=
+          baseSpec.thicknessOuter ??
+          getThicknessForFinish(
+            finishOuter ?? baseSpec.finishOuter,
+            colorOuter ?? baseSpec.colorOuter,
+          );
+      resolvedThicknessInner ??=
+          baseSpec.thicknessInner ??
+          getThicknessForFinish(
+            finishInner ?? baseSpec.finishInner,
+            colorInner ?? baseSpec.colorInner,
+          );
     } else {
-      resolvedThicknessOuter ??= baseSpec.thicknessOuter ?? getThicknessForFinish(
-        finishOuter ?? baseSpec.finishOuter,
-        colorOuter ?? baseSpec.colorOuter,
-      );
+      resolvedThicknessOuter ??=
+          baseSpec.thicknessOuter ??
+          getThicknessForFinish(
+            finishOuter ?? baseSpec.finishOuter,
+            colorOuter ?? baseSpec.colorOuter,
+          );
     }
 
     if (targetCellKey != null && targetCellKey.isNotEmpty) {
@@ -7823,7 +8037,9 @@ class WindowModel extends ChangeNotifier {
         laminatedColorOuter: laminatedColorOuter,
         laminatedColorInner: laminatedColorInner,
       );
-      final updatedCellGlass = Map<String, GlassSpecification>.from(selectedZone!.cellGlassSpec);
+      final updatedCellGlass = Map<String, GlassSpecification>.from(
+        selectedZone!.cellGlassSpec,
+      );
       updatedCellGlass[targetCellKey] = updatedSpec;
       selectedZone!.cellGlassSpec = updatedCellGlass;
     } else {
@@ -7883,7 +8099,6 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-
   Future<void> updateGlassGasket() async {
     if (isPVC) {
       componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
@@ -7892,7 +8107,7 @@ class WindowModel extends ChangeNotifier {
     }
 
     final parclose = componentOverrides['باكيت الزجاج (Parclose)'];
-    
+
     // Find active sash profile based on the system mode
     Map<String, dynamic>? activeSashMap;
     if (systemMode == 'sliding') {
@@ -7921,7 +8136,8 @@ class WindowModel extends ChangeNotifier {
     if (parclose != null) {
       maxGlass = (parclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
     } else if (activeSashMap != null) {
-      maxGlass = (activeSashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+      maxGlass =
+          (activeSashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
     }
 
     if (maxGlass <= 0) {
@@ -7955,7 +8171,8 @@ class WindowModel extends ChangeNotifier {
       return;
     }
 
-    final double targetThickness = gap; // Gap is exactly the joint thickness needed!
+    final double targetThickness =
+        gap; // Gap is exactly the joint thickness needed!
 
     final dbInstance = SqlDatabase();
     final joints = await dbInstance.readJoints();
@@ -8012,24 +8229,30 @@ class WindowModel extends ChangeNotifier {
 
   /// فلترة الاكسسوارات والبروفيلات بناءً على السلسلة الحالية
   /// تقوم بحذف أي اكسسوار أو بروفيل لا ينتمي إلى السلسلة الحالية أو ليس له scope = "Global"
-  Future<void> _filterComponentsByActiveSeries(AluminumSeries series, dynamic db) async {
+  Future<void> _filterComponentsByActiveSeries(
+    AluminumSeries series,
+    dynamic db,
+  ) async {
     if (db == null || activeSeries == null) return;
-    
+
     final seriesId = series.id;
     final keysToCheck = List<String>.from(componentOverrides.keys);
-    
+
     for (final key in keysToCheck) {
       final component = componentOverrides[key];
       if (component == null) continue;
-      
+
       // تجاهل المكونات التي تأتي من البيانات المحلية وليست من قاعدة البيانات
       if (component['id'] == null) continue;
-      
+
       // تجاهل الأقسام (Sections)، نتعامل فقط مع الاكسسوارات
-      final tableToCheck = component.containsKey('series_id') || 
-                          component.containsKey('series_ids') ||
-                          component.containsKey('scope') ? 'Accessories' : null;
-      
+      final tableToCheck =
+          component.containsKey('series_id') ||
+              component.containsKey('series_ids') ||
+              component.containsKey('scope')
+          ? 'Accessories'
+          : null;
+
       if (tableToCheck != null) {
         try {
           // البحث عن المكون في قاعدة البيانات
@@ -8039,20 +8262,21 @@ class WindowModel extends ChangeNotifier {
             whereArgs: [component['id']],
             limit: 1,
           );
-          
+
           if (result.isEmpty) {
             componentOverrides.remove(key);
             continue;
           }
-          
+
           final dbComponent = result.first;
           final componentSeriesId = dbComponent['series_id'];
           final componentScope = dbComponent['scope']?.toString() ?? '';
-          final componentSeriesIds = dbComponent['series_ids']?.toString() ?? '';
-          
+          final componentSeriesIds =
+              dbComponent['series_ids']?.toString() ?? '';
+
           // التحقق من أن المكون ينتمي إلى السلسلة الحالية أو له scope = "Global"
           bool belongsToCurrentSeries = false;
-          
+
           // إذا كان series_id متطابقاً
           if (componentSeriesId == seriesId) {
             belongsToCurrentSeries = true;
@@ -8063,7 +8287,8 @@ class WindowModel extends ChangeNotifier {
           }
           // أو إذا كان series_ids يحتوي على series_id الحالي
           else if (componentSeriesIds.isNotEmpty) {
-            final ids = componentSeriesIds.split(',')
+            final ids = componentSeriesIds
+                .split(',')
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
@@ -8071,7 +8296,7 @@ class WindowModel extends ChangeNotifier {
               belongsToCurrentSeries = true;
             }
           }
-          
+
           if (!belongsToCurrentSeries) {
             componentOverrides.remove(key);
           }
@@ -8098,9 +8323,13 @@ class WindowModel extends ChangeNotifier {
         sName = (seriesRes.first['name'] ?? '').toString().toLowerCase();
       }
     } catch (e) {
-      sName = (activeSlidingSeries?.name ?? activeSeries?.name ?? '').toLowerCase();
+      sName = (activeSlidingSeries?.name ?? activeSeries?.name ?? '')
+          .toLowerCase();
     }
-    final bool isTPRSeries = sName.contains('tpr') || sName.contains('tpi') || sName.contains('67000');
+    final bool isTPRSeries =
+        sName.contains('tpr') ||
+        sName.contains('tpi') ||
+        sName.contains('67000');
 
     Future<void> loadAccessory(String key, List<String> searchPatterns) async {
       if (componentOverrides.containsKey(key)) return;
@@ -8111,15 +8340,26 @@ class WindowModel extends ChangeNotifier {
 
         // 1. Material Exclusions
         if (matType == 'PVC') {
-          if (n.contains('aluminium') || n.contains('aluminum') || n.contains('alu') || n.contains('ألمنيوم') ||
-              ty.contains('aluminium') || ty.contains('aluminum') || ty.contains('alu') || ty.contains('ألمنيوم')) {
+          if (n.contains('aluminium') ||
+              n.contains('aluminum') ||
+              n.contains('alu') ||
+              n.contains('ألمنيوم') ||
+              ty.contains('aluminium') ||
+              ty.contains('aluminum') ||
+              ty.contains('alu') ||
+              ty.contains('ألمنيوم')) {
             return false;
           }
-        } else { // Aluminium
-          if (n.contains('pvc') || ty.contains('pvc') ||
-              n.contains('clan') || ty.contains('clan') ||
-              n.contains('clane') || ty.contains('clane') ||
-              n.contains('كلان') || ty.contains('كلان')) {
+        } else {
+          // Aluminium
+          if (n.contains('pvc') ||
+              ty.contains('pvc') ||
+              n.contains('clan') ||
+              ty.contains('clan') ||
+              n.contains('clane') ||
+              ty.contains('clane') ||
+              n.contains('كلان') ||
+              ty.contains('كلان')) {
             return false;
           }
         }
@@ -8127,24 +8367,60 @@ class WindowModel extends ChangeNotifier {
         // 2. Series Name Exclusions
         if (sName.isNotEmpty) {
           if (sName.contains('67000') || sName.contains('67')) {
-            if (n.contains('76000') || n.contains('76') || ty.contains('76000') || ty.contains('76') ||
-                n.contains('60000') || n.contains('60') || ty.contains('60000') || ty.contains('60') ||
-                n.contains('52000') || n.contains('52') || ty.contains('52000') || ty.contains('52') ||
-                n.contains('45000') || n.contains('45') || ty.contains('45000') || ty.contains('45')) {
+            if (n.contains('76000') ||
+                n.contains('76') ||
+                ty.contains('76000') ||
+                ty.contains('76') ||
+                n.contains('60000') ||
+                n.contains('60') ||
+                ty.contains('60000') ||
+                ty.contains('60') ||
+                n.contains('52000') ||
+                n.contains('52') ||
+                ty.contains('52000') ||
+                ty.contains('52') ||
+                n.contains('45000') ||
+                n.contains('45') ||
+                ty.contains('45000') ||
+                ty.contains('45')) {
               return false;
             }
           } else if (sName.contains('76000') || sName.contains('76')) {
-            if (n.contains('67000') || n.contains('67') || ty.contains('67000') || ty.contains('67') ||
-                n.contains('60000') || n.contains('60') || ty.contains('60000') || ty.contains('60') ||
-                n.contains('52000') || n.contains('52') || ty.contains('52000') || ty.contains('52') ||
-                n.contains('45000') || n.contains('45') || ty.contains('45000') || ty.contains('45')) {
+            if (n.contains('67000') ||
+                n.contains('67') ||
+                ty.contains('67000') ||
+                ty.contains('67') ||
+                n.contains('60000') ||
+                n.contains('60') ||
+                ty.contains('60000') ||
+                ty.contains('60') ||
+                n.contains('52000') ||
+                n.contains('52') ||
+                ty.contains('52000') ||
+                ty.contains('52') ||
+                n.contains('45000') ||
+                n.contains('45') ||
+                ty.contains('45000') ||
+                ty.contains('45')) {
               return false;
             }
           } else if (sName.contains('60000') || sName.contains('60')) {
-            if (n.contains('67000') || n.contains('67') || ty.contains('67000') || ty.contains('67') ||
-                n.contains('76000') || n.contains('76') || ty.contains('76000') || ty.contains('76') ||
-                n.contains('52000') || n.contains('52') || ty.contains('52000') || ty.contains('52') ||
-                n.contains('45000') || n.contains('45') || ty.contains('45000') || ty.contains('45')) {
+            if (n.contains('67000') ||
+                n.contains('67') ||
+                ty.contains('67000') ||
+                ty.contains('67') ||
+                n.contains('76000') ||
+                n.contains('76') ||
+                ty.contains('76000') ||
+                ty.contains('76') ||
+                n.contains('52000') ||
+                n.contains('52') ||
+                ty.contains('52000') ||
+                ty.contains('52') ||
+                n.contains('45000') ||
+                n.contains('45') ||
+                ty.contains('45000') ||
+                ty.contains('45')) {
               return false;
             }
           }
@@ -8152,37 +8428,76 @@ class WindowModel extends ChangeNotifier {
           // 3. System Mode Exclusions
           final isSliding = systemMode == 'sliding';
           if (isSliding) {
-            if (n.contains('paumelle') || ty.contains('paumelle') ||
-                n.contains('mifsal') || ty.contains('mifsal') ||
-                n.contains('مفاصل') || ty.contains('مفاصل') ||
-                n.contains('مفصل') || ty.contains('مفصل') ||
-                n.contains('system ob') || ty.contains('system ob') ||
-                n.contains('demi system ob') || ty.contains('demi system ob') ||
-                n.contains('verrou central') || ty.contains('verrou central') ||
-                n.contains('gache simple') || ty.contains('gache simple') ||
-                n.contains('gache double') || ty.contains('gache double') ||
-                n.contains('قاش دوبل') || ty.contains('قاش دوبل') ||
-                n.contains('قاش سامبل') || ty.contains('قاش سامبل') ||
-                n.contains('فتح') || ty.contains('فتح') ||
-                n.contains('ouvrant') || ty.contains('ouvrant')) {
+            if (n.contains('paumelle') ||
+                ty.contains('paumelle') ||
+                n.contains('mifsal') ||
+                ty.contains('mifsal') ||
+                n.contains('مفاصل') ||
+                ty.contains('مفاصل') ||
+                n.contains('مفصل') ||
+                ty.contains('مفصل') ||
+                n.contains('system ob') ||
+                ty.contains('system ob') ||
+                n.contains('demi system ob') ||
+                ty.contains('demi system ob') ||
+                n.contains('verrou central') ||
+                ty.contains('verrou central') ||
+                n.contains('gache simple') ||
+                ty.contains('gache simple') ||
+                n.contains('gache double') ||
+                ty.contains('gache double') ||
+                n.contains('قاش دوبل') ||
+                ty.contains('قاش دوبل') ||
+                n.contains('قاش سامبل') ||
+                ty.contains('قاش سامبل') ||
+                n.contains('فتح') ||
+                ty.contains('فتح') ||
+                n.contains('ouvrant') ||
+                ty.contains('ouvrant')) {
               return false;
             }
           } else {
-            if (n.contains('couliss') || ty.contains('couliss') ||
-                n.contains('roulette') || ty.contains('roulette') ||
-                n.contains('عجلات') || ty.contains('عجلات') ||
-                n.contains('منزلق') || ty.contains('منزلق')) {
+            if (n.contains('couliss') ||
+                ty.contains('couliss') ||
+                n.contains('roulette') ||
+                ty.contains('roulette') ||
+                n.contains('عجلات') ||
+                ty.contains('عجلات') ||
+                n.contains('منزلق') ||
+                ty.contains('منزلق')) {
               return false;
             }
           }
         }
 
         // 4. Kit Clamp/Clan Exclusions (Exclude clamp from kit matching, and vice versa)
-        final isKitKey = key.toLowerCase().contains('kit') || key.contains('كيت');
-        final isClampKey = key.toLowerCase().contains('clamp') || key.toLowerCase().contains('clam') || key.contains('كلامب') || key.contains('كلام') || key.contains('كلان');
+        final isKitKey =
+            key.toLowerCase().contains('kit') || key.contains('كيت');
+        final isClampKey =
+            key.toLowerCase().contains('clamp') ||
+            key.toLowerCase().contains('clam') ||
+            key.contains('كلامب') ||
+            key.contains('كلام') ||
+            key.contains('كلان');
 
-        final hasKitName = n.contains('kit') || ty.contains('kit') || n.contains('كيت') || ty.contains('كيت');
-        final hasClampName = n.contains('clamp') || n.contains('clam') || ty.contains('clamp') || ty.contains('clam') || n.contains('كلامب') || n.contains('كلام') || n.contains('كلان') || ty.contains('كلامب') || ty.contains('كلام') || ty.contains('كلان') || n.contains('clan') || ty.contains('clan');
+        final hasKitName =
+            n.contains('kit') ||
+            ty.contains('kit') ||
+            n.contains('كيت') ||
+            ty.contains('كيت');
+        final hasClampName =
+            n.contains('clamp') ||
+            n.contains('clam') ||
+            ty.contains('clamp') ||
+            ty.contains('clam') ||
+            n.contains('كلامب') ||
+            n.contains('كلام') ||
+            n.contains('كلان') ||
+            ty.contains('كلامب') ||
+            ty.contains('كلام') ||
+            ty.contains('كلان') ||
+            n.contains('clan') ||
+            ty.contains('clan');
 
         if (isKitKey && hasClampName) return false;
         if (isClampKey && hasKitName) return false;
@@ -8192,16 +8507,23 @@ class WindowModel extends ChangeNotifier {
 
       String kitClampExclude = '';
       if (key.toLowerCase().contains('kit') || key.contains('كيت')) {
-        kitClampExclude = " AND (LOWER(name) NOT LIKE '%clamp%' AND LOWER(name) NOT LIKE '%clam%' AND LOWER(name) NOT LIKE '%clomp%' AND LOWER(name) NOT LIKE '%clom%' AND name NOT LIKE '%كلامب%' AND name NOT LIKE '%كلام%' AND name NOT LIKE '%كلان%' AND LOWER(type) NOT LIKE '%clamp%' AND LOWER(type) NOT LIKE '%clam%' AND LOWER(type) NOT LIKE '%clomp%' AND LOWER(type) NOT LIKE '%clom%' AND type NOT LIKE '%كلامب%' AND type NOT LIKE '%كلام%' AND type NOT LIKE '%كلان%')";
-      } else if (key.toLowerCase().contains('clamp') || key.toLowerCase().contains('clam') || key.contains('كلامب') || key.contains('كلام') || key.contains('كلان')) {
-        kitClampExclude = " AND (LOWER(name) NOT LIKE '%kit%' AND name NOT LIKE '%كيت%' AND LOWER(type) NOT LIKE '%kit%' AND type NOT LIKE '%كيت%')";
+        kitClampExclude =
+            " AND (LOWER(name) NOT LIKE '%clamp%' AND LOWER(name) NOT LIKE '%clam%' AND LOWER(name) NOT LIKE '%clomp%' AND LOWER(name) NOT LIKE '%clom%' AND name NOT LIKE '%كلامب%' AND name NOT LIKE '%كلام%' AND name NOT LIKE '%كلان%' AND LOWER(type) NOT LIKE '%clamp%' AND LOWER(type) NOT LIKE '%clam%' AND LOWER(type) NOT LIKE '%clomp%' AND LOWER(type) NOT LIKE '%clom%' AND type NOT LIKE '%كلامب%' AND type NOT LIKE '%كلام%' AND type NOT LIKE '%كلان%')";
+      } else if (key.toLowerCase().contains('clamp') ||
+          key.toLowerCase().contains('clam') ||
+          key.contains('كلامب') ||
+          key.contains('كلام') ||
+          key.contains('كلان')) {
+        kitClampExclude =
+            " AND (LOWER(name) NOT LIKE '%kit%' AND name NOT LIKE '%كيت%' AND LOWER(type) NOT LIKE '%kit%' AND type NOT LIKE '%كيت%')";
       }
 
       String? exactTypeOverride;
       if (isTPRSeries) {
         if (key == 'المقبض (Handle)' || key == 'مقبض نافذة (Poignée Fenêtre)') {
           exactTypeOverride = 'Poignée TPR';
-        } else if (key == 'إسبانيوليت (Espagnolette)' || key == 'اسبانيولات المنزلق (Espagnolette)') {
+        } else if (key == 'إسبانيوليت (Espagnolette)' ||
+            key == 'اسبانيولات المنزلق (Espagnolette)') {
           exactTypeOverride = 'Espagnolette TPR';
         }
       }
@@ -8209,43 +8531,62 @@ class WindowModel extends ChangeNotifier {
       // فلتر نوع المادة متطابق تماماً مع ProfileSelectorDialog
       String matFilter = '';
       if (matType == 'PVC') {
-        matFilter = " AND (LOWER(material_type) = 'pvc' OR LOWER(material_type) = 'both')";
+        matFilter =
+            " AND (LOWER(material_type) = 'pvc' OR LOWER(material_type) = 'both')";
       } else {
-        matFilter = " AND (LOWER(material_type) = 'aluminium' OR LOWER(material_type) = 'aluminum' OR LOWER(material_type) = 'both' OR material_type IS NULL OR material_type = '')$kitClampExclude";
+        matFilter =
+            " AND (LOWER(material_type) = 'aluminium' OR LOWER(material_type) = 'aluminum' OR LOWER(material_type) = 'both' OR material_type IS NULL OR material_type = '')$kitClampExclude";
       }
 
       // فلتر السلاسل متطابق تماماً مع ProfileSelectorDialog
-      String seriesFilter = ' AND ('
+      String seriesFilter =
+          ' AND ('
           'series_id = ? '
           'OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) '
           'OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\'))'
           ')';
 
-      final String orderBy = 'CASE WHEN series_id = $seriesId OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE \'%,$seriesId,%\') THEN 0 ELSE 1 END ASC, id ASC';
+      final String orderBy =
+          'CASE WHEN series_id = $seriesId OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE \'%,$seriesId,%\') THEN 0 ELSE 1 END ASC, id ASC';
 
       List<Map<String, dynamic>> res = [];
 
       // 1. إذا كانت السلسلة TPR، جرب البحث المرن عن TPR أولاً لضمان انتقاء إكسسوار TPR الصحيح
       List<String> tprPatterns = [];
       if (isTPRSeries) {
-        if (key == 'إسبانيوليت (Espagnolette)' || key == 'اسبانيولات المنزلق (Espagnolette)') {
-          tprPatterns = ['%tpr%espagnolette%', '%espagnolette%tpr%', '%tpr%سبانيوليت%', '%سبانيوليت%tpr%', '%tpr%إسبانيوليت%', '%إسبانيوليت%tpr%'];
-        } else if (key == 'المقبض (Handle)' || key == 'مقبض نافذة (Poignée Fenêtre)') {
-          tprPatterns = ['%tpr%poign%', '%poign%tpr%', '%tpr%مقبض%', '%مقبض%tpr%', '%tpr%handle%', '%handle%tpr%'];
+        if (key == 'إسبانيوليت (Espagnolette)' ||
+            key == 'اسبانيولات المنزلق (Espagnolette)') {
+          tprPatterns = [
+            '%tpr%espagnolette%',
+            '%espagnolette%tpr%',
+            '%tpr%سبانيوليت%',
+            '%سبانيوليت%tpr%',
+            '%tpr%إسبانيوليت%',
+            '%إسبانيوليت%tpr%',
+          ];
+        } else if (key == 'المقبض (Handle)' ||
+            key == 'مقبض نافذة (Poignée Fenêtre)') {
+          tprPatterns = [
+            '%tpr%poign%',
+            '%poign%tpr%',
+            '%tpr%مقبض%',
+            '%مقبض%tpr%',
+            '%tpr%handle%',
+            '%handle%tpr%',
+          ];
         }
       }
 
       if (tprPatterns.isNotEmpty) {
-        String tprClause = tprPatterns.map((_) => 'name LIKE ? OR type LIKE ?').join(' OR ');
+        String tprClause = tprPatterns
+            .map((_) => 'name LIKE ? OR type LIKE ?')
+            .join(' OR ');
         String tprWhereClause = '($tprClause) $seriesFilter $matFilter';
         List<dynamic> tprArgs = [];
         for (var pattern in tprPatterns) {
           tprArgs.addAll([pattern, pattern]);
         }
-        tprArgs.addAll([
-          seriesId,
-          '%,' + seriesId.toString() + ',%',
-        ]);
+        tprArgs.addAll([seriesId, '%,' + seriesId.toString() + ',%']);
         final rawRows = await d.query(
           'Accessories',
           where: tprWhereClause,
@@ -8259,7 +8600,9 @@ class WindowModel extends ChangeNotifier {
       if (res.isEmpty) {
         String nameClause = exactTypeOverride != null
             ? 'LOWER(type) = ?'
-            : searchPatterns.map((_) => 'name LIKE ? OR type LIKE ?').join(' OR ');
+            : searchPatterns
+                  .map((_) => 'name LIKE ? OR type LIKE ?')
+                  .join(' OR ');
 
         String whereClause = '($nameClause) $seriesFilter $matFilter';
         List<dynamic> args = [];
@@ -8270,10 +8613,7 @@ class WindowModel extends ChangeNotifier {
             args.addAll([pattern, pattern]);
           }
         }
-        args.addAll([
-          seriesId,
-          '%,' + seriesId.toString() + ',%',
-        ]);
+        args.addAll([seriesId, '%,' + seriesId.toString() + ',%']);
 
         final rawRows = await d.query(
           'Accessories',
@@ -8285,16 +8625,16 @@ class WindowModel extends ChangeNotifier {
 
         // Fallback: If exact type search for TPR returned empty, retry with loose patterns
         if (res.isEmpty && exactTypeOverride != null) {
-          String nameClauseLoose = searchPatterns.map((_) => 'name LIKE ? OR type LIKE ?').join(' OR ');
-          String fallbackWhereClause = '($nameClauseLoose) $seriesFilter $matFilter';
+          String nameClauseLoose = searchPatterns
+              .map((_) => 'name LIKE ? OR type LIKE ?')
+              .join(' OR ');
+          String fallbackWhereClause =
+              '($nameClauseLoose) $seriesFilter $matFilter';
           List<dynamic> fallbackArgs = [];
           for (var pattern in searchPatterns) {
             fallbackArgs.addAll([pattern, pattern]);
           }
-          fallbackArgs.addAll([
-            seriesId,
-            '%,' + seriesId.toString() + ',%',
-          ]);
+          fallbackArgs.addAll([seriesId, '%,' + seriesId.toString() + ',%']);
 
           final rawFallbackRows = await d.query(
             'Accessories',
@@ -8319,13 +8659,32 @@ class WindowModel extends ChangeNotifier {
       '%قاش دوبل%',
       '%gache double%',
     ]);
-    await loadAccessory('إسبانيوليت (Espagnolette)', ['%سبانيوليت%', '%espagnolette%']);
+    await loadAccessory('إسبانيوليت (Espagnolette)', [
+      '%سبانيوليت%',
+      '%espagnolette%',
+    ]);
     await loadAccessory('المفاصل (Hinges)', ['%مفاصل%', '%paumelle%']);
     await loadAccessory('الفيرو (Verrou)', ['%فيرو%', '%verrou%']);
-    await loadAccessory('المقبض (Handle)', ['%مقبض%', '%poignée fenêtre%', '%poignée fenetre%', '%poignee fenetre%', '%handle%']);
-    await loadAccessory('مقبض نافذة (Poignée Fenêtre)', ['%مقبض%', '%poignée fenêtre%', '%poignée fenetre%', '%poignee fenetre%', '%handle%']);
+    await loadAccessory('المقبض (Handle)', [
+      '%مقبض%',
+      '%poignée fenêtre%',
+      '%poignée fenetre%',
+      '%poignee fenetre%',
+      '%handle%',
+    ]);
+    await loadAccessory('مقبض نافذة (Poignée Fenêtre)', [
+      '%مقبض%',
+      '%poignée fenêtre%',
+      '%poignée fenetre%',
+      '%poignee fenetre%',
+      '%handle%',
+    ]);
     await loadAccessory('مقبض أوكتو (Octo)', ['%أوكتو%', '%اوكتو%', '%octo%']);
-    await loadAccessory('مقبض نافذة بي في سي (Poignée Fenêtre PVC)', ['%مقبض نافذة بي في سي%', '%poignée fenêtre pvc%', '%poignee fenetre pvc%']);
+    await loadAccessory('مقبض نافذة بي في سي (Poignée Fenêtre PVC)', [
+      '%مقبض نافذة بي في سي%',
+      '%poignée fenêtre pvc%',
+      '%poignee fenetre pvc%',
+    ]);
     await loadAccessory('كومباس (Compas)', ['%كومباس%', '%compas%']);
     await loadAccessory('عجلات المنزلق (Roulettes)', ['%رول%', '%roulette%']);
     await loadAccessory('اسبانيولات المنزلق (Espagnolette)', [
@@ -8370,12 +8729,13 @@ class WindowModel extends ChangeNotifier {
       '%maréchal%1.25%',
       '%maréchal%125%',
     ]);
-    if (!componentOverrides.containsKey('مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)')) {
-      await loadAccessory('مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)', [
-        '%ماريشال%',
-        '%marechal%',
-        '%maréchal%',
-      ]);
+    if (!componentOverrides.containsKey(
+      'مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)',
+    )) {
+      await loadAccessory(
+        'مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)',
+        ['%ماريشال%', '%marechal%', '%maréchal%'],
+      );
     }
 
     await loadAccessory('مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)', [
@@ -8386,7 +8746,9 @@ class WindowModel extends ChangeNotifier {
       '%maréchal%2%',
       '%maréchal%200%',
     ]);
-    if (!componentOverrides.containsKey('مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)')) {
+    if (!componentOverrides.containsKey(
+      'مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)',
+    )) {
       await loadAccessory('مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)', [
         '%ماريشال%',
         '%marechal%',
@@ -8451,11 +8813,7 @@ class WindowModel extends ChangeNotifier {
       '%كيت%76000%',
       '%76000%كيت%',
     ]);
-    await loadAccessory('قاش (Gache)', [
-      '%قاش%',
-      '%gâche%',
-      '%gache%',
-    ]);
+    await loadAccessory('قاش (Gache)', ['%قاش%', '%gâche%', '%gache%']);
     // Default Manivelle
     if (!componentOverrides.containsKey('المانيفال (Manivelle)')) {
       try {
@@ -8476,10 +8834,14 @@ class WindowModel extends ChangeNotifier {
     // Migration for backward compatibility
     if (componentOverrides.containsKey('جوان بروس (Joint Brosse)')) {
       final oldVal = componentOverrides['جوان بروس (Joint Brosse)'];
-      if (!componentOverrides.containsKey('جوان بروس للظلفة (Joint Brosse Sash)')) {
+      if (!componentOverrides.containsKey(
+        'جوان بروس للظلفة (Joint Brosse Sash)',
+      )) {
         componentOverrides['جوان بروس للظلفة (Joint Brosse Sash)'] = oldVal;
       }
-      if (!componentOverrides.containsKey('جوان بروس للستار (Joint Brosse Shutter)')) {
+      if (!componentOverrides.containsKey(
+        'جوان بروس للستار (Joint Brosse Shutter)',
+      )) {
         componentOverrides['جوان بروس للستار (Joint Brosse Shutter)'] = oldVal;
       }
     }
@@ -8489,13 +8851,17 @@ class WindowModel extends ChangeNotifier {
       if (!componentOverrides.containsKey(key)) {
         try {
           List<Map<String, Object?>> res = [];
-          
+
           // 1. البحث أولاً عن جوان بروس المربوط خصيصاً بهذه السلسلة
           res = await d.query(
             'Joints',
-            where: '(name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?) AND (series_id = ? OR (series_ids IS NOT NULL AND \',\' || series_ids || \',\' LIKE ?))',
+            where:
+                '(name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?) AND (series_id = ? OR (series_ids IS NOT NULL AND \',\' || series_ids || \',\' LIKE ?))',
             whereArgs: [
-              '%brosse%', '%brosse%', '%بروس%', '%بروس%',
+              '%brosse%',
+              '%brosse%',
+              '%بروس%',
+              '%بروس%',
               seriesId,
               '%,' + seriesId.toString() + ',%',
             ],
@@ -8507,7 +8873,12 @@ class WindowModel extends ChangeNotifier {
             res = await d.query(
               'Joints',
               where: 'name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?',
-              whereArgs: ['%brosse%tpr%', '%brosse%tpr%', '%بروس%tpr%', '%بروس%tpr%'],
+              whereArgs: [
+                '%brosse%tpr%',
+                '%brosse%tpr%',
+                '%بروس%tpr%',
+                '%بروس%tpr%',
+              ],
               limit: 1,
             );
           }
@@ -8530,6 +8901,7 @@ class WindowModel extends ChangeNotifier {
         } catch (_) {}
       }
     }
+
     await _assignBrosseDefault('جوان بروس للظلفة (Joint Brosse Sash)');
     await _assignBrosseDefault('جوان بروس للستار (Joint Brosse Shutter)');
   }
@@ -8551,7 +8923,9 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     final targetCellKey = activeSubZone;
     if (targetCellKey != null && targetCellKey.isNotEmpty) {
-      final GlassSpecification currentSpec = selectedZone!.getGlassForCell(targetCellKey);
+      final GlassSpecification currentSpec = selectedZone!.getGlassForCell(
+        targetCellKey,
+      );
       final GlassSpecification updatedSpec = currentSpec.copyWith(
         decorH: decorH,
         decorV: decorV,
@@ -8565,7 +8939,9 @@ class WindowModel extends ChangeNotifier {
         rosetteShape: rosetteShape,
         jointTwoSides: jointTwoSides,
       );
-      final updatedCellGlass = Map<String, GlassSpecification>.from(selectedZone!.cellGlassSpec);
+      final updatedCellGlass = Map<String, GlassSpecification>.from(
+        selectedZone!.cellGlassSpec,
+      );
       updatedCellGlass[targetCellKey] = updatedSpec;
       selectedZone!.cellGlassSpec = updatedCellGlass;
     } else {
@@ -8799,7 +9175,9 @@ class WindowModel extends ChangeNotifier {
         double newW = drawnRect.width.clamp(200.0, 10000.0);
         double newH = drawnRect.height.clamp(200.0, 10000.0);
 
-        double topOffset = (hasShutter && !hasArchOrSlant) ? shutterBoxHeight : 0.0;
+        double topOffset = (hasShutter && !hasArchOrSlant)
+            ? shutterBoxHeight
+            : 0.0;
         double pHeight = hasFramePlintheBottom ? plintheHeight : 0.0;
         double bottomOffset = hasBottomFrame ? profileThickness : 0.0;
 
@@ -8808,22 +9186,25 @@ class WindowModel extends ChangeNotifier {
         // of how far outside the window the drag starts/ends.
         double centerX = drawnRect.center.dx;
         double centerY = drawnRect.center.dy;
-        double dxRight  = (centerX - width).abs();   // distance to right edge
-        double dxLeft   = (centerX - 0).abs();        // distance to left edge
-        double dyTop    = (centerY - 0).abs();         // distance to top edge
-        double dyBottom = (centerY - height).abs();   // distance to bottom edge
+        double dxRight = (centerX - width).abs(); // distance to right edge
+        double dxLeft = (centerX - 0).abs(); // distance to left edge
+        double dyTop = (centerY - 0).abs(); // distance to top edge
+        double dyBottom = (centerY - height).abs(); // distance to bottom edge
 
         // Clamp: only consider a side if the center is actually outside the window
         if (centerX > 0 && centerX < width) {
           dxRight = double.infinity;
-          dxLeft  = double.infinity;
+          dxLeft = double.infinity;
         }
         if (centerY > 0 && centerY < height) {
-          dyTop    = double.infinity;
+          dyTop = double.infinity;
           dyBottom = double.infinity;
         }
 
-        double minVal = math.min(math.min(dxRight, dxLeft), math.min(dyTop, dyBottom));
+        double minVal = math.min(
+          math.min(dxRight, dxLeft),
+          math.min(dyTop, dyBottom),
+        );
 
         final List<WindowZone> newZones = [];
         final tThickness = divisionThickness;
@@ -8846,16 +9227,18 @@ class WindowModel extends ChangeNotifier {
               newZones.add(z);
             }
           }
-          newZones.add(WindowZone(
-            id: UniqueKey().toString(),
-            boundary: Rect.fromLTRB(
-              oldW + tThickness / 2,
-              topOffset + profileThickness,
-              width - profileThickness,
-              height - bottomOffset - pHeight,
+          newZones.add(
+            WindowZone(
+              id: UniqueKey().toString(),
+              boundary: Rect.fromLTRB(
+                oldW + tThickness / 2,
+                topOffset + profileThickness,
+                width - profileThickness,
+                height - bottomOffset - pHeight,
+              ),
+              sashThickness: _calculateSashThickness(false),
             ),
-            sashThickness: _calculateSashThickness(false),
-          ));
+          );
         } else if (minVal == dxLeft) {
           double oldW = width;
           width = oldW + newW + tThickness;
@@ -8873,16 +9256,18 @@ class WindowModel extends ChangeNotifier {
             );
             newZones.add(cloned);
           }
-          newZones.add(WindowZone(
-            id: UniqueKey().toString(),
-            boundary: Rect.fromLTRB(
-              profileThickness,
-              topOffset + profileThickness,
-              newW - tThickness / 2,
-              height - bottomOffset - pHeight,
+          newZones.add(
+            WindowZone(
+              id: UniqueKey().toString(),
+              boundary: Rect.fromLTRB(
+                profileThickness,
+                topOffset + profileThickness,
+                newW - tThickness / 2,
+                height - bottomOffset - pHeight,
+              ),
+              sashThickness: _calculateSashThickness(false),
             ),
-            sashThickness: _calculateSashThickness(false),
-          ));
+          );
         } else if (minVal == dyBottom) {
           double oldH = height;
           height = oldH + newH + tThickness;
@@ -8901,16 +9286,18 @@ class WindowModel extends ChangeNotifier {
               newZones.add(z);
             }
           }
-          newZones.add(WindowZone(
-            id: UniqueKey().toString(),
-            boundary: Rect.fromLTRB(
-              profileThickness,
-              oldH + tThickness / 2,
-              width - profileThickness,
-              height - bottomOffset - pHeight,
+          newZones.add(
+            WindowZone(
+              id: UniqueKey().toString(),
+              boundary: Rect.fromLTRB(
+                profileThickness,
+                oldH + tThickness / 2,
+                width - profileThickness,
+                height - bottomOffset - pHeight,
+              ),
+              sashThickness: _calculateSashThickness(false),
             ),
-            sashThickness: _calculateSashThickness(false),
-          ));
+          );
         } else {
           double oldH = height;
           height = oldH + newH + tThickness;
@@ -8928,16 +9315,18 @@ class WindowModel extends ChangeNotifier {
             );
             newZones.add(cloned);
           }
-          newZones.add(WindowZone(
-            id: UniqueKey().toString(),
-            boundary: Rect.fromLTRB(
-              profileThickness,
-              topOffset + profileThickness,
-              width - profileThickness,
-              newH - tThickness / 2,
+          newZones.add(
+            WindowZone(
+              id: UniqueKey().toString(),
+              boundary: Rect.fromLTRB(
+                profileThickness,
+                topOffset + profileThickness,
+                width - profileThickness,
+                newH - tThickness / 2,
+              ),
+              sashThickness: _calculateSashThickness(false),
             ),
-            sashThickness: _calculateSashThickness(false),
-          ));
+          );
         }
         zones = newZones;
         updatePrimaryMullionAxis();
@@ -9814,12 +10203,15 @@ class WindowModel extends ChangeNotifier {
       final z1 = zones[i];
       for (int j = i + 1; j < zones.length; j++) {
         final z2 = zones[j];
-        if (((z1.boundary.right - z2.boundary.left).abs() - jointT).abs() <= 2.0) {
+        if (((z1.boundary.right - z2.boundary.left).abs() - jointT).abs() <=
+            2.0) {
           double xCenter = (z1.boundary.right + z2.boundary.left) / 2;
           if (!joints.contains(xCenter)) {
             joints.add(xCenter);
           }
-        } else if (((z2.boundary.right - z1.boundary.left).abs() - jointT).abs() <= 2.0) {
+        } else if (((z2.boundary.right - z1.boundary.left).abs() - jointT)
+                .abs() <=
+            2.0) {
           double xCenter = (z2.boundary.right + z1.boundary.left) / 2;
           if (!joints.contains(xCenter)) {
             joints.add(xCenter);
@@ -9839,12 +10231,15 @@ class WindowModel extends ChangeNotifier {
       final z1 = zones[i];
       for (int j = i + 1; j < zones.length; j++) {
         final z2 = zones[j];
-        if (((z1.boundary.bottom - z2.boundary.top).abs() - jointT).abs() <= 2.0) {
+        if (((z1.boundary.bottom - z2.boundary.top).abs() - jointT).abs() <=
+            2.0) {
           double yCenter = (z1.boundary.bottom + z2.boundary.top) / 2;
           if (!joints.contains(yCenter)) {
             joints.add(yCenter);
           }
-        } else if (((z2.boundary.bottom - z1.boundary.top).abs() - jointT).abs() <= 2.0) {
+        } else if (((z2.boundary.bottom - z1.boundary.top).abs() - jointT)
+                .abs() <=
+            2.0) {
           double yCenter = (z2.boundary.bottom + z1.boundary.top) / 2;
           if (!joints.contains(yCenter)) {
             joints.add(yCenter);
@@ -9866,25 +10261,38 @@ class WindowModel extends ChangeNotifier {
         bool isConnected = false;
         for (final other in groups[i]) {
           // Check vertical adjacency
-          if ((zone.boundary.right - other.boundary.left).abs() < jointT - 2.0 ||
-              (other.boundary.right - zone.boundary.left).abs() < jointT - 2.0) {
+          if ((zone.boundary.right - other.boundary.left).abs() <
+                  jointT - 2.0 ||
+              (other.boundary.right - zone.boundary.left).abs() <
+                  jointT - 2.0) {
             double overlapTop = math.max(zone.boundary.top, other.boundary.top);
-            double overlapBottom = math.min(zone.boundary.bottom, other.boundary.bottom);
+            double overlapBottom = math.min(
+              zone.boundary.bottom,
+              other.boundary.bottom,
+            );
             if (overlapTop < overlapBottom - 5.0) {
               isConnected = true;
             }
           }
-          
+
           // Check horizontal adjacency
-          if ((zone.boundary.bottom - other.boundary.top).abs() < jointT - 2.0 ||
-              (other.boundary.bottom - zone.boundary.top).abs() < jointT - 2.0) {
-            double overlapLeft = math.max(zone.boundary.left, other.boundary.left);
-            double overlapRight = math.min(zone.boundary.right, other.boundary.right);
+          if ((zone.boundary.bottom - other.boundary.top).abs() <
+                  jointT - 2.0 ||
+              (other.boundary.bottom - zone.boundary.top).abs() <
+                  jointT - 2.0) {
+            double overlapLeft = math.max(
+              zone.boundary.left,
+              other.boundary.left,
+            );
+            double overlapRight = math.min(
+              zone.boundary.right,
+              other.boundary.right,
+            );
             if (overlapLeft < overlapRight - 5.0) {
               isConnected = true;
             }
           }
-          
+
           if (isConnected) break;
         }
         if (isConnected) {
@@ -9920,12 +10328,7 @@ class WindowModel extends ChangeNotifier {
         if (z.boundary.bottom > maxB) maxB = z.boundary.bottom;
       }
 
-      rects.add(Rect.fromLTRB(
-        minL - t,
-        minT - t,
-        maxR + t,
-        maxB + t,
-      ));
+      rects.add(Rect.fromLTRB(minL - t, minT - t, maxR + t, maxB + t));
     }
 
     return rects;

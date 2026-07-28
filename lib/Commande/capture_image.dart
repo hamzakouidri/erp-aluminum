@@ -12,14 +12,41 @@ Future<Uint8List> captureWindowImage(
   WindowModel model, {
   int maxSide = 1400,
 }) async {
+  if (model.isGlassWork) {
+    final selectedPath = model.glassWorkPayload?['imagePath']?.toString() ?? '';
+    if (selectedPath.isNotEmpty) {
+      try {
+        final selectedFile = File(selectedPath);
+        if (await selectedFile.exists()) {
+          return await selectedFile.readAsBytes();
+        }
+      } catch (_) {}
+    }
+    try {
+      final ByteData data = await rootBundle.load('Icon/verre.png');
+      return data.buffer.asUint8List();
+    } catch (_) {}
+  }
+
+  if (model.isMoustiquaire ||
+      (model.manualNameOverride?.contains('Moustiquaire') == true)) {
+    try {
+      final ByteData data = await rootBundle.load('Icon/media.webp');
+      return data.buffer.asUint8List();
+    } catch (_) {}
+  }
+
   // If model is Caisson Tunnel, return official Caisson Tunnel asset image bytes for PDF/Flyer
-  if (model.isCaissonTunnel || (model.manualNameOverride?.contains('Caisson Tunnel') == true)) {
+  if (model.isCaissonTunnel ||
+      (model.manualNameOverride?.contains('Caisson Tunnel') == true)) {
     try {
       final ByteData data = await rootBundle.load('Icon/caisson_tunnel.jpg');
       return data.buffer.asUint8List();
     } catch (_) {
       try {
-        final ByteData data = await rootBundle.load('assets/Icon/caisson_tunnel.jpg');
+        final ByteData data = await rootBundle.load(
+          'assets/Icon/caisson_tunnel.jpg',
+        );
         return data.buffer.asUint8List();
       } catch (_) {
         // Fallback drawing if asset not found
@@ -34,13 +61,15 @@ Future<Uint8List> captureWindowImage(
     const h = 400.0;
 
     final paint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        const Offset(w, h),
-        [Colors.orange.shade400, Colors.deepOrange.shade600],
-      );
+      ..shader = ui.Gradient.linear(Offset.zero, const Offset(w, h), [
+        Colors.orange.shade400,
+        Colors.deepOrange.shade600,
+      ]);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, w, h), const Radius.circular(30)),
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(0, 0, w, h),
+        const Radius.circular(30),
+      ),
       paint,
     );
 
@@ -49,7 +78,10 @@ Future<Uint8List> captureWindowImage(
       ..style = PaintingStyle.fill;
 
     canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(w * 0.35, h * 0.35, w * 0.3, h * 0.25), const Radius.circular(10)),
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(w * 0.35, h * 0.35, w * 0.3, h * 0.25),
+        const Radius.circular(10),
+      ),
       iconPaint,
     );
 
@@ -58,9 +90,21 @@ Future<Uint8List> captureWindowImage(
       ..strokeWidth = 6.0
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-    canvas.drawLine(const Offset(w * 0.3, h * 0.33), const Offset(w * 0.7, h * 0.33), lidPaint);
-    canvas.drawLine(const Offset(w * 0.3, h * 0.33), const Offset(w * 0.35, h * 0.45), lidPaint);
-    canvas.drawLine(const Offset(w * 0.7, h * 0.33), const Offset(w * 0.65, h * 0.45), lidPaint);
+    canvas.drawLine(
+      const Offset(w * 0.3, h * 0.33),
+      const Offset(w * 0.7, h * 0.33),
+      lidPaint,
+    );
+    canvas.drawLine(
+      const Offset(w * 0.3, h * 0.33),
+      const Offset(w * 0.35, h * 0.45),
+      lidPaint,
+    );
+    canvas.drawLine(
+      const Offset(w * 0.7, h * 0.33),
+      const Offset(w * 0.65, h * 0.45),
+      lidPaint,
+    );
 
     final textPainter = TextPainter(
       text: TextSpan(
@@ -75,10 +119,7 @@ Future<Uint8List> captureWindowImage(
       textAlign: TextAlign.center,
     );
     textPainter.layout(maxWidth: w - 40);
-    textPainter.paint(
-      canvas,
-      Offset((w - textPainter.width) / 2, h * 0.7),
-    );
+    textPainter.paint(canvas, Offset((w - textPainter.width) / 2, h * 0.7));
 
     final picture = recorder.endRecording();
     final img = await picture.toImage(w.toInt(), h.toInt());
@@ -123,7 +164,10 @@ Future<Uint8List> captureWindowImage(
   return byteData!.buffer.asUint8List();
 }
 
-Future<String> saveWindowImageToDisk(WindowModel model, {int maxSide = 1400}) async {
+Future<String> saveWindowImageToDisk(
+  WindowModel model, {
+  int maxSide = 1400,
+}) async {
   try {
     final bytes = await captureWindowImage(model, maxSide: maxSide);
     final appDir = await getApplicationDocumentsDirectory();

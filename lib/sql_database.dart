@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
@@ -19,8 +20,62 @@ import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/capture_image.dart';
 
+class CloudChangeAcknowledgement {
+  const CloudChangeAcknowledgement({
+    required this.table,
+    required this.rowId,
+    required this.revision,
+  });
+
+  final String table;
+  final String rowId;
+  final int revision;
+}
+
+class PendingCloudChanges {
+  const PendingCloudChanges({
+    required this.data,
+    required this.acknowledgements,
+    required this.changedRows,
+    required this.deletedRows,
+  });
+
+  final Map<String, dynamic> data;
+  final List<CloudChangeAcknowledgement> acknowledgements;
+  final int changedRows;
+  final int deletedRows;
+
+  bool get isEmpty => acknowledgements.isEmpty;
+}
+
 class SqlDatabase {
   static Database? _db;
+  static final Random _distributedIdRandom = Random.secure();
+  static int _lastDistributedId = 0;
+
+  /// Generates an ordered 64-bit ID without relying on a device-local
+  /// AUTOINCREMENT value, so concurrent offline additions cannot collide.
+  static int _nextDistributedId() {
+    var candidate =
+        DateTime.now().millisecondsSinceEpoch * 1000000 +
+        _distributedIdRandom.nextInt(1000000);
+    if (candidate <= _lastDistributedId) {
+      candidate = _lastDistributedId + 1;
+    }
+    _lastDistributedId = candidate;
+    return candidate;
+  }
+
+  int createDistributedId() => _nextDistributedId();
+
+  static Map<String, dynamic> _withDistributedId(
+    Map<String, dynamic> values,
+  ) {
+    return <String, dynamic>{
+      ...values,
+      'id': values['id'] ?? _nextDistributedId(),
+    };
+  }
 
   static DatabaseFactory get _dbFactory {
     if (kIsWeb) {
@@ -1015,6 +1070,14 @@ class SqlDatabase {
     try {
       await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
     } catch (_) {}
+
+    // Install deletion tracking after every legacy table has been created.
+    // This must happen before the user can delete anything in the UI.
+    try {
+      await _ensureSyncTombstoneInfrastructure(db);
+    } catch (error) {
+      debugPrint('Could not initialize deletion sync tracking: $error');
+    }
 
     // Run background migration to generate base64 representation of drawings for existing details
     // so they can sync to the workers
@@ -2950,8 +3013,9 @@ class SqlDatabase {
   ]) async {
     Database? myDb = await db;
     var res = await myDb!.rawInsert(
-      'INSERT INTO Client (firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO Client (id, firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
+        _nextDistributedId(),
         firstname,
         lastname,
         phone1,
@@ -3017,7 +3081,7 @@ class SqlDatabase {
   //////////////////////////////////// Measurements //////////////////////////////////////
   Future<int> insertMeasurement(Map<String, dynamic> data) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Measurements', data);
+    var res = await myDb!.insert('Measurements', _withDistributedId(data));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -3080,8 +3144,8 @@ class SqlDatabase {
     Database? myDb = await db;
     final now = DateTime.now().toIso8601String();
     var res = await myDb!.rawInsert(
-      'INSERT INTO Projects (name, client_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      [name, clientId, description, now, now],
+      'INSERT INTO Projects (id, name, client_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [_nextDistributedId(), name, clientId, description, now, now],
     );
     CloudSyncService().notifyChangeImmediate();
     return res;
@@ -3236,7 +3300,9 @@ class SqlDatabase {
       await _syncAllocationsFromOrderStatus(id, newStatus);
     }
 
-    await _uploadOrderStatusToCloud(id, newStatus);
+    // The local database is authoritative for the current action. Cloud
+    // delivery continues in the background and must never freeze the UI.
+    unawaited(_uploadOrderStatusToCloud(id, newStatus));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -3255,7 +3321,8 @@ class SqlDatabase {
               'id': orderId,
               'status': status,
               'updated_at': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
+            }, SetOptions(merge: true))
+            .timeout(const Duration(seconds: 10));
         debugPrint(
           '--- SqlDatabase: Uploaded order status $orderId ($status) to cloud ---',
         );
@@ -3431,6 +3498,7 @@ class SqlDatabase {
     final nowStr = DateTime.now().toIso8601String();
     final details = await readCommandeDetails(orderId);
     if (details.isEmpty) return;
+    final allocationIdsToUpload = <int>{};
 
     final sLower = status.trim().toLowerCase();
 
@@ -3552,9 +3620,17 @@ class SqlDatabase {
             where: 'id = ?',
             whereArgs: [allocId],
           );
-          await _uploadAllocationStatusToCloud(allocId);
+          allocationIdsToUpload.add(allocId);
         }
       }
+    }
+
+    if (allocationIdsToUpload.isNotEmpty) {
+      unawaited(
+        Future.wait(
+          allocationIdsToUpload.map(_uploadAllocationStatusToCloud),
+        ),
+      );
     }
   }
 
@@ -3699,7 +3775,10 @@ class SqlDatabase {
     if (unitWidth != null && unitWidth > 0) row['unit_width'] = unitWidth;
     if (unitHeight != null && unitHeight > 0) row['unit_height'] = unitHeight;
 
-    final res = await myDb.insert('WorkerAllocations', row);
+    final res = await myDb.insert(
+      'WorkerAllocations',
+      _withDistributedId(row),
+    );
     await _uploadAllocationStatusToCloud(res);
     CloudSyncService().notifyChange();
     return res;
@@ -4647,7 +4726,8 @@ class SqlDatabase {
                 'reserve_notes': alloc['reserve_notes'],
                 'reserve_at': alloc['reserve_at'],
                 'updated_at': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
+              }, SetOptions(merge: true))
+              .timeout(const Duration(seconds: 10));
           debugPrint(
             '--- SqlDatabase: Uploaded allocation status $allocationId (reserves & installation) to cloud ---',
           );
@@ -5441,13 +5521,13 @@ class SqlDatabase {
         whereArgs: [workerUid, date],
       );
     } else {
-      await myDb.insert('WorkerAttendance', {
+      await myDb.insert('WorkerAttendance', _withDistributedId({
         'worker_uid': workerUid,
         'attendance_date': date,
         'check_in': checkIn,
         'check_out': checkOut,
         'note': note,
-      });
+      }));
     }
     CloudSyncService().notifyChange();
   }
@@ -5497,14 +5577,14 @@ class SqlDatabase {
   }) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    await myDb.insert('WorkerDailyJobs', {
+    await myDb.insert('WorkerDailyJobs', _withDistributedId({
       'worker_uid': workerUid,
       'work_date': workDate,
       'title': title.trim().isEmpty ? 'عمل يومي' : title.trim(),
       'note': note,
       'price': price,
       'is_settled': 0,
-    });
+    }));
     CloudSyncService().notifyChange();
   }
 
@@ -5603,7 +5683,7 @@ class SqlDatabase {
     final primaryKey = allKeys.first;
 
     // 5. Record the actual payment made in SQLite WorkerTransactions
-    await myDb.insert('WorkerTransactions', {
+    await myDb.insert('WorkerTransactions', _withDistributedId({
       'worker_uid': primaryKey,
       'amount': paymentAmount,
       'transaction_type': 'salary',
@@ -5611,7 +5691,7 @@ class SqlDatabase {
       'created_at': now,
       'is_settled': 1,
       'settled_at': now,
-    });
+    }));
 
     // 6. Record in Treasury as Decaissement (ALWAYS record full payout in selected Caisse)
     if (paymentAmount != 0.0) {
@@ -5631,14 +5711,14 @@ class SqlDatabase {
     // 7. Calculate carryover (the difference)
     final double carryover = paymentAmount - netDueBefore;
     if (carryover != 0.0) {
-      await myDb.insert('WorkerTransactions', {
+      await myDb.insert('WorkerTransactions', _withDistributedId({
         'worker_uid': primaryKey,
         'amount': carryover,
         'transaction_type': 'advance',
         'note': 'رصيد مرحّل من الأسبوع السابق',
         'created_at': now,
         'is_settled': 0,
-      });
+      }));
     }
 
     CloudSyncService().notifyChangeImmediate();
@@ -5721,7 +5801,9 @@ class SqlDatabase {
       late final int orderId;
 
       if (idCommande == null) {
-        orderId = await txn.insert('Commandes', {
+        final newOrderId = _nextDistributedId();
+        await txn.insert('Commandes', {
+          'id': newOrderId,
           'client_id': clientId,
           'status': status,
           'description': description,
@@ -5735,6 +5817,7 @@ class SqlDatabase {
           'updated_at': now,
           'project_id': projectId,
         }, conflictAlgorithm: ConflictAlgorithm.abort);
+        orderId = newOrderId;
       } else {
         orderId = idCommande;
         final existing = await txn.query(
@@ -5783,7 +5866,11 @@ class SqlDatabase {
       for (final detail in preparedDetails) {
         await txn.insert(
           'Commandes_details',
-          {...detail, 'id_commandes': orderId},
+          {
+            ...detail,
+            'id': _nextDistributedId(),
+            'id_commandes': orderId,
+          },
           conflictAlgorithm: ConflictAlgorithm.abort,
         );
       }
@@ -5823,9 +5910,11 @@ class SqlDatabase {
     final netPayable = total - remise + ((total * tva) / 100);
     final now = DateTime.now().toIso8601String();
     final orderDate = createdAt ?? now;
+    final distributedId = _nextDistributedId();
     var res = await myDb!.rawInsert(
-      'INSERT INTO Commandes (client_id, status, description, remise, tva, total, net_payable, advance_payment, payment_status, created_at, updated_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO Commandes (id, client_id, status, description, remise, tva, total, net_payable, advance_payment, payment_status, created_at, updated_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
+        distributedId,
         idClient,
         status,
         description,
@@ -5961,6 +6050,7 @@ class SqlDatabase {
     }
 
     var res = await myDb!.insert('Commandes_details', {
+      'id': _nextDistributedId(),
       'id_commandes': idCommande,
       'largeur': largeur.toInt(),
       'hauteur': hauteur.toInt(),
@@ -6049,15 +6139,26 @@ class SqlDatabase {
         where: "name = 'الصندوق الرئيسي'",
       );
       if (checkMain.isEmpty)
-        await myDb.insert('Caisses', {'name': 'الصندوق الرئيسي'});
+        await myDb.insert(
+          'Caisses',
+          _withDistributedId({'name': 'الصندوق الرئيسي'}),
+        );
       final checkSecond = await myDb.query(
         'Caisses',
         where: "name = 'الصندوق الثاني'",
       );
       if (checkSecond.isEmpty)
-        await myDb.insert('Caisses', {'name': 'الصندوق الثاني'});
+        await myDb.insert(
+          'Caisses',
+          _withDistributedId({'name': 'الصندوق الثاني'}),
+        );
       final checkBank = await myDb.query('Caisses', where: "name = 'البنك'");
-      if (checkBank.isEmpty) await myDb.insert('Caisses', {'name': 'البنك'});
+      if (checkBank.isEmpty) {
+        await myDb.insert(
+          'Caisses',
+          _withDistributedId({'name': 'البنك'}),
+        );
+      }
 
       // Migrate legacy advance payments from Commandes to Treasury
       final orders = await myDb.query(
@@ -6098,7 +6199,7 @@ class SqlDatabase {
             } catch (_) {}
           }
 
-          await myDb.insert('Treasury', {
+          await myDb.insert('Treasury', _withDistributedId({
             'transaction_type': 'Encaissement',
             'amount': advance,
             'description': clientDesc,
@@ -6111,7 +6212,7 @@ class SqlDatabase {
             'caisse_name': 'الصندوق الرئيسي',
             'payment_method': 'نقداً / Espèce',
             'created_at': createdAt,
-          });
+          }));
         }
       }
     } catch (_) {}
@@ -6134,7 +6235,10 @@ class SqlDatabase {
   Future<int> insertCaisse(String name) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
-    final res = await myDb.insert('Caisses', {'name': name});
+    final res = await myDb.insert(
+      'Caisses',
+      _withDistributedId({'name': name}),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6184,13 +6288,13 @@ class SqlDatabase {
     double totalAmount,
   ) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Commandes_deliveries', {
+    var res = await myDb!.insert('Commandes_deliveries', _withDistributedId({
       'id_commandes': idCommande,
       'client_id': clientId,
       'delivery_date': date,
       'items_json': itemsJson,
       'total_amount': totalAmount,
-    });
+    }));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6273,7 +6377,7 @@ class SqlDatabase {
       );
     }
 
-    var res = await myDb.insert('Achats', {
+    var res = await myDb.insert('Achats', _withDistributedId({
       'invoice_number': invoiceNumber,
       'supplier_name': supplierName,
       'supplier_id': supplierId,
@@ -6284,7 +6388,7 @@ class SqlDatabase {
       'pdf_path': pdfPath,
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
-    });
+    }));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6338,7 +6442,7 @@ class SqlDatabase {
       return 0;
     }
 
-    var res = await myDb!.insert('Achat_items', {
+    var res = await myDb!.insert('Achat_items', _withDistributedId({
       'achat_id': achatId,
       'item_code': itemCode,
       'item_name': itemName,
@@ -6347,7 +6451,7 @@ class SqlDatabase {
       'color_id': colorId,
       'quantity': quantity,
       'price': price,
-    });
+    }));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6697,7 +6801,7 @@ class SqlDatabase {
         supplierId = achatRes.first['supplier_id'] as int?;
       }
 
-      await myDb.insert('Treasury', {
+      await myDb.insert('Treasury', _withDistributedId({
         'transaction_type': 'Encaissement',
         'amount': refundedAmount,
         'description': 'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
@@ -6710,7 +6814,7 @@ class SqlDatabase {
         'new_balance': 0.0,
         'caisse_name': 'الصندوق الرئيسي',
         'payment_method': 'نقداً / Espèce',
-      });
+      }));
     }
 
     final newItems = await myDb.query(
@@ -6799,7 +6903,7 @@ class SqlDatabase {
 
   Future<int> insertSupplier(Map<String, dynamic> data) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Suppliers', {
+    var res = await myDb!.insert('Suppliers', _withDistributedId({
       'name': data['name'] ?? '',
       'phone': data['phone'] ?? '',
       'email': data['email'] ?? '',
@@ -6807,7 +6911,7 @@ class SqlDatabase {
       'latitude': data['latitude'],
       'longitude': data['longitude'],
       'created_at': DateTime.now().toIso8601String(),
-    });
+    }));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6849,13 +6953,13 @@ class SqlDatabase {
     Database? myDb = await db;
     final now = DateTime.now().toIso8601String();
 
-    var res = await myDb!.insert('WorkerTransactions', {
+    var res = await myDb!.insert('WorkerTransactions', _withDistributedId({
       'worker_uid': workerUid,
       'amount': amount,
       'transaction_type': transactionType,
       'note': note,
       'created_at': now,
-    });
+    }));
 
     try {
       final List<Map<String, dynamic>> workers = await myDb.query(
@@ -7853,7 +7957,7 @@ class SqlDatabase {
     String? jobRole,
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Employees', {
+    var res = await myDb!.insert('Employees', _withDistributedId({
       'uid': uid,
       'email': email,
       'name': name,
@@ -7863,7 +7967,7 @@ class SqlDatabase {
       'phone': phone,
       'address': address,
       'job_role': jobRole,
-    });
+    }));
     CloudSyncService().notifyChange();
     return res;
   }
@@ -8239,7 +8343,7 @@ class SqlDatabase {
     String? createdAt,
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Treasury', {
+    var res = await myDb!.insert('Treasury', _withDistributedId({
       'transaction_type': transactionType,
       'amount': amount,
       'description': description,
@@ -8253,7 +8357,7 @@ class SqlDatabase {
       'caisse_name': caisseName ?? 'الصندوق الرئيسي',
       'payment_method': paymentMethod ?? 'نقداً / Espèce',
       'created_at': createdAt ?? DateTime.now().toIso8601String(),
-    });
+    }));
 
     if (entityType == 'Client' &&
         transactionType == 'Encaissement' &&
@@ -8286,14 +8390,14 @@ class SqlDatabase {
           whereArgs: [txTime, amount],
         );
         if (existingTxs.isEmpty) {
-          await myDb.insert('WorkerTransactions', {
+          await myDb.insert('WorkerTransactions', _withDistributedId({
             'worker_uid': workerUid,
             'amount': amount,
             'transaction_type': 'advance',
             'note': description,
             'created_at': txTime,
             'is_settled': 0,
-          });
+          }));
         }
       }
     }
@@ -8477,6 +8581,12 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
     await myDb.transaction((txn) async {
+      await _ensureSyncTombstoneInfrastructure(txn);
+      await txn.update(
+        '_sync_runtime_flags',
+        {'suppress_tombstones': 1},
+        where: 'id = 1',
+      );
       final tablesToClear = [
         'Client',
         'Commandes',
@@ -8493,7 +8603,339 @@ class SqlDatabase {
           await txn.delete(table);
         } catch (_) {}
       }
+      await txn.update(
+        '_sync_runtime_flags',
+        {'suppress_tombstones': 0},
+        where: 'id = 1',
+      );
     });
+  }
+
+  Future<void> _ensureSyncTombstoneInfrastructure(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SyncTombstones (
+        table_name TEXT NOT NULL,
+        row_id TEXT NOT NULL,
+        deleted_at TEXT NOT NULL,
+        PRIMARY KEY (table_name, row_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS _sync_runtime_flags (
+        id INTEGER PRIMARY KEY,
+        suppress_tombstones INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.insert(
+      '_sync_runtime_flags',
+      {'id': 1, 'suppress_tombstones': 0},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS _sync_change_log (
+        table_name TEXT NOT NULL,
+        row_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (table_name, row_id)
+      )
+    ''');
+
+    final schemaRows = await db.rawQuery('''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name NOT LIKE 'sqlite_%'
+        AND name NOT LIKE '_sync_%'
+        AND name != 'SyncTombstones'
+        AND name != 'android_metadata'
+    ''');
+    for (final schemaRow in schemaRows) {
+      final table = schemaRow['name']?.toString() ?? '';
+      if (!_isSafeSqlIdentifier(table)) continue;
+      final columns = await _tableColumns(db, table);
+      if (!columns.contains('id')) continue;
+      final tombstoneTrigger = 'sync_tombstone_delete_$table';
+      try {
+        await db.execute('''
+          CREATE TRIGGER IF NOT EXISTS "$tombstoneTrigger"
+          AFTER DELETE ON "$table"
+          WHEN COALESCE(
+            (SELECT suppress_tombstones
+             FROM _sync_runtime_flags
+             WHERE id = 1),
+            0
+          ) = 0
+          BEGIN
+            INSERT OR REPLACE INTO SyncTombstones (
+              table_name,
+              row_id,
+              deleted_at
+            ) VALUES (
+              '$table',
+              CAST(OLD.id AS TEXT),
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            );
+          END
+        ''');
+      } catch (error) {
+        debugPrint('Could not track deletions for $table: $error');
+      }
+
+      final insertTrigger = 'sync_cloud_insert_$table';
+      final updateTrigger = 'sync_cloud_update_$table';
+      final deleteTrigger = 'sync_cloud_delete_$table';
+      try {
+        await db.execute('''
+          CREATE TRIGGER IF NOT EXISTS "$insertTrigger"
+          AFTER INSERT ON "$table"
+          WHEN COALESCE(
+            (SELECT suppress_tombstones
+             FROM _sync_runtime_flags
+             WHERE id = 1),
+            0
+          ) = 0
+          BEGIN
+            INSERT OR REPLACE INTO _sync_change_log (
+              table_name,
+              row_id,
+              operation,
+              changed_at,
+              revision
+            ) VALUES (
+              '$table',
+              CAST(NEW.id AS TEXT),
+              'upsert',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+              COALESCE((
+                SELECT revision
+                FROM _sync_change_log
+                WHERE table_name = '$table'
+                  AND row_id = CAST(NEW.id AS TEXT)
+              ), 0) + 1
+            );
+          END
+        ''');
+        await db.execute('''
+          CREATE TRIGGER IF NOT EXISTS "$updateTrigger"
+          AFTER UPDATE ON "$table"
+          WHEN COALESCE(
+            (SELECT suppress_tombstones
+             FROM _sync_runtime_flags
+             WHERE id = 1),
+            0
+          ) = 0
+          BEGIN
+            INSERT OR REPLACE INTO _sync_change_log (
+              table_name,
+              row_id,
+              operation,
+              changed_at,
+              revision
+            ) VALUES (
+              '$table',
+              CAST(NEW.id AS TEXT),
+              'upsert',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+              COALESCE((
+                SELECT revision
+                FROM _sync_change_log
+                WHERE table_name = '$table'
+                  AND row_id = CAST(NEW.id AS TEXT)
+              ), 0) + 1
+            );
+          END
+        ''');
+        await db.execute('''
+          CREATE TRIGGER IF NOT EXISTS "$deleteTrigger"
+          AFTER DELETE ON "$table"
+          WHEN COALESCE(
+            (SELECT suppress_tombstones
+             FROM _sync_runtime_flags
+             WHERE id = 1),
+            0
+          ) = 0
+          BEGIN
+            INSERT OR REPLACE INTO _sync_change_log (
+              table_name,
+              row_id,
+              operation,
+              changed_at,
+              revision
+            ) VALUES (
+              '$table',
+              CAST(OLD.id AS TEXT),
+              'delete',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+              COALESCE((
+                SELECT revision
+                FROM _sync_change_log
+                WHERE table_name = '$table'
+                  AND row_id = CAST(OLD.id AS TEXT)
+              ), 0) + 1
+            );
+          END
+        ''');
+      } catch (error) {
+        debugPrint('Could not track cloud changes for $table: $error');
+      }
+    }
+  }
+
+  Future<PendingCloudChanges> exportPendingCloudChanges() async {
+    final myDb = await db;
+    if (myDb == null) {
+      return const PendingCloudChanges(
+        data: <String, dynamic>{},
+        acknowledgements: <CloudChangeAcknowledgement>[],
+        changedRows: 0,
+        deletedRows: 0,
+      );
+    }
+    await _ensureSyncTombstoneInfrastructure(myDb);
+    if (!await isDatabaseHealthy()) {
+      throw StateError('database image malformed (code 11)');
+    }
+
+    final logRows = await myDb.query(
+      '_sync_change_log',
+      orderBy: 'changed_at ASC, table_name ASC, row_id ASC',
+    );
+    if (logRows.isEmpty) {
+      return const PendingCloudChanges(
+        data: <String, dynamic>{},
+        acknowledgements: <CloudChangeAcknowledgement>[],
+        changedRows: 0,
+        deletedRows: 0,
+      );
+    }
+
+    final data = <String, dynamic>{};
+    final acknowledgements = <CloudChangeAcknowledgement>[];
+    final tombstones = <Map<String, dynamic>>[];
+    var changedRows = 0;
+    var deletedRows = 0;
+
+    for (final logRow in logRows) {
+      final table = logRow['table_name']?.toString() ?? '';
+      final rowId = logRow['row_id']?.toString() ?? '';
+      final operation = logRow['operation']?.toString() ?? '';
+      final revision = (logRow['revision'] as num?)?.toInt() ?? 0;
+      if (!_isSafeSqlIdentifier(table) ||
+          table.startsWith('_sync_') ||
+          table == 'SyncTombstones' ||
+          rowId.isEmpty ||
+          revision <= 0) {
+        continue;
+      }
+
+      acknowledgements.add(
+        CloudChangeAcknowledgement(
+          table: table,
+          rowId: rowId,
+          revision: revision,
+        ),
+      );
+
+      if (operation == 'delete') {
+        final matching = await myDb.query(
+          'SyncTombstones',
+          where: 'table_name = ? AND row_id = ?',
+          whereArgs: [table, rowId],
+          limit: 1,
+        );
+        tombstones.add(
+          matching.isNotEmpty
+              ? Map<String, dynamic>.from(matching.first)
+              : <String, dynamic>{
+                  'table_name': table,
+                  'row_id': rowId,
+                  'deleted_at':
+                      logRow['changed_at']?.toString() ??
+                      DateTime.now().toUtc().toIso8601String(),
+                },
+        );
+        deletedRows++;
+        continue;
+      }
+
+      final rows = await myDb.query(
+        table,
+        where: 'id = ?',
+        whereArgs: [rowId],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        final matching = await myDb.query(
+          'SyncTombstones',
+          where: 'table_name = ? AND row_id = ?',
+          whereArgs: [table, rowId],
+          limit: 1,
+        );
+        tombstones.add(
+          matching.isNotEmpty
+              ? Map<String, dynamic>.from(matching.first)
+              : <String, dynamic>{
+                  'table_name': table,
+                  'row_id': rowId,
+                  'deleted_at':
+                      logRow['changed_at']?.toString() ??
+                      DateTime.now().toUtc().toIso8601String(),
+                },
+        );
+        deletedRows++;
+        continue;
+      }
+
+      (data.putIfAbsent(table, () => <Map<String, dynamic>>[])
+              as List<Map<String, dynamic>>)
+          .add(Map<String, dynamic>.from(rows.first));
+      changedRows++;
+    }
+
+    if (tombstones.isNotEmpty) {
+      data['SyncTombstones'] = tombstones;
+    }
+    return PendingCloudChanges(
+      data: data,
+      acknowledgements: acknowledgements,
+      changedRows: changedRows,
+      deletedRows: deletedRows,
+    );
+  }
+
+  Future<void> acknowledgePendingCloudChanges(
+    List<CloudChangeAcknowledgement> acknowledgements,
+  ) async {
+    if (acknowledgements.isEmpty) return;
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.transaction((txn) async {
+      for (final acknowledgement in acknowledgements) {
+        await txn.delete(
+          '_sync_change_log',
+          where: 'table_name = ? AND row_id = ? AND revision = ?',
+          whereArgs: [
+            acknowledgement.table,
+            acknowledgement.rowId,
+            acknowledgement.revision,
+          ],
+        );
+      }
+    });
+  }
+
+  Future<bool> hasPendingCloudChanges() async {
+    final myDb = await db;
+    if (myDb == null) return false;
+    await _ensureSyncTombstoneInfrastructure(myDb);
+    final rows = await myDb.rawQuery(
+      'SELECT 1 FROM _sync_change_log LIMIT 1',
+    );
+    return rows.isNotEmpty;
   }
 
   Future<Map<String, dynamic>> exportAllData() async {
@@ -8516,6 +8958,7 @@ class SqlDatabase {
       FROM sqlite_master
       WHERE type = 'table'
         AND name NOT LIKE 'sqlite_%'
+        AND name NOT LIKE '_sync_%'
         AND name != 'android_metadata'
       ORDER BY name
     ''');
@@ -8730,6 +9173,7 @@ class SqlDatabase {
         await db.execute(sql);
       } catch (_) {}
     }
+    await _ensureSyncTombstoneInfrastructure(db);
   }
 
   Future<Set<String>> _tableColumns(DatabaseExecutor db, String table) async {
@@ -8768,6 +9212,122 @@ class SqlDatabase {
     return sanitized;
   }
 
+  String _tombstoneKey(String table, Object rowId) =>
+      '$table\u0000${rowId.toString()}';
+
+  bool _isIncomingDeletionNewer(String incoming, String existing) {
+    final incomingDate = DateTime.tryParse(incoming);
+    final existingDate = DateTime.tryParse(existing);
+    if (incomingDate != null && existingDate != null) {
+      return incomingDate.isAfter(existingDate);
+    }
+    return incoming.compareTo(existing) > 0;
+  }
+
+  DateTime? _rowUpdateTime(Map<String, dynamic> row) {
+    const updateKeys = <String>[
+      'updated_at',
+      'updatedAt',
+      'modified_at',
+      'modifiedAt',
+      'last_updated',
+      'lastUpdated',
+    ];
+    for (final key in updateKeys) {
+      final raw = row[key];
+      if (raw == null) continue;
+      if (raw is DateTime) return raw;
+      if (raw is Timestamp) return raw.toDate();
+      final parsed = DateTime.tryParse(raw.toString());
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  bool _localRowIsNewer(
+    Map<String, dynamic> local,
+    Map<String, dynamic> incoming,
+  ) {
+    final localTime = _rowUpdateTime(local);
+    final incomingTime = _rowUpdateTime(incoming);
+    return localTime != null &&
+        incomingTime != null &&
+        localTime.isAfter(incomingTime);
+  }
+
+  Future<Set<String>> _mergeAndReadSyncTombstones(
+    DatabaseExecutor db,
+    dynamic incomingRows,
+  ) async {
+    if (incomingRows is List) {
+      for (final rawRow in incomingRows) {
+        if (rawRow is! Map) continue;
+        final row = _sanitizeImportRow(Map<String, dynamic>.from(rawRow));
+        final table = row['table_name']?.toString() ?? '';
+        final rowId = row['row_id']?.toString() ?? '';
+        final deletedAt = row['deleted_at']?.toString() ?? '';
+        if (!_isSafeSqlIdentifier(table) ||
+            rowId.isEmpty ||
+            deletedAt.isEmpty) {
+          continue;
+        }
+
+        final existing = await db.query(
+          'SyncTombstones',
+          where: 'table_name = ? AND row_id = ?',
+          whereArgs: [table, rowId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingDeletedAt =
+              existing.first['deleted_at']?.toString() ?? '';
+          if (!_isIncomingDeletionNewer(deletedAt, existingDeletedAt)) {
+            continue;
+          }
+        }
+        await db.insert(
+          'SyncTombstones',
+          {
+            'table_name': table,
+            'row_id': rowId,
+            'deleted_at': deletedAt,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    }
+
+    final allRows = await db.query('SyncTombstones');
+    return allRows
+        .map(
+          (row) => _tombstoneKey(
+            row['table_name']?.toString() ?? '',
+            row['row_id']?.toString() ?? '',
+          ),
+        )
+        .toSet();
+  }
+
+  Future<void> _applySyncTombstones(
+    DatabaseExecutor db,
+    Set<String> tombstoneKeys,
+  ) async {
+    for (final key in tombstoneKeys) {
+      final separator = key.indexOf('\u0000');
+      if (separator <= 0 || separator >= key.length - 1) continue;
+      final table = key.substring(0, separator);
+      final rowId = key.substring(separator + 1);
+      if (!_isSafeSqlIdentifier(table) ||
+          table == 'SyncTombstones' ||
+          table.startsWith('_sync_')) {
+        continue;
+      }
+      final columns = await _tableColumns(db, table);
+      if (!columns.contains('id')) continue;
+      await db.delete(table, where: 'id = ?', whereArgs: [rowId]);
+    }
+  }
+
   Future<void> importAllData(
     Map<String, dynamic> data, {
     bool replaceAllData = false,
@@ -8776,6 +9336,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
     final orderedTables = [
+      'SyncTombstones',
       'Profile',
       'Series',
       'Sections',
@@ -8856,8 +9417,20 @@ class SqlDatabase {
     await myDb.transaction((txn) async {
       await txn.execute('PRAGMA foreign_keys = OFF');
       await _ensureSyncSchema(txn);
+      await txn.update(
+        '_sync_runtime_flags',
+        {'suppress_tombstones': 1},
+        where: 'id = 1',
+      );
+      final tombstoneKeys = await _mergeAndReadSyncTombstones(
+        txn,
+        data['SyncTombstones'],
+      );
 
       for (final table in importTables) {
+        if (table == 'SyncTombstones' || table.startsWith('_sync_')) {
+          continue;
+        }
         final rows = data[table] as List<dynamic>? ?? [];
 
         // حماية: إذا كان الجدول حساساً والـ payload يعيده فارغاً،
@@ -8890,6 +9463,23 @@ class SqlDatabase {
             final sanitized = _sanitizeImportRow(Map<String, dynamic>.from(row))
               ..removeWhere((key, value) => !columns.contains(key));
             if (sanitized.isEmpty) continue;
+            final rowId = sanitized['id'];
+            if (rowId != null &&
+                tombstoneKeys.contains(_tombstoneKey(table, rowId))) {
+              continue;
+            }
+            if (mergeAllData && rowId != null) {
+              final localRows = await txn.query(
+                table,
+                where: 'id = ?',
+                whereArgs: [rowId],
+                limit: 1,
+              );
+              if (localRows.isNotEmpty &&
+                  _localRowIsNewer(localRows.first, sanitized)) {
+                continue;
+              }
+            }
             await txn.insert(
               table,
               sanitized,
@@ -8900,6 +9490,12 @@ class SqlDatabase {
           }
         }
       }
+      await _applySyncTombstones(txn, tombstoneKeys);
+      await txn.update(
+        '_sync_runtime_flags',
+        {'suppress_tombstones': 0},
+        where: 'id = 1',
+      );
       await txn.execute('PRAGMA foreign_keys = ON');
     });
   }
@@ -9441,11 +10037,11 @@ class SqlDatabase {
     }
 
     if (locations.isEmpty) {
-      await myDb.insert('Locations', {
+      await myDb.insert('Locations', _withDistributedId({
         'name': '╪º┘ä┘à╪«╪▓┘å ╪º┘ä╪▒╪ª┘è╪│┘è',
         'type': '┘à╪│╪¬┘ê╪»╪╣ ╪▒╪ª┘è╪│┘è',
         'is_active': 1,
-      });
+      }));
       locations = await myDb.query('Locations', orderBy: 'id ASC');
       CloudSyncService().notifyChange();
     }
@@ -9495,7 +10091,7 @@ class SqlDatabase {
 
     int res;
     if (stock.isEmpty) {
-      res = await myDb.insert('CurrentStock', {
+      res = await myDb.insert('CurrentStock', _withDistributedId({
         'item_type': itemType,
         'item_id': itemId,
         'color_id': colorId,
@@ -9503,7 +10099,7 @@ class SqlDatabase {
         'quantity': 0.0,
         'min_qty': minQty,
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      }));
     } else {
       res = await myDb.update(
         'CurrentStock',
@@ -9530,7 +10126,7 @@ class SqlDatabase {
 
     await myDb.transaction((txn) async {
       // 1. Record the transaction
-      await txn.insert('InventoryTransactions', {
+      await txn.insert('InventoryTransactions', _withDistributedId({
         'item_id': itemId,
         'item_type': itemType,
         'color_id': colorId,
@@ -9539,7 +10135,7 @@ class SqlDatabase {
         'transaction_type': transactionType,
         'reference_id': referenceId,
         'created_at': DateTime.now().toIso8601String(),
-      });
+      }));
 
       // 2. Update current stock
       final String where;
@@ -9571,14 +10167,14 @@ class SqlDatabase {
           whereArgs: whereArgs,
         );
       } else {
-        await txn.insert('CurrentStock', {
+        await txn.insert('CurrentStock', _withDistributedId({
           'item_id': itemId,
           'item_type': itemType,
           'color_id': colorId,
           'location_id': locationId,
           'quantity': quantityChange,
           'updated_at': DateTime.now().toIso8601String(),
-        });
+        }));
       }
     });
     CloudSyncService().notifyChange();

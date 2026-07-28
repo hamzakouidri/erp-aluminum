@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:database_data/Screen/selected_systems_screen.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
+import 'package:database_data/Screen/tempered_glass_work_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChooseSysteme extends StatefulWidget {
@@ -57,18 +58,137 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
   }
 
   WindowModel _makeModel({double w = 0, double h = 0, double thickness = 60}) {
-    final m = WindowModel(width: w, height: h, profileThickness: thickness, db: db);
+    final m = WindowModel(
+      width: w,
+      height: h,
+      profileThickness: thickness,
+      db: db,
+    );
     final s = widget.initialSettings;
     if (s != null) {
-      if (s['frameColor'] != null)             m.frameColor             = s['frameColor'];
-      if (s['selectedDbColor'] != null)        m.selectedDbColor        = s['selectedDbColor'];
-      if (s['selectedAccessoryColor'] != null) m.selectedAccessoryColor = s['selectedAccessoryColor'];
-      if (s['hasShutter'] == true)             m.hasShutter             = true;
-      if (s['shutterLame'] != null)            m.shutterLame            = s['shutterLame'];
-      if (s['shutterGlissiere'] != null)       m.shutterGlissiere       = s['shutterGlissiere'];
-      if (s['shutterMechanism'] != null)       m.shutterMechanism       = s['shutterMechanism'];
+      if (s['frameColor'] != null) m.frameColor = s['frameColor'];
+      if (s['selectedDbColor'] != null)
+        m.selectedDbColor = s['selectedDbColor'];
+      if (s['selectedAccessoryColor'] != null)
+        m.selectedAccessoryColor = s['selectedAccessoryColor'];
+      if (s['hasShutter'] == true) m.hasShutter = true;
+      if (s['shutterLame'] != null) m.shutterLame = s['shutterLame'];
+      if (s['shutterGlissiere'] != null)
+        m.shutterGlissiere = s['shutterGlissiere'];
+      if (s['shutterMechanism'] != null)
+        m.shutterMechanism = s['shutterMechanism'];
     }
     return m;
+  }
+
+  List<WindowModel> _moustiquaireModelsFromPayload(
+    Map<String, dynamic> payload,
+  ) {
+    final rawItems = payload['items'];
+    if (rawItems is! List) return const [];
+    final models = <WindowModel>[];
+    for (final rawItem in rawItems) {
+      if (rawItem is! Map) continue;
+      final item = Map<String, dynamic>.from(rawItem);
+      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
+      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
+      if (width <= 0 || height <= 0) continue;
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      final area =
+          (item['areaSqm'] as num?)?.toDouble() ??
+          ((width / 1000) * (height / 1000));
+      final totalArea =
+          (item['totalAreaSqm'] as num?)?.toDouble() ?? area * quantity;
+      final totalPrice = (item['estimatedPrice'] as num?)?.toDouble() ?? 0;
+      final subtype =
+          item['type']?.toString() ?? payload['subType']?.toString() ?? '';
+      final frameColor =
+          item['frameColor']?.toString() ??
+          payload['frameColor']?.toString() ??
+          '';
+      final meshColor =
+          item['meshColor']?.toString() ??
+          payload['meshColor']?.toString() ??
+          '';
+
+      final singlePayload = <String, dynamic>{
+        ...payload,
+        'subType': subtype,
+        'itemsCount': 1,
+        'totalQuantity': quantity,
+        'grandTotalAreaSqm': totalArea,
+        'grandTotalPrice': totalPrice,
+        'widthMm': width,
+        'heightMm': height,
+        'frameColor': frameColor,
+        'meshColor': meshColor,
+        'items': [item],
+      };
+      final model = _makeModel(w: width, h: height);
+      model.isMoustiquaire = true;
+      model.isReplaced = false;
+      model.manualNameOverride = 'Moustiquaire ($subtype)';
+      model.description =
+          'النوع: $subtype | القياس: ${width.toStringAsFixed(0)} × '
+          '${height.toStringAsFixed(0)} mm | الإطار: $frameColor | '
+          'الشبكة: $meshColor';
+      model.quantity = quantity < 1 ? 1 : quantity;
+      model.moustiquairePayload = singlePayload;
+      model.manualPriceOverride = model.quantity > 0
+          ? totalPrice / model.quantity
+          : totalPrice;
+      models.add(model);
+    }
+    return models;
+  }
+
+  List<WindowModel> _glassWorkModelsFromPayload(Map<String, dynamic> payload) {
+    final rawItems = payload['items'];
+    if (rawItems is! List) return const [];
+    final models = <WindowModel>[];
+    for (final rawItem in rawItems) {
+      if (rawItem is! Map) continue;
+      final item = Map<String, dynamic>.from(rawItem);
+      final width = (item['widthMm'] as num?)?.toDouble() ?? 0;
+      final height = (item['heightMm'] as num?)?.toDouble() ?? 0;
+      if (width <= 0 || height <= 0) continue;
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      final area =
+          (item['areaSqm'] as num?)?.toDouble() ??
+          ((width / 1000) * (height / 1000));
+      final unitPrice =
+          (item['unitPrice'] as num?)?.toDouble() ??
+          area * ((item['pricePerSqm'] as num?)?.toDouble() ?? 0);
+      final totalPrice =
+          (item['totalPrice'] as num?)?.toDouble() ?? unitPrice * quantity;
+      final workLabel = payload['workTypeLabel']?.toString() ?? 'عمل زجاجي';
+      final finishLabel = payload['glassFinishLabel']?.toString() ?? 'شفاف';
+      final stickerLabel = payload['stickerLabel']?.toString() ?? 'بدون ستيكر';
+      final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
+      final notes = payload['notes']?.toString() ?? '';
+
+      final singlePayload = <String, dynamic>{
+        ...payload,
+        'itemsCount': 1,
+        'totalQuantity': quantity,
+        'grandTotalAreaSqm': area * quantity,
+        'grandTotalPrice': totalPrice,
+        'items': [item],
+      };
+      final model = _makeModel(w: width, h: height);
+      model.isGlassWork = true;
+      model.isReplaced = false;
+      model.manualNameOverride = 'Verre Trempé - $workLabel';
+      model.description =
+          '$finishLabel ${thickness.toStringAsFixed(0)} mm | $stickerLabel | '
+          '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm'
+          '${notes.isEmpty ? '' : ' | $notes'}';
+      model.quantity = quantity < 1 ? 1 : quantity;
+      model.glassWorkPayload = singlePayload;
+      model.manualPriceOverride = unitPrice;
+      models.add(model);
+    }
+    return models;
   }
 
   @override
@@ -91,7 +211,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['french'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 70,
@@ -104,7 +225,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['mixed'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 60,
@@ -117,7 +239,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['rolling'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 60,
@@ -130,7 +253,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['caisson_tunnel'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 60,
@@ -143,7 +267,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['moustiquaire'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 60,
@@ -156,7 +281,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['precadre'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 60,
@@ -169,12 +295,13 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
 
     if (_activeModes['verre'] ?? true) {
-      if (systemItems.isNotEmpty) systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
+      if (systemItems.isNotEmpty)
+        systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
         ItemBuildSystem(
           width: 60,
           height: 60,
-          title: 'Verre Tremper',
+          title: 'Verre Trempé (أعمال الزجاج)',
           iconPath: 'Icon/verre.png',
           onTap: () => _navigateToSystem(context, 'verre'),
         ),
@@ -185,13 +312,12 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
       appBar: AppBar(
         title: Text(
-          Localization.translate(
-            "نظام الورشة - اختيار النظام",
-            lang,
-          ),
+          Localization.translate("نظام الورشة - اختيار النظام", lang),
         ),
         centerTitle: true,
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        backgroundColor: isDark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -200,7 +326,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
             onPressed: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SelectedSystemsScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const SelectedSystemsScreen(),
+                ),
               );
               _loadActiveModes();
             },
@@ -218,13 +346,14 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.window, color: isDark ? Colors.blue.shade300 : Colors.blue, size: 30),
+                  Icon(
+                    Icons.window,
+                    color: isDark ? Colors.blue.shade300 : Colors.blue,
+                    size: 30,
+                  ),
                   const SizedBox(height: 10),
                   Text(
-                    Localization.translate(
-                      'اختر نظام العمل',
-                      lang,
-                    ),
+                    Localization.translate('اختر نظام العمل', lang),
                     style: TextStyle(
                       fontSize: 22,
                       color: isDark ? Colors.blue.shade300 : Colors.blue,
@@ -236,7 +365,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       'حدد نوع النافذة للبدء في الحسابات',
                       lang,
                     ),
-                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
                   ),
                 ],
               ),
@@ -247,7 +378,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
             // قائمة الأنظمة المحدثة بناءً على الإعدادات النشطة
             if (systemItems.isEmpty)
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 30,
+                ),
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -261,10 +395,17 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                 ),
                 child: Column(
                   children: [
-                    Icon(Icons.info_outline_rounded, size: 48, color: Colors.orange.shade400),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 48,
+                      color: Colors.orange.shade400,
+                    ),
                     const SizedBox(height: 16),
                     Text(
-                      Localization.translate('جميع أنظمة العمل معطلة حالياً بالورشة.', lang),
+                      Localization.translate(
+                        'جميع أنظمة العمل معطلة حالياً بالورشة.',
+                        lang,
+                      ),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Cairo',
@@ -275,7 +416,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      Localization.translate('يمكنك تفعيل الأنظمة التي تستعملها بالضغط على زر الضبط أعلاه.', lang),
+                      Localization.translate(
+                        'يمكنك تفعيل الأنظمة التي تستعملها بالضغط على زر الضبط أعلاه.',
+                        lang,
+                      ),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Cairo',
@@ -288,18 +432,28 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                       ),
                       icon: const Icon(Icons.tune_rounded),
                       label: Text(
                         Localization.translate('تعديل الأنظمة المفعلة', lang),
-                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       onPressed: () async {
                         await Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const SelectedSystemsScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => const SelectedSystemsScreen(),
+                          ),
                         );
                         _loadActiveModes();
                       },
@@ -311,7 +465,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 15),
                 decoration: BoxDecoration(
-                  border: Border.all(width: 1, color: isDark ? Colors.grey.shade800 : Colors.grey),
+                  border: Border.all(
+                    width: 1,
+                    color: isDark ? Colors.grey.shade800 : Colors.grey,
+                  ),
                   color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
@@ -323,9 +480,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: systemItems,
-                ),
+                child: Column(children: systemItems),
               ),
             const SizedBox(height: 500),
           ],
@@ -340,9 +495,12 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         context,
         MaterialPageRoute(builder: (context) => const CaissonTunnelScreen()),
       );
-      if (caissonResult != null && caissonResult is Map<String, dynamic> && context.mounted) {
+      if (caissonResult != null &&
+          caissonResult is Map<String, dynamic> &&
+          context.mounted) {
         final int cBars = (caissonResult['grandTotalCaissonBars'] as int? ?? 0);
-        final int bBars = (caissonResult['grandTotalBottomCoverBars'] as int? ?? 0);
+        final int bBars =
+            (caissonResult['grandTotalBottomCoverBars'] as int? ?? 0);
         final int pairs = (caissonResult['grandTotalPairs'] as int? ?? 0);
 
         // Compute suggested price from DB
@@ -351,8 +509,11 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           final ctPrices = await db.getCaissonTunnelPrices();
           if (ctPrices.isNotEmpty) {
             final priceRow = ctPrices.first;
-            final profileBar = (priceRow['profile_price_per_bar'] as num? ?? 0).toDouble();
-            final bottomBar = (priceRow['bottom_cover_price_per_bar'] as num? ?? 0).toDouble();
+            final profileBar = (priceRow['profile_price_per_bar'] as num? ?? 0)
+                .toDouble();
+            final bottomBar =
+                (priceRow['bottom_cover_price_per_bar'] as num? ?? 0)
+                    .toDouble();
             suggestedPrice = (cBars * profileBar) + (bBars * bottomBar);
           }
         } catch (_) {}
@@ -362,7 +523,8 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         model.isCaissonTunnel = true;
         model.isReplaced = false;
         model.manualNameOverride = 'Caisson Tunnel';
-        model.description = 'Kit: ${caissonResult['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
+        model.description =
+            'Kit: ${caissonResult['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
         model.quantity = 1;
         model.caissonPayload = caissonResult;
         if (suggestedPrice > 0) {
@@ -380,25 +542,22 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         MaterialPageRoute(builder: (context) => const MoustiquaireScreen()),
       );
       if (result != null && result is Map<String, dynamic> && context.mounted) {
-        final double grandTotalArea = (result['grandTotalAreaSqm'] as num? ?? 0.0).toDouble();
-        final double grandTotalPrice = (result['grandTotalPrice'] as num? ?? 0.0).toDouble();
-        final int grandTotalQty = (result['totalQuantity'] as int? ?? 1);
-        final String subType = (result['subType'] as String? ?? 'موستيكير');
-        final double wMm = (result['widthMm'] as num? ?? 1000.0).toDouble();
-        final double hMm = (result['heightMm'] as num? ?? 1200.0).toDouble();
+        final models = _moustiquaireModelsFromPayload(result);
+        if (models.isNotEmpty) Navigator.pop(context, models);
+      }
+      return;
+    }
 
-        final model = _makeModel(w: wMm, h: hMm);
-        model.isMoustiquaire = true;
-        model.isReplaced = false;
-        model.manualNameOverride = 'Moustiquaire ($subType)';
-        model.description = 'النوع: $subType | المساحة: ${grandTotalArea.toStringAsFixed(2)} m² | العدد: $grandTotalQty';
-        model.quantity = 1;
-        model.moustiquairePayload = result;
-        if (grandTotalPrice > 0) {
-          model.manualPriceOverride = grandTotalPrice;
-        }
-
-        Navigator.pop(context, model);
+    if (systemType == 'verre') {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const TemperedGlassWorkScreen(),
+        ),
+      );
+      if (result != null && result is Map<String, dynamic> && context.mounted) {
+        final models = _glassWorkModelsFromPayload(result);
+        if (models.isNotEmpty) Navigator.pop(context, models);
       }
       return;
     }
@@ -425,9 +584,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         );
         break;
       case 'rolling':
-        targetPage = WindowView(
-          model: _makeModel(thickness: 30),
-        );
+        targetPage = WindowView(model: _makeModel(thickness: 30));
         break;
       default:
         targetPage = SystemRoling(model: _makeModel());
@@ -481,7 +638,8 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 15),
           child: Row(
             children: [
-              if (widget.title.toLowerCase().contains('mixed') || widget.title.contains('مختلط'))
+              if (widget.title.toLowerCase().contains('mixed') ||
+                  widget.title.contains('مختلط'))
                 SizedBox(
                   width: widget.width ?? 60,
                   height: widget.height ?? 60,
@@ -497,7 +655,11 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                           'Icon/french.png',
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.image_not_supported, color: Colors.grey, size: 24),
+                              const Icon(
+                                Icons.image_not_supported,
+                                color: Colors.grey,
+                                size: 24,
+                              ),
                         ),
                       ),
                       Positioned(
@@ -509,7 +671,11 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                           'Icon/sli.png',
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.image_not_supported, color: Colors.grey, size: 24),
+                              const Icon(
+                                Icons.image_not_supported,
+                                color: Colors.grey,
+                                size: 24,
+                              ),
                         ),
                       ),
                     ],

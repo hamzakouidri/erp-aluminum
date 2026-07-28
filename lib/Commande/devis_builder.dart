@@ -95,7 +95,7 @@ class DevisData {
   final bool hidePrices;
   final bool isProForma;
   final String? documentTitleKey;
-  
+
   // 🟢 حقول معلومات شركة الزبون الجديدة للفاتورة الرسمية
   final String clientNif;
   final String clientNis;
@@ -153,7 +153,7 @@ class DevisBuilder {
       final prefs = await SharedPreferences.getInstance();
       final localWorkshopName = prefs.getString('workshop_name') ?? 'ورشتي';
       final localWorkshopPhone = prefs.getString('phone') ?? '';
-      
+
       final rc = prefs.getString('workshop_rc') ?? '';
       final nif = prefs.getString('workshop_nif') ?? '';
       final nis = prefs.getString('workshop_nis') ?? '';
@@ -179,7 +179,8 @@ class DevisBuilder {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 5));
       if (!doc.exists) {
         return DevisWorkshopInfo(
           name: localWorkshopName,
@@ -210,10 +211,26 @@ class DevisBuilder {
         nis: data['nis']?.toString() ?? nis,
         ai: data['ai']?.toString() ?? ai,
         rib: data['rib']?.toString() ?? rib,
-        logoBase64: data['workshopLogoUrl']?.toString() ?? data['logoUrl']?.toString() ?? '',
+        logoBase64:
+            data['workshopLogoUrl']?.toString() ??
+            data['logoUrl']?.toString() ??
+            '',
       );
     } catch (_) {
-      return DevisWorkshopInfo.empty;
+      // A document must still open when the phone is offline or Firestore is
+      // slow. Fall back to the workshop information saved on this phone.
+      final prefs = await SharedPreferences.getInstance();
+      return DevisWorkshopInfo(
+        name: prefs.getString('workshop_name') ?? 'ورشتي',
+        phone: prefs.getString('phone') ?? '',
+        address: prefs.getString('workshop_address') ?? '',
+        rc: prefs.getString('workshop_rc') ?? '',
+        nif: prefs.getString('workshop_nif') ?? '',
+        nis: prefs.getString('workshop_nis') ?? '',
+        ai: prefs.getString('workshop_ai') ?? '',
+        rib: prefs.getString('workshop_rib') ?? '',
+        logoBase64: '',
+      );
     }
   }
 
@@ -235,13 +252,21 @@ class DevisBuilder {
     final orderDate = _formatDisplayDate(order);
     final validUntil = _formatValidUntil(order);
 
-    final bool isOfficialInvoice = isProForma || documentTitleKey == 'FACTURE_VENTE' || documentTitleKey == 'BON_ROUTE';
-    final lineItems = items.map((it) => _buildLineItem(it, isOfficialInvoice: isOfficialInvoice)).toList();
+    final bool isOfficialInvoice =
+        isProForma ||
+        documentTitleKey == 'FACTURE_VENTE' ||
+        documentTitleKey == 'BON_ROUTE';
+    final lineItems = items
+        .map((it) => _buildLineItem(it, isOfficialInvoice: isOfficialInvoice))
+        .toList();
     final totalBrut = lineItems.fold<double>(
       0.0,
-      (acc, item) => acc + (item.isReplaced ? 0.0 : item.unitPrice * item.quantity),
+      (acc, item) =>
+          acc + (item.isReplaced ? 0.0 : item.unitPrice * item.quantity),
     );
-    final remise = isOfficialInvoice ? (_toDouble(order['remise']) / 1.19) : _toDouble(order['remise']);
+    final remise = isOfficialInvoice
+        ? (_toDouble(order['remise']) / 1.19)
+        : _toDouble(order['remise']);
     final tvaPercent = isOfficialInvoice ? 19.0 : _toDouble(order['tva']);
     final totalBrutValue = totalBrut;
     final totalBeforeTax = totalBrutValue - remise;
@@ -296,7 +321,9 @@ class DevisBuilder {
     final orderIdVal = order['id'] as int?;
     if (orderIdVal != null) {
       try {
-        priorConfirmedWindowsCount = await db.getPriorConfirmedWindowsCount(orderIdVal);
+        priorConfirmedWindowsCount = await db.getPriorConfirmedWindowsCount(
+          orderIdVal,
+        );
       } catch (e) {
         debugPrint('Error getting prior confirmed windows count: $e');
       }
@@ -335,7 +362,6 @@ class DevisBuilder {
     );
   }
 
-
   static String _formatDisplayDate(Map<String, dynamic> order) {
     return formatOrderDate(
       order['created_at'],
@@ -359,14 +385,24 @@ class DevisBuilder {
     ).format(DateTime.now().add(const Duration(days: 14)));
   }
 
-  static String _formatFace(String finish, String color, String processing, {bool isTempered = false}) {
+  static String _formatFace(
+    String finish,
+    String color,
+    String processing, {
+    bool isTempered = false,
+  }) {
     String res = '';
-    final bool isTemp = processing == 'trempe' || processing == 'tempered' || isTempered;
+    final bool isTemp =
+        processing == 'trempe' || processing == 'tempered' || isTempered;
     if (_currentLang == AppLanguage.french) {
-      if (finish == 'stopSol') res += 'Stop Sol ';
-      else if (finish == 'sable') res += 'Sablé ';
-      else if (finish == 'martle') res += 'Martelé ';
-      else res += 'Clair ';
+      if (finish == 'stopSol')
+        res += 'Stop Sol ';
+      else if (finish == 'sable')
+        res += 'Sablé ';
+      else if (finish == 'martle')
+        res += 'Martelé ';
+      else
+        res += 'Clair ';
 
       if (color != 'transparent' &&
           color != 'white' &&
@@ -375,23 +411,42 @@ class DevisBuilder {
           color.isNotEmpty &&
           color != 'null') {
         switch (color) {
-          case 'blue': res += 'Bleu '; break;
-          case 'blueAgc': res += 'Bleu Belge '; break;
-          case 'green': res += 'Vert '; break;
-          case 'brown': res += 'Marron '; break;
-          case 'gray': res += 'Gris '; break;
-          case 'grayAgc': res += 'Gris Belge '; break;
-          default: res += '$color '; break;
+          case 'blue':
+            res += 'Bleu ';
+            break;
+          case 'blueAgc':
+            res += 'Bleu Belge ';
+            break;
+          case 'green':
+            res += 'Vert ';
+            break;
+          case 'brown':
+            res += 'Marron ';
+            break;
+          case 'gray':
+            res += 'Gris ';
+            break;
+          case 'grayAgc':
+            res += 'Gris Belge ';
+            break;
+          default:
+            res += '$color ';
+            break;
         }
       }
-      if (isTemp) res += 'Trempé ';
-      else if (processing == 'lowE') res += 'Low-E ';
-
+      if (isTemp)
+        res += 'Trempé ';
+      else if (processing == 'lowE')
+        res += 'Low-E ';
     } else if (_currentLang == AppLanguage.english) {
-      if (finish == 'stopSol') res += 'Stop Sol ';
-      else if (finish == 'sable') res += 'Sandblasted ';
-      else if (finish == 'martle') res += 'Hammered ';
-      else res += 'Clear ';
+      if (finish == 'stopSol')
+        res += 'Stop Sol ';
+      else if (finish == 'sable')
+        res += 'Sandblasted ';
+      else if (finish == 'martle')
+        res += 'Hammered ';
+      else
+        res += 'Clear ';
 
       if (color != 'transparent' &&
           color != 'white' &&
@@ -400,23 +455,42 @@ class DevisBuilder {
           color.isNotEmpty &&
           color != 'null') {
         switch (color) {
-          case 'blue': res += 'Blue '; break;
-          case 'blueAgc': res += 'Belgian Blue '; break;
-          case 'green': res += 'Green '; break;
-          case 'brown': res += 'Brown '; break;
-          case 'gray': res += 'Grey '; break;
-          case 'grayAgc': res += 'Belgian Grey '; break;
-          default: res += '$color '; break;
+          case 'blue':
+            res += 'Blue ';
+            break;
+          case 'blueAgc':
+            res += 'Belgian Blue ';
+            break;
+          case 'green':
+            res += 'Green ';
+            break;
+          case 'brown':
+            res += 'Brown ';
+            break;
+          case 'gray':
+            res += 'Grey ';
+            break;
+          case 'grayAgc':
+            res += 'Belgian Grey ';
+            break;
+          default:
+            res += '$color ';
+            break;
         }
       }
-      if (isTemp) res += 'Tempered ';
-      else if (processing == 'lowE') res += 'Low-E ';
-
+      if (isTemp)
+        res += 'Tempered ';
+      else if (processing == 'lowE')
+        res += 'Low-E ';
     } else {
-      if (finish == 'stopSol') res += 'عاكس (Stop Sol) ';
-      else if (finish == 'sable') res += 'رملي (Sablé) ';
-      else if (finish == 'martle') res += 'مطرّق (Martelé) ';
-      else res += 'شفاف ';
+      if (finish == 'stopSol')
+        res += 'عاكس (Stop Sol) ';
+      else if (finish == 'sable')
+        res += 'رملي (Sablé) ';
+      else if (finish == 'martle')
+        res += 'مطرّق (Martelé) ';
+      else
+        res += 'شفاف ';
 
       if (color != 'transparent' &&
           color != 'white' &&
@@ -425,17 +499,33 @@ class DevisBuilder {
           color.isNotEmpty &&
           color != 'null') {
         switch (color) {
-          case 'blue': res += 'أزرق '; break;
-          case 'blueAgc': res += 'أزرق بلجيكي '; break;
-          case 'green': res += 'أخضر '; break;
-          case 'brown': res += 'بني '; break;
-          case 'gray': res += 'رمادي '; break;
-          case 'grayAgc': res += 'رمادي بلجيكي '; break;
-          default: res += '$color '; break;
+          case 'blue':
+            res += 'أزرق ';
+            break;
+          case 'blueAgc':
+            res += 'أزرق بلجيكي ';
+            break;
+          case 'green':
+            res += 'أخضر ';
+            break;
+          case 'brown':
+            res += 'بني ';
+            break;
+          case 'gray':
+            res += 'رمادي ';
+            break;
+          case 'grayAgc':
+            res += 'رمادي بلجيكي ';
+            break;
+          default:
+            res += '$color ';
+            break;
         }
       }
-      if (isTemp) res += 'مقص ';
-      else if (processing == 'lowE') res += 'Low-E ';
+      if (isTemp)
+        res += 'مقص ';
+      else if (processing == 'lowE')
+        res += 'Low-E ';
     }
     return res.trim();
   }
@@ -445,7 +535,10 @@ class DevisBuilder {
     if (trimmed.isEmpty) return true;
 
     // Remove any bullet points, numbers, dashes, or spaces from start of string
-    final cleanLine = trimmed.replaceFirst(RegExp(r'^[\s\-\*\•\d\.\:\)\(]+'), '');
+    final cleanLine = trimmed.replaceFirst(
+      RegExp(r'^[\s\-\*\•\d\.\:\)\(]+'),
+      '',
+    );
 
     final prefixes = [
       'système',
@@ -515,9 +608,10 @@ class DevisBuilder {
     return false;
   }
 
-
-
-  static DevisLineItem _buildLineItem(Map<String, dynamic> item, {bool isOfficialInvoice = false}) {
+  static DevisLineItem _buildLineItem(
+    Map<String, dynamic> item, {
+    bool isOfficialInvoice = false,
+  }) {
     final type = item['window_type']?.toString();
     final details = <String>[];
     final double rawPrice = _toDouble(item['price']);
@@ -542,15 +636,21 @@ class DevisBuilder {
     }
 
     final itemColor = item['color']?.toString();
-    final itemRawProfColor = map['selectedDbColor']?['name']?.toString() ?? _colorLabel(itemColor ?? '');
-    final itemProfColor = Localization.translate(itemRawProfColor, _currentLang);
+    final itemRawProfColor =
+        map['selectedDbColor']?['name']?.toString() ??
+        _colorLabel(itemColor ?? '');
+    final itemProfColor = Localization.translate(
+      itemRawProfColor,
+      _currentLang,
+    );
     final detailId = item['id'] as int? ?? 0;
 
     final seriesName = map['seriesName'];
     final profileName = map['profileName'];
     final manualDesc = map['description']?.toString();
     final gameName = item['game']?.toString();
-    final bool isShutterOnly = map['isShutterOnly'] == true ||
+    final bool isShutterOnly =
+        map['isShutterOnly'] == true ||
         type?.toLowerCase().contains('volet') == true ||
         type?.toLowerCase().contains('shutter') == true ||
         type?.contains('ستار') == true ||
@@ -564,8 +664,17 @@ class DevisBuilder {
       systemType = 'Volet roulant';
     } else if (map['zones'] != null && (map['zones'] as List).isNotEmpty) {
       final zonesList = map['zones'] as List;
-      final isDoor = zonesList.any((z) => z is Map && (z['lockType']?.toString() == 'clef' || z['lockType']?.toString() == 'condamnation' || z['lockType']?.toString() == 'LockType.clef' || z['lockType']?.toString() == 'LockType.condamnation'));
-      final hasDoubleSash = zonesList.any((z) => z is Map && z['content']?.toString() == 'doubleSash');
+      final isDoor = zonesList.any(
+        (z) =>
+            z is Map &&
+            (z['lockType']?.toString() == 'clef' ||
+                z['lockType']?.toString() == 'condamnation' ||
+                z['lockType']?.toString() == 'LockType.clef' ||
+                z['lockType']?.toString() == 'LockType.condamnation'),
+      );
+      final hasDoubleSash = zonesList.any(
+        (z) => z is Map && z['content']?.toString() == 'doubleSash',
+      );
       if (hasDoubleSash) {
         if (isDoor) {
           if (_currentLang == AppLanguage.french) {
@@ -585,7 +694,9 @@ class DevisBuilder {
           }
         }
       } else {
-        final hasSlidingSash = zonesList.any((z) => z is Map && z['content']?.toString() == 'slidingSash');
+        final hasSlidingSash = zonesList.any(
+          (z) => z is Map && z['content']?.toString() == 'slidingSash',
+        );
         if (hasSlidingSash) {
           if (_currentLang == AppLanguage.french) {
             systemType = 'Fenêtre coulissante';
@@ -595,7 +706,9 @@ class DevisBuilder {
             systemType = 'نافذة منزلقة';
           }
         } else {
-          final hasSingleSash = zonesList.any((z) => z is Map && z['content']?.toString() == 'singleSash');
+          final hasSingleSash = zonesList.any(
+            (z) => z is Map && z['content']?.toString() == 'singleSash',
+          );
           if (hasSingleSash) {
             if (isDoor) {
               if (_currentLang == AppLanguage.french) {
@@ -623,23 +736,33 @@ class DevisBuilder {
         ? gameName.trim()
         : (seriesName ?? profileName ?? '');
 
-    final bool isCaissonTunnel = map['isCaissonTunnel'] == true ||
+    final bool isCaissonTunnel =
+        map['isCaissonTunnel'] == true ||
         (item['game']?.toString().contains('Caisson Tunnel') == true) ||
         (displaySeries.toLowerCase().contains('caisson tunnel'));
 
-    final bool isMoustiquaire = map['isMoustiquaire'] == true ||
+    final bool isMoustiquaire =
+        map['isMoustiquaire'] == true ||
         (item['game']?.toString().contains('Moustiquaire') == true) ||
         (item['game']?.toString().contains('موستيكير') == true) ||
         (displaySeries.toLowerCase().contains('moustiquaire')) ||
         (displaySeries.contains('موستيكير')) ||
         (displaySeries.contains('ناموسية'));
+    final bool isGlassWork =
+        map['isGlassWork'] == true ||
+        (item['game']?.toString().contains('Verre Trempé') == true) ||
+        displaySeries.toLowerCase().contains('verre trempé') ||
+        displaySeries.toLowerCase().contains('verre trempe') ||
+        displaySeries.contains('عمل زجاجي');
 
     // Build DevisLineItem Title
-    final String title;
+    String title;
     if (isCaissonTunnel) {
       title = 'Caisson Tunnel';
     } else if (isMoustiquaire) {
       title = 'Moustiquaire (موستيكير)';
+    } else if (isGlassWork) {
+      title = displaySeries.isEmpty ? 'Verre Trempé' : displaySeries;
     } else if (isShutterOnly) {
       title = 'Volet roulant';
     } else {
@@ -647,10 +770,10 @@ class DevisBuilder {
         final cleanSeries = displaySeries.trim();
         final lowerSeries = cleanSeries.toLowerCase();
         final lowerSystem = systemType.toLowerCase();
-        if (lowerSeries.contains(lowerSystem) || 
-            lowerSeries.contains('fenêtre') || 
-            lowerSeries.contains('fenetre') || 
-            lowerSeries.contains('window') || 
+        if (lowerSeries.contains(lowerSystem) ||
+            lowerSeries.contains('fenêtre') ||
+            lowerSeries.contains('fenetre') ||
+            lowerSeries.contains('window') ||
             lowerSeries.contains('نافذة')) {
           title = cleanSeries;
         } else {
@@ -661,6 +784,14 @@ class DevisBuilder {
       }
     }
 
+    if (map['invoiceTableEdited'] == true ||
+        map['invoiceTableEdited']?.toString().toLowerCase() == 'true') {
+      final editedTitle = map['manualNameOverride']?.toString().trim() ?? '';
+      if (editedTitle.isNotEmpty) {
+        title = editedTitle;
+      }
+    }
+
     final width = map['width'] != null
         ? (double.tryParse(map['width'].toString())?.toInt() ?? 0)
         : (double.tryParse(item['largeur']?.toString() ?? '0')?.toInt() ?? 0);
@@ -668,16 +799,42 @@ class DevisBuilder {
         ? (double.tryParse(map['height'].toString())?.toInt() ?? 0)
         : (double.tryParse(item['hauteur']?.toString() ?? '0')?.toInt() ?? 0);
 
-    final isReplaced = (map['isReplaced'] == true || map['isReplaced']?.toString().toLowerCase() == 'true');
+    final isReplaced =
+        (map['isReplaced'] == true ||
+        map['isReplaced']?.toString().toLowerCase() == 'true');
     final replacementReason = map['replacementReason']?.toString() ?? '';
+
+    final invoiceTableEdited =
+        map['invoiceTableEdited'] == true ||
+        map['invoiceTableEdited']?.toString().toLowerCase() == 'true';
+    if (invoiceTableEdited) {
+      final exactDetails = (manualDesc ?? '')
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .toList(growable: false);
+      return DevisLineItem(
+        imagePath: item['drawing_image_path']?.toString(),
+        title: title,
+        details: exactDetails,
+        unitPrice: unitPrice,
+        quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+        isReplaced: isReplaced,
+        replacementReason: replacementReason,
+        width: width,
+        height: height,
+        color: itemProfColor,
+        detailId: detailId,
+      );
+    }
 
     // ── Caisson Tunnel: build details from caissonPayload ──────────────────
     if (isCaissonTunnel) {
-
       final payload = (map['caissonPayload'] is Map)
           ? (map['caissonPayload'] as Map<String, dynamic>)
           : map;
-      final kitTypeStr = payload['kitType']?.toString() ?? map['kitType']?.toString() ?? '';
+      final kitTypeStr =
+          payload['kitType']?.toString() ?? map['kitType']?.toString() ?? '';
       final kitLabel = kitTypeStr.isNotEmpty ? kitTypeStr : 'Kit 11 (+11cm)';
       final rawItems = payload['items'] as List?;
 
@@ -692,14 +849,25 @@ class DevisBuilder {
             final int szCm = (it['sizeCm'] as num? ?? 25).toInt();
             final int qty = (it['quantity'] as num? ?? 1).toInt();
             final String lenStr = (lenMm / 10.0).toStringAsFixed(0);
-            details.add('Caisson N°${i + 1}: Dimension: ${lenStr} cm | Diamètre Caisson: ${szCm} cm | Qty: $qty');
+            details.add(
+              'Caisson N°${i + 1}: Dimension: ${lenStr} cm | Diamètre Caisson: ${szCm} cm | Qty: $qty',
+            );
           }
         }
       } else {
-        final grandBars = payload['grandTotalCaissonBars'] ?? map['grandTotalCaissonBars'] ?? 0;
-        final grandBottom = payload['grandTotalBottomCoverBars'] ?? map['grandTotalBottomCoverBars'] ?? 0;
-        final grandPairs = payload['grandTotalPairs'] ?? map['grandTotalPairs'] ?? 0;
-        details.add('Barres Caisson: $grandBars | Fond: $grandBottom | Paires: $grandPairs');
+        final grandBars =
+            payload['grandTotalCaissonBars'] ??
+            map['grandTotalCaissonBars'] ??
+            0;
+        final grandBottom =
+            payload['grandTotalBottomCoverBars'] ??
+            map['grandTotalBottomCoverBars'] ??
+            0;
+        final grandPairs =
+            payload['grandTotalPairs'] ?? map['grandTotalPairs'] ?? 0;
+        details.add(
+          'Barres Caisson: $grandBars | Fond: $grandBottom | Paires: $grandPairs',
+        );
       }
 
       return DevisLineItem(
@@ -726,7 +894,9 @@ class DevisBuilder {
 
       details.clear();
       final subTypeStr = payload['subType']?.toString() ?? 'موستيكير';
-      final itemColorStr = (payload['frameColor']?.toString() != null && payload['frameColor']!.toString().isNotEmpty)
+      final itemColorStr =
+          (payload['frameColor']?.toString() != null &&
+              payload['frameColor']!.toString().isNotEmpty)
           ? payload['frameColor']!.toString()
           : itemProfColor;
 
@@ -737,17 +907,24 @@ class DevisBuilder {
             final double wMm = (it['widthMm'] as num? ?? 0.0).toDouble();
             final double hMm = (it['heightMm'] as num? ?? 0.0).toDouble();
             final int qty = (it['quantity'] as num? ?? 1).toInt();
-            final double area = (it['totalAreaSqm'] as num? ?? (wMm * hMm / 1000000.0 * qty)).toDouble();
+            final double area =
+                (it['totalAreaSqm'] as num? ?? (wMm * hMm / 1000000.0 * qty))
+                    .toDouble();
             final String wStr = (wMm / 10.0).toStringAsFixed(0);
             final String hStr = (hMm / 10.0).toStringAsFixed(0);
             final String fColor = it['frameColor']?.toString() ?? itemColorStr;
-            details.add('Moustiquaire N°${i + 1}: القياس: $wStr × $hStr سم | المساحة: ${area.toStringAsFixed(2)} m² | اللون: $fColor | العدد: $qty');
+            details.add(
+              'Moustiquaire N°${i + 1}: القياس: $wStr × $hStr سم | المساحة: ${area.toStringAsFixed(2)} m² | اللون: $fColor | العدد: $qty',
+            );
           }
         }
       } else {
-        final totalArea = (payload['grandTotalAreaSqm'] as num? ?? 0.0).toDouble();
+        final totalArea = (payload['grandTotalAreaSqm'] as num? ?? 0.0)
+            .toDouble();
         final totalQty = (payload['totalQuantity'] as num? ?? 1).toInt();
-        details.add('النوع: $subTypeStr | المساحة الكلية: ${totalArea.toStringAsFixed(2)} m² | اللون: $itemColorStr | العدد: $totalQty');
+        details.add(
+          'النوع: $subTypeStr | المساحة الكلية: ${totalArea.toStringAsFixed(2)} m² | اللون: $itemColorStr | العدد: $totalQty',
+        );
       }
 
       return DevisLineItem(
@@ -761,6 +938,49 @@ class DevisBuilder {
         width: width,
         height: height,
         color: itemColorStr,
+        detailId: detailId,
+      );
+    }
+
+    // ── Verre trempé: every measurement is already an independent line ──
+    if (isGlassWork) {
+      final payload = (map['glassWorkPayload'] is Map)
+          ? Map<String, dynamic>.from(map['glassWorkPayload'] as Map)
+          : map;
+      final workType =
+          payload['workTypeLabel']?.toString() ??
+          item['window_type']?.toString() ??
+          'عمل زجاجي';
+      final finish =
+          payload['glassFinishLabel']?.toString() ??
+          item['glass']?.toString() ??
+          'شفاف';
+      final thickness = (payload['thicknessMm'] as num?)?.toDouble() ?? 10;
+      final sticker =
+          payload['stickerLabel']?.toString() ??
+          item['color']?.toString() ??
+          'بدون ستيكر';
+      final notes = payload['notes']?.toString() ?? '';
+
+      details.clear();
+      details.add('نوع العمل: $workType');
+      details.add(
+        'الزجاج: $finish ${thickness.toStringAsFixed(0)} mm | $sticker',
+      );
+      details.add('القياس: $width × $height mm');
+      if (notes.trim().isNotEmpty) details.add(notes.trim());
+
+      return DevisLineItem(
+        imagePath: item['drawing_image_path']?.toString(),
+        title: title,
+        details: details,
+        unitPrice: unitPrice,
+        quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+        isReplaced: isReplaced,
+        replacementReason: replacementReason,
+        width: width,
+        height: height,
+        color: sticker,
         detailId: detailId,
       );
     }
@@ -793,7 +1013,8 @@ class DevisBuilder {
         final cleanLine = line.trim();
         if (cleanLine.isEmpty) continue;
         final lower = cleanLine.toLowerCase();
-        final isDefault = lower.startsWith('gamme:') ||
+        final isDefault =
+            lower.startsWith('gamme:') ||
             lower.startsWith('series:') ||
             lower.startsWith('القطاع:') ||
             lower.startsWith('السلسلة:') ||
@@ -857,7 +1078,10 @@ class DevisBuilder {
     }
 
     // 2. Gamme / Profile Name
-    final translatedSeries = Localization.translate(displaySeries, _currentLang);
+    final translatedSeries = Localization.translate(
+      displaySeries,
+      _currentLang,
+    );
     if (_currentLang == AppLanguage.french) {
       details.add('Gamme: $translatedSeries');
     } else if (_currentLang == AppLanguage.english) {
@@ -878,24 +1102,38 @@ class DevisBuilder {
     }
 
     // 4. Handle Height (Hauteur Poignée) - placed right under height (window only)
-    if (!isShutterOnly && map['zones'] != null && (map['zones'] as List).isNotEmpty) {
+    if (!isShutterOnly &&
+        map['zones'] != null &&
+        (map['zones'] as List).isNotEmpty) {
       final allSashZones = (map['zones'] as List)
-          .where((z) => (z['content']?.toString() ?? '').toLowerCase().contains('sash'))
+          .where(
+            (z) =>
+                (z['content']?.toString() ?? '').toLowerCase().contains('sash'),
+          )
           .toList();
       if (allSashZones.isNotEmpty) {
         final z = allSashZones.first;
         final bool useOcto = z['useOctoHandle'] == true;
-        final String openDir = (z['openDirection']?.toString() ?? '').toLowerCase();
-        final bool showHandleHeight = !useOcto && (openDir == 'left' || openDir == 'right');
+        final String openDir = (z['openDirection']?.toString() ?? '')
+            .toLowerCase();
+        final bool showHandleHeight =
+            !useOcto && (openDir == 'left' || openDir == 'right');
 
         if (showHandleHeight) {
-          final ratio = double.tryParse(z['handlePositionRatio']?.toString() ?? '0.5') ?? 0.5;
+          final ratio =
+              double.tryParse(z['handlePositionRatio']?.toString() ?? '0.5') ??
+              0.5;
           final boundaryMap = z['boundary'];
           double boundaryTop = 0.0;
           double boundaryHeight = height.toDouble();
           if (boundaryMap != null) {
-            boundaryTop = double.tryParse(boundaryMap['top']?.toString() ?? '0.0') ?? 0.0;
-            boundaryHeight = double.tryParse(boundaryMap['height']?.toString() ?? height.toString()) ?? height.toDouble();
+            boundaryTop =
+                double.tryParse(boundaryMap['top']?.toString() ?? '0.0') ?? 0.0;
+            boundaryHeight =
+                double.tryParse(
+                  boundaryMap['height']?.toString() ?? height.toString(),
+                ) ??
+                height.toDouble();
           }
           final handleY = boundaryTop + boundaryHeight * (1.0 - ratio);
           final handleH = (height - handleY).toInt();
@@ -913,7 +1151,9 @@ class DevisBuilder {
 
     // 5. Glass / Vitrage Details (window only - not for standalone shutters)
     final allGlassSpecs = <Map<String, dynamic>>[];
-    if (!isShutterOnly && map['zones'] != null && (map['zones'] as List).isNotEmpty) {
+    if (!isShutterOnly &&
+        map['zones'] != null &&
+        (map['zones'] as List).isNotEmpty) {
       for (final z in (map['zones'] as List)) {
         if (z == null || z is! Map) continue;
         if (z['glass'] != null) {
@@ -932,15 +1172,20 @@ class DevisBuilder {
     final glassLines = <String>[];
     final uniqueSpecs = <String>{};
     for (final g in allGlassSpecs) {
-      final structure = g['structure']?.toString().toLowerCase().trim() ?? 'single';
+      final structure =
+          g['structure']?.toString().toLowerCase().trim() ?? 'single';
       final double tOutVal = (g['thicknessOuter'] as num?)?.toDouble() ?? 6.0;
       final double tInVal = (g['thicknessInner'] as num?)?.toDouble() ?? 4.0;
       final int tInterVal = (g['intercallThickness'] as num?)?.toInt() ?? 16;
-      final String fOutVal = g['finishOuter']?.toString().toLowerCase().trim() ?? '';
-      final String cOutVal = g['colorOuter']?.toString().toLowerCase().trim() ?? '';
-      final String pOutVal = g['processingOuter']?.toString().toLowerCase().trim() ?? '';
+      final String fOutVal =
+          g['finishOuter']?.toString().toLowerCase().trim() ?? '';
+      final String cOutVal =
+          g['colorOuter']?.toString().toLowerCase().trim() ?? '';
+      final String pOutVal =
+          g['processingOuter']?.toString().toLowerCase().trim() ?? '';
       final bool tempOutVal = g['temperedOuter'] as bool? ?? false;
-      final String key = '${structure}_${tOutVal}_${tInVal}_${tInterVal}_${fOutVal}_${cOutVal}_${pOutVal}_${tempOutVal}';
+      final String key =
+          '${structure}_${tOutVal}_${tInVal}_${tInterVal}_${fOutVal}_${cOutVal}_${pOutVal}_${tempOutVal}';
 
       if (uniqueSpecs.contains(key)) continue;
       uniqueSpecs.add(key);
@@ -950,7 +1195,8 @@ class DevisBuilder {
         final tIn = tInVal;
         final tInter = tInterVal;
         final totalT = (tOut + tIn + tInter).toStringAsFixed(0);
-        final tStr = '${tOut.toStringAsFixed(0)}+${tInter}+${tIn.toStringAsFixed(0)}';
+        final tStr =
+            '${tOut.toStringAsFixed(0)}+${tInter}+${tIn.toStringAsFixed(0)}';
 
         final outF = _formatFace(
           g['finishOuter']?.toString() ?? '',
@@ -1028,8 +1274,8 @@ class DevisBuilder {
           final glassStr = _currentLang == AppLanguage.french
               ? 'Vitrage: ${_glassLabel(glass)}'
               : _currentLang == AppLanguage.english
-                  ? 'Glass: ${_glassLabel(glass)}'
-                  : 'الزجاج: ${_glassLabel(glass)}';
+              ? 'Glass: ${_glassLabel(glass)}'
+              : 'الزجاج: ${_glassLabel(glass)}';
           if (!details.contains(glassStr)) {
             details.add(glassStr);
           }
@@ -1041,7 +1287,9 @@ class DevisBuilder {
     int totalRosettes = 0;
     bool hasBaguetteDecor = false;
     String? decorColorName;
-    if (!isShutterOnly && map['zones'] != null && (map['zones'] as List).isNotEmpty) {
+    if (!isShutterOnly &&
+        map['zones'] != null &&
+        (map['zones'] as List).isNotEmpty) {
       for (final z in (map['zones'] as List)) {
         if (z == null || z is! Map) continue;
         int zonePieces = 1;
@@ -1052,7 +1300,7 @@ class DevisBuilder {
           final sCount = (z['slidingSashesCount'] as num?)?.toInt() ?? 2;
           zonePieces = sCount;
         }
-        
+
         if (z['cellGlassSpec'] != null && z['cellGlassSpec'] is Map) {
           (z['cellGlassSpec'] as Map).forEach((k, v) {
             if (v != null && v is Map) {
@@ -1106,11 +1354,17 @@ class DevisBuilder {
 
     if (totalRosettes > 0) {
       if (_currentLang == AppLanguage.french) {
-        details.add('Décor vitrage: ${formatDecorColor(decorColorName)} ($totalRosettes rosettes par fenêtre)');
+        details.add(
+          'Décor vitrage: ${formatDecorColor(decorColorName)} ($totalRosettes rosettes par fenêtre)',
+        );
       } else if (_currentLang == AppLanguage.english) {
-        details.add('Glass decor: ${formatDecorColor(decorColorName)} ($totalRosettes rosettes per window)');
+        details.add(
+          'Glass decor: ${formatDecorColor(decorColorName)} ($totalRosettes rosettes per window)',
+        );
       } else {
-        details.add('ديكور الزجاج: ${formatDecorColor(decorColorName)} ($totalRosettes ورادة في النافذة)');
+        details.add(
+          'ديكور الزجاج: ${formatDecorColor(decorColorName)} ($totalRosettes ورادة في النافذة)',
+        );
       }
     } else if (hasBaguetteDecor) {
       if (_currentLang == AppLanguage.french) {
@@ -1124,9 +1378,11 @@ class DevisBuilder {
 
     // 6. Colors (Profile Color & Accessory Color & Shutter Color)
     final color = item['color']?.toString();
-    final rawProfColor = map['selectedDbColor']?['name']?.toString() ?? _colorLabel(color ?? '');
-    final rawAccColor = map['selectedAccessoryColor']?['name']?.toString() ?? rawProfColor;
-    
+    final rawProfColor =
+        map['selectedDbColor']?['name']?.toString() ?? _colorLabel(color ?? '');
+    final rawAccColor =
+        map['selectedAccessoryColor']?['name']?.toString() ?? rawProfColor;
+
     final profColor = Localization.translate(rawProfColor, _currentLang);
     final accColor = Localization.translate(rawAccColor, _currentLang);
 
@@ -1151,15 +1407,23 @@ class DevisBuilder {
     }
 
     // 7. Couvre Joint (Side Covers) - window only, not for standalone shutters
-    final bool isIntegrated = map['isIntegratedFrame'] == true ||
-        (map['frameOverride'] != null && map['frameOverride']['code']?.toString() == '103');
-    final bool showCover = !isShutterOnly && (!isIntegrated || map['hasSideCovers'] == true);
+    final bool isIntegrated =
+        map['isIntegratedFrame'] == true ||
+        (map['frameOverride'] != null &&
+            map['frameOverride']['code']?.toString() == '103');
+    final bool showCover =
+        !isShutterOnly && (!isIntegrated || map['hasSideCovers'] == true);
     if (showCover) {
-      final removedSides = (map['removedShutterSides'] as List?)?.map((e) => e.toString().toLowerCase()).toList() ?? [];
+      final removedSides =
+          (map['removedShutterSides'] as List?)
+              ?.map((e) => e.toString().toLowerCase())
+              .toList() ??
+          [];
       final hasL = !removedSides.contains('left');
       final hasR = !removedSides.contains('right');
       final hasT = !removedSides.contains('top');
-      final hasB = !removedSides.contains('bottom') && map['hasBottomFrame'] == true;
+      final hasB =
+          !removedSides.contains('bottom') && map['hasBottomFrame'] == true;
 
       final activeSides = <String>[];
       if (_currentLang == AppLanguage.french) {
@@ -1184,7 +1448,9 @@ class DevisBuilder {
     }
 
     // 8. Fermeture (Closure) & Montant (Ouvrant) details - window only
-    final bool isPVC = (seriesName?.toString().toLowerCase().contains('pvc') ?? false) || (gameName?.toLowerCase().contains('pvc') ?? false);
+    final bool isPVC =
+        (seriesName?.toString().toLowerCase().contains('pvc') ?? false) ||
+        (gameName?.toLowerCase().contains('pvc') ?? false);
     bool useEntrematique = false;
     bool hasKeyLock = false;
     bool hasSliding = false;
@@ -1192,7 +1458,9 @@ class DevisBuilder {
     bool hasCentralSimple = false;
     bool hasLateralReinforced = false;
 
-    if (!isShutterOnly && map['zones'] != null && (map['zones'] as List).isNotEmpty) {
+    if (!isShutterOnly &&
+        map['zones'] != null &&
+        (map['zones'] as List).isNotEmpty) {
       for (final z in (map['zones'] as List)) {
         if (z == null || z is! Map) continue;
         final content = z['content']?.toString() ?? '';
@@ -1211,7 +1479,8 @@ class DevisBuilder {
           final reinforcedMap = z['slidingMontantReinforced'] as Map?;
           if (reinforcedMap != null) {
             // Check lateral
-            if (reinforcedMap['lateral_0'] == true || reinforcedMap['lateral_1'] == true) {
+            if (reinforcedMap['lateral_0'] == true ||
+                reinforcedMap['lateral_1'] == true) {
               hasLateralReinforced = true;
             }
             // Check central (central_0, central_1, etc.)
@@ -1244,7 +1513,9 @@ class DevisBuilder {
     }
 
     if (!isShutterOnly) {
-      String fermetureVal = useEntrematique ? 'entrematique' : 'poignée espagnole';
+      String fermetureVal = useEntrematique
+          ? 'entrematique'
+          : 'poignée espagnole';
 
       if (_currentLang == AppLanguage.french) {
         details.add('Fermeture: $fermetureVal');
@@ -1257,19 +1528,31 @@ class DevisBuilder {
       // 9. Montant lateral / central renforcé or simple
       if (hasSliding) {
         if (_currentLang == AppLanguage.french) {
-          details.add('Montant latéral: ${hasLateralReinforced ? "renforcé" : "simple"}');
+          details.add(
+            'Montant latéral: ${hasLateralReinforced ? "renforcé" : "simple"}',
+          );
           if (hasCentralReinforced || hasCentralSimple) {
-            details.add('Montant central: ${hasCentralReinforced ? "renforcé" : "simple"}');
+            details.add(
+              'Montant central: ${hasCentralReinforced ? "renforcé" : "simple"}',
+            );
           }
         } else if (_currentLang == AppLanguage.english) {
-          details.add('Lateral montant: ${hasLateralReinforced ? "reinforced" : "simple"}');
+          details.add(
+            'Lateral montant: ${hasLateralReinforced ? "reinforced" : "simple"}',
+          );
           if (hasCentralReinforced || hasCentralSimple) {
-            details.add('Central montant: ${hasCentralReinforced ? "reinforced" : "simple"}');
+            details.add(
+              'Central montant: ${hasCentralReinforced ? "reinforced" : "simple"}',
+            );
           }
         } else {
-          details.add('مقطع جانبي (Montant latéral): ${hasLateralReinforced ? "مدعم" : "عادي"}');
+          details.add(
+            'مقطع جانبي (Montant latéral): ${hasLateralReinforced ? "مدعم" : "عادي"}',
+          );
           if (hasCentralReinforced || hasCentralSimple) {
-            details.add('مقطع وسطي (Montant central): ${hasCentralReinforced ? "مدعم" : "عادي"}');
+            details.add(
+              'مقطع وسطي (Montant central): ${hasCentralReinforced ? "مدعم" : "عادي"}',
+            );
           }
         }
       }
@@ -1325,11 +1608,17 @@ class DevisBuilder {
       final bool isTunnel = map['isCaissonTunnel'] == true;
       final bool isIntView = map['isInternalView'] == true;
       if (_currentLang == AppLanguage.french) {
-        details.add('Coffre: ${isTunnel ? "Tunnel" : (isIntView ? "Intérieur" : "Extérieur")}');
+        details.add(
+          'Coffre: ${isTunnel ? "Tunnel" : (isIntView ? "Intérieur" : "Extérieur")}',
+        );
       } else if (_currentLang == AppLanguage.english) {
-        details.add('Box: ${isTunnel ? "Tunnel" : (isIntView ? "Interior" : "Exterior")}');
+        details.add(
+          'Box: ${isTunnel ? "Tunnel" : (isIntView ? "Interior" : "Exterior")}',
+        );
       } else {
-        details.add('الصندوق (Coffre): ${isTunnel ? "نفق (Tunnel)" : (isIntView ? "داخلي" : "خارجي")}');
+        details.add(
+          'الصندوق (Coffre): ${isTunnel ? "نفق (Tunnel)" : (isIntView ? "داخلي" : "خارجي")}',
+        );
       }
 
       if (map['shutterGlissiere'] != null) {
@@ -1360,8 +1649,6 @@ class DevisBuilder {
       }
     }
 
-
-
     if (customLines.isNotEmpty) {
       details.addAll(customLines);
     }
@@ -1388,7 +1675,11 @@ class DevisBuilder {
       if (_currentLang == AppLanguage.english) return 'Sliding system';
       return 'نظام منزلق';
     }
-    if (value.contains('rolling') || value.contains('roulant') || value.contains('volet') || value.contains('shutter') || value.contains('ستار')) {
+    if (value.contains('rolling') ||
+        value.contains('roulant') ||
+        value.contains('volet') ||
+        value.contains('shutter') ||
+        value.contains('ستار')) {
       if (_currentLang == AppLanguage.french) return 'Volet roulant';
       if (_currentLang == AppLanguage.english) return 'Rolling shutter';
       return 'ستار رولان (Volet roulant)';

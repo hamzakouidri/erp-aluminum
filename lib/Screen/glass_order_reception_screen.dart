@@ -491,7 +491,7 @@ class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
             // إنشاء بطاقة جديدة تحتها بالكمية المتبقية (غير مستلمة بعد)
             final remainingQty = totalQty - currentReceived;
             final newItem = Map<String, dynamic>.from(item);
-            newItem.remove('id');
+            newItem['id'] = widget.db.createDistributedId();
             newItem['nbr'] = remainingQty;
             newItem['quantity'] = remainingQty;
             newItem['glass_received_qty'] = 0;
