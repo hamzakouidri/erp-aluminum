@@ -78,17 +78,25 @@ class _CustomersState extends State<Customers> {
     return TextSpan(children: spans);
   }
 
+  List<Map<String, dynamic>>? _cachedClients;
+
   @override
   void initState() {
     super.initState();
-    _data = db.readClient();
+    _refreshData();
   }
 
   void _refreshData() {
-    setState(() {
-      _data = _searchQuery.isEmpty
-          ? db.readClient()
-          : db.searchClient(_searchQuery);
+    final future = _searchQuery.isEmpty
+        ? db.readClient()
+        : db.searchClient(_searchQuery);
+    _data = future.then((list) {
+      if (mounted) {
+        setState(() {
+          _cachedClients = list;
+        });
+      }
+      return list;
     });
   }
 
@@ -253,11 +261,15 @@ class _CustomersState extends State<Customers> {
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _data,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.hasData) {
+                    _cachedClients = snapshot.data;
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting && _cachedClients == null) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  if (snapshot.hasError) {
+                  if (snapshot.hasError && _cachedClients == null) {
                     return Center(
                       child: SingleChildScrollView(
                         child: Padding(
@@ -340,7 +352,9 @@ class _CustomersState extends State<Customers> {
                     );
                   }
 
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  final rawData = snapshot.hasData ? snapshot.data! : (_cachedClients ?? <Map<String, dynamic>>[]);
+
+                  if (rawData.isEmpty) {
                     return Center(
                       child: SingleChildScrollView(
                         child: Column(
@@ -411,7 +425,6 @@ class _CustomersState extends State<Customers> {
                   }
 
                   // Filter by search query
-                  final rawData = snapshot.data!;
                   final data = rawData.where((d) {
                     final q = _searchQuery.toLowerCase().trim();
                     if (q.isEmpty) return true;
@@ -576,8 +589,34 @@ class _CustomersState extends State<Customers> {
                                       ),
                                     );
                                     if (confirm == true) {
-                                      await db.deleteClient(id);
-                                      _refreshData();
+                                      try {
+                                        final deletedRows = await db.deleteClient(id);
+                                        if (!mounted) return;
+                                        if (deletedRows == 0) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('لم يتم العثور على الزبون لحذفه.'),
+                                              backgroundColor: Colors.orange,
+                                            ),
+                                          );
+                                          _refreshData();
+                                          return;
+                                        }
+                                        setState(() {
+                                          _cachedClients?.removeWhere(
+                                            (c) => c['id'].toString() == id.toString(),
+                                          );
+                                        });
+                                        _refreshData();
+                                      } catch (error) {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('تعذر حذف الزبون: $error'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
                                     }
                                   },
                                 ),

@@ -1258,6 +1258,16 @@ class WindowPainter extends CustomPainter {
 
   Rect _getEffectiveZoneRect(Rect original, double h, double t) {
     if (!model.hasBottomFrame && !model.hasFramePlintheBottom && (original.bottom - (h - t)).abs() < 1.0) {
+      final matchingZone = model.zones.firstWhere(
+        (z) => (z.boundary.left - original.left).abs() < 2.0 &&
+               (z.boundary.top - original.top).abs() < 2.0 &&
+               (z.boundary.right - original.right).abs() < 2.0,
+        orElse: () => WindowZone(id: 'temp', boundary: original, content: ZoneContent.singleSash),
+      );
+      bool isFixed = matchingZone.content == ZoneContent.fixedGlass || matchingZone.content == ZoneContent.empty;
+      if (isFixed) {
+        return original; // الثابت يبقى دائماً بإطاره السفلي ولا يمتد إلى الأرض
+      }
       return Rect.fromLTRB(original.left, original.top, original.right, h);
     }
     return original;
@@ -1518,6 +1528,30 @@ class WindowPainter extends CustomPainter {
               ? 1.5
               : 0.8,
       );
+
+      // رسم الإطار السفلي تحت الأجزاء الثابتة فقط عند نزع الإطار السفلي للضلفة
+      if (!model.hasBottomFrame) {
+        for (final zone in model.zones) {
+          final r = zone.boundary;
+          bool isBottomBound = (r.bottom - (h - t)).abs() < 2.0 || r.bottom >= h - t;
+          bool isFixed = zone.content == ZoneContent.fixedGlass || zone.content == ZoneContent.empty;
+
+          if (isBottomBound && isFixed) {
+            final double segLeft = (r.left - t).abs() < 2.0 ? 0.0 : r.left;
+            final double segRight = (r.right - (w - t)).abs() < 2.0 ? w : r.right;
+            final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
+            canvas.drawRect(segRect, _buildPaint(outerRect));
+            canvas.drawRect(segRect, bp);
+            canvas.drawLine(Offset(segLeft, h - t), Offset(segRight, h - t), bp);
+            if (segLeft > 0.1) {
+              canvas.drawLine(Offset(segLeft, h - t), Offset(segLeft, h), bp);
+            }
+            if (segRight < w - 0.1) {
+              canvas.drawLine(Offset(segRight, h - t), Offset(segRight, h), bp);
+            }
+          }
+        }
+      }
     }
 
     _drawMiterCorners(

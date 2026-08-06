@@ -68,6 +68,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   String? _logoUrl;
   ImageProvider? _cachedLogoProvider; // الصورة المحسوبة مرة واحدة لتجنب الترميش
   StreamSubscription? _userSub;
+  StreamSubscription<String>? _databaseUpdateSub;
   Timer? _statsDebounce; // debounce لمنع تكرار _loadStats خلال ms قصيرة
 
   // إحصائيات
@@ -106,6 +107,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
     super.initState();
     _loadUserData();
     _loadStats();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await CloudSyncService().init();
+        await CloudSyncService().refreshFromCloudIfChanged();
+        if (mounted) {
+          _loadStats();
+        }
+      } catch (e) {
+        debugPrint('WelcomScreen cloud refresh notice: $e');
+      }
+    });
   }
 
   /// تحديث صورة الشعار فقط عند تغيير فعلي لتجنب إعادة فك التشفير في كل rebuild
@@ -334,6 +347,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      await _userSub?.cancel();
       setState(() {
         _userEmail = user.email ?? 'لا يوجد بريد';
       });
@@ -365,12 +379,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
             }
           });
 
-      // بدء الاستماع لتحديثات الأجهزة الأخرى (المزامنة التلقائية والإنعاش التلقائي)
+      // SubscriptionChecker owns the global Firestore listeners.  This page
+      // only listens to local update notifications so navigating away cannot
+      // stop synchronization for the whole app.
       await CloudSyncService().init();
-      _autoSyncData();
 
       // استماع التحديثات المحلية مع debounce لمنع تكرار البناء خلال مليسثانية فقيرة
-      CloudSyncService().dbUpdateStream.listen((_) {
+      await _databaseUpdateSub?.cancel();
+      _databaseUpdateSub = CloudSyncService().dbUpdateStream.listen((_) {
         if (!mounted) return;
         _statsDebounce?.cancel();
         _statsDebounce = Timer(const Duration(milliseconds: 300), () {
@@ -379,16 +395,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
             _loadStats();
           }
         });
-      });
-
-      // استماع التحديثات الكاملة من السحابة (فقط restore كامل)
-      CloudSyncService().startListeningForUpdates(() async {
-        if (mounted) {
-          await Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
-          await _loadStats();
-          if (!mounted) return;
-          setState(() {});
-        }
       });
     }
   }
@@ -424,6 +430,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
       }
     } catch (e) {
       debugPrint('Auto sync data error: $e');
+      if (showSnackBar && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تعذرت المزامنة: ${e.toString().replaceAll('Exception: ', '')}',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isManualSyncing = false);
     }
@@ -432,8 +450,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
   @override
   void dispose() {
     _userSub?.cancel();
+    _databaseUpdateSub?.cancel();
     _statsDebounce?.cancel();
-    CloudSyncService().stopListening();
     super.dispose();
   }
 
@@ -2750,4 +2768,3 @@ class _BubblesPainter extends CustomPainter {
     return true;
   }
 }
-

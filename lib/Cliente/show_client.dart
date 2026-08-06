@@ -17,6 +17,26 @@ class ShowClient extends StatefulWidget {
 
 class _ShowClientState extends State<ShowClient> {
   final SqlDatabase db = SqlDatabase();
+  late Future<List<dynamic>> _dataFuture;
+  List<dynamic>? _cachedData;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshClientData();
+  }
+
+  void _refreshClientData() {
+    final future = _loadData();
+    _dataFuture = future.then((data) {
+      if (mounted) {
+        setState(() {
+          _cachedData = data;
+        });
+      }
+      return data;
+    });
+  }
 
   String _formatDate(String? date) {
     if (date == null || date.isEmpty) return '—';
@@ -145,19 +165,23 @@ class _ShowClientState extends State<ShowClient> {
                 MaterialPageRoute(
                   builder: (context) => ClientLedgerScreen(clientId: widget.clientId),
                 ),
-              ).then((_) => setState(() {}));
+              ).then((_) => _refreshClientData());
             },
           ),
         ],
       ),
       body: FutureBuilder<List<dynamic>>(
-        future: _loadData(),
+        future: _dataFuture,
         builder: (context, asyncSnapshot) {
-          if (asyncSnapshot.connectionState == ConnectionState.waiting) {
+          if (asyncSnapshot.hasData) {
+            _cachedData = asyncSnapshot.data;
+          }
+
+          if (asyncSnapshot.connectionState == ConnectionState.waiting && _cachedData == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (asyncSnapshot.hasError) {
+          if (asyncSnapshot.hasError && _cachedData == null) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -184,14 +208,15 @@ class _ShowClientState extends State<ShowClient> {
             );
           }
 
-          if (!asyncSnapshot.hasData) {
+          final rawData = asyncSnapshot.hasData ? asyncSnapshot.data! : (_cachedData ?? []);
+          if (rawData.isEmpty) {
             return Center(
               child: Text(Localization.translate('No Data', lang)),
             );
           }
 
           final clientData =
-              asyncSnapshot.data![0] as List<Map<String, dynamic>>;
+              rawData[0] as List<Map<String, dynamic>>;
           if (clientData.isEmpty) {
             return Center(
               child: Text(Localization.translate('Client not found', lang)),
@@ -200,9 +225,9 @@ class _ShowClientState extends State<ShowClient> {
 
           final client = clientData[0];
           final orders =
-              asyncSnapshot.data![1] as List<Map<String, dynamic>>;
+              rawData[1] as List<Map<String, dynamic>>;
           final treasury =
-              asyncSnapshot.data![2] as List<Map<String, dynamic>>;
+              rawData[2] as List<Map<String, dynamic>>;
 
           double totalOrders = 0.0;
           for (var order in orders) {

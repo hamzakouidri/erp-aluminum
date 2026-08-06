@@ -17,7 +17,6 @@ import 'package:database_data/Commande/devis_preview_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
-import 'package:database_data/Screen/consumption_report_screen.dart';
 import 'package:database_data/Commande/order_required_goods_screen.dart';
 import 'package:database_data/Commande/order_measurements_confirm_screen.dart';
 import 'package:database_data/Commande/partial_proforma_screen.dart';
@@ -32,7 +31,9 @@ class Commande extends StatefulWidget {
 
 class _CommandeState extends State<Commande> {
   final SqlDatabase db = SqlDatabase();
+  final ScrollController _scrollController = ScrollController();
   late Future<List<Map<String, dynamic>>> _data;
+  List<Map<String, dynamic>>? _cachedCommandes;
   String _searchQuery = '';
   BuildContext? _loadingDialogContext;
   StreamSubscription? _dbUpdateSubscription;
@@ -142,19 +143,29 @@ class _CommandeState extends State<Commande> {
   @override
   void initState() {
     super.initState();
-    _data = db.readCommandesWithClients();
+    _fetchCommandes();
     _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
       _scheduleCloudRefresh();
     });
   }
 
+  void _fetchCommandes() {
+    final future = db.readCommandesWithClients();
+    _data = future.then((list) {
+      if (mounted) {
+        setState(() {
+          _cachedCommandes = list;
+        });
+      }
+      return list;
+    });
+  }
+
   void _scheduleCloudRefresh() {
     _syncRefreshDebounce?.cancel();
-    _syncRefreshDebounce = Timer(const Duration(milliseconds: 250), () {
+    _syncRefreshDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      setState(() {
-        _data = db.readCommandesWithClients();
-      });
+      _fetchCommandes();
     });
   }
 
@@ -162,6 +173,7 @@ class _CommandeState extends State<Commande> {
   void dispose() {
     _syncRefreshDebounce?.cancel();
     _dbUpdateSubscription?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -242,9 +254,13 @@ class _CommandeState extends State<Commande> {
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _data,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.hasData) {
+                    _cachedCommandes = snapshot.data;
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting && _cachedCommandes == null) {
                     return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
+                  } else if (snapshot.hasError && _cachedCommandes == null) {
                     // 🟢 التصميم التفاعلي لحالة الخطأ (بدون أكواد SQL مرعبة)
                     return Center(
                       child: SingleChildScrollView(
@@ -338,8 +354,10 @@ class _CommandeState extends State<Commande> {
                     );
                   }
 
+                  final rawData = snapshot.hasData ? snapshot.data! : (_cachedCommandes ?? <Map<String, dynamic>>[]);
+
                   // 🟢 التصميم التفاعلي لحالة عدم وجود طلبات
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  if (rawData.isEmpty) {
                     return Center(
                       child: SingleChildScrollView(
                         child: Column(
@@ -405,9 +423,7 @@ class _CommandeState extends State<Commande> {
                                 );
                                 if (!mounted) return;
                                 if (result == true) {
-                                  setState(() {
-                                    _data = db.readCommandesWithClients();
-                                  });
+                                  _fetchCommandes();
                                 }
                               },
                               icon: const Icon(
@@ -427,8 +443,6 @@ class _CommandeState extends State<Commande> {
                       ),
                     );
                   }
-
-                  final rawData = snapshot.data!;
                   final data = rawData.where((d) {
                     final query = _searchQuery.toLowerCase().trim();
                     if (query.isEmpty) return true;
@@ -453,9 +467,9 @@ class _CommandeState extends State<Commande> {
                   }
 
                   return ListView.builder(
+                    controller: _scrollController,
                     itemCount: data.length,
                     itemBuilder: (context, index) {
-                      final id = data[index]['id'];
                       final clientFirst = data[index]['firstname'] ?? '';
                       final clientLast = data[index]['lastname'] ?? '';
 
@@ -712,7 +726,7 @@ class _CommandeState extends State<Commande> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${orderData['client_name']?.toString() ?? orderData['client_display']?.toString() ?? "Client"}',
+                            orderData['client_name']?.toString() ?? orderData['client_display']?.toString() ?? "Client",
                             style: TextStyle(
                               color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey.shade600,
                               fontSize: 13,
@@ -1212,7 +1226,7 @@ class _CommandeState extends State<Commande> {
                                 child: ListView.separated(
                                   shrinkWrap: true,
                                   itemCount: deliveries.length,
-                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  separatorBuilder: (_, _) => const Divider(height: 1),
                                   itemBuilder: (context, index) {
                                     final del = deliveries[index];
                                     final isLoaded = (del['is_loaded'] == 1);
@@ -1443,12 +1457,13 @@ class _CommandeState extends State<Commande> {
                   title: Text(Localization.translate('ورقة التقطيع (Fiche de Coupe)', lang)),
                   onTap: () async {
                     Navigator.pop(ctx);
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(Localization.translate('جاري تجهيز جدول التقطيع...', lang)),
                         ),
                       );
+                    }
                     try {
                       final items = await db.readCommandeDetails(orderData['id']);
                       final prefs = await SharedPreferences.getInstance();
@@ -1460,13 +1475,14 @@ class _CommandeState extends State<Commande> {
                         workshopName: workshopName,
                       );
                     } catch (e) {
-                      if (mounted)
+                      if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e'),
                             backgroundColor: Colors.red,
                           ),
                         );
+                      }
                     }
                   },
                 ),
@@ -2021,10 +2037,11 @@ class _CommandeState extends State<Commande> {
       ),
     );
     if (confirm == true) {
-      await db.deleteCommande(id);
       setState(() {
-        _data = db.readCommandesWithClients();
+        _cachedCommandes?.removeWhere((item) => item['id'] == id);
       });
+      await db.deleteCommande(id);
+      _fetchCommandes();
     }
   }
 
@@ -2162,7 +2179,7 @@ class _CommandeState extends State<Commande> {
                   return Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
-                      color: isCurrent ? color.withOpacity(0.12) : Colors.transparent,
+                      color: isCurrent ? color.withValues(alpha: 0.12) : Colors.transparent,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isCurrent ? color : Colors.grey.shade300,

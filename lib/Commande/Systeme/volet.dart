@@ -28,6 +28,7 @@ class _SystemRolingState extends State<SystemRoling> {
 
   List<String> _lames = [];
   List<String> _glissieres = [];
+  List<Map<String, dynamic>> _dbColors = [];
   bool _isLoadingOptions = true;
 
   @override
@@ -63,9 +64,11 @@ class _SystemRolingState extends State<SystemRoling> {
     try {
       final db = SqlDatabase();
       final options = await db.getShutterOptions();
+      final colors = await db.readColors();
       setState(() {
         _lames = options['lames']!;
         _glissieres = options['glissieres']!;
+        _dbColors = colors;
         if (!_lames.contains(widget.model.shutterLame) && _lames.isNotEmpty) {
           widget.model.shutterLame = _lames.first;
         }
@@ -553,47 +556,96 @@ class _SystemRolingState extends State<SystemRoling> {
                               ),
                               child: Column(
                                 children: [
-                                  Row(
-                                    children: FrameColor.values.map((color) {
-                                      final isSelected =
-                                          widget.model.frameColor == color;
-                                      return Tooltip(
-                                        message: _getColorName(color),
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            setState(() {
-                                              widget.model.frameColor = color;
-                                              widget.model.selectedDbColor = null;
-                                              widget.model.refreshUI();
-                                            });
-                                          },
-                                          child: AnimatedContainer(
-                                            duration: const Duration(
-                                              milliseconds: 200,
-                                            ),
-                                            margin: const EdgeInsets.symmetric(
-                                              horizontal: 4,
-                                            ),
-                                            width: isSelected ? 26 : 22,
-                                            height: isSelected ? 26 : 22,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: _getFrameColorDisplay(color),
-                                              border: Border.all(
-                                                color: isSelected
-                                                    ? Colors.blue
-                                                    : Colors.grey.shade400,
-                                                width: isSelected ? 2.5 : 1.0,
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children: [
+                                        ...FrameColor.values.map((color) {
+                                          final isSelected =
+                                              widget.model.selectedDbColor == null &&
+                                              widget.model.frameColor == color;
+                                          return Tooltip(
+                                            message: _getColorName(color),
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                setState(() {
+                                                  widget.model.frameColor = color;
+                                                  widget.model.selectedDbColor = null;
+                                                  widget.model.refreshUI();
+                                                });
+                                              },
+                                              child: AnimatedContainer(
+                                                duration: const Duration(
+                                                  milliseconds: 200,
+                                                ),
+                                                margin: const EdgeInsets.symmetric(
+                                                  horizontal: 4,
+                                                ),
+                                                width: isSelected ? 26 : 22,
+                                                height: isSelected ? 26 : 22,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: _getFrameColorDisplay(color),
+                                                  border: Border.all(
+                                                    color: isSelected
+                                                        ? Colors.blue
+                                                        : Colors.grey.shade400,
+                                                    width: isSelected ? 2.5 : 1.0,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
+                                          );
+                                        }),
+                                        ..._dbColors.map((dbColor) {
+                                          final name = dbColor['name']?.toString() ?? '';
+                                          final hex = dbColor['hex_code']?.toString() ?? '#9E9E9E';
+                                          Color parsedColor = Colors.grey;
+                                          try {
+                                            parsedColor = Color(int.parse(hex.replaceAll('#', '0xFF')));
+                                          } catch (_) {}
+                                          final isSelected =
+                                              widget.model.selectedDbColor?['name'] == name;
+                                          return Tooltip(
+                                            message: name,
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                setState(() {
+                                                  widget.model.selectedDbColor = dbColor;
+                                                  widget.model.refreshUI();
+                                                });
+                                              },
+                                              child: AnimatedContainer(
+                                                duration: const Duration(
+                                                  milliseconds: 200,
+                                                ),
+                                                margin: const EdgeInsets.symmetric(
+                                                  horizontal: 4,
+                                                ),
+                                                width: isSelected ? 26 : 22,
+                                                height: isSelected ? 26 : 22,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: parsedColor,
+                                                  border: Border.all(
+                                                    color: isSelected
+                                                        ? Colors.blue
+                                                        : Colors.grey.shade400,
+                                                    width: isSelected ? 2.5 : 1.0,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        }),
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    _getColorName(widget.model.frameColor),
+                                    widget.model.selectedDbColor != null
+                                        ? (widget.model.selectedDbColor!['name']?.toString() ?? '')
+                                        : _getColorName(widget.model.frameColor),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade700,

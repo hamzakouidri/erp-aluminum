@@ -18,7 +18,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -50,23 +51,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       );
     });
 
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 15),
-    )..addListener(() {
-        if (mounted) {
-          setState(() {
-            for (var p in _particles) {
-              p.y -= p.speed;
-              p.x += sin(p.angle) * 0.0005;
-              if (p.y < -0.05) {
-                p.y = 1.05;
-                p.x = Random().nextDouble();
-              }
+    _animationController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 15))
+          ..addListener(() {
+            if (mounted) {
+              setState(() {
+                for (var p in _particles) {
+                  p.y -= p.speed;
+                  p.x += sin(p.angle) * 0.0005;
+                  if (p.y < -0.05) {
+                    p.y = 1.05;
+                    p.x = Random().nextDouble();
+                  }
+                }
+              });
             }
-          });
-        }
-      })..repeat();
+          })
+          ..repeat();
   }
 
   String _getFriendlyErrorMessage(FirebaseAuthException e) {
@@ -103,7 +104,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       setState(() {
-        _errorMessage = 'يرجى كتابة البريد الإلكتروني أولاً لإرسال رابط استعادة كلمة المرور.';
+        _errorMessage =
+            'يرجى كتابة البريد الإلكتروني أولاً لإرسال رابط استعادة كلمة المرور.';
       });
       return;
     }
@@ -127,7 +129,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     } on FirebaseAuthException catch (e) {
       setState(() {
         if (e.code == 'user-not-found') {
-          _errorMessage = 'لم يتم العثور على حساب بهذا البريد الإلكتروني. يرجى التحقق من صحته.';
+          _errorMessage =
+              'لم يتم العثور على حساب بهذا البريد الإلكتروني. يرجى التحقق من صحته.';
         } else if (e.code == 'invalid-email') {
           _errorMessage = 'البريد الإلكتروني المكتوب غير صالح.';
         } else {
@@ -188,7 +191,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           return;
         }
       }
+      await CloudSyncService().init();
 
+      debugPrint(
+        'LOGIN SYNC: uid=${userCredential.user!.uid}, '
+        'workshopId=${CloudSyncService().workshopId}',
+      );
       // Firebase auth state changes will handle transitioning the screen automatically
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -245,10 +253,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
 
     if (!_isWorkerSignup) {
-      final isTaken = await _isWorkshopNameTaken(_workshopNameController.text.trim());
+      final isTaken = await _isWorkshopNameTaken(
+        _workshopNameController.text.trim(),
+      );
       if (isTaken) {
         setState(() {
-          _errorMessage = 'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.';
+          _errorMessage =
+              'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.';
           _isLoading = false;
         });
         return;
@@ -432,7 +443,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           'role': 'worker',
           'workshopId': targetWorkshopId,
           'workshopName': workshopNameForWorker,
-          'displayName': _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'العامل رقم ${currentWorkerCount + 1}',
+          'displayName': _nameController.text.trim().isNotEmpty
+              ? _nameController.text.trim()
+              : 'العامل رقم ${currentWorkerCount + 1}',
           'permissions': defaultPerms,
           'permissions_json': jsonEncode(defaultPerms),
           'createdAt': FieldValue.serverTimestamp(),
@@ -460,7 +473,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               'role': 'manager',
               'workshopId': uid,
               'workshopName': _workshopNameController.text.trim(),
-              'displayName': _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'مدير الورشة',
+              'displayName': _nameController.text.trim().isNotEmpty
+                  ? _nameController.text.trim()
+                  : 'مدير الورشة',
               'logoUrl': logoUrl,
               'joinCode': joinCode,
               'createdAt': FieldValue.serverTimestamp(),
@@ -541,10 +556,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         }
 
         if (!_isWorkerSignup) {
-          final isTaken = await _isWorkshopNameTaken(_workshopNameController.text.trim());
+          final isTaken = await _isWorkshopNameTaken(
+            _workshopNameController.text.trim(),
+          );
           if (isTaken) {
             setState(() {
-              _errorMessage = 'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.';
+              _errorMessage =
+                  'اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.';
               _isLoading = false;
             });
             return;
@@ -570,14 +588,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         return;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
       // 3. Sign in to Firebase with the credential
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
       final User? user = userCredential.user;
 
       if (user == null) {
@@ -591,7 +612,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       final email = user.email ?? '';
 
       // 4. Firestore checking and logic
-      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
       if (_isLoginMode) {
         // --- LOGIN MODE ---
@@ -610,7 +634,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             await _auth.signOut();
             await GoogleSignIn().signOut();
             setState(() {
-              _errorMessage = 'لم يتم العثور على حساب مسجل لهذا البريد الإلكتروني. يرجى تبديل الوضع وإنشاء حساب جديد أولاً.';
+              _errorMessage =
+                  'لم يتم العثور على حساب مسجل لهذا البريد الإلكتروني. يرجى تبديل الوضع وإنشاء حساب جديد أولاً.';
               _isLoading = false;
             });
             return;
@@ -620,7 +645,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             await _auth.signOut();
             await GoogleSignIn().signOut();
             setState(() {
-              _errorMessage = 'عذراً، هذا الحساب محذوف أو تم إيقافه من قبل المدير.';
+              _errorMessage =
+                  'عذراً، هذا الحساب محذوف أو تم إيقافه من قبل المدير.';
               _isLoading = false;
             });
             return;
@@ -631,7 +657,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         if (doc.exists) {
           // Account already exists in Firestore!
           setState(() {
-            _errorMessage = 'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.';
+            _errorMessage =
+                'هذا البريد الإلكتروني مسجل بالفعل. يرجى التوجه لتسجيل الدخول.';
             _isLoading = false;
           });
           return;
@@ -664,7 +691,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           workshopNameForWorker = workshopData['name'] as String?;
 
           int maxWorkers = 3;
-          if (workshopData.containsKey('maxWorkers') && workshopData['maxWorkers'] != null) {
+          if (workshopData.containsKey('maxWorkers') &&
+              workshopData['maxWorkers'] != null) {
             final mw = workshopData['maxWorkers'];
             if (mw is num) {
               maxWorkers = mw.toInt();
@@ -693,7 +721,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               await _auth.signOut();
               await GoogleSignIn().signOut();
               setState(() {
-                _errorMessage = 'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من العمال ($maxWorkers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
+                _errorMessage =
+                    'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من العمال ($maxWorkers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
                 _isLoading = false;
               });
               return;
@@ -718,7 +747,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             'role': 'worker',
             'workshopId': targetWorkshopId,
             'workshopName': workshopNameForWorker,
-            'displayName': user.displayName ?? 'العامل رقم ${currentWorkers + 1}',
+            'displayName':
+                user.displayName ?? 'العامل رقم ${currentWorkers + 1}',
             'permissions': defaultPerms,
             'permissions_json': jsonEncode(defaultPerms),
             'createdAt': FieldValue.serverTimestamp(),
@@ -727,15 +757,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           // Manager Signup
           final joinCode = _generateJoinCode();
           final workshopName = _workshopNameController.text.trim();
-          final logoUrl = 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(workshopName)}&background=random&color=fff&size=256&font-size=0.4&bold=true';
+          final logoUrl =
+              'https://ui-avatars.com/api/?name=${Uri.encodeComponent(workshopName)}&background=random&color=fff&size=256&font-size=0.4&bold=true';
 
           // Create workshop doc
-          await FirebaseFirestore.instance.collection('workshops').doc(uid).set({
-            'name': workshopName,
-            'managerUid': uid,
-            'joinCode': joinCode,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
+          await FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(uid)
+              .set({
+                'name': workshopName,
+                'managerUid': uid,
+                'joinCode': joinCode,
+                'createdAt': FieldValue.serverTimestamp(),
+              });
 
           // Create user doc
           await FirebaseFirestore.instance.collection('users').doc(uid).set({
@@ -747,7 +781,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             'logoUrl': logoUrl,
             'joinCode': joinCode,
             'createdAt': FieldValue.serverTimestamp(),
-            'trialEndDate': DateTime.now().add(const Duration(days: -1)).toIso8601String(),
+            'trialEndDate': DateTime.now()
+                .add(const Duration(days: -1))
+                .toIso8601String(),
             'isTrialActive': false,
             'subscriptionStatus': 'trialing',
           });
@@ -801,11 +837,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
-            ],
+            colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -814,43 +846,40 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           children: [
             // Floating Particles background
             Positioned.fill(
-              child: CustomPaint(
-                painter: ParticlePainter(_particles),
-              ),
+              child: CustomPaint(painter: ParticlePainter(_particles)),
             ),
-            
+
             // Login Form
             Center(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24.0,
+                  vertical: 48.0,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Pulsating Logo/Icon
+                    // Floating Glowing Emblem Logo (Without outer square box)
                     AnimatedBuilder(
                       animation: _animationController,
                       builder: (context, child) {
-                        final pulse = sin(_animationController.value * 2 * pi) * 0.05;
+                        final pulse =
+                            sin(_animationController.value * 2 * pi) * 0.05;
                         return Transform.scale(
                           scale: 1.0 + pulse,
-                          child: Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.blueAccent.withOpacity(0.1),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.blueAccent.withOpacity(0.3 + pulse * 2),
-                                  blurRadius: 20 + pulse * 100,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.cloud_sync,
-                              size: 60,
-                              color: Colors.white,
+                          child: SizedBox(
+                            width: 120,
+                            height: 120,
+                            child: Image.asset(
+                              'assets/images/warshati_logo_glowing.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (ctx, err, stack) {
+                                return Image.asset(
+                                  'assets/images/app_icon.png',
+                                  fit: BoxFit.contain,
+                                );
+                              },
                             ),
                           ),
                         );
@@ -896,7 +925,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
-                                _isLoginMode ? 'تسجيل الدخول' : 'إنشاء حساب جديد',
+                                _isLoginMode
+                                    ? 'تسجيل الدخول'
+                                    : 'إنشاء حساب جديد',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   fontFamily: 'Cairo',
@@ -906,7 +937,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ),
                               ),
                               const SizedBox(height: 24),
-                              
+
                               if (!_isLoginMode) ...[
                                 Wrap(
                                   alignment: WrapAlignment.center,
@@ -919,9 +950,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       ),
                                       selected: !_isWorkerSignup,
                                       selectedColor: Colors.blueAccent,
-                                      backgroundColor: Colors.white.withOpacity(0.08),
+                                      backgroundColor: Colors.white.withOpacity(
+                                        0.08,
+                                      ),
                                       labelStyle: TextStyle(
-                                        color: !_isWorkerSignup ? Colors.white : Colors.white70,
+                                        color: !_isWorkerSignup
+                                            ? Colors.white
+                                            : Colors.white70,
                                       ),
                                       onSelected: (val) {
                                         setState(() {
@@ -936,9 +971,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       ),
                                       selected: _isWorkerSignup,
                                       selectedColor: Colors.blueAccent,
-                                      backgroundColor: Colors.white.withOpacity(0.08),
+                                      backgroundColor: Colors.white.withOpacity(
+                                        0.08,
+                                      ),
                                       labelStyle: TextStyle(
-                                        color: _isWorkerSignup ? Colors.white : Colors.white70,
+                                        color: _isWorkerSignup
+                                            ? Colors.white
+                                            : Colors.white70,
                                       ),
                                       onSelected: (val) {
                                         setState(() {
@@ -952,40 +991,68 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 if (!_isWorkerSignup) ...[
                                   TextField(
                                     controller: _workshopNameController,
-                                    style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontFamily: 'Cairo',
+                                    ),
                                     decoration: InputDecoration(
                                       labelText: 'اسم المصنع / الورشة',
-                                      labelStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                                      labelStyle: const TextStyle(
+                                        color: Colors.white70,
+                                        fontFamily: 'Cairo',
+                                      ),
                                       filled: true,
                                       fillColor: Colors.white.withOpacity(0.04),
-                                      prefixIcon: const Icon(Icons.storefront, color: Colors.white60),
+                                      prefixIcon: const Icon(
+                                        Icons.storefront,
+                                        color: Colors.white60,
+                                      ),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                        borderSide: BorderSide(
+                                          color: Colors.white.withOpacity(0.12),
+                                        ),
                                       ),
                                       focusedBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                        borderSide: const BorderSide(
+                                          color: Colors.blueAccent,
+                                          width: 2,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ] else ...[
                                   TextField(
                                     controller: _workshopCodeController,
-                                    style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontFamily: 'Cairo',
+                                    ),
                                     decoration: InputDecoration(
                                       labelText: 'كود الورشة (ضروري)',
-                                      labelStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                                      labelStyle: const TextStyle(
+                                        color: Colors.white70,
+                                        fontFamily: 'Cairo',
+                                      ),
                                       filled: true,
                                       fillColor: Colors.white.withOpacity(0.04),
-                                      prefixIcon: const Icon(Icons.qr_code, color: Colors.white60),
+                                      prefixIcon: const Icon(
+                                        Icons.qr_code,
+                                        color: Colors.white60,
+                                      ),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                        borderSide: BorderSide(
+                                          color: Colors.white.withOpacity(0.12),
+                                        ),
                                       ),
                                       focusedBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                        borderSide: const BorderSide(
+                                          color: Colors.blueAccent,
+                                          width: 2,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -996,50 +1063,80 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               if (!_isLoginMode) ...[
                                 TextField(
                                   controller: _nameController,
-                                  style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'Cairo',
+                                  ),
                                   decoration: InputDecoration(
                                     labelText: 'الاسم الكامل',
-                                    labelStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                                    labelStyle: const TextStyle(
+                                      color: Colors.white70,
+                                      fontFamily: 'Cairo',
+                                    ),
                                     filled: true,
                                     fillColor: Colors.white.withOpacity(0.04),
-                                    prefixIcon: const Icon(Icons.person_outline, color: Colors.white60),
+                                    prefixIcon: const Icon(
+                                      Icons.person_outline,
+                                      color: Colors.white60,
+                                    ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                      borderSide: BorderSide(
+                                        color: Colors.white.withOpacity(0.12),
+                                      ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                      borderSide: const BorderSide(
+                                        color: Colors.blueAccent,
+                                        width: 2,
+                                      ),
                                     ),
                                   ),
                                 ),
                                 const SizedBox(height: 16),
                               ],
-                              
+
                               TextField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
-                                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontFamily: 'Cairo',
+                                ),
                                 decoration: InputDecoration(
                                   labelText: 'البريد الإلكتروني',
-                                  labelStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white70,
+                                    fontFamily: 'Cairo',
+                                  ),
                                   filled: true,
                                   fillColor: Colors.white.withOpacity(0.04),
-                                  prefixIcon: const Icon(Icons.email_outlined, color: Colors.white60),
+                                  prefixIcon: const Icon(
+                                    Icons.email_outlined,
+                                    color: Colors.white60,
+                                  ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withOpacity(0.12),
+                                    ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                    borderSide: const BorderSide(
+                                      color: Colors.blueAccent,
+                                      width: 2,
+                                    ),
                                   ),
                                 ),
                               ),
                               if (!_isLoginMode) ...[
                                 const SizedBox(height: 6),
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4.0,
+                                  ),
                                   child: Text(
                                     '⚠️ من الأفضل التسجيل ببريد إلكتروني حقيقي لتتمكن من استرجاع كلمة المرور في حال نسيانها.',
                                     style: TextStyle(
@@ -1051,28 +1148,44 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ),
                               ],
                               const SizedBox(height: 16),
-                              
+
                               TextField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
-                                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontFamily: 'Cairo',
+                                ),
                                 decoration: InputDecoration(
                                   labelText: 'كلمة المرور',
-                                  labelStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white70,
+                                    fontFamily: 'Cairo',
+                                  ),
                                   filled: true,
                                   fillColor: Colors.white.withOpacity(0.04),
-                                  prefixIcon: const Icon(Icons.lock_outline, color: Colors.white60),
+                                  prefixIcon: const Icon(
+                                    Icons.lock_outline,
+                                    color: Colors.white60,
+                                  ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withOpacity(0.12),
+                                    ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                    borderSide: const BorderSide(
+                                      color: Colors.blueAccent,
+                                      width: 2,
+                                    ),
                                   ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
-                                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                      _obscurePassword
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
                                       color: Colors.white60,
                                     ),
                                     onPressed: () {
@@ -1091,7 +1204,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     style: TextButton.styleFrom(
                                       padding: EdgeInsets.zero,
                                       minimumSize: const Size(50, 30),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: const Text(
                                       'نسيت كلمة المرور؟',
@@ -1105,43 +1219,62 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ),
                               ],
                               const SizedBox(height: 16),
-                              
+
                               if (!_isLoginMode) ...[
                                 TextField(
                                   controller: _confirmPasswordController,
                                   obscureText: _obscurePassword,
-                                  style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'Cairo',
+                                  ),
                                   decoration: InputDecoration(
                                     labelText: 'تأكيد كلمة المرور',
-                                    labelStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                                    labelStyle: const TextStyle(
+                                      color: Colors.white70,
+                                      fontFamily: 'Cairo',
+                                    ),
                                     filled: true,
                                     fillColor: Colors.white.withOpacity(0.04),
-                                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.white60),
+                                    prefixIcon: const Icon(
+                                      Icons.lock_outline,
+                                      color: Colors.white60,
+                                    ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                      borderSide: BorderSide(
+                                        color: Colors.white.withOpacity(0.12),
+                                      ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+                                      borderSide: const BorderSide(
+                                        color: Colors.blueAccent,
+                                        width: 2,
+                                      ),
                                     ),
                                   ),
                                 ),
                                 const SizedBox(height: 20),
                               ],
-                              
+
                               if (_errorMessage.isNotEmpty)
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   margin: const EdgeInsets.only(bottom: 16),
                                   decoration: BoxDecoration(
                                     color: Colors.red.withOpacity(0.12),
-                                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                    border: Border.all(
+                                      color: Colors.red.withOpacity(0.3),
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.error_outline, color: Colors.redAccent),
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Colors.redAccent,
+                                      ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
@@ -1157,31 +1290,44 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     ],
                                   ),
                                 ),
-                                
+
                               if (_isLoading)
                                 const Center(
                                   child: Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                                    child: CircularProgressIndicator(color: Colors.blueAccent),
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: 8.0,
+                                    ),
+                                    child: CircularProgressIndicator(
+                                      color: Colors.blueAccent,
+                                    ),
                                   ),
                                 )
                               else
                                 Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     ElevatedButton(
-                                      onPressed: _isLoginMode ? _login : _register,
+                                      onPressed: _isLoginMode
+                                          ? _login
+                                          : _register,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.blueAccent,
                                         foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                         ),
                                         elevation: 4,
                                       ),
                                       child: Text(
-                                        _isLoginMode ? 'تسجيل الدخول' : 'إنشاء حساب',
+                                        _isLoginMode
+                                            ? 'تسجيل الدخول'
+                                            : 'إنشاء حساب',
                                         style: const TextStyle(
                                           fontFamily: 'Cairo',
                                           fontSize: 18,
@@ -1190,26 +1336,40 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       ),
                                     ),
                                     const SizedBox(height: 16),
-                                    
+
                                     OutlinedButton(
                                       onPressed: _signInWithGoogle,
                                       style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
-                                        side: BorderSide(color: Colors.white.withOpacity(0.2), width: 1.5),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
                                         ),
-                                        backgroundColor: Colors.white.withOpacity(0.08),
+                                        side: BorderSide(
+                                          color: Colors.white.withOpacity(0.2),
+                                          width: 1.5,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        backgroundColor: Colors.white
+                                            .withOpacity(0.08),
                                         foregroundColor: Colors.white,
                                       ),
                                       child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Image.network(
                                             'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png',
                                             height: 22,
-                                            errorBuilder: (context, error, stackTrace) =>
-                                                const Icon(Icons.g_mobiledata, size: 22, color: Colors.white),
+                                            errorBuilder:
+                                                (context, error, stackTrace) =>
+                                                    const Icon(
+                                                      Icons.g_mobiledata,
+                                                      size: 22,
+                                                      color: Colors.white,
+                                                    ),
                                           ),
                                           const SizedBox(width: 12),
                                           Text(
@@ -1226,7 +1386,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       ),
                                     ),
                                     const SizedBox(height: 16),
-                                    
+
                                     TextButton(
                                       onPressed: () {
                                         setState(() {
@@ -1305,4 +1465,3 @@ class ParticlePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
-

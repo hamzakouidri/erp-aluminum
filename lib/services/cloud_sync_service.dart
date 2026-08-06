@@ -78,6 +78,7 @@ class CloudSyncService {
   _deletionsListener; // ⚡ لحدف الإسنادات فورياً على جميع الأجهزة
   int _restoreDepth = 0;
   bool _refreshQueuedAfterRestore = false;
+  bool _catalogRefreshQueuedAfterRestore = false;
   bool _localSyncQueuedAfterRestore = false;
   Completer<void>? _restoreIdleCompleter;
   int _localWriteDepth = 0;
@@ -103,6 +104,8 @@ class CloudSyncService {
   DateTime? _lastRealtimeErrorFeedbackAt;
   Future<void>? _activeBackup;
   Future<void>? _activeCatalogBackup;
+  Future<void>? _activeRestore;
+  Future<void>? _activeFullRecovery;
   bool _catalogBackupQueued = false;
   bool _hasPendingLocalCatalogChanges = false;
   int _catalogChangeGeneration = 0;
@@ -297,6 +300,31 @@ class CloudSyncService {
     await prefs.setBool('has_pending_transaction_changes', false);
   }
 
+  /// Makes every cloud restore safe for a manager and a worker alike.
+  ///
+  /// A full snapshot is required here instead of a delta: the restore source
+  /// is `backups/latest`, so the phone-only rows must be part of that confirmed
+  /// snapshot before any local table can be replaced by cloud data.
+  Future<bool> _publishPendingTransactionsBeforeCloudRestore() async {
+    if (!await _hasPendingTransactions()) return false;
+
+    _sendSyncFeedback(
+      CloudSyncFeedbackType.uploadStarted,
+      'يجري تأمين تغييرات هذا الجهاز قبل تنزيل تحديث الورشة.',
+      details: 'لن يُستبدل أي سجل محلي قبل تأكيد رفعه إلى Firebase.',
+    );
+    await backupToCloud(
+      isSilent: true,
+      forceFullSnapshot: true,
+      verifyOnServer: true,
+    );
+
+    // A user may have saved another record while the full snapshot was
+    // uploading. Preserve such a late change during the restore and queue it
+    // for the next upload instead of allowing a download to erase it.
+    return await _hasPendingTransactions();
+  }
+
   void _resumePendingTransactionalUpload() {
     _pendingTransactionUploadTimer?.cancel();
     _pendingTransactionUploadTimer = Timer(
@@ -349,6 +377,10 @@ class CloudSyncService {
   }
 
   String _describeCloudWriteFailure(Object error) {
+    if (SqlDatabase.isDatabaseMovedError(error)) {
+      return 'اتصال SQLite المحلي أصبح قديماً بعد تغيير ملف القاعدة (code 1032). '
+          'سيعيد التطبيق فتح القاعدة ثم يعيد محاولة التحديث.';
+    }
     if (SqlDatabase.isCorruptionError(error)) {
       return 'قاعدة SQLite المحلية على هذا الهاتف تالفة (code 11). '
           'سيحاول التطبيق إنشاء قاعدة سليمة واستعادة النسخة السحابية تلقائياً.';
@@ -663,7 +695,8 @@ class CloudSyncService {
           final wId = data['workshopId']?.toString() ?? '';
           final storedWorkshopId = prefs.getString('workshop_code') ?? '';
           final role = rawRole;
-          final isWorkshopMember = role == 'worker' || role == 'co_manager';
+          final isManagerDoc = role == 'manager' || wId == user.uid;
+          final isWorkshopMember = !isManagerDoc && (role == 'worker' || role == 'co_manager');
 
           if (isWorkshopMember && (wId.isEmpty || wId == user.uid)) {
             // A worker must never upload to a personal workshop path. Use a
@@ -671,14 +704,31 @@ class CloudSyncService {
             // and wait for the manager to link the account correctly.
             if (storedWorkshopId.isNotEmpty && storedWorkshopId != user.uid) {
               _workshopId = storedWorkshopId;
+              await prefs.setString('user_role', role);
+              print(
+                'Worker init: using cached workshopId=$storedWorkshopId for ${user.uid}',
+              );
             } else {
+              // ⚠️ [تشخيص]: حساب العامل لا يحتوي على workshopId صحيح في Firestore.
+              // يجب على المدير إضافة هذا العامل من شاشة إدارة العمال حتى تعمل المزامنة.
               _workshopId = null;
               lastBackupUploadSummary =
-                  'حساب العامل غير مرتبط بورشة صحيحة في Firebase.';
+                  'المزامنة متوقفة: حساب العامل (${user.email ?? user.uid}) غير مرتبط بورشة.\n'
+                  'يجب على المدير إضافة هذا العامل من شاشة "إدارة العمال" في التطبيق.\n'
+                  'أو إضافة حقل workshopId = uid_المدير يدوياً في Firebase Console.';
               await prefs.setString('workshop_code', '');
               await prefs.setString('user_role', role);
               print(
-                'Worker sync blocked: missing or invalid workshopId for ${user.uid}',
+                '[CloudSync] Worker sync BLOCKED — missing workshopId for uid=${user.uid} email=${user.email}\n'
+                'Fix: In Firestore, set users/${user.uid}/workshopId = <manager_uid>',
+              );
+              // إصدار تغذية راجعة مرئية في واجهة المستخدم
+              _sendSyncFeedback(
+                CloudSyncFeedbackType.uploadFailed,
+                'المزامنة متوقفة لهذا الجهاز.',
+                details:
+                    'حساب العامل (${user.email ?? user.uid}) غير مرتبط بورشة في Firebase.\n'
+                    'الحل: اطلب من المدير إضافتك من شاشة "إدارة العمال".',
               );
               return;
             }
@@ -744,6 +794,8 @@ class CloudSyncService {
     _lastRealtimeErrorFeedbackAt = null;
     _activeBackup = null;
     _activeCatalogBackup = null;
+    _activeRestore = null;
+    _activeFullRecovery = null;
     _catalogBackupQueued = false;
     _hasPendingLocalCatalogChanges = false;
     _catalogChangeGeneration = 0;
@@ -758,6 +810,7 @@ class CloudSyncService {
     _refreshQueuedAfterLocalWrite = false;
     _backupQueuedAfterLocalWrite = false;
     _refreshQueuedAfterRestore = false;
+    _catalogRefreshQueuedAfterRestore = false;
     _localSyncQueuedAfterRestore = false;
   }
 
@@ -825,31 +878,10 @@ class CloudSyncService {
 
     _catalogListener?.cancel();
     _catalogListener = _catalogDocument().snapshots().listen((doc) async {
-      if (_isRestoring || !doc.exists || doc.data() == null) return;
-      final payload = Map<String, dynamic>.from(doc.data() as Map);
-      if (payload['status']?.toString() != 'completed') return;
-
-      final fingerprint = _catalogFingerprint(payload);
-      if (fingerprint == _lastHandledCatalogFingerprint) return;
-      final uploadId = payload['uploadId']?.toString() ?? '';
-      final isOwnUpload =
-          uploadId.isNotEmpty && _ownUploadIds.contains(uploadId);
-      if (isOwnUpload) {
-        _lastHandledCatalogFingerprint = fingerprint;
-        return;
-      }
-      if (await _hasUnpublishedCatalogChanges()) {
-        print(
-          'Ignoring cloud catalog while local catalog changes await upload.',
-        );
-        return;
-      }
-      try {
-        await downloadGlobalCatalog();
-        _lastHandledCatalogFingerprint = fingerprint;
-      } catch (e) {
-        print('Automatic catalog download failed: $e');
-      }
+      if (!doc.exists || doc.data() == null) return;
+      await _applyGlobalCatalogUpdate(
+        Map<String, dynamic>.from(doc.data() as Map),
+      );
     }, onError: _scheduleRealtimeListenerRetry);
 
     // 2. ⚡ الاستماع الفوري واللحظي لتحديثات حالات الإسناد من أي هاتف في الورشة
@@ -1187,16 +1219,22 @@ class CloudSyncService {
       return;
     }
 
-    // Merge the incoming snapshot into any still-pending local work. Uploading
-    // the old local snapshot first would overwrite the newer cloud version and
-    // is the main reason another phone could remain on stale information.
-    final hasPendingLocalChanges = await _hasPendingTransactions();
-    if (hasPendingLocalChanges) {
+    // An incoming update must not replace a record that exists only on this
+    // phone. This applies to background real-time downloads as well as the
+    // manual refresh button: publish and verify local work first.
+    bool hasPendingLocalChanges;
+    try {
+      hasPendingLocalChanges =
+          await _publishPendingTransactionsBeforeCloudRestore();
+    } catch (error) {
       _sendSyncFeedback(
-        CloudSyncFeedbackType.downloadStarted,
-        'وصل تحديث جديد، ويجري دمجه مع تغييرات هذا الهاتف.',
-        details: 'الورشة: $_workshopId',
+        CloudSyncFeedbackType.uploadFailed,
+        'تم إيقاف تنزيل تحديث الورشة لحماية بيانات هذا الجهاز.',
+        details:
+            '${_describeCloudWriteFailure(error)}\n'
+            'سيُعاد التنزيل فقط بعد تأكيد رفع التغييرات المحلية.',
       );
+      return;
     }
 
     final rowCounts = payload['tableRowCounts'];
@@ -1244,7 +1282,10 @@ class CloudSyncService {
 
     _beginRestore();
     try {
-      await restoreFromCloud(keepPendingChanges: hasPendingLocalChanges);
+      await restoreFromCloud(
+        keepPendingChanges: hasPendingLocalChanges,
+        publishPendingChangesFirst: false,
+      );
       _lastHandledBackupFingerprint = fingerprint;
       _dbUpdateController.add('cloud_restored');
       _sendSyncFeedback(
@@ -1292,9 +1333,66 @@ class CloudSyncService {
       scheduleMicrotask(_silentBackup);
     }
 
-    if (!_refreshQueuedAfterRestore) return;
-    _refreshQueuedAfterRestore = false;
-    scheduleMicrotask(refreshFromCloudIfChanged);
+    if (_catalogRefreshQueuedAfterRestore) {
+      _catalogRefreshQueuedAfterRestore = false;
+      scheduleMicrotask(_refreshGlobalCatalogFromCloudIfChanged);
+    }
+
+    if (_refreshQueuedAfterRestore) {
+      _refreshQueuedAfterRestore = false;
+      scheduleMicrotask(refreshFromCloudIfChanged);
+    }
+  }
+
+  Future<void> _applyGlobalCatalogUpdate(
+    Map<String, dynamic> payload,
+  ) async {
+    if (payload['status']?.toString() != 'completed') return;
+    if (_isRestoring) {
+      // The listener's first event can arrive while the yellow start screen is
+      // still importing workshop data. Queue it instead of discarding the
+      // catalogue update, especially on a worker's first login.
+      _catalogRefreshQueuedAfterRestore = true;
+      return;
+    }
+
+    final fingerprint = _catalogFingerprint(payload);
+    if (fingerprint.isEmpty || fingerprint == _lastHandledCatalogFingerprint) {
+      return;
+    }
+    final uploadId = payload['uploadId']?.toString() ?? '';
+    if (uploadId.isNotEmpty && _ownUploadIds.contains(uploadId)) {
+      _lastHandledCatalogFingerprint = fingerprint;
+      return;
+    }
+    if (await _hasUnpublishedCatalogChanges()) {
+      print('Ignoring cloud catalog while local catalog changes await upload.');
+      return;
+    }
+    try {
+      await downloadGlobalCatalog();
+      _lastHandledCatalogFingerprint = fingerprint;
+    } catch (error) {
+      print('Automatic catalog download failed: $error');
+    }
+  }
+
+  Future<void> _refreshGlobalCatalogFromCloudIfChanged() async {
+    if (_isRestoring) {
+      _catalogRefreshQueuedAfterRestore = true;
+      return;
+    }
+    try {
+      final doc = await _catalogDocument()
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+      if (!doc.exists || doc.data() == null) return;
+      await _applyGlobalCatalogUpdate(
+        Map<String, dynamic>.from(doc.data() as Map),
+      );
+    } catch (error) {
+      print('Catalog sync health check failed: $error');
+    }
   }
 
   /// Public fallback used on app resume and by the periodic health check.
@@ -1322,6 +1420,13 @@ class CloudSyncService {
           Map<String, dynamic>.from(doc.data() as Map),
         );
       }
+
+      // A worker normally reaches the manager through an immutable delta, not
+      // by replacing `backups/latest`. If a real-time callback was briefly
+      // interrupted on the manager's phone, checking only `latest` would miss
+      // that worker addition forever. Re-read unapplied completed deltas as a
+      // reliable fallback; handled IDs make this safe and idempotent.
+      await _refreshDeltasFromCloud();
     } catch (e) {
       print('Cloud sync health check failed: $e');
     } finally {
@@ -1538,121 +1643,113 @@ class CloudSyncService {
     DocumentReference<Map<String, dynamic>> latestDocRef,
     String uploadId,
   ) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
     var acquiredLease = false;
     try {
       while (DateTime.now().isBefore(deadline)) {
-        final acquired = await _firestore
-            .runTransaction<bool>((transaction) async {
-              final snapshot = await transaction.get(latestDocRef);
-              final data = snapshot.data();
-              final now = DateTime.now();
+        try {
+          final acquired = await _firestore
+              .runTransaction<bool>((transaction) async {
+                final snapshot = await transaction.get(latestDocRef);
+                final data = snapshot.data();
+                final now = DateTime.now();
 
-              final queue = <String, Map<String, dynamic>>{};
-              final rawQueue = data?['syncUploadQueue'];
-              if (rawQueue is Map) {
-                for (final entry in rawQueue.entries) {
-                  if (entry.value is! Map) continue;
-                  final item = Map<String, dynamic>.from(entry.value as Map);
-                  final rawItemExpiry = item['expiresAt'];
-                  final itemExpiry = rawItemExpiry is Timestamp
-                      ? rawItemExpiry.toDate()
-                      : null;
-                  if (itemExpiry != null && itemExpiry.isAfter(now)) {
-                    queue[entry.key.toString()] = item;
+                final queue = <String, Map<String, dynamic>>{};
+                final rawQueue = data?['syncUploadQueue'];
+                if (rawQueue is Map) {
+                  for (final entry in rawQueue.entries) {
+                    if (entry.value is! Map) continue;
+                    final item = Map<String, dynamic>.from(entry.value as Map);
+                    final rawItemExpiry = item['expiresAt'];
+                    final itemExpiry = rawItemExpiry is Timestamp
+                        ? rawItemExpiry.toDate()
+                        : null;
+                    if (itemExpiry != null && itemExpiry.isAfter(now)) {
+                      queue[entry.key.toString()] = item;
+                    }
                   }
                 }
-              }
 
-              var queueSequence =
-                  (data?['syncQueueSequence'] as num?)?.toInt() ?? 0;
-              int? inheritedSequence;
-              final duplicateEntries = queue.entries
-                  .where(
-                    (entry) =>
-                        entry.key != uploadId &&
-                        entry.value['deviceId']?.toString() == _deviceId,
-                  )
-                  .toList();
-              for (final duplicate in duplicateEntries) {
-                final sequence =
-                    (duplicate.value['sequence'] as num?)?.toInt() ?? 0;
-                if (sequence > 0 &&
-                    (inheritedSequence == null ||
-                        sequence < inheritedSequence)) {
-                  inheritedSequence = sequence;
+                var queueSequence =
+                    (data?['syncQueueSequence'] as num?)?.toInt() ?? 0;
+                int? inheritedSequence;
+                final duplicateEntries = queue.entries
+                    .where(
+                      (entry) =>
+                          entry.key != uploadId &&
+                          entry.value['deviceId']?.toString() == _deviceId,
+                    )
+                    .toList();
+                for (final duplicate in duplicateEntries) {
+                  final sequence =
+                      (duplicate.value['sequence'] as num?)?.toInt() ?? 0;
+                  if (sequence > 0 &&
+                      (inheritedSequence == null ||
+                          sequence < inheritedSequence)) {
+                    inheritedSequence = sequence;
+                  }
+                  queue.remove(duplicate.key);
                 }
-                queue.remove(duplicate.key);
-              }
 
-              final existingQueueItem = queue[uploadId];
-              if (existingQueueItem == null) {
-                final sequence = inheritedSequence ?? ++queueSequence;
-                queue[uploadId] = <String, dynamic>{
-                  'sequence': sequence,
-                  'deviceId': _deviceId,
-                  'expiresAt': Timestamp.fromDate(
-                    now.add(const Duration(seconds: 30)),
-                  ),
-                };
-              } else {
-                existingQueueItem['deviceId'] = _deviceId;
-                existingQueueItem['expiresAt'] = Timestamp.fromDate(
-                  now.add(const Duration(seconds: 30)),
-                );
-              }
+                final existingQueueItem = queue[uploadId];
+                if (existingQueueItem == null) {
+                  final sequence = inheritedSequence ?? ++queueSequence;
+                  queue[uploadId] = <String, dynamic>{
+                    'sequence': sequence,
+                    'deviceId': _deviceId,
+                    'expiresAt': Timestamp.fromDate(
+                      now.add(const Duration(seconds: 12)),
+                    ),
+                  };
+                } else {
+                  existingQueueItem['deviceId'] = _deviceId;
+                  existingQueueItem['expiresAt'] = Timestamp.fromDate(
+                    now.add(const Duration(seconds: 12)),
+                  );
+                }
 
-              final orderedQueue = queue.entries.toList()
-                ..sort((left, right) {
-                  final leftSequence =
-                      (left.value['sequence'] as num?)?.toInt() ?? 0;
-                  final rightSequence =
-                      (right.value['sequence'] as num?)?.toInt() ?? 0;
-                  final sequenceResult = leftSequence.compareTo(rightSequence);
-                  return sequenceResult != 0
-                      ? sequenceResult
-                      : left.key.compareTo(right.key);
-                });
-              final isThisPhonesTurn =
-                  orderedQueue.isNotEmpty && orderedQueue.first.key == uploadId;
+                final currentOwner = data?['syncLockOwner']?.toString() ?? '';
+                final rawLockExpiry = data?['syncLockExpiresAt'];
+                final lockExpiry = rawLockExpiry is Timestamp
+                    ? rawLockExpiry.toDate()
+                    : null;
+                final lockIsFree =
+                    currentOwner.isEmpty ||
+                    currentOwner == uploadId ||
+                    lockExpiry == null ||
+                    lockExpiry.isBefore(now);
 
-              final currentOwner = data?['syncLockOwner']?.toString() ?? '';
-              final rawLockExpiry = data?['syncLockExpiresAt'];
-              final lockExpiry = rawLockExpiry is Timestamp
-                  ? rawLockExpiry.toDate()
-                  : null;
-              final lockIsFree =
-                  currentOwner.isEmpty ||
-                  currentOwner == uploadId ||
-                  lockExpiry == null ||
-                  lockExpiry.isBefore(now);
+                if (lockIsFree) {
+                  queue.remove(uploadId);
+                  transaction.set(latestDocRef, {
+                    'syncLockOwner': uploadId,
+                    'syncLockExpiresAt': Timestamp.fromDate(
+                      now.add(const Duration(seconds: 20)),
+                    ),
+                    'syncUploadQueue': queue,
+                    'syncQueueSequence': queueSequence,
+                  }, SetOptions(merge: true));
+                  return true;
+                }
 
-              if (lockIsFree && isThisPhonesTurn) {
-                queue.remove(uploadId);
                 transaction.set(latestDocRef, {
-                  'syncLockOwner': uploadId,
-                  'syncLockExpiresAt': Timestamp.fromDate(
-                    now.add(const Duration(seconds: 40)),
-                  ),
                   'syncUploadQueue': queue,
                   'syncQueueSequence': queueSequence,
                 }, SetOptions(merge: true));
-                return true;
-              }
+                return false;
+              })
+              .timeout(const Duration(seconds: 8));
 
-              transaction.set(latestDocRef, {
-                'syncUploadQueue': queue,
-                'syncQueueSequence': queueSequence,
-              }, SetOptions(merge: true));
-              return false;
-            })
-            .timeout(const Duration(seconds: 8));
-        if (acquired) {
-          acquiredLease = true;
-          return;
+          if (acquired) {
+            acquiredLease = true;
+            return;
+          }
+        } catch (e) {
+          print('Workshop lease acquisition retry attempt: $e');
         }
+
         await Future<void>.delayed(
-          Duration(milliseconds: 600 + Random().nextInt(300)),
+          Duration(milliseconds: 500 + Random().nextInt(300)),
         );
       }
     } finally {
@@ -1678,7 +1775,7 @@ class CloudSyncService {
             if (rawQueue is! Map || !rawQueue.containsKey(uploadId)) return;
             final queue = Map<String, dynamic>.from(rawQueue);
             queue.remove(uploadId);
-            transaction.update(latestDocRef, {'syncUploadQueue': queue});
+            transaction.set(latestDocRef, {'syncUploadQueue': queue}, SetOptions(merge: true));
           })
           .timeout(const Duration(seconds: 10));
     } catch (error) {
@@ -1694,13 +1791,14 @@ class CloudSyncService {
       await _firestore
           .runTransaction<void>((transaction) async {
             final snapshot = await transaction.get(latestDocRef);
-            if (snapshot.data()?['syncLockOwner']?.toString() != uploadId)
+            if (snapshot.data()?['syncLockOwner']?.toString() != uploadId) {
               return;
-            transaction.update(latestDocRef, {
+            }
+            transaction.set(latestDocRef, {
               'syncLockExpiresAt': Timestamp.fromDate(
-                DateTime.now().add(const Duration(seconds: 40)),
+                DateTime.now().add(const Duration(seconds: 20)),
               ),
-            });
+            }, SetOptions(merge: true));
           })
           .timeout(const Duration(seconds: 8));
     } catch (error) {
@@ -1719,16 +1817,33 @@ class CloudSyncService {
             if (snapshot.data()?['syncLockOwner']?.toString() != uploadId) {
               return;
             }
-            transaction.update(latestDocRef, {
+            transaction.set(latestDocRef, {
               'syncLockOwner': FieldValue.delete(),
               'syncLockExpiresAt': FieldValue.delete(),
-            });
+            }, SetOptions(merge: true));
           })
           .timeout(const Duration(seconds: 10));
     } catch (error) {
-      // The lease expires automatically, so a release failure cannot block
-      // the workshop permanently.
       print('Could not release workshop sync lease: $error');
+    }
+  }
+
+  Future<void> forceClearWorkshopSyncLock() async {
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) return;
+    try {
+      final docRef = _firestore
+          .collection('workshops')
+          .doc(workshopId)
+          .collection('backups')
+          .doc('latest');
+      await docRef.set({
+        'syncLockOwner': FieldValue.delete(),
+        'syncLockExpiresAt': FieldValue.delete(),
+        'syncUploadQueue': <String, dynamic>{},
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Error forcing clear sync lock: $e');
     }
   }
 
@@ -1751,7 +1866,13 @@ class CloudSyncService {
     try {
       // Local rows use distributed IDs, so incoming additions and still-local
       // additions can coexist even when both phones saved at the same moment.
-      await restoreFromCloud(keepPendingChanges: true);
+      // This restore happens inside the full-upload lease. Calling the public
+      // wrapper here would first request another backup and wait for this very
+      // upload, so use the internal no-preflight path instead.
+      await _runRestoreFromCloud(
+        keepPendingChanges: true,
+        publishPendingChangesFirst: false,
+      );
       _lastHandledBackupFingerprint = _backupFingerprint(payload);
       _dbUpdateController.add('cloud_restored');
       onDataRestored?.call();
@@ -1774,9 +1895,30 @@ class CloudSyncService {
   /// الخلفية دون انتظار المستخدم، وبدون التأثير على نجاح/فشل عملية الرفع نفسها.
   /// Serializes every upload, including the Settings button, so an older
   /// database snapshot cannot finish after a newer one and overwrite it.
-  Future<void> backupToCloud({bool isSilent = false}) {
+  Future<void> backupToCloud({
+    bool isSilent = false,
+    bool forceFullSnapshot = false,
+    bool verifyOnServer = false,
+  }) {
     final activeBackup = _activeBackup;
     if (activeBackup != null) {
+      // A recovery preflight needs a confirmed full snapshot.  Waiting for an
+      // in-flight delta alone is not enough because `backups/latest` would
+      // still omit that delta when the following restore starts.
+      if (forceFullSnapshot || verifyOnServer) {
+        return activeBackup.then<void>(
+          (_) => backupToCloud(
+            isSilent: isSilent,
+            forceFullSnapshot: forceFullSnapshot,
+            verifyOnServer: verifyOnServer,
+          ),
+          onError: (_, __) => backupToCloud(
+            isSilent: isSilent,
+            forceFullSnapshot: forceFullSnapshot,
+            verifyOnServer: verifyOnServer,
+          ),
+        );
+      }
       if (isSilent) {
         _silentBackupQueued = true;
         return activeBackup;
@@ -1787,14 +1929,26 @@ class CloudSyncService {
       );
     }
 
-    final task = _runSerializedBackup(isSilent: isSilent);
+    final task = _runSerializedBackup(
+      isSilent: isSilent,
+      forceFullSnapshot: forceFullSnapshot,
+      verifyOnServer: verifyOnServer,
+    );
     _activeBackup = task;
     return task;
   }
 
-  Future<void> _runSerializedBackup({required bool isSilent}) async {
+  Future<void> _runSerializedBackup({
+    required bool isSilent,
+    required bool forceFullSnapshot,
+    required bool verifyOnServer,
+  }) async {
     try {
-      await _performBackupToCloud(isSilent: isSilent);
+      await _performBackupToCloud(
+        isSilent: isSilent,
+        forceFullSnapshot: forceFullSnapshot,
+        verifyOnServer: verifyOnServer,
+      );
     } finally {
       _activeBackup = null;
     }
@@ -1897,15 +2051,25 @@ class CloudSyncService {
     }
   }
 
-  Future<void> _performBackupToCloud({bool isSilent = false}) async {
-    if (isSilent) {
+  Future<void> _performBackupToCloud({
+    bool isSilent = false,
+    bool forceFullSnapshot = false,
+    bool verifyOnServer = false,
+  }) async {
+    if (isSilent && !forceFullSnapshot) {
       final handledAsDelta = await _performDeltaBackupToCloud();
       if (handledAsDelta) return;
     }
-    await _performFullBackupToCloud(isSilent: isSilent);
+    await _performFullBackupToCloud(
+      isSilent: isSilent,
+      verifyOnServer: verifyOnServer,
+    );
   }
 
-  Future<void> _performFullBackupToCloud({bool isSilent = false}) async {
+  Future<void> _performFullBackupToCloud({
+    bool isSilent = false,
+    bool verifyOnServer = false,
+  }) async {
     await init();
     final uploadedGeneration = _transactionChangeGeneration;
 
@@ -1915,7 +2079,7 @@ class CloudSyncService {
         CloudSyncFeedbackType.uploadFailed,
         'لم يبدأ الرفع: يجب تسجيل الدخول أولاً.',
       );
-      if (!isSilent)
+      if (!isSilent || verifyOnServer)
         throw Exception(
           'يجب تسجيل الدخول أولاً لعمل نسخة احتياطية على السحابة',
         );
@@ -1927,7 +2091,7 @@ class CloudSyncService {
         'لم يبدأ الرفع: حسابك غير مرتبط بورشة صحيحة.',
         details: 'تحقق من workshopId في حساب العامل داخل Firebase.',
       );
-      if (!isSilent)
+      if (!isSilent || verifyOnServer)
         throw Exception('لم يتم العثور على معرف الورشة الخاص بك للمزامنة');
       return;
     }
@@ -1942,12 +2106,18 @@ class CloudSyncService {
         .doc(_workshopId)
         .collection('backups')
         .doc('latest');
-    final chunkRef = latestDocRef.collection('chunks');
     var uploadStage = 'بدء الاتصال بـ Firebase';
     final uploadId = _newUploadId();
+    // Upload into an immutable sibling document first.  The `latest` document
+    // remains the last known-good pointer while chunks are still arriving, so
+    // a failed upload can never make every other device lose its download.
+    final snapshotId = 'snapshot_$uploadId';
+    final snapshotRef = latestDocRef.parent.doc(snapshotId);
+    final chunkRef = snapshotRef.collection('chunks');
     _rememberOwnUpload(uploadId);
     Timer? leaseHeartbeat;
     var leaseAcquired = false;
+    var publishAttempted = false;
 
     try {
       // Only one workshop device may publish a full snapshot at a time. The
@@ -1992,9 +2162,11 @@ class CloudSyncService {
         details: uploadDetails,
       );
 
-      // 1. تغيير الحالة إلى "جاري الرفع"
+      // 1. Create a staged snapshot. Do not change `latest` yet: readers must
+      // continue to see the previously completed snapshot until this one is
+      // fully written and verified on the server.
       uploadStage = 'بدء جلسة الرفع في السحابة';
-      await latestDocRef
+      await snapshotRef
           .set({
             'timestamp': FieldValue.serverTimestamp(),
             'uploadId': uploadId,
@@ -2006,9 +2178,8 @@ class CloudSyncService {
           }, SetOptions(merge: true))
           .timeout(const Duration(seconds: 15));
 
-      // 2. رفع الأجزاء الجديدة مباشرة (كتابة فوق نفس الأسماء table_0, table_1...)
-      // بدون أي قراءة أو حذف مسبق للأجزاء القديمة — هذا ما يجعل الرفع سريعاً
-      // ومتناسباً فقط مع حجم بياناتك الحالية.
+      // 2. Upload every chunk to the staged snapshot, never over the chunks
+      // used by the current `latest` pointer.
       uploadStage = 'رفع الجداول والسجلات';
       final newChunkCounts = await _uploadChunkedTables(
         data: allData,
@@ -2021,20 +2192,23 @@ class CloudSyncService {
       // write. For automatic sync, do not then read every chunk one-by-one:
       // on a large workshop that verification delayed a single worker order
       // for minutes and kept every other phone waiting for `completed`.
-      // The Settings button keeps the full server-side verification below.
-      final verifiedCounts = isSilent
-          ? expectedRowCounts
-          : await _verifyUploadedChunks(
+      // The Settings button and recovery preflight keep the full server-side
+      // verification below.
+      final shouldVerifyOnServer = !isSilent || verifyOnServer;
+      final verifiedCounts = shouldVerifyOnServer
+          ? await _verifyUploadedChunks(
               chunkRef: chunkRef,
               expectedChunkCounts: newChunkCounts,
               expectedRowCounts: expectedRowCounts,
               uploadId: uploadId,
-            );
+            )
+          : expectedRowCounts;
 
-      // 3. إنهاء الرفع وتغيير الحالة إلى "مكتمل" — البيانات الجديدة أصبحت
-      // آمنة ومقروءة بالكامل بالسحابة بهذه المرحلة، بغض النظر عمّا سيحدث بعدها.
+      // 3. Finish the staged snapshot, then publish one small pointer update.
+      // That final update is the only event that makes this version visible to
+      // other phones.
       uploadStage = 'تأكيد اكتمال النسخة في السحابة';
-      await latestDocRef
+      await snapshotRef
           .update({
             'status': 'completed',
             'completedAt': FieldValue.serverTimestamp(),
@@ -2044,11 +2218,29 @@ class CloudSyncService {
           })
           .timeout(const Duration(seconds: 10));
 
+      publishAttempted = true;
+      await latestDocRef
+          .set({
+            'timestamp': FieldValue.serverTimestamp(),
+            'uploadId': uploadId,
+            'activeSnapshotId': snapshotId,
+            'deviceId': _deviceId,
+            'uploaderUid': user.uid,
+            'uploaderRole': prefs.getString('user_role') ?? 'worker',
+            'status': 'completed',
+            'completedAt': FieldValue.serverTimestamp(),
+            'tables': allData.keys.toList(),
+            'tableChunkCounts': newChunkCounts,
+            'tableRowCounts': verifiedCounts,
+            'compactedDeltaIds': compactedDeltaIds.toList(),
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 10));
+
       // A successful Firestore write already means that the server accepted
       // the automatic upload. Avoid a second server-only read here: on some
       // worker devices that read waited 15 seconds despite the write having
       // completed, then incorrectly reported the upload as failed.
-      if (!isSilent) {
+      if (shouldVerifyOnServer) {
         uploadStage = 'قراءة تأكيد النسخة من الخادم';
         final confirmation = await latestDocRef
             .get(GetOptions(source: Source.server))
@@ -2104,12 +2296,26 @@ class CloudSyncService {
       }
     } catch (e) {
       print('backupToCloud failed: $e');
-      _sendSyncFeedback(
-        CloudSyncFeedbackType.uploadFailed,
-        'فشل رفع بيانات الورشة إلى السحابة.',
-        details:
-            'مرحلة الفشل: $uploadStage\n${_describeCloudWriteFailure(e)}\nالورشة: $_workshopId',
-      );
+      // Once publication is attempted the result can be ambiguous if the
+      // network drops after Firestore accepted the pointer. Leave the staged
+      // snapshot completed in that case; it is either the active version or
+      // an unreachable orphan, never a replacement for a good version.
+      if (!publishAttempted) {
+        try {
+          await snapshotRef.set({
+            'status': 'failed',
+            'failedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (_) {}
+      }
+      if (!isSilent) {
+        _sendSyncFeedback(
+          CloudSyncFeedbackType.uploadFailed,
+          'فشل رفع بيانات الورشة إلى السحابة.',
+          details:
+              'مرحلة الفشل: $uploadStage\n${_describeCloudWriteFailure(e)}\nالورشة: $_workshopId',
+        );
+      }
       throw Exception(
         'فشل رفع النسخة إلى '
         'workshops/${_workshopId}/backups/latest: '
@@ -2124,26 +2330,66 @@ class CloudSyncService {
   }
 
   /// الاستعادة اليدوية/التلقائية من السحابة بنظام التجميع
-  Future<void> fullRecoverySync() async {
+  /// Runs at most one full recovery at a time.  The yellow startup screen,
+  /// pull-to-refresh and the top refresh button can all request a recovery;
+  /// allowing them to import SQLite tables concurrently can terminate the app
+  /// on some devices.  Later callers wait for the active recovery instead.
+  Future<void> fullRecoverySync() {
+    final activeRecovery = _activeFullRecovery;
+    if (activeRecovery != null) return activeRecovery;
+
+    final task = _runFullRecoverySync();
+    _activeFullRecovery = task;
+    return task;
+  }
+
+  Future<void> _runFullRecoverySync() async {
     _beginRestore();
     try {
       await init();
 
-      // Download first, then publish the merged result. Uploading a stale local
-      // snapshot before recovery can replace the newer snapshot that another
-      // phone has just finished uploading.
-      final hasPendingLocalChanges = await _hasPendingTransactions();
+      // A pending local change is first merged with the latest workshop state,
+      // published as a verified full snapshot, then restored from that server
+      // snapshot. This preserves phone-only records during a manual refresh.
+      var hasPendingLocalChanges = false;
+      try {
+        hasPendingLocalChanges =
+            await _publishPendingTransactionsBeforeCloudRestore();
+      } catch (error) {
+        _sendSyncFeedback(
+          CloudSyncFeedbackType.uploadFailed,
+          'تم إيقاف التحديث لحماية البيانات المحلية غير المرفوعة.',
+          details:
+              '${_describeCloudWriteFailure(error)}\n'
+              'لن يتم تنزيل أي نسخة سحابية قبل تأكيد رفع بيانات هذا الجهاز.',
+        );
+        rethrow;
+      }
+
+      // A remaining pending marker means that a new save happened while the
+      // preflight upload was running. It is merged, never replaced, and is
+      // uploaded automatically after the restore completes.
+      if (hasPendingLocalChanges) {
+        _localSyncQueuedAfterRestore = true;
+      }
 
       bool restoreSuccess = false;
+      Object? restoreError;
+      StackTrace? restoreStackTrace;
       // 1. استرجاع النسخة الاحتياطية الخاصة بالورشة (تمسح الجداول وتعيدها)
       try {
-        await restoreFromCloud(keepPendingChanges: hasPendingLocalChanges);
+        await restoreFromCloud(
+          keepPendingChanges: hasPendingLocalChanges,
+          publishPendingChangesFirst: false,
+        );
         restoreSuccess = true;
         if (hasPendingLocalChanges) {
           _localSyncQueuedAfterRestore = true;
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
         print('New chunk sync failed: $e');
+        restoreError = e;
+        restoreStackTrace = stackTrace;
       }
 
       // 2. جلب البيانات من المجلد العام (Global Catalog) فقط إذا كانت قاعدة البيانات فارغة تماماً من الكتالوج
@@ -2162,11 +2408,20 @@ class CloudSyncService {
         }
       }
 
-      // 3. استرجاع البيانات القديمة (الزبائن والطلبيات) بطريقة الدمج الذكي لتفادي الحذف
-      await _legacySync();
+      // 3. استرجاع البيانات القديمة (الزبائن والطلبيات) فقط كإجراء احتياطي عند عدم نجاح الاسترجاع الرئيسي
+      if (!restoreSuccess) {
+        await _legacySync();
+        // Legacy collections are only a migration fallback.  They must not
+        // make a failed current backup look like a successful manual refresh:
+        // otherwise the UI says “updated” while it still shows old data.
+        if (restoreError != null) {
+          Error.throwWithStackTrace(restoreError, restoreStackTrace!);
+        }
+      }
       _dbUpdateController.add('');
     } finally {
       _endRestore();
+      _activeFullRecovery = null;
     }
   }
 
@@ -2316,16 +2571,35 @@ class CloudSyncService {
     Map<String, dynamic> data, {
     required bool keepPendingChanges,
   }) async {
+    // 🛡️ [إصلاح]: استخدام mergeAllData=true دائماً لحماية البيانات المحلية الحساسة
+    // (الطلبيات، الزبائن، الصندوق، العمال) من الحذف العرضي عند تنزيل نسخة السحابة.
+    // الجداول الحساسة (sensitiveTransactionalTables) تُدمج دائماً.
+    // الجداول غير الحساسة (Profile, Series, Colors...) تُستبدل بالكامل كما ينبغي.
     try {
       if (!await _db.isDatabaseHealthy()) {
         throw StateError('database image malformed (code 11)');
       }
       await _db.importAllData(
         data,
-        replaceAllData: !keepPendingChanges,
-        mergeAllData: keepPendingChanges,
+        replaceAllData: false,
+        mergeAllData: true, // دائماً merge — لمنع حذف أي بيانات محلية حساسة
       );
     } catch (error) {
+      if (SqlDatabase.isDatabaseMovedError(error)) {
+        _sendSyncFeedback(
+          CloudSyncFeedbackType.downloadStarted,
+          'تمت إعادة فتح قاعدة بيانات هذا الهاتف لإكمال التحديث…',
+          details:
+              'تم اكتشاف اتصال SQLite قديم (code 1032)، وستتم إعادة محاولة تنزيل النسخة نفسها.',
+        );
+        await _db.reopenAfterDatabaseMoved();
+        await _db.importAllData(
+          data,
+          replaceAllData: false,
+          mergeAllData: true, // دائماً merge — لمنع حذف أي بيانات محلية حساسة
+        );
+        return;
+      }
       if (!SqlDatabase.isCorruptionError(error)) rethrow;
 
       _sendSyncFeedback(
@@ -2349,9 +2623,37 @@ class CloudSyncService {
     }
   }
 
+  /// Serializes all database restores, including the Settings restore action
+  /// and real-time Firestore updates.  SQLite imports are destructive enough
+  /// that two overlapping restores can corrupt the open database handle.
   Future<void> restoreFromCloud({
     bool preserveLocalChanges = false,
     bool keepPendingChanges = false,
+    bool publishPendingChangesFirst = true,
+  }) {
+    final activeRestore = _activeRestore;
+    if (activeRestore != null) return activeRestore;
+
+    late final Future<void> task;
+    task = _runRestoreFromCloud(
+      preserveLocalChanges: preserveLocalChanges,
+      keepPendingChanges: keepPendingChanges,
+      publishPendingChangesFirst: publishPendingChangesFirst,
+    ).whenComplete(() {
+      // Failures before the SQLite import (for example a missing backup or a
+      // permission error) must also release the serialization slot.
+      if (identical(_activeRestore, task)) {
+        _activeRestore = null;
+      }
+    });
+    _activeRestore = task;
+    return task;
+  }
+
+  Future<void> _runRestoreFromCloud({
+    bool preserveLocalChanges = false,
+    bool keepPendingChanges = false,
+    bool publishPendingChangesFirst = true,
   }) async {
     print("--- CloudSyncService: restoreFromCloud() started ---");
     await init();
@@ -2362,21 +2664,16 @@ class CloudSyncService {
       throw Exception('لم يتم العثور على ورشة خاصة بك للمزامنة');
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final isDirty = prefs.getBool('is_local_dirty') ?? false;
-    final role = prefs.getString('user_role') ?? 'worker';
-
-    // A restore is an explicit request to receive the cloud version. Do not
-    // let an old local snapshot overwrite a newer order on another device.
-    // Callers that truly need to preserve local edits can opt in explicitly.
-    if (preserveLocalChanges && isDirty && role != 'worker') {
-      print(
-        "--- CloudSyncService: Local changes exist (is_local_dirty). Uploading local data first before restore... ---",
-      );
-      try {
-        await backupToCloud(isSilent: true);
-      } catch (e) {
-        print('Pre-restore backup warning: $e');
+    var effectiveKeepPendingChanges = keepPendingChanges;
+    if (publishPendingChangesFirst) {
+      // Every public restore, including Settings and a worker task refresh,
+      // follows the same publish-before-download rule. The caller cannot
+      // accidentally erase a phone-only order by using a different button.
+      final savedWhilePublishing =
+          await _publishPendingTransactionsBeforeCloudRestore();
+      if (savedWhilePublishing) {
+        effectiveKeepPendingChanges = true;
+        _localSyncQueuedAfterRestore = true;
       }
     }
 
@@ -2387,9 +2684,16 @@ class CloudSyncService {
         .doc('latest');
 
     print("--- CloudSyncService: Fetching workshop/backups/latest... ---");
-    DocumentSnapshot doc = await latestDocRef
-        .get(GetOptions(source: Source.server))
-        .timeout(const Duration(seconds: 20));
+    DocumentSnapshot doc;
+    try {
+      doc = await latestDocRef
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      doc = await latestDocRef
+          .get()
+          .timeout(const Duration(seconds: 15));
+    }
     print("--- CloudSyncService: backups/latest fetched! ---");
 
     if (!doc.exists || doc.data() == null) {
@@ -2403,27 +2707,64 @@ class CloudSyncService {
         'النسخة السحابية ما زالت قيد الرفع؛ سيعاد فحصها عند اكتمالها.',
       );
     }
+    final activeSnapshotId = payload['activeSnapshotId']?.toString() ?? '';
 
     _beginRestore();
     try {
       // التوافقية مع النظام القديم (في حال وجود البيانات في المستند الرئيسي)
-      if (payload.containsKey('data')) {
+      if (activeSnapshotId.isEmpty && payload.containsKey('data')) {
         Map<String, dynamic> data = payload['data'] as Map<String, dynamic>;
         print("--- CloudSyncService: importing legacy data ---");
         await _importWorkshopSnapshot(
           data,
-          keepPendingChanges: keepPendingChanges,
+          keepPendingChanges: effectiveKeepPendingChanges,
         );
         await _db.relinkCurrentWorkerAllocations();
         print("--- CloudSyncService: Legacy data imported! ---");
         lastRestoreSummary = 'تم استرجاع النظام القديم (${data.length} جدول)';
       } else {
+        // The active pointer selects an immutable, already-completed snapshot.
+        // Headers created by older app versions have no pointer, so their
+        // `latest/chunks` location remains a backwards-compatible fallback.
+        CollectionReference<Map<String, dynamic>> sourceChunkRef =
+            latestDocRef.collection('chunks');
+        if (activeSnapshotId.isNotEmpty) {
+          final activeSnapshotRef = latestDocRef.parent.doc(activeSnapshotId);
+          DocumentSnapshot<Map<String, dynamic>> activeSnapshot;
+          try {
+            activeSnapshot = await activeSnapshotRef
+                .get(GetOptions(source: Source.server))
+                .timeout(const Duration(seconds: 15));
+          } catch (_) {
+            activeSnapshot = await activeSnapshotRef
+                .get()
+                .timeout(const Duration(seconds: 15));
+          }
+          final activeData = activeSnapshot.data();
+          if (!activeSnapshot.exists ||
+              activeData == null ||
+              activeData['status']?.toString() != 'completed' ||
+              activeData['uploadId']?.toString() !=
+                  payload['uploadId']?.toString()) {
+            throw StateError(
+              'النسخة السحابية المعلنة غير مكتملة أو لا تطابق مؤشرها؛ لن يتم تنزيل بيانات جزئية.',
+            );
+          }
+          sourceChunkRef = activeSnapshotRef.collection('chunks');
+        }
+
         // النظام الجديد: جلب الأجزاء (Chunks) وتجميعها
         print("--- CloudSyncService: Fetching workshop backup chunks... ---");
-        var snapshot = await latestDocRef
-            .collection('chunks')
-            .get(GetOptions(source: Source.server))
-            .timeout(const Duration(seconds: 35));
+        QuerySnapshot<Map<String, dynamic>> snapshot;
+        try {
+          snapshot = await sourceChunkRef
+              .get(GetOptions(source: Source.server))
+              .timeout(const Duration(seconds: 25));
+        } catch (_) {
+          snapshot = await sourceChunkRef
+              .get()
+              .timeout(const Duration(seconds: 25));
+        }
         print(
           "--- CloudSyncService: backup chunks fetched (${snapshot.docs.length}) ---",
         );
@@ -2457,7 +2798,7 @@ class CloudSyncService {
         }
         await _importWorkshopSnapshot(
           assembledData,
-          keepPendingChanges: keepPendingChanges,
+          keepPendingChanges: effectiveKeepPendingChanges,
         );
         await _db.relinkCurrentWorkerAllocations();
         await _db.syncWorkerAllocationsStatusFromCloud();
@@ -2474,7 +2815,7 @@ class CloudSyncService {
       }
       _dbUpdateController.add('');
       onDataRestored?.call();
-      if (!keepPendingChanges) {
+      if (!effectiveKeepPendingChanges) {
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('is_local_dirty', false);
@@ -2611,21 +2952,28 @@ class CloudSyncService {
 
     var uploadStage = 'بدء الاتصال بـ Firebase';
     final uploadId = _newUploadId();
+    // Keep the public `latest` document on the last confirmed catalogue until
+    // this immutable version is complete. Workers therefore never see a
+    // half-uploaded catalogue or lose a usable prior version.
+    final catalogVersionId = 'version_$uploadId';
+    final catalogVersionRef = catalogRef.parent.doc(catalogVersionId);
+    final chunkRef = catalogVersionRef.collection('chunks');
     _rememberOwnUpload(uploadId);
+    var publishAttempted = false;
     try {
       uploadStage = 'بدء جلسة رفع الكتالوج العام';
-      await catalogRef
+      await catalogVersionRef
           .set({
             'timestamp': FieldValue.serverTimestamp(),
             'uploadId': uploadId,
             'deviceId': _deviceId,
             'uploaderUid': user.uid,
+            'uploaderRole': role,
             'status': 'uploading',
             'tables': globalData.keys.toList(),
           })
           .timeout(const Duration(seconds: 15));
 
-      final chunkRef = catalogRef.collection('chunks');
       uploadStage = 'رفع جداول الكتالوج العام';
       final newChunkCounts = await _uploadChunkedTables(
         data: globalData,
@@ -2645,13 +2993,33 @@ class CloudSyncService {
       );
 
       uploadStage = 'تأكيد اكتمال الكتالوج العام';
-      await catalogRef
+      await catalogVersionRef
           .update({
             'status': 'completed',
             'completedAt': FieldValue.serverTimestamp(),
             'tableChunkCounts': newChunkCounts,
             'tableRowCounts': verifiedCounts,
           })
+          .timeout(const Duration(seconds: 10));
+
+      // Publishing this pointer is atomic from the readers' perspective: all
+      // chunks have already been verified above, and no worker follows the new
+      // version before this one write succeeds.
+      publishAttempted = true;
+      await catalogRef
+          .set({
+            'timestamp': FieldValue.serverTimestamp(),
+            'uploadId': uploadId,
+            'activeCatalogVersionId': catalogVersionId,
+            'deviceId': _deviceId,
+            'uploaderUid': user.uid,
+            'uploaderRole': role,
+            'status': 'completed',
+            'completedAt': FieldValue.serverTimestamp(),
+            'tables': globalData.keys.toList(),
+            'tableChunkCounts': newChunkCounts,
+            'tableRowCounts': verifiedCounts,
+          }, SetOptions(merge: true))
           .timeout(const Duration(seconds: 10));
 
       final confirmation = await catalogRef
@@ -2676,9 +3044,16 @@ class CloudSyncService {
           '(الكتالوج العام)';
       await _markCatalogUploadConfirmed(catalogGeneration);
     } catch (e) {
-      try {
-        await catalogRef.update({'status': 'failed'});
-      } catch (_) {}
+      // Do not mark `latest` failed: that would hide the catalogue currently
+      // used by every worker. A failed staged version is safely unreachable.
+      if (!publishAttempted) {
+        try {
+          await catalogVersionRef.set({
+            'status': 'failed',
+            'failedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (_) {}
+      }
       throw Exception(
         'فشل رفع الكتالوج إلى '
         'global_catalog/latest: '
@@ -2779,13 +3154,15 @@ class CloudSyncService {
     final status = payload['status']?.toString() ?? '';
     if (status.isNotEmpty && status != 'completed') {
       throw Exception(
-        'الكتالوج قيد التحديث على السيرفر، حاول مرة أخرى لاحقاً.',
+        'الكتالوج المعلن على السيرفر غير مكتمل. يجب أن يعيد مدير التطبيق نشره؛ لن يتم تنزيل بيانات جزئية.',
       );
     }
+    final activeCatalogVersionId =
+        payload['activeCatalogVersionId']?.toString() ?? '';
 
     _beginRestore();
     try {
-      if (payload.containsKey('data')) {
+      if (activeCatalogVersionId.isEmpty && payload.containsKey('data')) {
         final raw = payload['data'];
         if (raw is! Map) {
           throw Exception('صيغة بيانات الكتالوج غير صالحة على السيرفر.');
@@ -2801,9 +3178,32 @@ class CloudSyncService {
         );
         await _db.importGlobalCatalog(catalogData);
       } else {
+        // New catalogues are read from the immutable version selected by the
+        // completed `latest` pointer. Legacy uploads continue to use the old
+        // chunks location until a manager publishes the next catalogue.
+        CollectionReference<Map<String, dynamic>> sourceChunkRef =
+            catalogRef.collection('chunks');
+        if (activeCatalogVersionId.isNotEmpty) {
+          final activeCatalogVersionRef =
+              catalogRef.parent.doc(activeCatalogVersionId);
+          final activeCatalogVersion = await activeCatalogVersionRef
+              .get(GetOptions(source: Source.server))
+              .timeout(const Duration(seconds: 15));
+          final activeVersionData = activeCatalogVersion.data();
+          if (!activeCatalogVersion.exists ||
+              activeVersionData == null ||
+              activeVersionData['status']?.toString() != 'completed' ||
+              activeVersionData['uploadId']?.toString() !=
+                  payload['uploadId']?.toString()) {
+            throw StateError(
+              'الكاتالوج المعلن غير مكتمل أو لا يطابق مؤشره؛ لن يتم تنزيل بيانات جزئية.',
+            );
+          }
+          sourceChunkRef = activeCatalogVersionRef.collection('chunks');
+        }
+
         print("--- CloudSyncService: Fetching catalog chunks... ---");
-        var snapshot = await catalogRef
-            .collection('chunks')
+        var snapshot = await sourceChunkRef
             .get(GetOptions(source: Source.server))
             .timeout(const Duration(seconds: 30));
         print(

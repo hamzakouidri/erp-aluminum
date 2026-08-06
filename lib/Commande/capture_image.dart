@@ -166,7 +166,7 @@ Future<Uint8List> captureWindowImage(
 
 Future<String> saveWindowImageToDisk(
   WindowModel model, {
-  int maxSide = 1400,
+  int maxSide = 600,
 }) async {
   try {
     final bytes = await captureWindowImage(model, maxSide: maxSide);

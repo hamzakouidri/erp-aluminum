@@ -222,17 +222,19 @@ class PdfInvoiceApi {
   }
 
   static String _formatDocumentNumber(DevisData data) {
-    String prefix = 'FV';
+    String prefix = 'DV';
     final key = data.documentTitleKey ?? '';
 
     if (key == 'BON_CHARGE') {
       prefix = data.isPartial ? 'FCP' : 'FC';
     } else if (key == 'FACTURE_VENTE' || key == 'BON_ROUTE') {
       prefix = 'FV';
-    } else if (data.isProForma || key == 'DEVIS') {
-      prefix = data.isPartial ? 'FPP' : 'FP';
+    } else if (key == 'doc_devis' || key == 'DEVIS') {
+      prefix = data.isPartial ? 'DVP' : 'DV';
     } else if (key == 'DEVIS_PARTIAL') {
-      prefix = 'FPP';
+      prefix = 'DVP';
+    } else if (data.isProForma) {
+      prefix = data.isPartial ? 'FPP' : 'FP';
     } else if (key == 'doc_bon_livraison' || key == 'doc_bon_livraison_sans_prix') {
       prefix = 'BL';
     } else if (key == 'doc_bon_livraison_partiel' || key == 'doc_bon_livraison_partiel_sans_prix') {
@@ -241,7 +243,7 @@ class PdfInvoiceApi {
       if (data.isProForma) {
         prefix = 'FP';
       } else {
-        prefix = 'FV';
+        prefix = 'DV';
       }
     }
 
@@ -259,7 +261,12 @@ class PdfInvoiceApi {
       }
     } catch (_) {}
 
-    final seqNum = data.orderId.toString().padLeft(3, '0');
+    final seq = data.sequenceNumber > 0
+        ? data.sequenceNumber
+        : (data.orderId > 0 && data.orderId < 100000
+            ? data.orderId
+            : (data.orderId % 1000).abs());
+    final seqNum = seq.toString().padLeft(3, '0');
     return '$prefix$year2$seqNum';
   }
 

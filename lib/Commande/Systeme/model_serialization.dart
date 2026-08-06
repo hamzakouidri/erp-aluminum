@@ -282,7 +282,14 @@ extension WindowModelSerialization on WindowModel {
     return {
       'width': width,
       'height': height,
-      'systemMode': systemMode,
+      'systemMode': () {
+        final hasSliding = zones.any((z) => z.content == ZoneContent.slidingSash);
+        final hasFrench = zones.any((z) => z.content == ZoneContent.singleSash || z.content == ZoneContent.doubleSash);
+        if (hasSliding && hasFrench) return 'mixed';
+        if (hasSliding) return 'sliding';
+        if (hasFrench) return 'french';
+        return (systemMode != null && systemMode!.isNotEmpty) ? systemMode : 'mixed';
+      }(),
       'totalCost': totalCost,
       'quantity': quantity,
       'manualNameOverride': manualNameOverride,

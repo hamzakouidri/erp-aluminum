@@ -127,6 +127,7 @@ class _CommandePageState extends State<CommandePage> {
     final rawItems = payload['items'];
     if (rawItems is! List) return const [];
     final models = <WindowModel>[];
+    final payloadId = payload['payloadId']?.toString() ?? 'payload_${DateTime.now().millisecondsSinceEpoch}';
     for (final rawItem in rawItems) {
       if (rawItem is! Map) continue;
       final item = Map<String, dynamic>.from(rawItem);
@@ -152,6 +153,7 @@ class _CommandePageState extends State<CommandePage> {
           '';
       final singlePayload = <String, dynamic>{
         ...payload,
+        'payloadId': payloadId,
         'subType': subtype,
         'itemsCount': 1,
         'totalQuantity': quantity,
@@ -190,6 +192,7 @@ class _CommandePageState extends State<CommandePage> {
     final rawItems = payload['items'];
     if (rawItems is! List) return const [];
     final models = <WindowModel>[];
+    final payloadId = payload['payloadId']?.toString() ?? 'payload_${DateTime.now().millisecondsSinceEpoch}';
     for (final rawItem in rawItems) {
       if (rawItem is! Map) continue;
       final item = Map<String, dynamic>.from(rawItem);
@@ -212,6 +215,7 @@ class _CommandePageState extends State<CommandePage> {
       final notes = payload['notes']?.toString() ?? '';
       final singlePayload = <String, dynamic>{
         ...payload,
+        'payloadId': payloadId,
         'itemsCount': 1,
         'totalQuantity': quantity,
         'grandTotalAreaSqm': area * quantity,
@@ -245,13 +249,33 @@ class _CommandePageState extends State<CommandePage> {
   ) {
     if (models.isEmpty) return;
     final currentIndex = addedProducts.indexOf(current);
-    final firstMap = models.first.toMap();
-    applyWindowModelFromMap(current, firstMap);
-    if (currentIndex < 0 || models.length == 1) {
-      _highlightedProduct = current;
+    if (currentIndex < 0) {
+      addedProducts.addAll(models);
+      _highlightedProduct = models.last;
       return;
     }
-    addedProducts.insertAll(currentIndex + 1, models.skip(1));
+
+    // Identify if adjacent models share the same payload group to replace them as a batch
+    int replaceCount = 1;
+    final currentPayloadId = current.glassWorkPayload?['payloadId'] ??
+        current.moustiquairePayload?['payloadId'] ??
+        current.caissonPayload?['payloadId'];
+
+    if (currentPayloadId != null) {
+      for (int i = currentIndex + 1; i < addedProducts.length; i++) {
+        final p = addedProducts[i];
+        final pPayloadId = p.glassWorkPayload?['payloadId'] ??
+            p.moustiquairePayload?['payloadId'] ??
+            p.caissonPayload?['payloadId'];
+        if (pPayloadId == currentPayloadId) {
+          replaceCount++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    addedProducts.replaceRange(currentIndex, currentIndex + replaceCount, models);
     _highlightedProduct = models.last;
   }
 
@@ -273,8 +297,7 @@ class _CommandePageState extends State<CommandePage> {
       _loadEditData();
     } else if (widget.projectId != null) {
       _loadInitialProject(widget.projectId!);
-    }
-    if (widget.initialProducts != null && widget.initialProducts!.isNotEmpty) {
+    } else if (widget.initialProducts != null && widget.initialProducts!.isNotEmpty) {
       addedProducts.addAll(widget.initialProducts!);
     }
   }
@@ -386,6 +409,11 @@ class _CommandePageState extends State<CommandePage> {
       final details = await widget.db.readCommandeDetails(
         widget.editCommandeId!,
       );
+      if (!mounted) return;
+      setState(() {
+        addedProducts.clear();
+      });
+
       double? readDouble(dynamic value) {
         if (value is num) return value.toDouble();
         return double.tryParse(value?.toString().trim() ?? '');
@@ -396,7 +424,8 @@ class _CommandePageState extends State<CommandePage> {
         return int.tryParse(value?.toString().trim() ?? '');
       }
 
-      final loadedProducts = <WindowModel>[];
+      final allDbColors = await widget.db.readColors();
+      final loadedModels = <WindowModel>[];
       for (final row in details) {
         final model = WindowModel(db: widget.db);
         final savedWidth = readDouble(row['largeur']);
@@ -431,6 +460,24 @@ class _CommandePageState extends State<CommandePage> {
             }
           }
         }
+        // Restore color from DB if row['color'] is present
+        final rowColor = row['color']?.toString().trim() ?? '';
+        if (rowColor.isNotEmpty && model.selectedDbColor == null) {
+          final matched = allDbColors.firstWhere(
+            (c) => c['name']?.toString().toLowerCase() == rowColor.toLowerCase(),
+            orElse: () => <String, dynamic>{},
+          );
+          if (matched.isNotEmpty) {
+            model.selectedDbColor = matched;
+          } else {
+            final enumMatch = FrameColor.values.firstWhere(
+              (e) => e.name.toLowerCase() == rowColor.toLowerCase(),
+              orElse: () => FrameColor.white,
+            );
+            model.frameColor = enumMatch;
+          }
+        }
+
         // These columns are a durable fallback if an old JSON model is
         // incomplete or references a catalog entry that no longer exists.
         if (savedWidth != null) model.width = savedWidth;
@@ -451,11 +498,11 @@ class _CommandePageState extends State<CommandePage> {
         if (desc.isNotEmpty) {
           model.description = desc;
         }
-        loadedProducts.add(model);
+        loadedModels.add(model);
       }
       if (!mounted) return;
       setState(() {
-        addedProducts.addAll(loadedProducts);
+        addedProducts = loadedModels;
       });
 
       final storedTotal = readDouble(cmd['total']) ?? 0.0;
@@ -676,35 +723,84 @@ class _CommandePageState extends State<CommandePage> {
   Future<void> _saveCommande() async {
     if (_isSaving) return;
 
-    if (selectedClient == null || addedProducts.isEmpty) {
+    // 🟢 Auto-resolve client if typed in text field but selectedClient map is null
+    if (selectedClient == null && clientController.text.trim().isNotEmpty) {
+      final inputName = clientController.text.trim();
+      try {
+        final clients = await widget.db.readClient();
+        final match = clients.firstWhere(
+          (c) =>
+              '${c['firstname']} ${c['lastname']}'.trim().toLowerCase() == inputName.toLowerCase() ||
+              '${c['lastname']} ${c['firstname']}'.trim().toLowerCase() == inputName.toLowerCase() ||
+              (c['firstname']?.toString().toLowerCase() == inputName.toLowerCase()),
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isNotEmpty) {
+          selectedClient = match;
+        } else {
+          final parts = inputName.split(' ');
+          final fname = parts.first;
+          final lname = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+          final newId = await widget.db.insertClient(
+            fname,
+            lname,
+            '',
+            '',
+            '',
+            '',
+          );
+          selectedClient = {
+            'id': newId,
+            'firstname': fname,
+            'lastname': lname,
+          };
+        }
+      } catch (e) {
+        debugPrint('Error auto-resolving client: $e');
+      }
+    }
+
+    if (selectedClient == null || selectedClient!['id'] == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             Localization.translate(
-              "Please select a client and add products",
+              "Please select a client",
               Provider.of<AppSettingsProvider>(context, listen: false).language,
             ),
           ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (addedProducts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              "Please add products",
+              Provider.of<AppSettingsProvider>(context, listen: false).language,
+            ),
+          ),
+          backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
     final clientId = selectedClient!['id'];
-    if (clientId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(t('خطأ: معرف العميل غير صالح'))));
-      return;
-    }
 
     setState(() => _isSaving = true);
+    bool dialogShown = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
+    dialogShown = true;
 
     await Future.delayed(const Duration(milliseconds: 100));
 
@@ -731,22 +827,33 @@ class _CommandePageState extends State<CommandePage> {
       final existingDetails = widget.editCommandeId == null
           ? <Map<String, dynamic>>[]
           : await widget.db.readCommandeDetails(widget.editCommandeId!);
+      
+      final imagePaths = await Future.wait(
+        addedProducts.asMap().entries.map((entry) async {
+          final index = entry.key;
+          final p = entry.value;
+          final previous = index < existingDetails.length
+              ? existingDetails[index]
+              : null;
+          final selectedGlassImagePath =
+              p.glassWorkPayload?['imagePath']?.toString() ?? '';
+          final mustKeepSyncedGlassImage =
+              p.isGlassWork &&
+              selectedGlassImagePath.isNotEmpty &&
+              !File(selectedGlassImagePath).existsSync() &&
+              (previous?['drawing_image_base64']?.toString().isNotEmpty ?? false);
+          if (mustKeepSyncedGlassImage) return '';
+          return saveWindowImageToDisk(p, maxSide: 600);
+        }),
+      );
+
       final preparedDetails = <Map<String, dynamic>>[];
       for (var index = 0; index < addedProducts.length; index++) {
         final p = addedProducts[index];
         final previous = index < existingDetails.length
             ? existingDetails[index]
             : null;
-        final selectedGlassImagePath =
-            p.glassWorkPayload?['imagePath']?.toString() ?? '';
-        final mustKeepSyncedGlassImage =
-            p.isGlassWork &&
-            selectedGlassImagePath.isNotEmpty &&
-            !File(selectedGlassImagePath).existsSync() &&
-            (previous?['drawing_image_base64']?.toString().isNotEmpty ?? false);
-        final newImagePath = mustKeepSyncedGlassImage
-            ? ''
-            : await saveWindowImageToDisk(p);
+        final newImagePath = imagePaths[index];
         final drawingPath = newImagePath.isNotEmpty
             ? newImagePath
             : previous?['drawing_image_path']?.toString() ?? '';
@@ -764,9 +871,11 @@ class _CommandePageState extends State<CommandePage> {
                         p.zones.first.glass.structure == GlassStructure.double
                     ? 'Double'
                     : 'Single'),
-          'color': p.isGlassWork
-              ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
-              : p.frameColor.toString().split('.').last,
+          'color': p.selectedDbColor != null
+              ? (p.selectedDbColor!['name']?.toString() ?? '')
+              : (p.isGlassWork
+                  ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
+                  : p.frameColor.toString().split('.').last),
           'volet': p.hasShutter ? 'Yes' : 'No',
           'accessories': '',
           'description': p.description ?? '',
@@ -777,7 +886,14 @@ class _CommandePageState extends State<CommandePage> {
               : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
                     ? 'Double Sash'
                     : 'Single Sash'),
-          'partitions_json': jsonEncode(p.toMap()),
+          'partitions_json': () {
+            try {
+              return jsonEncode(p.toMap());
+            } catch (e) {
+              debugPrint('Error encoding p.toMap(): $e');
+              return '{}';
+            }
+          }(),
           'drawing_image_path': drawingPath,
           if (newImagePath.isEmpty && previous?['drawing_image_base64'] != null)
             'drawing_image_base64': previous!['drawing_image_base64'],
@@ -799,7 +915,10 @@ class _CommandePageState extends State<CommandePage> {
       );
 
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
+      if (dialogShown) {
+        Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
+        dialogShown = false;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -815,7 +934,11 @@ class _CommandePageState extends State<CommandePage> {
     } catch (e, st) {
       debugPrint('Error saving commande: $e\n$st');
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
+      if (dialogShown) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
+        } catch (_) {}
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('فشل حفظ الطلبية: $e'),
@@ -825,6 +948,163 @@ class _CommandePageState extends State<CommandePage> {
     } finally {
       syncService.endLocalWrite();
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // 🟢 دالة تغيير لون كل عناصر الطلبية دفعة واحدة
+  Future<void> _showApplyBulkColorDialog() async {
+    final colors = await widget.db.readColors();
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.palette, color: Colors.purple),
+              SizedBox(width: 10),
+              Text(
+                'تغيير لون كل العناصر',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'اختر اللون المراد تطبيقه على جميع عناصر ونوافذ هذه الطلبية:',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ...FrameColor.values.map((color) {
+                          final colorName = _getBulkFrameColorName(color);
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: _getBulkFrameColorDisplay(color),
+                              radius: 14,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.grey.shade400),
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              colorName,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _applyColorToAllProducts(frameColor: color);
+                            },
+                          );
+                        }),
+                        const Divider(),
+                        ...colors.map((dbColor) {
+                          final name = dbColor['name']?.toString() ?? '';
+                          final hex = dbColor['hex_code']?.toString() ?? '#9E9E9E';
+                          Color parsedColor = Colors.grey;
+                          try {
+                            parsedColor = Color(int.parse(hex.replaceAll('#', '0xFF')));
+                          } catch (_) {}
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: parsedColor,
+                              radius: 14,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.grey.shade400),
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              name,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _applyColorToAllProducts(dbColor: dbColor);
+                            },
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _applyColorToAllProducts({FrameColor? frameColor, Map<String, dynamic>? dbColor}) {
+    final colorName = dbColor != null
+        ? (dbColor['name']?.toString() ?? '')
+        : (frameColor != null ? _getBulkFrameColorName(frameColor) : '');
+
+    setState(() {
+      for (final p in addedProducts) {
+        if (dbColor != null) {
+          p.selectedDbColor = dbColor;
+        } else if (frameColor != null) {
+          p.frameColor = frameColor;
+          p.selectedDbColor = null;
+        }
+        p.refreshUI();
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.purple.shade700,
+        content: Text('تم تغيير لون كل عناصر الطلبية إلى ($colorName) بنجاح!'),
+      ),
+    );
+  }
+
+  String _getBulkFrameColorName(FrameColor c) {
+    switch (c) {
+      case FrameColor.white: return 'أبيض (Blanc)';
+      case FrameColor.brown: return 'بني (Bronze)';
+      case FrameColor.gray: return 'رمادي غامق (Gris 7024)';
+      case FrameColor.black: return 'أسود (Noir)';
+      case FrameColor.beige: return 'بيج (Beige)';
+      case FrameColor.gris: return 'رمادي (Gris 9007)';
+      case FrameColor.antique: return 'أنتيك (Antique)';
+      case FrameColor.lightWood: return 'خشبي ديزرت أوك (Desert Oak)';
+    }
+  }
+
+  Color _getBulkFrameColorDisplay(FrameColor c) {
+    switch (c) {
+      case FrameColor.white: return Colors.white;
+      case FrameColor.brown: return const Color(0xFF5D4037);
+      case FrameColor.gray: return const Color(0xFF565E70);
+      case FrameColor.black: return const Color(0xFF212121);
+      case FrameColor.beige: return const Color(0xFFDDC8A0);
+      case FrameColor.gris: return const Color(0xFF9E9E9E);
+      case FrameColor.antique: return const Color(0xFF6E5D4F);
+      case FrameColor.lightWood: return const Color(0xFFA8803E);
     }
   }
 
@@ -1023,6 +1303,12 @@ class _CommandePageState extends State<CommandePage> {
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         actions: [
+          if (addedProducts.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.palette, color: Colors.purpleAccent),
+              onPressed: _showApplyBulkColorDialog,
+              tooltip: "تغيير لون كل عناصر الطلبية",
+            ),
           if (addedProducts.length > 1)
             IconButton(
               icon: Icon(
@@ -1154,6 +1440,30 @@ class _CommandePageState extends State<CommandePage> {
               onTap: () => pickDate(validDateController),
             ),
             const SizedBox(height: 15),
+
+            if (addedProducts.isNotEmpty && !_isReordering) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                  onPressed: _showApplyBulkColorDialog,
+                  icon: const Icon(Icons.palette_outlined, size: 22),
+                  label: const Text(
+                    'تغيير لون كل عناصر الطلبية',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
 
             if (_isReordering) ...[
               Container(
@@ -2283,31 +2593,7 @@ class _CommandePageState extends State<CommandePage> {
                                     MaterialPageRoute(
                                       builder: (context) => WindowView(
                                         model: p,
-                                        systemMode:
-                                            (p.systemMode != null &&
-                                                p.systemMode!.isNotEmpty)
-                                            ? p.systemMode!
-                                            : (() {
-                                                final hasSliding = p.zones.any(
-                                                  (z) =>
-                                                      z.content ==
-                                                      ZoneContent.slidingSash,
-                                                );
-                                                final hasFrench = p.zones.any(
-                                                  (z) =>
-                                                      z.content ==
-                                                          ZoneContent
-                                                              .singleSash ||
-                                                      z.content ==
-                                                          ZoneContent
-                                                              .doubleSash,
-                                                );
-                                                if (hasSliding && hasFrench)
-                                                  return 'mixed';
-                                                return hasSliding
-                                                    ? 'sliding'
-                                                    : 'french';
-                                              })(),
+                                        systemMode: 'mixed',
                                       ),
                                     ),
                                   );
@@ -2772,22 +3058,9 @@ class _CommandePageState extends State<CommandePage> {
                     MaterialPageRoute(
                       builder: (context) => WindowView(
                         model: cloned,
-                        systemMode:
-                            (cloned.systemMode != null &&
-                                cloned.systemMode!.isNotEmpty)
-                            ? cloned.systemMode!
-                            : (() {
-                                final hasSliding = cloned.zones.any(
-                                  (z) => z.content == ZoneContent.slidingSash,
-                                );
-                                final hasFrench = cloned.zones.any(
-                                  (z) =>
-                                      z.content == ZoneContent.singleSash ||
-                                      z.content == ZoneContent.doubleSash,
-                                );
-                                if (hasSliding && hasFrench) return 'mixed';
-                                return hasSliding ? 'sliding' : 'french';
-                              })(),
+                        // Editing an existing window must always expose both
+                        // French and sliding tools, whatever its original mode.
+                        systemMode: 'mixed',
                       ),
                     ),
                   );

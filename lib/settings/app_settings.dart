@@ -86,56 +86,60 @@ class AppSettingsProvider extends ChangeNotifier {
     _workshopCode = prefs.getString('workshop_code') ?? '';
     _userDisplayName = prefs.getString('user_display_name') ?? 'مدير الورشة';
 
-    final user = FirebaseAuth.instance.currentUser;
+    User? user;
+    try {
+      user = FirebaseAuth.instance.currentUser;
+    } catch (_) {}
+
     if (user == null) {
-      _userRole = 'worker';
+      _userRole = prefs.getString('user_role') ?? 'worker';
       _workerPermissions = {};
-      prefs.setString('user_role', 'worker');
     } else {
       if (user.email == 'kouidrihamza45@gmail.com') {
         // Keep the application administrator distinct from workshop managers.
         _userRole = 'admin';
         await prefs.setString('user_role', 'admin');
       } else {
-        // Never grant rights from a stale role stored on this device. The
-        // signed-in user's Firestore document below is the source of truth.
-        _userRole = 'worker';
+        // Preserve saved role from local preferences until Firestore snapshot updates it
+        _userRole = prefs.getString('user_role') ?? 'manager';
       }
 
       // 🔄 استماع فوري ودائم لتعديلات الصلاحيات والدور من السحابة لجميع الحسابات
       _permSubscription?.cancel();
-      _permSubscription = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots()
-          .listen((docSnap) {
-            if (docSnap.exists && docSnap.data() != null) {
-              final data = docSnap.data()!;
-              if (data['role'] != null &&
-                  user.email != 'kouidrihamza45@gmail.com') {
-                _userRole = data['role'].toString();
-                prefs.setString('user_role', _userRole);
+      try {
+        _permSubscription = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots()
+            .listen((docSnap) {
+              if (docSnap.exists && docSnap.data() != null) {
+                final data = docSnap.data()!;
+                if (data['role'] != null &&
+                    user?.email != 'kouidrihamza45@gmail.com') {
+                  _userRole = data['role'].toString();
+                  prefs.setString('user_role', _userRole);
+                }
+                // Firestore is the authority for permissions. A worker's local
+                // database can be older than the change made by the manager.
+                Map<String, dynamic> cloudPermissions = {};
+                if (data['permissions_json'] is String &&
+                    (data['permissions_json'] as String).isNotEmpty) {
+                  try {
+                    final decoded = jsonDecode(data['permissions_json']);
+                    if (decoded is Map) {
+                      cloudPermissions = Map<String, dynamic>.from(decoded);
+                    }
+                  } catch (_) {}
+                } else if (data['permissions'] is Map) {
+                  cloudPermissions = Map<String, dynamic>.from(
+                    data['permissions'],
+                  );
+                }
+                _workerPermissions = cloudPermissions;
+                notifyListeners();
               }
-              // Firestore is the authority for permissions. A worker's local
-              // database can be older than the change made by the manager.
-              Map<String, dynamic> cloudPermissions = {};
-              if (data['permissions_json'] is String &&
-                  (data['permissions_json'] as String).isNotEmpty) {
-                try {
-                  final decoded = jsonDecode(data['permissions_json']);
-                  if (decoded is Map) {
-                    cloudPermissions = Map<String, dynamic>.from(decoded);
-                  }
-                } catch (_) {}
-              } else if (data['permissions'] is Map) {
-                cloudPermissions = Map<String, dynamic>.from(
-                  data['permissions'],
-                );
-              }
-              _workerPermissions = cloudPermissions;
-              notifyListeners();
-            }
-          });
+            });
+      } catch (_) {}
     }
     notifyListeners();
   }

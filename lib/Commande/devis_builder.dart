@@ -103,6 +103,7 @@ class DevisData {
   final String clientAi;
   final String chequeNumber;
   final int clientId;
+  final int sequenceNumber;
   final int priorConfirmedWindowsCount;
 
   // Raw inputs for dynamic rebuilding
@@ -136,6 +137,7 @@ class DevisData {
     this.clientAi = '',
     this.chequeNumber = '',
     this.clientId = 0,
+    this.sequenceNumber = 0,
     this.priorConfirmedWindowsCount = 0,
     this.rawOrder,
     this.rawItems,
@@ -318,6 +320,7 @@ class DevisBuilder {
     }
 
     int priorConfirmedWindowsCount = 0;
+    int sequenceNumber = 0;
     final orderIdVal = order['id'] as int?;
     if (orderIdVal != null) {
       try {
@@ -326,6 +329,11 @@ class DevisBuilder {
         );
       } catch (e) {
         debugPrint('Error getting prior confirmed windows count: $e');
+      }
+      try {
+        sequenceNumber = await db.getOrderSequenceNumber(orderIdVal);
+      } catch (e) {
+        debugPrint('Error getting order sequence number: $e');
       }
     }
 
@@ -356,6 +364,7 @@ class DevisBuilder {
       clientAi: clientAi,
       chequeNumber: chequeNumber,
       clientId: clientId ?? 0,
+      sequenceNumber: sequenceNumber,
       priorConfirmedWindowsCount: priorConfirmedWindowsCount,
       rawOrder: order,
       rawItems: items,

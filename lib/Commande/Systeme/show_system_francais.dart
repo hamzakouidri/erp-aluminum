@@ -5892,6 +5892,99 @@ class _WindowViewState extends State<WindowView> {
     final primarySeries = widget.systemMode == 'sliding'
         ? widget.model.activeSlidingSeries
         : widget.model.activeSeries;
+
+    final primaryItemsList = () {
+      final List<AluminumSeries> list = [];
+      for (var system in widget.model.availableSystems) {
+        final filtered = widget.systemMode == 'mixed'
+            ? system.series.where((series) {
+                final name = series.name.toLowerCase();
+                final type = series.type.toLowerCase();
+                return name.contains('frappe') ||
+                    name.contains('battant') || name.contains('فتح') ||
+                    name.contains('فرنسي') ||
+                    name.contains('ouvrant') ||
+                    type.contains('frappe') ||
+                    type.contains('battant') || type.contains('فتح') ||
+                    type.contains('فرنسي') || type.contains('ouvrant');
+              })
+            : system.series;
+        final selectorMode = widget.systemMode == 'sliding'
+            ? 'sliding'
+            : 'french';
+        list.addAll(filtered.where((series) =>
+            seriesMatchesDrawingMode(series, system, selectorMode)));
+        for (final series in system.series) {
+          if (seriesMatchesDrawingMode(series, system, selectorMode) &&
+              !list.any((item) => item.id == series.id)) {
+            list.add(series);
+          }
+        }
+      }
+      if (primarySeries != null &&
+          !list.any((s) => s.id == primarySeries.id)) {
+        list.add(primarySeries);
+      }
+
+      final uniqueList = <AluminumSeries>[];
+      for (final s in list) {
+        if (!uniqueList.any((existing) => existing.id == s.id)) {
+          uniqueList.add(s);
+        }
+      }
+      return uniqueList;
+    }();
+
+    final safePrimaryValue = (primarySeries != null &&
+            primaryItemsList.any((s) => s.id == primarySeries.id))
+        ? primaryItemsList.firstWhere((s) => s.id == primarySeries.id)
+        : null;
+
+    final slidingItemsList = () {
+      final activeSystemId = widget.model.activeSeries?.profileId;
+      if (activeSystemId == null || widget.model.availableSystems.isEmpty) {
+        return <AluminumSeries>[];
+      }
+      final systemMatches = widget.model.availableSystems.where(
+        (sys) => sys.id == activeSystemId,
+      );
+      if (systemMatches.isEmpty) return <AluminumSeries>[];
+      final system = systemMatches.first;
+      final List<AluminumSeries> list = system.series.where((series) {
+        final name = series.name.toLowerCase();
+        final type = series.type.toLowerCase();
+        return name.contains('couliss') ||
+            name.contains('sliding') ||
+            name.contains('منزلق') ||
+            type.contains('couliss') ||
+            type.contains('sliding') || type.contains('منزلق');
+      }).toList();
+
+      for (final series in system.series) {
+        if (isSlidingSeriesForDrawing(series) &&
+            !list.any((item) => item.id == series.id)) {
+          list.add(series);
+        }
+      }
+      if (widget.model.activeSlidingSeries != null &&
+          !list.any((s) => s.id == widget.model.activeSlidingSeries!.id)) {
+        list.add(widget.model.activeSlidingSeries!);
+      }
+
+      final uniqueList = <AluminumSeries>[];
+      for (final s in list) {
+        if (!uniqueList.any((existing) => existing.id == s.id)) {
+          uniqueList.add(s);
+        }
+      }
+      return uniqueList;
+    }();
+
+    final safeSlidingValue = (widget.model.activeSlidingSeries != null &&
+            slidingItemsList.any((s) => s.id == widget.model.activeSlidingSeries!.id))
+        ? slidingItemsList.firstWhere((s) => s.id == widget.model.activeSlidingSeries!.id)
+        : null;
+
     return AppBar(
       backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
       foregroundColor: isDark ? Colors.white : Colors.black,
@@ -5912,7 +6005,7 @@ class _WindowViewState extends State<WindowView> {
                 ),
                 child: DropdownButton<AluminumSeries>(
                   isExpanded: true,
-                  value: primarySeries,
+                  value: safePrimaryValue,
                   dropdownColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
                   hint: Text(
                     widget.systemMode == 'mixed'
@@ -5926,68 +6019,28 @@ class _WindowViewState extends State<WindowView> {
                     color: isDark ? Colors.blue.shade300 : Colors.blue,
                     size: 18,
                   ),
-                  items: () {
-                    final List<AluminumSeries> list = [];
-                    for (var system in widget.model.availableSystems) {
-                      final filtered = widget.systemMode == 'mixed'
-                          ? system.series.where((series) {
-                        final name = series.name.toLowerCase();
-                        final type = series.type.toLowerCase();
-                        return name.contains('frappe') ||
-                            name.contains('battant') || name.contains('فتح') ||
-                            name.contains('فرنسي') ||
-                            name.contains('ouvrant') ||
-                            type.contains('frappe') ||
-                            type.contains('battant') || type.contains('فتح') ||
-                            type.contains('فرنسي') || type.contains('ouvrant');
-                      })
-                          : system.series;
-                      final selectorMode = widget.systemMode == 'sliding'
-                          ? 'sliding'
-                          : 'french';
-                      list.addAll(filtered.where((series) =>
-                          seriesMatchesDrawingMode(
-                              series, system, selectorMode)));
-                      for (final series in system.series) {
-                        if (seriesMatchesDrawingMode(
-                                series, system, selectorMode) &&
-                            !list.any((item) => item.id == series.id)) {
-                          list.add(series);
-                        }
-                      }
-                    }
-                      if (primarySeries != null &&
-                        seriesMatchesDrawingMode(
-                            primarySeries,
-                            widget.model.availableSystems.firstWhere(
-                              (system) => system.series.any(
-                                  (series) => series.id == primarySeries.id),
-                              orElse: () => widget.model.availableSystems.first,
-                            ),
-                            widget.systemMode == 'sliding' ? 'sliding' : 'french') &&
-                        !list.any((s) =>
-                        s.id == primarySeries.id)) {
-                      list.add(primarySeries);
-                    }
-                    return list.map((series) {
-                      final system = widget.model.availableSystems.firstWhere(
-                            (sys) => sys.series.any((s) => s.id == series.id),
-                        orElse: () => widget.model.availableSystems.first,
-                      );
-                      return DropdownMenuItem<AluminumSeries>(
-                        value: series,
-                        child: Text(
-                          '${system.name} - ${series.name}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.blue.shade300 : Colors.blue,
-                            fontSize: 12,
-                          ),
-                          overflow: TextOverflow.visible,
+                  items: primaryItemsList.map((series) {
+                    final systemMatches = widget.model.availableSystems.where(
+                      (sys) => sys.series.any((s) => s.id == series.id),
+                    );
+                    final systemName = systemMatches.isNotEmpty
+                        ? systemMatches.first.name
+                        : '';
+                    return DropdownMenuItem<AluminumSeries>(
+                      value: series,
+                      child: Text(
+                        systemName.isNotEmpty
+                            ? '$systemName - ${series.name}'
+                            : series.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue,
+                          fontSize: 12,
                         ),
-                      );
-                    }).toList();
-                  }(),
+                        overflow: TextOverflow.visible,
+                      ),
+                    );
+                  }).toList(),
                   onChanged: (AluminumSeries? newSeries) {
                     if (newSeries != null) {
                       widget.model.setActiveSeries(newSeries);
@@ -6008,7 +6061,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   child: DropdownButton<AluminumSeries>(
                     isExpanded: true,
-                    value: widget.model.activeSlidingSeries,
+                    value: safeSlidingValue,
                     dropdownColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
                     hint: Text(
                       'سلسلة المنزلق',
@@ -6020,64 +6073,28 @@ class _WindowViewState extends State<WindowView> {
                       color: isDark ? Colors.green.shade300 : Colors.green,
                       size: 18,
                     ),
-                    items: () {
-                      final activeSystemId = widget.model.activeSeries?.profileId;
-                      if (activeSystemId == null) {
-                        return <DropdownMenuItem<
-                          AluminumSeries>>[];
-                      }
-                      final system = widget.model.availableSystems.firstWhere(
-                            (sys) => sys.id == activeSystemId,
-                        orElse: () => widget.model.availableSystems.first,
+                    items: slidingItemsList.map((series) {
+                      final systemMatches = widget.model.availableSystems.where(
+                        (s) => s.series.any((ser) => ser.id == series.id),
                       );
-                      final List<AluminumSeries> list = system.series.where((
-                          series) {
-                        final name = series.name.toLowerCase();
-                        final type = series.type.toLowerCase();
-                        return name.contains('couliss') ||
-                            name.contains('sliding') ||
-                            name.contains('منزلق') ||
-                            type.contains('couliss') ||
-                            type.contains('sliding') || type.contains('منزلق');
-                      }).toList();
-
-                      // Never fall back to every series here: this selector
-                      // is specifically for Coulissant/Sliding series.
-                      final displayList = list;
-                      for (final series in system.series) {
-                        if (isSlidingSeriesForDrawing(series) &&
-                            !displayList.any((item) => item.id == series.id)) {
-                          displayList.add(series);
-                        }
-                      }
-                      if (widget.model.activeSlidingSeries != null &&
-                          isSlidingSeriesForDrawing(
-                              widget.model.activeSlidingSeries!) &&
-                          widget.model.activeSlidingSeries!.profileId ==
-                              activeSystemId &&
-                          !displayList.any((s) =>
-                          s.id == widget.model.activeSlidingSeries!.id)) {
-                        displayList.add(widget.model.activeSlidingSeries!);
-                      }
-                      return displayList.map((series) {
-                        final sys = widget.model.availableSystems.firstWhere(
-                              (s) => s.series.any((ser) => ser.id == series.id),
-                          orElse: () => system,
-                        );
-                        return DropdownMenuItem<AluminumSeries>(
-                          value: series,
-                          child: Text(
-                            '${sys.name} - ${series.name}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.green.shade300 : Colors.green,
-                              fontSize: 12,
-                            ),
-                            overflow: TextOverflow.visible,
+                      final systemName = systemMatches.isNotEmpty
+                          ? systemMatches.first.name
+                          : '';
+                      return DropdownMenuItem<AluminumSeries>(
+                        value: series,
+                        child: Text(
+                          systemName.isNotEmpty
+                              ? '$systemName - ${series.name}'
+                              : series.name,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.green.shade300 : Colors.green,
+                            fontSize: 12,
                           ),
-                        );
-                      }).toList();
-                    }(),
+                          overflow: TextOverflow.visible,
+                        ),
+                      );
+                    }).toList(),
                     onChanged: (AluminumSeries? newSeries) {
                       if (newSeries != null) {
                         widget.model.setActiveSlidingSeries(newSeries);

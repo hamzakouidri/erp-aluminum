@@ -1804,16 +1804,32 @@ class WindowModel extends ChangeNotifier {
 
   Future<void> _loadColorsForProfile(int profileId) async {
     final previousColorId = _selectedDbColor?['id'];
+    final previousColorName = (_selectedDbColor?['name'] ?? _selectedDbColor?['color_name'])?.toString().toLowerCase().trim();
     availableColors = await db.getColorsForProfile(profileId);
 
     Map<String, dynamic>? selectedColor;
-    for (final color in availableColors) {
-      if (color['id'] == previousColorId) {
-        selectedColor = color;
-        break;
+    if (previousColorId != null) {
+      for (final color in availableColors) {
+        if (color['id'] == previousColorId) {
+          selectedColor = color;
+          break;
+        }
       }
     }
-    selectedColor ??= availableColors.isNotEmpty ? availableColors.first : null;
+    if (selectedColor == null && previousColorName != null && previousColorName.isNotEmpty) {
+      for (final color in availableColors) {
+        final cName = (color['name'] ?? color['color_name'])?.toString().toLowerCase().trim();
+        if (cName == previousColorName || (cName != null && (cName.contains(previousColorName) || previousColorName.contains(cName)))) {
+          selectedColor = color;
+          break;
+        }
+      }
+    }
+    if (selectedColor == null && _selectedDbColor != null) {
+      selectedColor = _selectedDbColor;
+    } else {
+      selectedColor ??= availableColors.isNotEmpty ? availableColors.first : null;
+    }
 
     _selectedDbColor = selectedColor;
     for (final zone in zones) {

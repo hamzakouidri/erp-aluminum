@@ -50,6 +50,8 @@ class PendingCloudChanges {
 
 class SqlDatabase {
   static Database? _db;
+  static Future<Database>? _openingDb;
+  static Future<void>? _databaseReopenTask;
   static final Random _distributedIdRandom = Random.secure();
   static int _lastDistributedId = 0;
 
@@ -118,6 +120,7 @@ class SqlDatabase {
 
   static void resetDb() {
     _db = null;
+    _openingDb = null;
   }
 
   static Future<void> clearAllLocalData() async {
@@ -127,6 +130,7 @@ class SqlDatabase {
         await _db!.close();
       } catch (_) {}
       _db = null;
+      _openingDb = null;
     }
     // Delete SQLite file
     try {
@@ -1332,8 +1336,23 @@ class SqlDatabase {
   }
 
   Future<Database?> get db async {
-    if (_db != null) return _db!;
-    _db = await initDb();
+    final current = _db;
+    if (current != null) return current;
+
+    // Several startup services ask for SQLite concurrently. Opening the same
+    // file twice while migrations are running can leave a stale native handle
+    // behind, so all callers must share one opening operation.
+    final opening = _openingDb;
+    if (opening != null) return opening;
+
+    late final Future<Database> task;
+    task = initDb().whenComplete(() {
+      if (identical(_openingDb, task)) {
+        _openingDb = null;
+      }
+    });
+    _openingDb = task;
+    _db = await task;
     return _db;
   }
 
@@ -1417,6 +1436,55 @@ class SqlDatabase {
         text.contains('code 11');
   }
 
+  /// SQLite code 1032 (SQLITE_READONLY_DBMOVED) means the file was replaced
+  /// or moved after this connection was opened. It is not a permissions issue:
+  /// close the stale handle and reopen the current application database before
+  /// attempting the write again.
+  static bool isDatabaseMovedError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('code 1032') ||
+        text.contains('readonly_dbmoved') ||
+        text.contains('database has been moved');
+  }
+
+  Future<void> reopenAfterDatabaseMoved() {
+    final activeTask = _databaseReopenTask;
+    if (activeTask != null) return activeTask;
+
+    late final Future<void> task;
+    task = _reopenAfterDatabaseMoved().whenComplete(() {
+      if (identical(_databaseReopenTask, task)) {
+        _databaseReopenTask = null;
+      }
+    });
+    _databaseReopenTask = task;
+    return task;
+  }
+
+  Future<void> _reopenAfterDatabaseMoved() async {
+    final staleDb = _db;
+    _db = null;
+    _openingDb = null;
+    if (staleDb != null) {
+      try {
+        await staleDb.close();
+      } catch (_) {}
+    }
+    _db = await initDb();
+  }
+
+  Future<T> _retryAfterDatabaseMove<T>(
+    Future<T> Function() operation,
+  ) async {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isDatabaseMovedError(error)) rethrow;
+      await reopenAfterDatabaseMoved();
+      return operation();
+    }
+  }
+
   Future<bool> isDatabaseHealthy() async {
     try {
       final currentDb = await db;
@@ -1428,7 +1496,11 @@ class SqlDatabase {
               (value) => value.toString().toLowerCase() == 'ok',
             ),
           );
-    } catch (_) {
+    } catch (error) {
+      // Do not label a moved open handle as corruption. The sync layer can
+      // safely close and reopen it, whereas treating it as corruption would
+      // unnecessarily discard a perfectly valid database file.
+      if (isDatabaseMovedError(error)) rethrow;
       return false;
     }
   }
@@ -3071,10 +3143,36 @@ class SqlDatabase {
     return res;
   }
 
-  Future<int> deleteClient(int id) async {
+  Future<int> deleteClient(dynamic id) {
+    return _retryAfterDatabaseMove(() => _deleteClientOnce(id));
+  }
+
+  Future<int> _deleteClientOnce(dynamic id) async {
     Database? myDb = await db;
-    var res = await myDb!.rawDelete('DELETE FROM Client WHERE id = ?', [id]);
-    CloudSyncService().notifyChangeImmediate();
+    if (myDb == null) return 0;
+    // Old installations may not have opened the database since deletion
+    // tracking was introduced. Ensure the Client delete creates a tombstone
+    // before it is queued for Firebase.
+    await _ensureSyncTombstoneInfrastructure(myDb);
+    final parsedInt = id is num
+        ? id.toInt()
+        : int.tryParse(id.toString().trim());
+    final strVal = id.toString().trim();
+    int res = 0;
+    if (parsedInt != null) {
+      res = await myDb.rawDelete(
+        'DELETE FROM Client WHERE id = ? OR CAST(id AS TEXT) = ?',
+        [parsedInt, strVal],
+      );
+    } else {
+      res = await myDb.rawDelete(
+        'DELETE FROM Client WHERE CAST(id AS TEXT) = ?',
+        [strVal],
+      );
+    }
+    if (res > 0) {
+      CloudSyncService().notifyChangeImmediate();
+    }
     return res;
   }
 
@@ -3307,24 +3405,28 @@ class SqlDatabase {
     return res;
   }
 
-  Future<void> _uploadOrderStatusToCloud(int orderId, String status) async {
+  Future<void> _uploadOrderStatusToCloud(int orderId, String status, {int? clientId}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
       if (workshopId != null && workshopId.isNotEmpty) {
+        final payload = <String, dynamic>{
+          'id': orderId,
+          'status': status,
+          'updated_at': FieldValue.serverTimestamp(),
+        };
+        if (clientId != null) {
+          payload['client_id'] = clientId;
+        }
         await FirebaseFirestore.instance
             .collection('workshops')
             .doc(workshopId)
             .collection('orders_status')
             .doc(orderId.toString())
-            .set({
-              'id': orderId,
-              'status': status,
-              'updated_at': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true))
+            .set(payload, SetOptions(merge: true))
             .timeout(const Duration(seconds: 10));
         debugPrint(
-          '--- SqlDatabase: Uploaded order status $orderId ($status) to cloud ---',
+          '--- SqlDatabase: Uploaded order status $orderId ($status, client: $clientId) to cloud ---',
         );
       }
     } catch (e) {
@@ -3352,7 +3454,7 @@ class SqlDatabase {
         if (orderId == null) continue;
         final data = doc.data();
         final cloudStatus = data['status']?.toString() ?? '';
-        if (cloudStatus.isEmpty) continue;
+        final cloudClientId = (data['client_id'] as num?)?.toInt();
 
         final existing = await myDb.query(
           'Commandes',
@@ -3361,14 +3463,26 @@ class SqlDatabase {
         );
         if (existing.isNotEmpty) {
           final currentStatus = existing.first['status']?.toString() ?? '';
-          if (currentStatus != cloudStatus) {
+          final currentClientId = (existing.first['client_id'] as num?)?.toInt();
+          final updateMap = <String, dynamic>{};
+
+          if (cloudStatus.isNotEmpty && currentStatus != cloudStatus) {
+            updateMap['status'] = cloudStatus;
+          }
+          if (cloudClientId != null && cloudClientId != currentClientId) {
+            updateMap['client_id'] = cloudClientId;
+          }
+
+          if (updateMap.isNotEmpty) {
             await myDb.update(
               'Commandes',
-              {'status': cloudStatus},
+              updateMap,
               where: 'id = ?',
               whereArgs: [orderId],
             );
-            await _syncAllocationsFromOrderStatus(orderId, cloudStatus);
+            if (updateMap.containsKey('status')) {
+              await _syncAllocationsFromOrderStatus(orderId, cloudStatus);
+            }
           }
         }
       }
@@ -3671,6 +3785,37 @@ class SqlDatabase {
     return 0;
   }
 
+  /// Returns 1-based sequential order index for display/document numbering (1, 2, 3, 4...)
+  Future<int> getOrderSequenceNumber(int orderId) async {
+    if (orderId > 0 && orderId < 100000) return orderId;
+    try {
+      final myDb = await db;
+      if (myDb == null) return 1;
+      final orderRows = await myDb.query(
+        'Commandes',
+        columns: ['created_at'],
+        where: 'id = ? OR CAST(id AS TEXT) = ?',
+        whereArgs: [orderId, orderId.toString()],
+      );
+      if (orderRows.isEmpty) return 1;
+      final createdAt = orderRows.first['created_at']?.toString() ?? '';
+      final countResult = await myDb.rawQuery(
+        '''
+        SELECT COUNT(*) as seq FROM Commandes 
+        WHERE (created_at < ? OR (created_at = ? AND (id <= ? OR CAST(id AS TEXT) <= ?)))
+        ''',
+        [createdAt, createdAt, orderId, orderId.toString()],
+      );
+      if (countResult.isNotEmpty) {
+        final seq = (countResult.first['seq'] as num?)?.toInt() ?? 1;
+        return seq > 0 ? seq : 1;
+      }
+    } catch (e) {
+      debugPrint('Error computing order sequence number: $e');
+    }
+    return (orderId % 1000).abs();
+  }
+
   Future<Map<String, dynamic>?> readCommandeWithClientById(int id) async {
     Database? myDb = await db;
     final rows = await myDb!.rawQuery(
@@ -3689,12 +3834,25 @@ class SqlDatabase {
     return rows.isEmpty ? null : rows.first;
   }
 
-  Future<List<Map<String, dynamic>>> readCommandeDetails(int idCommande) async {
+  Future<List<Map<String, dynamic>>> readCommandeDetails(dynamic idCommande) async {
     Database? myDb = await db;
-    return await myDb!.query(
+    if (myDb == null) return [];
+    final parsedInt = idCommande is num
+        ? idCommande.toInt()
+        : int.tryParse(idCommande.toString().trim());
+    final strVal = idCommande.toString().trim();
+    if (parsedInt != null) {
+      return await myDb.query(
+        'Commandes_details',
+        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        whereArgs: [parsedInt, strVal],
+        orderBy: 'id ASC',
+      );
+    }
+    return await myDb.query(
       'Commandes_details',
-      where: 'id_commandes = ?',
-      whereArgs: [idCommande],
+      where: 'CAST(id_commandes AS TEXT) = ?',
+      whereArgs: [strVal],
       orderBy: 'id ASC',
     );
   }
@@ -5773,28 +5931,26 @@ class SqlDatabase {
 
     // File access is intentionally completed before starting the transaction.
     // The SQL transaction then stays short and cannot leave half an order.
-    final preparedDetails = <Map<String, dynamic>>[];
-    for (final rawDetail in details) {
-      final detail = Map<String, dynamic>.from(rawDetail)
-        ..remove('id')
-        ..remove('id_commandes');
-      final drawingPath = detail['drawing_image_path']?.toString() ?? '';
-      if (drawingPath.isNotEmpty &&
-          (detail['drawing_image_base64']?.toString().isEmpty ?? true)) {
-        try {
-          final drawingFile = File(drawingPath);
-          if (await drawingFile.exists()) {
-            detail['drawing_image_base64'] = base64Encode(
-              await drawingFile.readAsBytes(),
-            );
-          }
-        } catch (_) {
-          // The model JSON remains authoritative even if a preview image
-          // cannot be read. The order itself must still save atomically.
+    final preparedDetails = await Future.wait(
+      details.map((rawDetail) async {
+        final detail = Map<String, dynamic>.from(rawDetail)
+          ..remove('id')
+          ..remove('id_commandes');
+        final drawingPath = detail['drawing_image_path']?.toString() ?? '';
+        if (drawingPath.isNotEmpty &&
+            (detail['drawing_image_base64']?.toString().isEmpty ?? true)) {
+          try {
+            final drawingFile = File(drawingPath);
+            if (await drawingFile.exists()) {
+              detail['drawing_image_base64'] = base64Encode(
+                await drawingFile.readAsBytes(),
+              );
+            }
+          } catch (_) {}
         }
-      }
-      preparedDetails.add(detail);
-    }
+        return detail;
+      }),
+    );
 
     final savedId = await myDb.transaction<int>((txn) async {
       final now = DateTime.now().toIso8601String();
@@ -5816,50 +5972,66 @@ class SqlDatabase {
           'created_at': createdAt,
           'updated_at': now,
           'project_id': projectId,
-        }, conflictAlgorithm: ConflictAlgorithm.abort);
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
         orderId = newOrderId;
       } else {
         orderId = idCommande;
         final existing = await txn.query(
           'Commandes',
           columns: ['advance_payment'],
-          where: 'id = ?',
-          whereArgs: [orderId],
+          where: 'id = ? OR CAST(id AS TEXT) = ?',
+          whereArgs: [orderId, orderId.toString()],
           limit: 1,
         );
         if (existing.isEmpty) {
-          throw StateError('الطلبية رقم $orderId غير موجودة.');
-        }
-        final advance =
-            (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
-        final paymentStatus = advance >= netPayable
-            ? 'Paid'
-            : (advance > 0 ? 'Partial' : 'Unpaid');
-        final updated = await txn.update(
-          'Commandes',
-          {
-            'client_id': clientId,
-            'description': description,
-            'remise': remise,
-            'tva': tva,
-            'total': total,
-            'net_payable': netPayable,
-            'payment_status': paymentStatus,
-            'created_at': createdAt,
-            'updated_at': now,
-            'project_id': projectId,
-          },
-          where: 'id = ?',
-          whereArgs: [orderId],
-          conflictAlgorithm: ConflictAlgorithm.abort,
-        );
-        if (updated != 1) {
-          throw StateError('تعذر تحديث رأس الطلبية رقم $orderId.');
+          await txn.insert(
+            'Commandes',
+            {
+              'id': orderId,
+              'client_id': clientId,
+              'status': status,
+              'description': description,
+              'remise': remise,
+              'tva': tva,
+              'total': total,
+              'net_payable': netPayable,
+              'advance_payment': 0.0,
+              'payment_status': 'Unpaid',
+              'created_at': createdAt,
+              'updated_at': now,
+              'project_id': projectId,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } else {
+          final advance =
+              (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
+          final paymentStatus = advance >= netPayable
+              ? 'Paid'
+              : (advance > 0 ? 'Partial' : 'Unpaid');
+          await txn.update(
+            'Commandes',
+            {
+              'client_id': clientId,
+              'description': description,
+              'remise': remise,
+              'tva': tva,
+              'total': total,
+              'net_payable': netPayable,
+              'payment_status': paymentStatus,
+              'created_at': createdAt,
+              'updated_at': now,
+              'project_id': projectId,
+            },
+            where: 'id = ? OR CAST(id AS TEXT) = ?',
+            whereArgs: [orderId, orderId.toString()],
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
         await txn.delete(
           'Commandes_details',
-          where: 'id_commandes = ?',
-          whereArgs: [orderId],
+          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          whereArgs: [orderId, orderId.toString()],
         );
       }
 
@@ -5868,10 +6040,10 @@ class SqlDatabase {
           'Commandes_details',
           {
             ...detail,
-            'id': _nextDistributedId(),
+            'id': detail['id'] ?? _nextDistributedId(),
             'id_commandes': orderId,
           },
-          conflictAlgorithm: ConflictAlgorithm.abort,
+          conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
 
@@ -9328,7 +9500,24 @@ class SqlDatabase {
     }
   }
 
+  /// Imports a cloud snapshot and retries once after reopening SQLite when the
+  /// Android file handle has become stale (SQLITE_READONLY_DBMOVED / code
+  /// 1032). This is the write path used by full restores and deltas.
   Future<void> importAllData(
+    Map<String, dynamic> data, {
+    bool replaceAllData = false,
+    bool mergeAllData = false,
+  }) {
+    return _retryAfterDatabaseMove(
+      () => _importAllDataOnce(
+        data,
+        replaceAllData: replaceAllData,
+        mergeAllData: mergeAllData,
+      ),
+    );
+  }
+
+  Future<void> _importAllDataOnce(
     Map<String, dynamic> data, {
     bool replaceAllData = false,
     bool mergeAllData = false,
@@ -9471,8 +9660,8 @@ class SqlDatabase {
             if (mergeAllData && rowId != null) {
               final localRows = await txn.query(
                 table,
-                where: 'id = ?',
-                whereArgs: [rowId],
+                where: 'id = ? OR CAST(id AS TEXT) = ?',
+                whereArgs: [rowId, rowId.toString()],
                 limit: 1,
               );
               if (localRows.isNotEmpty &&
@@ -9663,7 +9852,7 @@ class SqlDatabase {
         }
         final selectedFile = File(filePath);
         await selectedFile.copy(dbPath);
-        await initDb();
+        _db = await initDb();
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -10567,13 +10756,18 @@ class SqlDatabase {
 
   Future<void> insertOrUpdateSafeLegacy(
     String table,
-    Map<String, dynamic> data,
+    Map<String, dynamic> rawData,
     String idColumn,
   ) async {
     final database = await db;
-    if (database == null) return;
+    if (database == null || !_isSafeSqlIdentifier(table)) return;
 
     try {
+      final columns = await _tableColumns(database, table);
+      final data = _sanitizeImportRow(Map<String, dynamic>.from(rawData))
+        ..removeWhere((key, value) => !columns.contains(key));
+      if (data.isEmpty) return;
+
       if (data.containsKey(idColumn) && data[idColumn] != null) {
         final existing = await database.query(
           table,
@@ -10590,7 +10784,7 @@ class SqlDatabase {
           return;
         }
       }
-      await database.insert(table, data);
+      await database.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
       print('Error in insertOrUpdateSafeLegacy: $e');
     }

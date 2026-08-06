@@ -893,27 +893,38 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
   void _saveAll() {
     for (int i = 0; i < widget.products.length; i++) {
       final p = widget.products[i];
-      p.manualNameOverride = _nameControllers[i]!.text.trim();
+      final nameCtrl = _nameControllers[i];
+      if (nameCtrl != null) {
+        p.manualNameOverride = nameCtrl.text.trim();
+      }
 
       // ─── تطبيق إعادة التحجيم مرة واحدة من الأبعاد الأصلية ───
-      final double newW =
-          double.tryParse(_widthControllers[i]!.text) ?? 0;
-      final double newH =
-          double.tryParse(_heightControllers[i]!.text) ?? 0;
+      final widthCtrl = _widthControllers[i];
+      final heightCtrl = _heightControllers[i];
+      final double newW = widthCtrl != null ? (double.tryParse(widthCtrl.text) ?? 0) : p.width;
+      final double newH = heightCtrl != null ? (double.tryParse(heightCtrl.text) ?? 0) : p.height;
       if ((newW - p.width).abs() > 0.5 || (newH - p.height).abs() > 0.5) {
         // rescaleZones تُحدِّث p.width و p.height داخلياً
         p.rescaleZones(p.width, p.height, newW, newH);
       }
 
-      p.quantity = int.tryParse(_quantityControllers[i]!.text) ?? p.quantity;
-      final parsedPrice = double.tryParse(_priceControllers[i]!.text);
-      p.manualPriceOverride = parsedPrice;
-      if (parsedPrice != null) {
-        p.totalCost = parsedPrice;
+      final qtyCtrl = _quantityControllers[i];
+      if (qtyCtrl != null) {
+        p.quantity = int.tryParse(qtyCtrl.text) ?? p.quantity;
       }
-      
+
+      final priceCtrl = _priceControllers[i];
+      if (priceCtrl != null) {
+        final parsedPrice = double.tryParse(priceCtrl.text);
+        p.manualPriceOverride = parsedPrice;
+        if (parsedPrice != null) {
+          p.totalCost = parsedPrice;
+        }
+      }
+
       // Update dimensions in description automatically before saving
-      final currentDesc = _descControllers[i]!.text.trim();
+      final descCtrl = _descControllers[i];
+      final currentDesc = descCtrl != null ? descCtrl.text.trim() : (p.description ?? '');
       p.description = _updateDimensionsInDescription(currentDesc, newW, newH, p);
       // This edited table is the exact source of the Devis row.
       p.invoiceTableEdited = true;
