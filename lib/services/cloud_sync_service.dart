@@ -1461,9 +1461,27 @@ class CloudSyncService {
   void _startRealtimeHealthCheck() {
     _realtimeHealthTimer?.cancel();
     _realtimeHealthTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      refreshFromCloudIfChanged();
+      _runRealtimeHealthCheck();
     });
-    refreshFromCloudIfChanged();
+    _runRealtimeHealthCheck();
+  }
+
+  /// A database trigger records every local row change, but older screens do
+  /// not all call [notifyChange] after writing their data.  Do not leave those
+  /// worker-side changes on one phone forever: the periodic health check also
+  /// checks the durable change log and publishes it when necessary.
+  Future<void> _runRealtimeHealthCheck() async {
+    await refreshFromCloudIfChanged();
+    if (_isRestoring || _isLocalWriteInProgress) return;
+
+    try {
+      final hasUnpublishedRows = await _db.hasPendingCloudChanges();
+      if (hasUnpublishedRows || await _hasPendingTransactions()) {
+        await _silentBackup();
+      }
+    } catch (error) {
+      print('Local cloud-change health check failed: $error');
+    }
   }
 
   void stopListening() {
