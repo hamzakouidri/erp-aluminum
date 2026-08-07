@@ -1787,7 +1787,7 @@ class WindowPainter extends CustomPainter {
         } else {
           bool meetsHAtTop = horizontalSegments.any((h) => (h.position - top).abs() <= mullionT + 2.0);
           if (meetsHAtTop) {
-            top += mullionT / 2 - 0.8;
+            top -= 0.8;
           } else {
             top -= mullionT / 2;
           }
@@ -1795,7 +1795,7 @@ class WindowPainter extends CustomPainter {
         
         bool meetsHAtBottom = horizontalSegments.any((h) => (h.position - bottom).abs() <= mullionT + 2.0);
         if (meetsHAtBottom) {
-          bottom -= mullionT / 2 - 0.8;
+          bottom += 0.8;
         } else {
           bottom += mullionT / 2;
         }
@@ -1827,14 +1827,14 @@ class WindowPainter extends CustomPainter {
         
         bool meetsVAtLeft = verticalSegments.any((v) => (v.position - left).abs() <= mullionT + 2.0);
         if (meetsVAtLeft) {
-          left += mullionT / 2 - 0.8;
+          left -= 0.8;
         } else {
           left -= mullionT / 2;
         }
         
         bool meetsVAtRight = verticalSegments.any((v) => (v.position - right).abs() <= mullionT + 2.0);
         if (meetsVAtRight) {
-          right -= mullionT / 2 - 0.8;
+          right += 0.8;
         } else {
           right += mullionT / 2;
         }

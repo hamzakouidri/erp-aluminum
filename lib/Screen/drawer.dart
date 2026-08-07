@@ -140,6 +140,483 @@ class _AppDrawerState extends State<AppDrawer> {
     );
   }
 
+  String _desktopLabel(
+    AppLanguage language, {
+    required String arabic,
+    required String french,
+    required String english,
+  }) {
+    return switch (language) {
+      AppLanguage.arabic => arabic,
+      AppLanguage.french => french,
+      _ => english,
+    };
+  }
+
+  Widget _desktopMenuItem({
+    required String title,
+    required IconData icon,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return ListTile(
+      dense: true,
+      minVerticalPadding: 2,
+      contentPadding: const EdgeInsetsDirectional.only(start: 54, end: 14),
+      leading: Icon(icon, color: color),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      onTap: onTap,
+    );
+  }
+
+  Widget _desktopGroup({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+    Color? color,
+  }) {
+    return ExpansionTile(
+      leading: Icon(icon, color: color),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      iconColor: color,
+      collapsedIconColor: color,
+      children: children,
+    );
+  }
+
+  Widget _buildWindowsHeader(AppLanguage lang) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseAuth.instance.currentUser != null
+          ? FirebaseFirestore.instance
+              .collection('users')
+              .doc(FirebaseAuth.instance.currentUser!.uid)
+              .snapshots()
+          : null,
+      builder: (context, snapshot) {
+        final data = snapshot.hasData && snapshot.data!.exists
+            ? snapshot.data!.data() as Map<String, dynamic>
+            : <String, dynamic>{};
+        final workshopName = (data['workshopName'] as String?)?.trim().isNotEmpty == true
+            ? data['workshopName'] as String
+            : (_savedWorkshopName?.trim().isNotEmpty == true
+                ? _savedWorkshopName!
+                : _desktopLabel(
+                    lang,
+                    arabic: 'القائمة الرئيسية',
+                    french: 'Menu principal',
+                    english: 'Main menu',
+                  ));
+        final role = data['role'] as String?;
+        final roleLabel = role == 'admin'
+            ? _desktopLabel(lang, arabic: 'مدير التطبيق', french: 'Administrateur', english: 'Administrator')
+            : role == 'manager'
+                ? _desktopLabel(lang, arabic: 'مدير الورشة', french: 'Responsable atelier', english: 'Workshop manager')
+                : _desktopLabel(lang, arabic: 'عامل', french: 'Employé', english: 'Worker');
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1D4ED8), Color(0xFF0EA5E9)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Row(
+            children: [
+              const CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.storefront_rounded, color: Color(0xFF2563EB), size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      workshopName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(roleLabel, style: const TextStyle(color: Color(0xFFE0F2FE), fontSize: 12)),
+                    Text(
+                      FirebaseAuth.instance.currentUser?.email ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Color(0xFFE0F2FE), fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWindowsWorkshopCode(AppLanguage lang) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseAuth.instance.currentUser != null
+          ? FirebaseFirestore.instance
+              .collection('users')
+              .doc(FirebaseAuth.instance.currentUser!.uid)
+              .snapshots()
+          : null,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox.shrink();
+        }
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final role = data['role'] as String?;
+        if (role != 'manager' && role != 'admin') {
+          return const SizedBox.shrink();
+        }
+        final joinCode = data['joinCode'] as String?;
+        final hasCode = joinCode != null && joinCode.isNotEmpty;
+
+        return ListTile(
+          dense: true,
+          contentPadding: const EdgeInsetsDirectional.only(start: 54, end: 14),
+          leading: const Icon(Icons.qr_code_rounded, color: Colors.blue),
+          title: Text(
+            hasCode
+                ? _desktopLabel(lang, arabic: 'كود انضمام العمال', french: "Code d'accès employés", english: 'Worker join code')
+                : _desktopLabel(lang, arabic: 'إنشاء كود الورشة', french: "Créer le code de l'atelier", english: 'Create workshop code'),
+          ),
+          subtitle: hasCode
+              ? Text(joinCode, style: const TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold))
+              : Text(_desktopLabel(lang, arabic: 'أنشئ كوداً لربط أجهزة العمال', french: 'Créer un code pour vos employés', english: 'Create a code to link worker devices')),
+          trailing: hasCode
+              ? IconButton(
+                  tooltip: _desktopLabel(lang, arabic: 'نسخ', french: 'Copier', english: 'Copy'),
+                  icon: const Icon(Icons.copy_rounded),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: joinCode));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(_desktopLabel(lang, arabic: 'تم نسخ كود الورشة', french: "Code d'atelier copié", english: 'Workshop code copied'))),
+                    );
+                  },
+                )
+              : TextButton(
+                  onPressed: () async {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user == null) return;
+                    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                    final random = dart_math.Random();
+                    final newCode = String.fromCharCodes(
+                      Iterable.generate(6, (_) => characters.codeUnitAt(random.nextInt(characters.length))),
+                    );
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'joinCode': newCode});
+                      await FirebaseFirestore.instance.collection('workshops').doc(user.uid).set({
+                        'joinCode': newCode,
+                        'managerUid': user.uid,
+                      }, SetOptions(merge: true));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(_desktopLabel(lang, arabic: 'تم إنشاء كود الورشة', french: "Code d'atelier créé", english: 'Workshop code created'))),
+                        );
+                      }
+                    } catch (error) {
+                      debugPrint('Error generating workshop code: $error');
+                    }
+                  },
+                  child: Text(_desktopLabel(lang, arabic: 'إنشاء', french: 'Créer', english: 'Create')),
+                ),
+        );
+      },
+    );
+  }
+
+  void _openSupportDialog() {
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final navigationContext = rootNavigator.context;
+    Navigator.pop(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (rootNavigator.mounted) {
+        showDialog(context: navigationContext, builder: (_) => SupportDialog());
+      }
+    });
+  }
+
+  Future<void> _signOut() async {
+    Navigator.pop(context);
+    try {
+      CloudSyncService().reset();
+      await FirebaseAuth.instance.signOut();
+      await GoogleSignIn().signOut();
+      await SqlDatabase.clearAllLocalData();
+    } catch (error) {
+      debugPrint('Sign out error: $error');
+    }
+  }
+
+  Widget _buildWindowsDrawer(
+    BuildContext context,
+    AppSettingsProvider settings,
+    AppLanguage lang,
+  ) {
+    final orderItems = <Widget>[];
+    if (settings.canViewOrders()) {
+      orderItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'طلبيات الزبائن', french: 'Commandes clients', english: 'Customer orders'),
+        icon: Icons.receipt_long_rounded,
+        onTap: () => _openScreen('commandes', Icons.receipt_long_rounded, Commande(), titleKey: 'commandes'),
+      ));
+    }
+    if (settings.canViewSales()) {
+      orderItems.add(_desktopMenuItem(
+        title: Localization.translate('vente', lang),
+        icon: Icons.point_of_sale_rounded,
+        onTap: () => _openScreen(Localization.translate('vente', lang), Icons.point_of_sale_rounded, SalesScreen(db: db), titleKey: 'vente'),
+        color: Colors.teal,
+      ));
+    }
+    if (settings.canAccessDistributionTracking()) {
+      orderItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'التوزيع والتتبع', french: 'Distribution et suivi', english: 'Distribution and tracking'),
+        icon: Icons.local_shipping_rounded,
+        onTap: () => _openScreen('distribution_tracking', Icons.local_shipping_rounded, const DistributionTrackingScreen(), titleKey: 'distribution_tracking'),
+        color: Colors.blue,
+      ));
+    }
+
+    final purchaseItems = <Widget>[];
+    if (settings.canRegisterPurchases()) {
+      purchaseItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'المشتريات', french: 'Achats', english: 'Purchases'),
+        icon: Icons.shopping_bag_rounded,
+        onTap: () => _openScreen('achat', Icons.shopping_bag_rounded, AchatScreen(db: SqlDatabase()), titleKey: 'achat'),
+      ));
+    }
+
+    final inventoryItems = <Widget>[];
+    if (settings.canViewMyAccreditations()) {
+      inventoryItems.add(_desktopMenuItem(
+        title: Localization.translate('produits', lang),
+        icon: Icons.category_rounded,
+        onTap: () => _openScreen('produits', Icons.category_rounded, ProductsMenuScreen(db: db), titleKey: 'produits'),
+      ));
+    }
+    if (settings.canAccessInventory()) {
+      inventoryItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'المخزون', french: 'Stock', english: 'Inventory'),
+        icon: Icons.warehouse_rounded,
+        onTap: () => _openScreen('inventory', Icons.warehouse_rounded, InventoryScreen(db: db), titleKey: 'inventory'),
+        color: const Color(0xFF8B5CF6),
+      ));
+    }
+    if (settings.canViewGlobalConsumption()) {
+      inventoryItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'تقرير النواقص الشامل', french: 'Rapport global des manques', english: 'Global shortage report'),
+        icon: Icons.inventory_2_rounded,
+        onTap: () => _openScreen('global_consumption', Icons.inventory_2_rounded, GlobalConsumptionReportScreen(db: SqlDatabase()), titleKey: 'global_consumption'),
+        color: Colors.indigo,
+      ));
+    }
+
+    final financeItems = <Widget>[];
+    if (settings.canAccessTreasury()) {
+      financeItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'الصندوق والخزينة', french: 'Caisse', english: 'Treasury'),
+        icon: Icons.account_balance_wallet_rounded,
+        onTap: () => _openScreen('caisse', Icons.account_balance_wallet_rounded, TreasuryScreen(db: SqlDatabase()), titleKey: 'caisse'),
+        color: Colors.green,
+      ));
+    }
+    if (settings.canViewWorkerFinances()) {
+      financeItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'شؤون وأجور العمال', french: 'Salaires des employés', english: 'Worker finances'),
+        icon: Icons.people_alt_rounded,
+        onTap: () => _openScreen('worker_finances', Icons.people_alt_rounded, WorkerFinancesScreen(db: SqlDatabase()), titleKey: 'worker_finances'),
+      ));
+    }
+    if (settings.canViewWorkerWeeklySettlement()) {
+      financeItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'المحاسبة الأسبوعية للعمال', french: 'Comptabilité hebdomadaire', english: 'Weekly worker settlement'),
+        icon: Icons.calculate_rounded,
+        onTap: () => _openScreen('worker_settlement', Icons.calculate_rounded, WorkerWeeklySettlementScreen(db: SqlDatabase()), titleKey: 'worker_settlement'),
+      ));
+    }
+
+    final clientItems = <Widget>[];
+    if (settings.canViewClients()) {
+      clientItems.add(_desktopMenuItem(
+        title: Localization.translate('clients', lang),
+        icon: Icons.groups_rounded,
+        onTap: () => _openScreen('clients', Icons.groups_rounded, Customers(), titleKey: 'clients'),
+      ));
+    }
+    if (settings.canViewClientLedger()) {
+      clientItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'كشف حساب الزبائن', french: 'Relevé clients', english: 'Customer ledger'),
+        icon: Icons.history_edu_rounded,
+        onTap: () => _openScreen('client_ledger', Icons.history_edu_rounded, const ClientChronoSearchScreen(), titleKey: 'client_ledger'),
+        color: Colors.blue,
+      ));
+    }
+
+    final taskItems = <Widget>[];
+    if (settings.canViewMyTasks()) {
+      taskItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'مهامي وتصنيعاتي', french: 'Mes tâches et fabrications', english: 'My tasks and manufacturing'),
+        icon: Icons.engineering_rounded,
+        onTap: () => _openScreen('worker_tasks', Icons.engineering_rounded, WorkerTasksScreen(db: db), titleKey: 'worker_tasks'),
+        color: Colors.indigo,
+      ));
+      taskItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'أرشيف التوزيع والمهام', french: 'Archives et distribution', english: 'Tasks and distribution archive'),
+        icon: Icons.archive_rounded,
+        onTap: () => _openScreen('worker_archive', Icons.archive_rounded, WorkerArchiveScreen(db: db), titleKey: 'worker_archive'),
+        color: Colors.deepOrange,
+      ));
+    }
+    if (settings.canAccessExternalOperations()) {
+      taskItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'الأعمال والمهام الخارجية', french: 'Opérations externes', english: 'External operations'),
+        icon: Icons.construction_rounded,
+        onTap: () => _openScreen('external_operations', Icons.construction_rounded, ExternalOperationsHubScreen(db: db), titleKey: 'external_operations'),
+        color: Colors.teal,
+      ));
+    }
+
+    final managementItems = <Widget>[];
+    managementItems.add(_buildWindowsWorkshopCode(lang));
+    if (settings.canManageWorkers()) {
+      managementItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'إدارة صلاحيات المستخدمين', french: 'Gestion des utilisateurs', english: 'User permissions'),
+        icon: Icons.manage_accounts_rounded,
+        onTap: () => _openScreen('worker_management', Icons.manage_accounts_rounded, WorkersManagementScreen(db: SqlDatabase()), titleKey: 'worker_management'),
+      ));
+    }
+    if (settings.canChangePrices()) {
+      managementItems.add(_desktopMenuItem(
+        title: Localization.translate('Manage Prices', lang),
+        icon: Icons.monetization_on_rounded,
+        onTap: () => _openScreen('Manage Prices', Icons.monetization_on_rounded, PriceManagementScreen(), titleKey: 'Manage Prices'),
+      ));
+    }
+    if (settings.canSelectSystems()) {
+      managementItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'الأنظمة المستعملة', french: 'Systèmes utilisés', english: 'Selected systems'),
+        icon: Icons.dashboard_customize_rounded,
+        onTap: () => _openScreen('selected_systems', Icons.dashboard_customize_rounded, const SelectedSystemsScreen(), titleKey: 'selected_systems'),
+      ));
+    }
+    if (isAdmin) {
+      managementItems.add(_desktopMenuItem(
+        title: _desktopLabel(lang, arabic: 'المستخدمون والاشتراكات', french: 'Utilisateurs et abonnements', english: 'Users and subscriptions'),
+        icon: Icons.admin_panel_settings_rounded,
+        onTap: () => _openScreen('admin_users', Icons.admin_panel_settings_rounded, const AdminUsersScreen(), titleKey: 'admin_users'),
+        color: Colors.blue,
+      ));
+    }
+    if (settings.canAccessSettings()) {
+      managementItems.add(_desktopMenuItem(
+        title: Localization.translate('settings', lang),
+        icon: Icons.settings_rounded,
+        onTap: () => _openScreen('settings', Icons.settings_rounded, const SettingsScreen(), titleKey: 'settings'),
+      ));
+    }
+    managementItems.add(_desktopMenuItem(
+      title: _desktopLabel(lang, arabic: 'الدعم والتقييم', french: 'Assistance et avis', english: 'Support and feedback'),
+      icon: Icons.support_agent_rounded,
+      onTap: _openSupportDialog,
+      color: Colors.green,
+    ));
+    managementItems.add(_desktopMenuItem(
+      title: Localization.translate('deconnexion', lang),
+      icon: Icons.logout_rounded,
+      onTap: _signOut,
+      color: Colors.red,
+    ));
+
+    final menu = <Widget>[
+      _buildWindowsHeader(lang),
+      const Divider(height: 1),
+    ];
+    if (orderItems.isNotEmpty) {
+      menu.add(_desktopGroup(
+        title: _desktopLabel(lang, arabic: 'الطلبات والمبيعات', french: 'Commandes et ventes', english: 'Orders and sales'),
+        icon: Icons.shopping_cart_checkout_rounded,
+        color: Colors.teal,
+        children: orderItems,
+      ));
+    }
+    if (purchaseItems.isNotEmpty) {
+      menu.add(_desktopGroup(
+        title: _desktopLabel(lang, arabic: 'المشتريات', french: 'Achats', english: 'Purchases'),
+        icon: Icons.shopping_bag_rounded,
+        color: Colors.orange,
+        children: purchaseItems,
+      ));
+    }
+    if (inventoryItems.isNotEmpty) {
+      menu.add(_desktopGroup(
+        title: _desktopLabel(lang, arabic: 'المخزون والمنتجات', french: 'Stock et produits', english: 'Inventory and products'),
+        icon: Icons.warehouse_rounded,
+        color: const Color(0xFF8B5CF6),
+        children: inventoryItems,
+      ));
+    }
+    if (financeItems.isNotEmpty) {
+      menu.add(_desktopGroup(
+        title: _desktopLabel(lang, arabic: 'الصندوق والحسابات', french: 'Caisse et comptes', english: 'Treasury and accounts'),
+        icon: Icons.account_balance_wallet_rounded,
+        color: Colors.green,
+        children: financeItems,
+      ));
+    }
+    if (clientItems.isNotEmpty) {
+      menu.add(_desktopGroup(
+        title: _desktopLabel(lang, arabic: 'الزبائن', french: 'Clients', english: 'Customers'),
+        icon: Icons.groups_rounded,
+        color: Colors.blue,
+        children: clientItems,
+      ));
+    }
+    if (settings.canViewProjects()) {
+      menu.add(ListTile(
+        leading: const Icon(Icons.folder_shared_rounded, color: Color(0xFF0284C7)),
+        title: Text(
+          _desktopLabel(lang, arabic: 'المشاريع', french: 'Projets', english: 'Projects'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        onTap: () => _openScreen('projects', Icons.folder_shared_rounded, ProjectsScreen(db: db), titleKey: 'projects'),
+      ));
+    }
+    if (taskItems.isNotEmpty) {
+      menu.add(_desktopGroup(
+        title: _desktopLabel(lang, arabic: 'المهام والتنفيذ', french: 'Tâches et exécution', english: 'Tasks and execution'),
+        icon: Icons.task_alt_rounded,
+        color: Colors.indigo,
+        children: taskItems,
+      ));
+    }
+    menu.add(_desktopGroup(
+      title: _desktopLabel(lang, arabic: 'الإعدادات والإدارة', french: 'Paramètres et gestion', english: 'Settings and management'),
+      icon: Icons.settings_suggest_rounded,
+      color: Colors.blueGrey,
+      children: managementItems,
+    ));
+
+    return Drawer(
+      width: 330,
+      child: ListView(padding: EdgeInsets.zero, children: menu),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);

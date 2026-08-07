@@ -8339,9 +8339,13 @@ class _WindowViewState extends State<WindowView> {
                     final mutableSelected = Map<String, dynamic>.from(item);
                     mutableSelected['calculated_price'] = price;
                     setState(() {
-                      widget.model.frameOverride = mutableSelected;
-                      widget.model.slidingFrameOverride = mutableSelected;
-                      widget.model.selectedFrameCode = mutableSelected['code']?.toString();
+                      if (isSliding) {
+                        widget.model.slidingFrameOverride = mutableSelected;
+                      } else {
+                        widget.model.frameOverride = mutableSelected;
+                        widget.model.selectedFrameCode =
+                            mutableSelected['code']?.toString();
+                      }
                       widget.model.updateProfileThickness();
                       widget.model.refreshUI();
                     });

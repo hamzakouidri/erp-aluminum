@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/voice_assistant_overlay.dart';
+import 'package:database_data/widgets/desktop_window_frame.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/firebase_options.dart';
 import 'dart:async';
@@ -59,10 +60,17 @@ void main() async {
     if (!kIsWeb &&
         (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       await windowManager.ensureInitialized();
-      WindowOptions windowOptions = const WindowOptions(
-        backgroundColor: Colors.transparent,
-        skipTaskbar: false,
-      );
+      final WindowOptions windowOptions = Platform.isWindows
+          ? const WindowOptions(
+              backgroundColor: Colors.transparent,
+              skipTaskbar: false,
+              titleBarStyle: TitleBarStyle.hidden,
+              windowButtonVisibility: false,
+            )
+          : const WindowOptions(
+              backgroundColor: Colors.transparent,
+              skipTaskbar: false,
+            );
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
         await windowManager.focus();
@@ -265,6 +273,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               child: child,
             ),
           );
+        }
+        if (!kIsWeb && Platform.isWindows) {
+          content = DesktopWindowFrame(child: content);
         }
         return MediaQuery(
           data: MediaQuery.of(

@@ -1469,10 +1469,22 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
-  bool get isPVC {
-    final series = (systemMode == 'sliding')
-        ? activeSlidingSeries
-        : activeSeries;
+  /// In mixed drawings, the outer frame belongs to the opening series while
+  /// both kinds of zones are present.  A drawing made only of sliding zones
+  /// uses the sliding series as its primary frame instead.
+  bool get usesSlidingPrimaryProfiles {
+    if (systemMode == 'sliding') return true;
+    if (systemMode != 'mixed') return false;
+
+    final occupiedZones =
+        zones.where((zone) => zone.content != ZoneContent.empty).toList();
+    return occupiedZones.isNotEmpty &&
+        occupiedZones.every(
+          (zone) => zone.content == ZoneContent.slidingSash,
+        );
+  }
+
+  bool _isPvcSeries(AluminumSeries? series) {
     if (series == null) return false;
     try {
       final system = availableSystems.firstWhere(
@@ -1483,6 +1495,15 @@ class WindowModel extends ChangeNotifier {
       return false;
     }
   }
+
+  bool get isPVC => _isPvcSeries(
+        usesSlidingPrimaryProfiles ? activeSlidingSeries : activeSeries,
+      );
+
+  /// Material of a sliding zone.  This must stay independent from [isPVC]
+  /// because a mixed drawing has two independently selected series.
+  bool get isSlidingPVC =>
+      _isPvcSeries(activeSlidingSeries ?? activeSeries);
 
   double profileThickness;
 
@@ -1791,6 +1812,11 @@ class WindowModel extends ChangeNotifier {
   double? _lastHeight;
   double? _lastDrawnLeft;
   double? _lastDrawnTop;
+  bool? _lastShowWall;
+  bool? _lastShowBottomWall;
+  bool? _lastHasShutter;
+  bool? _lastIsCaissonTunnel;
+  double? _lastShutterBoxHeight;
 
   final SqlDatabase db;
   List<AluminumProfileSystem> availableSystems = [];
@@ -2930,21 +2956,25 @@ class WindowModel extends ChangeNotifier {
   }
 
   double getSectionThickness(String type, {double fallback = 45.0}) {
-    if (activeSeries == null) return fallback;
-    if (type.toLowerCase() == 'sash' && sashOverride != null) {
-      double t = (sashOverride!['visible_width'] as num?)?.toDouble() ?? 0.0;
+    final useSliding =
+        usesSlidingPrimaryProfiles && activeSlidingSeries != null;
+    final series = useSliding ? activeSlidingSeries : activeSeries;
+    final sash = useSliding ? slidingSashOverride : sashOverride;
+    if (series == null) return fallback;
+    if (type.toLowerCase() == 'sash' && sash != null) {
+      double t = (sash['visible_width'] as num?)?.toDouble() ?? 0.0;
       if (t > 0) return t;
-      t = (sashOverride!['thickness'] as num?)?.toDouble() ?? 0.0;
+      t = (sash['thickness'] as num?)?.toDouble() ?? 0.0;
       if (t > 0 && t <= 80.0) return t;
     }
-    if (type.toLowerCase() == 'sash' && selectedSashCode.isNotEmpty) {
-      for (var sec in activeSeries!.sections) {
+    if (!useSliding && type.toLowerCase() == 'sash' && selectedSashCode.isNotEmpty) {
+      for (var sec in series.sections) {
         if (sec.type.toLowerCase() == 'sash' && sec.code == selectedSashCode) {
           return sec.visibleWidth;
         }
       }
     }
-    for (var sec in activeSeries!.sections) {
+    for (var sec in series.sections) {
       if (sec.type.toLowerCase() == type.toLowerCase()) {
         return sec.visibleWidth;
       }
@@ -2953,7 +2983,9 @@ class WindowModel extends ChangeNotifier {
   }
 
   AluminumSection? getSectionByType(String type) {
-    final series = (systemMode == 'sliding' && activeSlidingSeries != null)
+    final useSliding =
+        usesSlidingPrimaryProfiles && activeSlidingSeries != null;
+    final series = useSliding
         ? activeSlidingSeries!
         : activeSeries;
     if (series == null) return null;
@@ -2961,10 +2993,10 @@ class WindowModel extends ChangeNotifier {
 
     AluminumSection? result;
     if (normalizedType == 'sash') {
-      final ov = slidingSashOverride ?? sashOverride;
+      final ov = useSliding ? slidingSashOverride : sashOverride;
       if (ov != null) result = AluminumSection.fromMap(ov);
     } else if (normalizedType == 'frame') {
-      final ov = slidingFrameOverride ?? frameOverride;
+      final ov = useSliding ? slidingFrameOverride : frameOverride;
       if (ov != null) result = AluminumSection.fromMap(ov);
     }
 
@@ -3047,8 +3079,49 @@ class WindowModel extends ChangeNotifier {
     return result;
   }
 
+  /// Looks up a profile exclusively in the selected sliding series.  Do not
+  /// use [getSectionByType] for a sliding zone in a mixed drawing: that method
+  /// intentionally returns the primary (opening) series when both coexist.
+  AluminumSection? getSlidingSectionByType(String type) {
+    final series = activeSlidingSeries ?? activeSeries;
+    if (series == null) return null;
+    final normalizedType = type.toLowerCase();
+
+    if (normalizedType == 'sash' && slidingSashOverride != null) {
+      return AluminumSection.fromMap(slidingSashOverride!);
+    }
+    if (normalizedType == 'frame' && slidingFrameOverride != null) {
+      return AluminumSection.fromMap(slidingFrameOverride!);
+    }
+
+    for (final section in series.sections) {
+      if (section.type.toLowerCase() == normalizedType ||
+          (normalizedType == 'frame' && section.isFrame)) {
+        return section;
+      }
+    }
+    return null;
+  }
+
+  /// Returns a manually selected sliding profile only when it belongs to the
+  /// active sliding series.  Old orders can otherwise carry an override from
+  /// a previously selected series into the quantity and cost table.
+  Map<String, dynamic>? getSlidingComponentOverride(String key) {
+    final candidate = componentOverrides[key];
+    if (candidate is! Map) return null;
+    final result = Map<String, dynamic>.from(candidate);
+    final activeSeriesId = activeSlidingSeries?.id;
+    final sourceSeriesId = result['series_id'];
+    if (activeSeriesId != null &&
+        sourceSeriesId != null &&
+        sourceSeriesId.toString() != activeSeriesId.toString()) {
+      return null;
+    }
+    return result;
+  }
+
   double getSectionThicknessByCode(String code, {double fallback = 45.0}) {
-    final series = (systemMode == 'sliding' && activeSlidingSeries != null)
+    final series = (usesSlidingPrimaryProfiles && activeSlidingSeries != null)
         ? activeSlidingSeries!
         : activeSeries;
     if (series == null) return fallback;
@@ -3064,7 +3137,7 @@ class WindowModel extends ChangeNotifier {
   }
 
   AluminumSection? getSectionByCode(String code) {
-    final series = (systemMode == 'sliding' && activeSlidingSeries != null)
+    final series = (usesSlidingPrimaryProfiles && activeSlidingSeries != null)
         ? activeSlidingSeries!
         : activeSeries;
     if (series == null) return null;
@@ -3175,30 +3248,7 @@ class WindowModel extends ChangeNotifier {
               }
             }
             if (newSliding != null) {
-              activeSlidingSeries = newSliding;
-              slidingFrameOverride = null;
-              slidingSashOverride = null;
-
-              var frames = newSliding.sections.where((s) {
-                final t = s.type.toLowerCase().trim();
-                return t.contains('frame') ||
-                    t.contains('cadre') ||
-                    t.contains('إطار') ||
-                    t.contains('فريم');
-              }).toList();
-              if (frames.isNotEmpty) {
-                slidingFrameOverride = frames.first.toMap();
-              }
-              var sashes = newSliding.sections.where((s) {
-                final t = s.type.toLowerCase().trim();
-                return t.contains('sash') ||
-                    t.contains('ouvrant') ||
-                    t.contains('ضلفة') ||
-                    t.contains('ساش');
-              }).toList();
-              if (sashes.isNotEmpty) {
-                slidingSashOverride = sashes.first.toMap();
-              }
+              await setActiveSlidingSeries(newSliding);
             }
           }
         }
@@ -4060,6 +4110,7 @@ class WindowModel extends ChangeNotifier {
     if (seriesChanged) {
       slidingFrameOverride = null;
       slidingSashOverride = null;
+      _clearSlidingProfileOverrides();
       _clearAccessoryOverrides();
 
       // Auto-matching opening series for System Mixed
@@ -4196,6 +4247,10 @@ class WindowModel extends ChangeNotifier {
       rMap['calculated_price'] = price;
       componentOverrides['الشيكان (Chicane)'] = rMap;
     }
+
+    // Only affects a drawing made entirely of sliding zones in mixed mode.
+    // A mixed drawing that still has opening zones keeps its opening frame.
+    updateProfileThickness();
 
     await _loadColorsForProfile(series.profileId);
     final d = await db.db;
@@ -5225,7 +5280,12 @@ class WindowModel extends ChangeNotifier {
         _lastWidth != width ||
         _lastHeight != height ||
         _lastDrawnLeft != drawnLeft ||
-        _lastDrawnTop != drawnTop;
+        _lastDrawnTop != drawnTop ||
+        _lastShowWall != showWall ||
+        _lastShowBottomWall != showBottomWall ||
+        _lastHasShutter != hasShutter ||
+        _lastIsCaissonTunnel != isCaissonTunnel ||
+        _lastShutterBoxHeight != shutterBoxHeight;
 
     // تجنب إعادة الحساب إذا لم يتغير الحجم فعلياً (اقتصاداً في الحساب)
     if (lastLayoutSize == widgetSize &&
@@ -5240,41 +5300,76 @@ class WindowModel extends ChangeNotifier {
     _lastHeight = height;
     _lastDrawnLeft = drawnLeft;
     _lastDrawnTop = drawnTop;
+    _lastShowWall = showWall;
+    _lastShowBottomWall = showBottomWall;
+    _lastHasShutter = hasShutter;
+    _lastIsCaissonTunnel = isCaissonTunnel;
+    _lastShutterBoxHeight = shutterBoxHeight;
+
+    // Keep a narrow, predictable safety border around the drawing.  The
+    // camera then fits the window *and* its dimension lines, rather than
+    // shrinking the drawing by an arbitrary percentage.
+    const double viewportPadding = 24.0;
+    final bool isTallViewport =
+        widgetSize.height > widgetSize.width * 1.15;
+    final double preferredCenterY =
+        widgetSize.height * (isTallViewport ? 0.61 : 0.52);
+
+    double centeredY(double contentHeight) {
+      final halfHeight = contentHeight * canvasScale / 2;
+      final minCenter = halfHeight + viewportPadding / 2;
+      final maxCenter = widgetSize.height - halfHeight - viewportPadding / 2;
+      return math.min(maxCenter, math.max(minCenter, preferredCenterY));
+    }
 
     if (width <= 0 || height <= 0 || zones.isEmpty) {
       double virtualW = 2400.0;
       double virtualH = 1800.0;
-      double sX = (widgetSize.width - 60.0) / virtualW;
-      double sY = (widgetSize.height - 60.0) / virtualH;
-      canvasScale = math.min(sX, sY) * 0.85;
+      double sX = (widgetSize.width - viewportPadding) / virtualW;
+      double sY = (widgetSize.height - viewportPadding) / virtualH;
+      canvasScale = math.min(sX, sY) * 0.94;
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
-      canvasDy = widgetSize.height / 2 - (virtualH / 2 * canvasScale);
+      canvasDy = centeredY(virtualH) - (virtualH / 2 * canvasScale);
       return;
     }
 
-    final double wallLeft = showWall ? 300.0 : 0.0;
-    final double wallRight = showWall ? 300.0 : 0.0;
+    // The dimension labels sit outside the physical frame.  Include their
+    // space in the camera bounds so their text and ticks never get clipped.
+    final double sideCoverExtension = hasSideCovers ? sideCoverWidth + 15.0 : 0.0;
+    final double dimensionLeft = 90.0 + sideCoverExtension;
+    final double dimensionRight = 90.0 + sideCoverExtension;
+    final double dimensionTop =
+        100.0 + (hasShutter ? 20.0 : 0.0) + sideCoverExtension;
+    final double dimensionBottom = 70.0 + sideCoverExtension;
+
+    // Match the actual wall extent used by WindowPainter (500 mm on both
+    // sides) instead of the previous smaller virtual extent.
+    final double wallLeft = showWall ? 500.0 : 0.0;
+    final double wallRight = showWall ? 500.0 : 0.0;
     final double wallTop = showWall
-        ? (hasShutter && !isCaissonTunnel ? (shutterBoxHeight + 100.0) : 150.0)
+        ? (hasShutter ? shutterBoxHeight + 150.0 : 150.0)
         : 0.0;
-    final double wallBottom = (showWall && showBottomWall) ? 150.0 : 0.0;
+    final double wallBottom = (showWall && showBottomWall) ? 200.0 : 0.0;
 
-    double totalW = width + wallLeft + wallRight;
-    double totalH = height + wallTop + wallBottom;
+    final double contentLeft = math.max(wallLeft, dimensionLeft);
+    final double contentRight = math.max(wallRight, dimensionRight);
+    final double contentTop = math.max(wallTop, dimensionTop);
+    final double contentBottom = math.max(wallBottom, dimensionBottom);
+    final double totalW = width + contentLeft + contentRight;
+    final double totalH = height + contentTop + contentBottom;
 
-    final padding = 60.0;
-    double maxW = math.max(100.0, widgetSize.width - padding);
-    double maxH = math.max(100.0, widgetSize.height - padding);
+    final double maxW = math.max(100.0, widgetSize.width - viewportPadding);
+    final double maxH = math.max(100.0, widgetSize.height - viewportPadding);
 
     double sX = maxW / totalW;
     double sY = maxH / totalH;
-    canvasScale = math.min(sX, sY) * 0.85;
+    canvasScale = math.min(sX, sY);
 
-    double boundsCenterX = (width + wallRight - wallLeft) / 2;
-    double boundsCenterY = (height + wallBottom - wallTop) / 2;
+    final double boundsCenterX = (width + contentRight - contentLeft) / 2;
+    final double boundsCenterY = (height + contentBottom - contentTop) / 2;
 
     canvasDx = widgetSize.width / 2 - (boundsCenterX * canvasScale);
-    canvasDy = widgetSize.height / 2 - (boundsCenterY * canvasScale);
+    canvasDy = centeredY(totalH) - (boundsCenterY * canvasScale);
   }
 
   void selectAt(Offset pos, {bool isLongPress = false}) {
@@ -7744,23 +7839,29 @@ class WindowModel extends ChangeNotifier {
 
   void updateProfileThickness() {
     double oldThickness = profileThickness;
+    final useSliding =
+        usesSlidingPrimaryProfiles && activeSlidingSeries != null;
+    final activeFrame = useSliding ? slidingFrameOverride : frameOverride;
+    final series = useSliding ? activeSlidingSeries : activeSeries;
 
-    if (frameOverride != null) {
-      double t = (frameOverride!['visible_width'] as num?)?.toDouble() ?? 0.0;
+    if (activeFrame != null) {
+      double t = (activeFrame['visible_width'] as num?)?.toDouble() ?? 0.0;
       if (t > 0) {
         profileThickness = t;
       } else {
         profileThickness =
-            (frameOverride!['thickness'] as num?)?.toDouble() ??
+            (activeFrame['thickness'] as num?)?.toDouble() ??
             profileThickness;
       }
-    } else if (activeSeries != null && activeSeries!.sections.isNotEmpty) {
-      final frames = activeSeries!.sections
+    } else if (series != null && series.sections.isNotEmpty) {
+      final frames = series.sections
           .where((s) => s.isFrame || s.type.toLowerCase() == 'frame')
           .toList();
       if (frames.isNotEmpty) {
         AluminumSection targetFrame;
-        if (selectedFrameCode != null && selectedFrameCode!.isNotEmpty) {
+        if (!useSliding &&
+            selectedFrameCode != null &&
+            selectedFrameCode!.isNotEmpty) {
           targetFrame = frames.firstWhere(
             (s) => s.code == selectedFrameCode,
             orElse: () => frames.first,
@@ -7841,6 +7942,7 @@ class WindowModel extends ChangeNotifier {
     zone.cellIsPanel.clear();
     activeSubZone = null;
     showZoneMenu = false;
+    updateProfileThickness();
     notifyListeners();
   }
 
@@ -7895,6 +7997,7 @@ class WindowModel extends ChangeNotifier {
     } else {
       selectedZone!.openDirection = null;
     }
+    updateProfileThickness();
     notifyListeners();
   }
 
@@ -8213,6 +8316,27 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
     }
     notifyListeners();
+  }
+
+  /// These profiles are specific to a sliding series.  Keeping them after a
+  /// series change makes the BOM show sections and prices from the old series.
+  void _clearSlidingProfileOverrides() {
+    const keys = [
+      'الظلفة المنزلقة (Sliding Sash)',
+      'سكة الظلفة (Sash Traverse)',
+      'عرضي (Traverse)',
+      'قائم جانبي (Sash Lateral)',
+      'قائم جانبي معزز (Sash Lateral Renforcé)',
+      'قائم جانبي (Lateral)',
+      'قائم وسطي (Sash Central)',
+      'قائم وسطي معزز (Sash Central Renforcé)',
+      'قائم وسطي (Central)',
+      'الشيكان (Chicane)',
+      'الري (Rail)',
+    ];
+    for (final key in keys) {
+      componentOverrides.remove(key);
+    }
   }
 
   void _clearAccessoryOverrides() {

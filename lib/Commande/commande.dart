@@ -161,6 +161,22 @@ class _CommandeState extends State<Commande> {
     });
   }
 
+  /// SQLite result lists can be read-only. Replacing the active list keeps
+  /// the user on the same page and preserves the current scroll position.
+  void _removeCommandeFromView(Object? commandeId) {
+    final current = _cachedCommandes ?? const <Map<String, dynamic>>[];
+    final remaining = current
+        .where((commande) =>
+            commande['id'].toString() != commandeId.toString())
+        .map((commande) => Map<String, dynamic>.from(commande))
+        .toList(growable: false);
+
+    setState(() {
+      _cachedCommandes = remaining;
+      _data = Future<List<Map<String, dynamic>>>.value(remaining);
+    });
+  }
+
   void _scheduleCloudRefresh() {
     _syncRefreshDebounce?.cancel();
     _syncRefreshDebounce = Timer(const Duration(milliseconds: 300), () {
@@ -485,9 +501,10 @@ class _CommandeState extends State<Commande> {
                           : clientName;
 
                       final netPayable = (data[index]['net_payable'] as num?)?.toDouble() ?? 0.0;
-                      final rawTotal = (data[index]['total'] as num?)?.toDouble() ?? 0.0;
-                      final total = netPayable > 0.0 ? netPayable : rawTotal;
-                      final status = data[index]['status'] ?? 'New';
+                       final rawTotal = (data[index]['total'] as num?)?.toDouble() ?? 0.0;
+                       final total = netPayable > 0.0 ? netPayable : rawTotal;
+                       final status = data[index]['status'] ?? 'New';
+                       final isWindows = Platform.isWindows;
 
                       return Card(
                         shape: RoundedRectangleBorder(
@@ -540,9 +557,9 @@ class _CommandeState extends State<Commande> {
                                     ],
                                   ),
                                 ),
-                              if (data[index]['project_name'] != null && data[index]['project_name'].toString().isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Row(
+                               if (data[index]['project_name'] != null && data[index]['project_name'].toString().isNotEmpty) ...[
+                                 const SizedBox(height: 4),
+                                 Row(
                                   children: [
                                     Flexible(
                                       child: Container(
@@ -572,12 +589,59 @@ class _CommandeState extends State<Commande> {
                                         ),
                                       ),
                                     ),
+                                   ],
+                                 ),
+                               ],
+                              // On Windows, keep the order group and status
+                              // independent. ListTile's trailing area can make
+                              // the central content too narrow on desktop.
+                              if (isWindows) ...[
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${total.toStringAsFixed(2)} دج',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _getStatusColor(status),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        _translateStatus(
+                                          status,
+                                          Provider.of<AppSettingsProvider>(
+                                            context,
+                                            listen: false,
+                                          ).language,
+                                        ),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
                             ],
                           ),
-                          trailing: Column(
+                          trailing: isWindows
+                              ? null
+                              : Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -2037,11 +2101,45 @@ class _CommandeState extends State<Commande> {
       ),
     );
     if (confirm == true) {
-      setState(() {
-        _cachedCommandes?.removeWhere((item) => item['id'] == id);
-      });
-      await db.deleteCommande(id);
-      _fetchCommandes();
+      try {
+        final deletedRows = await db.deleteCommande(id);
+        if (!mounted) return;
+
+        if (deletedRows == 0) {
+          // The record may already have been removed by another device.
+          // Remove only this stale row, without reloading the page.
+          _removeCommandeFromView(id);
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('الطلبية لم تعد موجودة في قاعدة البيانات.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          return;
+        }
+
+        _removeCommandeFromView(id);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('تم حذف الطلبية بنجاح.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('تعذر حذف الطلبية: $error'),
+              backgroundColor: Colors.red,
+            ),
+          );
+      }
     }
   }
 

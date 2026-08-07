@@ -47,6 +47,60 @@ class _ShowClientState extends State<ShowClient> {
     }
   }
 
+  String _creationPlatformLabel(String source, AppLanguage lang) {
+    switch (source.trim().toLowerCase()) {
+      case 'computer':
+        switch (lang) {
+          case AppLanguage.french:
+            return 'Ajouté depuis l’ordinateur';
+          case AppLanguage.english:
+            return 'Added from computer';
+          default:
+            return 'أُضيف من الكمبيوتر';
+        }
+      case 'phone':
+        switch (lang) {
+          case AppLanguage.french:
+            return 'Ajouté depuis le téléphone';
+          case AppLanguage.english:
+            return 'Added from phone';
+          default:
+            return 'أُضيف من الهاتف';
+        }
+      case 'web':
+        switch (lang) {
+          case AppLanguage.french:
+            return 'Ajouté depuis le web';
+          case AppLanguage.english:
+            return 'Added from web';
+          default:
+            return 'أُضيف من الويب';
+        }
+      default:
+        switch (lang) {
+          case AppLanguage.french:
+            return 'Source d’ajout inconnue';
+          case AppLanguage.english:
+            return 'Creation source unknown';
+          default:
+            return 'مصدر الإضافة غير معروف';
+        }
+    }
+  }
+
+  IconData _creationPlatformIcon(String source) {
+    switch (source.trim().toLowerCase()) {
+      case 'computer':
+        return Icons.desktop_windows_outlined;
+      case 'phone':
+        return Icons.phone_android_outlined;
+      case 'web':
+        return Icons.language_outlined;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
   void _showAddPaymentDialog(
     BuildContext context,
     int orderId,
@@ -255,7 +309,11 @@ class _ShowClientState extends State<ShowClient> {
           final email = client['email']?.toString() ?? '';
           final address = client['address']?.toString() ?? '';
           final createdAt = client['created_at']?.toString() ?? '';
+          final creationPlatform =
+              client['creation_platform']?.toString() ?? 'unknown';
 
+          final bool hasPhone1 =
+              phone1.isNotEmpty && phone1 != '0' && phone1 != 'null';
           final bool hasPhone2 =
               phone2.isNotEmpty && phone2 != '0' && phone2 != 'null';
           final bool hasEmail =
@@ -315,13 +373,42 @@ class _ShowClientState extends State<ShowClient> {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (createdAt.isNotEmpty)
-                              Text(
-                                _formatDate(createdAt),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                ),
-                              ),
+                             if (createdAt.isNotEmpty)
+                               Text(
+                                 _formatDate(createdAt),
+                                 style: TextStyle(
+                                   fontSize: 13,
+                                 ),
+                               ),
+                             const SizedBox(height: 4),
+                             Row(
+                               children: [
+                                 Icon(
+                                   _creationPlatformIcon(creationPlatform),
+                                   size: 15,
+                                   color: Theme.of(context)
+                                       .colorScheme
+                                       .onSurfaceVariant,
+                                 ),
+                                 const SizedBox(width: 5),
+                                 Flexible(
+                                   child: Text(
+                                     _creationPlatformLabel(
+                                       creationPlatform,
+                                       lang,
+                                     ),
+                                     maxLines: 1,
+                                     overflow: TextOverflow.ellipsis,
+                                     style: TextStyle(
+                                       fontSize: 12,
+                                       color: Theme.of(context)
+                                           .colorScheme
+                                           .onSurfaceVariant,
+                                     ),
+                                   ),
+                                 ),
+                               ],
+                             ),
                           ],
                         ),
                       ),
@@ -337,12 +424,15 @@ class _ShowClientState extends State<ShowClient> {
                   icon: Icons.info_outline,
                   child: Column(
                     children: [
-                      if (phone1.isNotEmpty)
+                      if (hasPhone1 || hasPhone2)
                         _InfoRow(
                           icon: Icons.phone,
                           iconColor: Colors.green,
                           label: Localization.translate('Phone Numbers:', lang),
-                          value: hasPhone2 ? '$phone1  ·  $phone2' : phone1,
+                          value: [
+                            if (hasPhone1) phone1,
+                            if (hasPhone2) phone2,
+                          ].join('  ·  '),
                         ),
                       if (hasEmail) ...[
                         const Divider(height: 16),
@@ -684,6 +774,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -692,15 +783,21 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: const TextStyle(fontSize: 14),
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.onSurface,
+              ),
               children: [
                 TextSpan(
                   text: '$label  ',
-                  style: const TextStyle(),
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
                 TextSpan(
                   text: value,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),

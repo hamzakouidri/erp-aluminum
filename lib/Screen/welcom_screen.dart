@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -28,6 +29,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
 
 import 'worker_archive_screen.dart';
+
+bool get _isWindowsDesktop =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
 class WelcomScreen extends StatefulWidget {
   final bool embeddedInWorkspace;
@@ -459,6 +463,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final double dashboardPadding = _isWindowsDesktop
+        ? (screenWidth > 1488 ? (screenWidth - 1440) / 2 : 24)
+        : 16;
 
     return PopScope(
       canPop: false,
@@ -530,7 +538,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
               slivers: [
               _buildSliverHeader(context),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: EdgeInsets.fromLTRB(dashboardPadding, 0, dashboardPadding, 32),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     // ── إحصائيات ────────────────────────────────────────
@@ -569,19 +577,22 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
   // ── SliverAppBar ──────────────────────────────────────────────────────────
   Widget _buildSliverHeader(BuildContext context) {
+    final isDesktop = _isWindowsDesktop;
     return SliverAppBar(
-      expandedHeight: 180,
+      expandedHeight: isDesktop ? 132 : 180,
       pinned: true,
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? Theme.of(context).appBarTheme.backgroundColor
           : const Color(0xFF2563EB),
       surfaceTintColor: Colors.transparent,
-      leading: Builder(
-        builder: (ctx) => IconButton(
-          icon: const Icon(Icons.menu_rounded, color: Colors.white),
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
-        ),
-      ),
+      leading: _isWindowsDesktop
+          ? null
+          : Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
       actions: [
         _isManualSyncing
             ? const Padding(
@@ -681,7 +692,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
               ),
               // المحتوى
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 70, 20, 20),
+                padding: EdgeInsets.fromLTRB(20, isDesktop ? 52 : 70, 20, 20),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -810,14 +821,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
             ],
           ),
         ),
-        title: Text(
-          _workshopName,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        title: isDesktop
+            ? null
+            : Text(
+                _workshopName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
         titlePadding: const EdgeInsets.only(left: 56, bottom: 14),
         collapseMode: CollapseMode.pin,
       ),
@@ -838,57 +851,98 @@ class _WelcomScreenState extends State<WelcomScreen> {
         ? 'المنتجات'
         : Localization.translate('produits', lang);
 
-    List<Widget> cards = [];
+    final cards = <Widget>[];
 
-    if (settings.canViewOrders()) {
+    void addCard({
+      required IconData icon,
+      required String label,
+      required String value,
+      required Color color,
+      required String trend,
+    }) {
       cards.add(
-        Expanded(
-          child: _StatCard(
-            icon: Icons.receipt_long_rounded,
-            label: ordersLabel,
-            value: _commandesCount,
-            color: _blue,
-            trend: _cmdTrend,
-            index: cards.length,
-            dragNotifier: _dragNotifier,
-          ),
-        ),
-      );
-      cards.add(const SizedBox(width: 12));
-    }
-
-    if (settings.canViewClients()) {
-      cards.add(
-        Expanded(
-          child: _StatCard(
-            icon: Icons.people_alt_rounded,
-            label: clientsLabel,
-            value: _clientsCount,
-            color: _purple,
-            trend: _cliTrend,
-            index: cards.length,
-            dragNotifier: _dragNotifier,
-          ),
-        ),
-      );
-      cards.add(const SizedBox(width: 12));
-    }
-
-    cards.add(
-      Expanded(
-        child: _StatCard(
-          icon: Icons.inventory_2_rounded,
-          label: productsLabel,
-          value: _produitsCount,
-          color: _amber,
-          trend: '—',
+        _StatCard(
+          icon: icon,
+          label: label,
+          value: value,
+          color: color,
+          trend: trend,
           index: cards.length,
           dragNotifier: _dragNotifier,
         ),
-      ),
+      );
+    }
+
+    if (settings.canViewOrders()) {
+      addCard(
+        icon: Icons.receipt_long_rounded,
+        label: ordersLabel,
+        value: _commandesCount,
+        color: _blue,
+        trend: _cmdTrend,
+      );
+    }
+
+    if (settings.canViewClients()) {
+      addCard(
+        icon: Icons.people_alt_rounded,
+        label: clientsLabel,
+        value: _clientsCount,
+        color: _purple,
+        trend: _cliTrend,
+      );
+    }
+
+    addCard(
+      icon: Icons.inventory_2_rounded,
+      label: productsLabel,
+      value: _produitsCount,
+      color: _amber,
+      trend: '—',
     );
 
-    return Row(children: cards);
+    if (_isWindowsDesktop) {
+      addCard(
+        icon: Icons.warning_amber_rounded,
+        label: lang == AppLanguage.arabic
+            ? 'تنبيهات المخزون'
+            : (lang == AppLanguage.french ? 'Alertes de stock' : 'Stock alerts'),
+        value: _lowStockCount.toString(),
+        color: _lowStockCount > 0 ? Colors.deepOrange : _green,
+        trend: _lowStockCount > 0
+            ? (lang == AppLanguage.arabic ? 'يحتاج متابعة' : 'Needs attention')
+            : (lang == AppLanguage.arabic ? 'المخزون مستقر' : 'Stock is stable'),
+      );
+
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 16.0;
+          final targetColumns = constraints.maxWidth >= 1200 ? 4 : 3;
+          final columns = cards.length < targetColumns
+              ? cards.length
+              : targetColumns;
+          final cardWidth =
+              (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              for (final card in cards)
+                SizedBox(width: cardWidth, child: card),
+            ],
+          );
+        },
+      );
+    }
+
+    return Row(
+      children: [
+        for (var index = 0; index < cards.length; index++) ...[
+          Expanded(child: cards[index]),
+          if (index != cards.length - 1) const SizedBox(width: 12),
+        ],
+      ],
+    );
   }
 
   // ── بطاقة رفع القياسات الذكية كاملة العرض ─────────────────────────────────────
@@ -1167,17 +1221,27 @@ class _WelcomScreenState extends State<WelcomScreen> {
         ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.05,
-      ),
-      itemCount: items.length,
-      itemBuilder: (_, i) => _NavCard(item: items[i], index: i, dragNotifier: _dragNotifier),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktopColumns = constraints.maxWidth >= 1240 ? 6 : 5;
+        final crossAxisCount = _isWindowsDesktop ? desktopColumns : 3;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: _isWindowsDesktop ? 14 : 10,
+            mainAxisSpacing: _isWindowsDesktop ? 14 : 10,
+            childAspectRatio: _isWindowsDesktop ? 1.65 : 1.05,
+          ),
+          itemCount: items.length,
+          itemBuilder: (_, i) => _NavCard(
+            item: items[i],
+            index: i,
+            dragNotifier: _dragNotifier,
+          ),
+        );
+      },
     );
   }
 

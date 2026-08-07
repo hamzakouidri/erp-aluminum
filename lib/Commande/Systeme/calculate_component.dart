@@ -342,6 +342,14 @@ class ComponentCalculator {
       return null;
     }
 
+    Map<String, dynamic>? slidingOverrideFor(Iterable<String> keys) {
+      for (final key in keys) {
+        final override = window.getSlidingComponentOverride(key);
+        if (override != null) return override;
+      }
+      return null;
+    }
+
     String? getKitKey(String baseName) {
       final List<String> aliases;
       if (baseName == 'System OB') {
@@ -456,6 +464,7 @@ class ComponentCalculator {
       double? length,
       List<double>? pieces,
       Map<String, dynamic>? overrideMap,
+      bool preferOverrideMap = false,
     }) {
       List<double>? multipliedPieces;
       if (pieces != null && pieces.isNotEmpty) {
@@ -474,6 +483,7 @@ class ComponentCalculator {
         length: length,
         pieces: multipliedPieces,
         overrideMap: overrideMap,
+        preferOverrideMap: preferOverrideMap,
       );
     }
 
@@ -1041,7 +1051,9 @@ class ComponentCalculator {
         colorName,
         pieces: framePieces,
         unit: 'قطاع',
-        overrideMap: window.slidingFrameOverride ?? window.frameOverride,
+        overrideMap: window.usesSlidingPrimaryProfiles
+            ? window.slidingFrameOverride
+            : window.frameOverride,
       ),
     );
 
@@ -1239,7 +1251,7 @@ class ComponentCalculator {
             ]);
           }
         } else if (zone.content == ZoneContent.slidingSash) {
-          final slidingSashOverride = window.slidingSashOverride ?? window.sashOverride;
+          final slidingSashOverride = window.slidingSashOverride;
           double slidingOverlap = slidingSashOverride != null
               ? (slidingSashOverride['sash_overlap'] ?? 8.0).toDouble()
               : 8.0;
@@ -1278,7 +1290,7 @@ class ComponentCalculator {
               ? zone.slidingSashesCount
               : 2;
           double sashW = (wForCalc + ((sashes - 1) * 26.0)) / sashes;
-          if (window.isPVC) {
+          if (window.isSlidingPVC) {
             sashW = (wForCalc + ((sashes - 1) * slidingOverlap)) / sashes;
           }
           double sashH = hForCalc + slidingOverlap * 2;
@@ -1288,7 +1300,7 @@ class ComponentCalculator {
           if (hasThreePiece) {
             sashH = window.height - 64.0;
           } else {
-            if (!window.isPVC) {
+            if (!window.isSlidingPVC) {
               sashH = window.height - 81.0;
             }
           }
@@ -1372,10 +1384,10 @@ class ComponentCalculator {
           }
 
           double frameT = window.profileThickness;
-          if (window.frameOverride != null) {
-            frameT = ((window.frameOverride!['visible_width'] ?? window.frameOverride!['thickness']) as num?)?.toDouble() ?? window.profileThickness;
+          if (window.slidingFrameOverride != null) {
+            frameT = ((window.slidingFrameOverride!['visible_width'] ?? window.slidingFrameOverride!['thickness']) as num?)?.toDouble() ?? window.profileThickness;
           } else {
-            final frameSection = window.getSectionByType('frame');
+            final frameSection = window.getSlidingSectionByType('frame');
             if (frameSection != null) {
               frameT = ((frameSection.visibleWidth ?? frameSection.thickness) as num?)?.toDouble() ?? window.profileThickness;
             }
@@ -1417,7 +1429,9 @@ class ComponentCalculator {
             colorName,
             pieces: slidingSashPieces,
             unit: 'قطاع',
-            overrideMap: window.slidingSashOverride ?? window.sashOverride,
+            overrideMap: window.slidingSashOverride ??
+                window.getSlidingSectionByType('sash')?.toMap(),
+            preferOverrideMap: true,
           ),
         );
       }
@@ -1429,7 +1443,10 @@ class ComponentCalculator {
             colorName,
             pieces: slidingSashTraversePieces,
             unit: 'قطاع',
-            overrideMap: window.componentOverrides['عرضي (Traverse)'] ?? window.getSectionByType('sash_traverse')?.toMap() ?? window.sashOverride,
+            overrideMap: slidingOverrideFor(['عرضي (Traverse)']) ??
+                window.getSlidingSectionByType('sash_traverse')?.toMap() ??
+                window.getSlidingSectionByType('traverse')?.toMap(),
+            preferOverrideMap: true,
           ),
         );
       }
@@ -1446,11 +1463,13 @@ class ComponentCalculator {
             : 'قائم جانبي (Sash Lateral)';
 
         // Fetch user override or default normal profile
-        Map<String, dynamic>? baseLateral = window.componentOverrides[lateralName] ??
-            window.componentOverrides['قائم جانبي (Sash Lateral)'] ??
-            window.componentOverrides['قائم جانبي (Lateral)'] ??
-            window.getSectionByType('sash_lateral')?.toMap() ??
-            window.sashOverride;
+        Map<String, dynamic>? baseLateral = slidingOverrideFor([
+              lateralName,
+              'قائم جانبي (Sash Lateral)',
+              'قائم جانبي (Lateral)',
+            ]) ??
+            window.getSlidingSectionByType('sash_lateral')?.toMap() ??
+            window.getSlidingSectionByType('lateral')?.toMap();
 
         if (baseLateral != null) {
           if (isLateralReinforced) {
@@ -1473,6 +1492,7 @@ class ComponentCalculator {
             pieces: slidingSashLateralPieces,
             unit: 'قطاع',
             overrideMap: baseLateral,
+            preferOverrideMap: true,
           ),
         );
       }
@@ -1487,11 +1507,13 @@ class ComponentCalculator {
             : 'قائم وسطي (Sash Central)';
 
         // Fetch user override or default normal profile
-        Map<String, dynamic>? baseCentral = window.componentOverrides[centralName] ??
-            window.componentOverrides['قائم وسطي (Sash Central)'] ??
-            window.componentOverrides['قائم وسطي (Central)'] ??
-            window.getSectionByType('sash_central')?.toMap() ??
-            window.sashOverride;
+        Map<String, dynamic>? baseCentral = slidingOverrideFor([
+              centralName,
+              'قائم وسطي (Sash Central)',
+              'قائم وسطي (Central)',
+            ]) ??
+            window.getSlidingSectionByType('sash_central')?.toMap() ??
+            window.getSlidingSectionByType('central')?.toMap();
 
         if (baseCentral != null) {
           if (isCentralReinforced) {
@@ -1514,14 +1536,16 @@ class ComponentCalculator {
             pieces: slidingSashCentralPieces,
             unit: 'قطاع',
             overrideMap: baseCentral,
+            preferOverrideMap: true,
           ),
         );
       }
 
       if (slidingChicanePieces.isNotEmpty) {
-        Map<String, dynamic>? baseChicane = window.componentOverrides['الشيكان (Chicane)'] ??
-            window.getSectionByType('chicane')?.toMap() ??
-            window.getSectionByType('sash_chicane')?.toMap();
+        Map<String, dynamic>? baseChicane =
+            slidingOverrideFor(['الشيكان (Chicane)']) ??
+                window.getSlidingSectionByType('chicane')?.toMap() ??
+                window.getSlidingSectionByType('sash_chicane')?.toMap();
         items.add(
           createProfile(
             'الشيكان (Chicane)',
@@ -1529,17 +1553,22 @@ class ComponentCalculator {
             pieces: slidingChicanePieces,
             unit: 'قطاع',
             overrideMap: baseChicane,
+            preferOverrideMap: true,
           ),
         );
       }
 
       if (slidingRailPieces.isNotEmpty) {
+        final railOverride = slidingOverrideFor(['الري (Rail)']) ??
+            window.getSlidingSectionByType('rail')?.toMap();
         items.add(
           createProfile(
             'الري (Rail)',
             colorName,
             pieces: slidingRailPieces,
             unit: 'قطاع',
+            overrideMap: railOverride,
+            preferOverrideMap: true,
           ),
         );
       }
@@ -2005,7 +2034,7 @@ class ComponentCalculator {
               qty: slidingTotalRoulettes,
             ),
           );
-          if (!window.isPVC) {
+          if (!window.isSlidingPVC) {
             final String seriesName = window.activeSlidingSeries?.name.toLowerCase() ?? '';
             String kitKey = 'كيت 67000 (Kit 67000)';
             if (seriesName.contains('76000')) {
@@ -2023,7 +2052,7 @@ class ComponentCalculator {
               ),
             );
           }
-          final bool useEntrematique = !window.isPVC &&
+          final bool useEntrematique = !window.isSlidingPVC &&
               window.zones.any((z) =>
                   z.content == ZoneContent.slidingSash &&
                   z.useClassicHandle != true);
@@ -2052,7 +2081,8 @@ class ComponentCalculator {
             ),
           );
           final String seriesName = window.activeSlidingSeries?.name.toLowerCase() ?? '';
-          final bool isTPR = seriesName.contains('tpr') && !window.isPVC;
+          final bool isTPR =
+              seriesName.contains('tpr') && !window.isSlidingPVC;
           if (isTPR) {
             items.add(
               createAccessory(
@@ -2088,7 +2118,9 @@ class ComponentCalculator {
 
         // 🟢 جوان بروس للظلفة: لا يُضاف تلقائياً لسلاسل الألمنيوم مثل TPR 67000 
         // إلا إذا كان خيار جوان البروس مخصصاً ومحدداً صراحة لهذه السلسلة أو إذا كان النظام PVC
-        if (window.isPVC || window.componentOverrides.containsKey('جوان بروس للظلفة (Joint Brosse Sash)')) {
+        if (window.isSlidingPVC ||
+            window.componentOverrides
+                .containsKey('جوان بروس للظلفة (Joint Brosse Sash)')) {
           items.add(
             createJoint(
               'جوان بروس للظلفة (Joint Brosse Sash)',
@@ -2613,8 +2645,8 @@ class ComponentCalculator {
       }
     }
 
-    if (window.systemMode == 'sliding') {
-      if (!window.isPVC) {
+    if (hasSlidingSash) {
+      if (!window.isSlidingPVC) {
         final int assemblyScrewsQty = (slidingTotalRoulettes ~/ 2) * 4;
         if (assemblyScrewsQty > 0) {
           items.add(
@@ -2636,7 +2668,9 @@ class ComponentCalculator {
           );
         }
       }
-    } else {
+    }
+
+    if (hasSingleSash || hasDoubleSash) {
       int totalAccessoryScrews = 0;
       for (var item in items) {
         if (item.category == 'accessory') {
@@ -3508,7 +3542,6 @@ class ComponentCalculator {
           final bool isSlidingSystem = window.systemMode == 'sliding' ||
               window.systemMode == 'coulissant' ||
               window.systemMode == 'منزلق' ||
-              window.activeSlidingSeries != null ||
               zone.content == ZoneContent.slidingSash;
 
           if (isSlidingSystem) {
@@ -3523,7 +3556,9 @@ class ComponentCalculator {
                 }
               }
               double maxGlass = 24.0;
-              final sashMap = (window.slidingSashOverride ?? window.getSectionByType('sash_sliding')) as Map<String, dynamic>?;
+              final sashMap = window.slidingSashOverride ??
+                  window.getSlidingSectionByType('sash_sliding')?.toMap() ??
+                  window.getSlidingSectionByType('sash')?.toMap();
               if (sashMap != null) {
                 final double mG = (sashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
                 if (mG > 0) maxGlass = mG;
@@ -4358,12 +4393,17 @@ class ComponentCalculator {
     double? length,
     List<double>? pieces,
     Map<String, dynamic>? overrideMap,
+    bool preferOverrideMap = false,
   }) {
     final Map<String, dynamic>? savedOverride =
         overrides.containsKey(originalName)
             ? overrides[originalName] as Map<String, dynamic>?
             : null;
-    bool isLinked = savedOverride != null || overrideMap != null;
+    final Map<String, dynamic>? selectedOverride =
+        preferOverrideMap && overrideMap != null
+            ? overrideMap
+            : savedOverride ?? overrideMap;
+    bool isLinked = selectedOverride != null;
     double price = defaultPrice;
     double finalQty = qty;
     double? finalLength = length;
@@ -4372,7 +4412,7 @@ class ComponentCalculator {
     String? imagePath;
     String subName = '';
     if (isLinked) {
-      final ov = savedOverride ?? overrideMap!;
+      final ov = selectedOverride!;
       profileCode = ov['code']?.toString();
       imagePath = ov['image_path']?.toString();
       subName = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
@@ -4383,7 +4423,7 @@ class ComponentCalculator {
     if (pieces != null && pieces.isNotEmpty) {
       double barLength = 5.8;
       if (isLinked) {
-        final ov = savedOverride ?? overrideMap!;
+        final ov = selectedOverride!;
         barLength = (ov['bar_length'] as num?)?.toDouble() ?? 5.8;
       } else if (originalName.contains('حديد') ||
           originalName.contains('Renfort')) {
@@ -4425,7 +4465,7 @@ class ComponentCalculator {
     }
  
     if (isLinked && (finalLength == null || finalLength == 0.0)) {
-      final ov = savedOverride ?? overrideMap!;
+      final ov = selectedOverride!;
       finalLength = (ov['bar_length'] as num?)?.toDouble() ?? 5.8;
     }
  

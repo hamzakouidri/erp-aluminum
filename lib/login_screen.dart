@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
@@ -6,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/windows_google_sign_in.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'settings/app_settings.dart';
@@ -70,34 +73,56 @@ class _LoginScreenState extends State<LoginScreen>
           ..repeat();
   }
 
-  String _getFriendlyErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-email':
+  String _getFriendlyErrorMessage(Object e) {
+    if (e is FirebaseAuthException) {
+      final code = e.code.replaceAll('auth/', '').toLowerCase().trim();
+      final msg = (e.message ?? '').toLowerCase();
+
+      if (code == 'invalid-email' || msg.contains('invalid email')) {
         return 'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.';
-      case 'user-disabled':
+      }
+      if (code == 'user-disabled' || msg.contains('user disabled')) {
         return 'تم تعطيل هذا الحساب من قبل الإدارة.';
-      case 'user-not-found':
-        return 'لم يتم العثور على حساب بهذا البريد، تأكد من صحته.';
-      case 'wrong-password':
+      }
+      if (code == 'user-not-found' || msg.contains('user not found')) {
+        return 'لم يتم العثور على حساب بهذا البريد، يرجى التأكد أو إنشاء حساب جديد.';
+      }
+      if (code == 'wrong-password' || msg.contains('wrong password')) {
         return 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.';
-      case 'invalid-credential':
+      }
+      if (code == 'invalid-credential' ||
+          code == 'invalid_login_credentials' ||
+          msg.contains('invalid credential') ||
+          msg.contains('invalid login credentials')) {
         return 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.';
-      case 'email-already-in-use':
+      }
+      if (code == 'email-already-in-use' || msg.contains('email already in use')) {
         return 'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.';
-      case 'weak-password':
+      }
+      if (code == 'weak-password' || msg.contains('weak password')) {
         return 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.';
-      case 'operation-not-allowed':
-        return 'طريقة تسجيل الدخول هذه غير مفعلة في لوحة التحكم (يرجى تفعيل Email/Password).';
-      case 'network-request-failed':
-        return 'لا يوجد اتصال بالإنترنت، يرجى التحقق من الشبكة الخاصة بك.';
-      case 'internal-error':
-        return 'إعدادات غير مكتملة: يرجى الذهاب إلى Firebase Console -> قسم Authentication -> واضغط على Get Started ثم قم بتفعيل Email/Password.';
-      default:
-        if (e.message?.contains('configuration not found') ?? false) {
-          return 'إعدادات المصادقة غير موجودة: يرجى الذهاب إلى Firebase Console -> قسم Authentication وتفعيل البريد الإلكتروني (Email/Password).';
-        }
-        return 'حدث خطأ: ${e.message}';
+      }
+      if (code == 'operation-not-allowed' || msg.contains('operation not allowed')) {
+        return 'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.';
+      }
+      if (code == 'network-request-failed' || msg.contains('network')) {
+        return 'لا يوجد اتصال بالإنترنت، يرجى التحقق من اتصال الشبكة.';
+      }
+      if (code == 'too-many-requests' || msg.contains('too many requests')) {
+        return 'تمت محاولة الدخول عدة مرات بشكل خاطئ. يرجى الانتظار قليلاً ثم المحاولة.';
+      }
+      if (code == 'internal-error' ||
+          code == 'channel-error' ||
+          msg.contains('internal error')) {
+        return 'خطأ في خادم الفايربيس (An internal error has occurred).\n'
+            'السبب الشائع: إما كلمة المرور غير صحيحة، أو خدمة Email/Password غير مفعلة في Firebase Console -> Authentication -> Get Started.';
+      }
+      if (msg.contains('configuration not found')) {
+        return 'إعدادات المصادقة غير موجودة: يرجى تفعيل البريد الإلكتروني (Email/Password) في Firebase Console.';
+      }
+      return 'حدث خطأ: ${e.message}';
     }
+    return 'حدث خطأ: $e';
   }
 
   Future<void> _resetPassword() async {
@@ -128,18 +153,11 @@ class _LoginScreenState extends State<LoginScreen>
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
-        if (e.code == 'user-not-found') {
-          _errorMessage =
-              'لم يتم العثور على حساب بهذا البريد الإلكتروني. يرجى التحقق من صحته.';
-        } else if (e.code == 'invalid-email') {
-          _errorMessage = 'البريد الإلكتروني المكتوب غير صالح.';
-        } else {
-          _errorMessage = 'حدث خطأ: ${e.message}';
-        }
+        _errorMessage = _getFriendlyErrorMessage(e);
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'حدث خطأ غير متوقع: $e';
+        _errorMessage = _getFriendlyErrorMessage(e);
       });
     } finally {
       if (mounted) {
@@ -199,6 +217,10 @@ class _LoginScreenState extends State<LoginScreen>
       );
       // Firebase auth state changes will handle transitioning the screen automatically
     } on FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = _getFriendlyErrorMessage(e);
+      });
+    } catch (e) {
       setState(() {
         _errorMessage = _getFriendlyErrorMessage(e);
       });
@@ -578,22 +600,33 @@ class _LoginScreenState extends State<LoginScreen>
         }
       }
 
-      // 2. Trigger Google Sign-In
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        // User cancelled the sign-in
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
+      // 2. Trigger Google Sign-In. The mobile implementation remains exactly
+      // the same; Windows uses the system browser and a PKCE OAuth callback.
+      late final OAuthCredential credential;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        final tokens = await WindowsGoogleSignIn().signIn();
+        credential = GoogleAuthProvider.credential(
+          accessToken: tokens.accessToken,
+          idToken: tokens.idToken,
+        );
+      } else {
+        final GoogleSignInAccount? googleUser =
+            await GoogleSignIn().signIn();
+        if (googleUser == null) {
+          // User cancelled the sign-in.
+          setState(() {
+            _isLoading = false;
+          });
+          return;
+        }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+        credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+      }
 
       // 3. Sign in to Firebase with the credential
       final UserCredential userCredential = await _auth.signInWithCredential(
@@ -632,7 +665,7 @@ class _LoginScreenState extends State<LoginScreen>
           if (!doc.exists) {
             // User does not exist, so they must register first!
             await _auth.signOut();
-            await GoogleSignIn().signOut();
+            await _signOutGoogleProviderIfSupported();
             setState(() {
               _errorMessage =
                   'لم يتم العثور على حساب مسجل لهذا البريد الإلكتروني. يرجى تبديل الوضع وإنشاء حساب جديد أولاً.';
@@ -643,7 +676,7 @@ class _LoginScreenState extends State<LoginScreen>
 
           if (doc.data()?['isBlocked'] == true) {
             await _auth.signOut();
-            await GoogleSignIn().signOut();
+            await _signOutGoogleProviderIfSupported();
             setState(() {
               _errorMessage =
                   'عذراً، هذا الحساب محذوف أو تم إيقافه من قبل المدير.';
@@ -678,7 +711,7 @@ class _LoginScreenState extends State<LoginScreen>
 
           if (querySnapshot.docs.isEmpty) {
             await _auth.signOut();
-            await GoogleSignIn().signOut();
+            await _signOutGoogleProviderIfSupported();
             setState(() {
               _errorMessage = 'كود الورشة غير صحيح أو الورشة غير موجودة.';
               _isLoading = false;
@@ -719,7 +752,7 @@ class _LoginScreenState extends State<LoginScreen>
           if (maxWorkers != 999) {
             if (currentWorkers >= maxWorkers) {
               await _auth.signOut();
-              await GoogleSignIn().signOut();
+              await _signOutGoogleProviderIfSupported();
               setState(() {
                 _errorMessage =
                     'نعتذر، لقد وصلت هذه الورشة للحد الأقصى المسموح به من العمال ($maxWorkers). يرجى مراجعة مدير الورشة لترقية اشتراكه.';
@@ -801,6 +834,10 @@ class _LoginScreenState extends State<LoginScreen>
       }
 
       // Firebase auth state changes will handle transitioning the screen automatically
+    } on WindowsGoogleSignInException catch (e) {
+      setState(() {
+        _errorMessage = e.userMessage;
+      });
     } on FirebaseAuthException catch (e) {
       setState(() {
         _errorMessage = _getFriendlyErrorMessage(e);
@@ -816,6 +853,13 @@ class _LoginScreenState extends State<LoginScreen>
         });
       }
     }
+  }
+
+  Future<void> _signOutGoogleProviderIfSupported() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      return;
+    }
+    await GoogleSignIn().signOut();
   }
 
   @override

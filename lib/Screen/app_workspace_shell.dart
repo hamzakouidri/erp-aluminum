@@ -2,16 +2,21 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../widgets/desktop_command_bar.dart';
 import 'drawer.dart';
 import 'settings_screen.dart';
 import 'welcom_screen.dart';
 
 const double _workspaceHeaderHeight = 110;
+
+bool get _isWindowsDesktop =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
 class WorkspaceEntry {
   final String id;
@@ -354,6 +359,12 @@ class AppWorkspaceShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
 
+    // The Windows shell is intentionally unified: permanent document tabs on
+    // the first row and the command menu on the second row.
+    if (_isWindowsDesktop) {
+      return const _TabbedWorkspaceView();
+    }
+
     switch (settings.viewMode) {
       case AppViewMode.classic:
         return const WelcomScreen();
@@ -601,88 +612,116 @@ class _TabbedWorkspaceView extends StatelessWidget {
                 bottom: false,
                 child: SizedBox(
                   height: 60,
-                  child: ListView.builder(
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                      12,
-                      10,
-                      12,
-                      0,
-                    ),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: workspace.entries.length,
-                    itemBuilder: (context, index) {
-                      final entry = workspace.entries[index];
-                      final active = index == workspace.activeIndex;
-
-                      return GestureDetector(
-                        onTap: () {
-                          workspace.activate(index);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          margin: const EdgeInsetsDirectional.only(end: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: active
-                                ? Colors.white
-                                : Colors.white.withValues(alpha: 0.14),
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(14),
-                              bottom: Radius.circular(6),
-                            ),
-                            border: Border.all(
-                              color: active
-                                  ? Colors.white
-                                  : Colors.white.withValues(alpha: 0.18),
-                              width: active ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                entry.icon,
-                                size: 17,
-                                color: active
-                                    ? const Color(0xFF0F172A)
-                                    : Colors.white,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                Localization.translate(
-                                  entry.title,
-                                  Provider.of<AppSettingsProvider>(
-                                    context,
-                                  ).language,
-                                ),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: active
-                                      ? const Color(0xFF0F172A)
-                                      : Colors.white,
-                                ),
-                              ),
-                              if (entry.id != 'home') ...[
-                                const SizedBox(width: 10),
-                                InkWell(
-                                  onTap: () => workspace.close(index),
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 16,
-                                    color: active
-                                        ? const Color(0xFF0F172A)
-                                        : Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ],
+                  child: Row(
+                    children: [
+                      if (_isWindowsDesktop)
+                        Builder(
+                          builder: (menuContext) => IconButton(
+                            tooltip: 'القائمة',
+                            onPressed: () => Scaffold.of(menuContext).openDrawer(),
+                            icon: const Icon(Icons.menu_rounded, color: Colors.white),
                           ),
                         ),
-                      );
-                    },
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            12,
+                            10,
+                            12,
+                            0,
+                          ),
+                          scrollDirection: Axis.horizontal,
+                          itemCount: workspace.entries.length,
+                          itemBuilder: (context, index) {
+                            final entry = workspace.entries[index];
+                            final active = index == workspace.activeIndex;
+
+                            return GestureDetector(
+                              onTap: () {
+                                workspace.activate(index);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                margin: const EdgeInsetsDirectional.only(end: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 14),
+                                decoration: BoxDecoration(
+                                  color: active
+                                      ? Colors.white
+                                      : Colors.white.withValues(alpha: 0.14),
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(14),
+                                    bottom: Radius.circular(6),
+                                  ),
+                                  border: Border.all(
+                                    color: active
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: 0.18),
+                                    width: active ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      entry.icon,
+                                      size: 17,
+                                      color: active
+                                          ? const Color(0xFF0F172A)
+                                          : Colors.white,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 190),
+                                      child: Text(
+                                        Localization.translate(
+                                          entry.title,
+                                          Provider.of<AppSettingsProvider>(
+                                            context,
+                                          ).language,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: active
+                                              ? const Color(0xFF0F172A)
+                                              : Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    if (entry.id != 'home') ...[
+                                      const SizedBox(width: 10),
+                                      InkWell(
+                                        onTap: () => workspace.close(index),
+                                        child: Icon(
+                                          Icons.close_rounded,
+                                          size: 16,
+                                          color: active
+                                              ? const Color(0xFF0F172A)
+                                              : Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
+            if (_isWindowsDesktop)
+              DesktopCommandBar(
+                onOpen: (title, icon, screen) => openAdaptiveScreen(
+                  context,
+                  title: title,
+                  icon: icon,
+                  screen: screen,
+                ),
+              ),
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
@@ -749,7 +788,7 @@ class _FloatingWorkspaceView extends StatelessWidget {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final headerHeight = immersiveIndex == -1
-                ? _workspaceHeaderHeight
+                ? _workspaceHeaderHeight + (_isWindowsDesktop ? 48.0 : 0.0)
                 : 0.0;
             final canvasSize = Size(
               constraints.maxWidth,
@@ -845,6 +884,15 @@ class _FloatingWorkspaceView extends StatelessWidget {
                   modeTitle: 'نظام النوافذ',
                   modeSubtitle: 'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته',
                 ),
+                if (_isWindowsDesktop)
+                  DesktopCommandBar(
+                    onOpen: (title, icon, screen) => openAdaptiveScreen(
+                      context,
+                      title: title,
+                      icon: icon,
+                      screen: screen,
+                    ),
+                  ),
                 Expanded(child: workspaceArea),
               ],
             );

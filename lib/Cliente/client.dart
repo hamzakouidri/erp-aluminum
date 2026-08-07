@@ -100,6 +100,22 @@ class _CustomersState extends State<Customers> {
     });
   }
 
+  /// Result lists received from SQLite/FutureBuilder may be read-only.
+  /// Keep the current page and scroll position by replacing the displayed
+  /// list with a new list instead of mutating the database result in place.
+  void _removeClientFromView(Object? clientId) {
+    final current = _cachedClients ?? const <Map<String, dynamic>>[];
+    final remaining = current
+        .where((client) => client['id'].toString() != clientId.toString())
+        .map((client) => Map<String, dynamic>.from(client))
+        .toList(growable: false);
+
+    setState(() {
+      _cachedClients = remaining;
+      _data = Future<List<Map<String, dynamic>>>.value(remaining);
+    });
+  }
+
   void _showAddClientDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -593,24 +609,34 @@ class _CustomersState extends State<Customers> {
                                         final deletedRows = await db.deleteClient(id);
                                         if (!mounted) return;
                                         if (deletedRows == 0) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          // A remote sync can remove the record just before
+                                          // this action. Remove the stale row locally as well,
+                                          // without reloading or moving the current page.
+                                          _removeClientFromView(id);
+                                          ScaffoldMessenger.of(context)
+                                            ..hideCurrentSnackBar()
+                                            ..showSnackBar(
                                             const SnackBar(
-                                              content: Text('لم يتم العثور على الزبون لحذفه.'),
+                                              content: Text('الزبون لم يعد موجوداً في قاعدة البيانات.'),
                                               backgroundColor: Colors.orange,
                                             ),
                                           );
-                                          _refreshData();
                                           return;
                                         }
-                                        setState(() {
-                                          _cachedClients?.removeWhere(
-                                            (c) => c['id'].toString() == id.toString(),
+                                        _removeClientFromView(id);
+                                        ScaffoldMessenger.of(context)
+                                          ..hideCurrentSnackBar()
+                                          ..showSnackBar(
+                                            const SnackBar(
+                                              content: Text('تم حذف الزبون بنجاح.'),
+                                              backgroundColor: Colors.green,
+                                            ),
                                           );
-                                        });
-                                        _refreshData();
                                       } catch (error) {
                                         if (!mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(context)
+                                          ..hideCurrentSnackBar()
+                                          ..showSnackBar(
                                           SnackBar(
                                             content: Text('تعذر حذف الزبون: $error'),
                                             backgroundColor: Colors.red,

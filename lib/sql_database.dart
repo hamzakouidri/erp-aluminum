@@ -191,7 +191,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 49,
+          version: 50,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -202,7 +202,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 49,
+      version: 50,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -345,6 +345,11 @@ class SqlDatabase {
 
     try {
       await db.execute("ALTER TABLE Joints ADD COLUMN gasket_type TEXT;");
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Client ADD COLUMN creation_platform TEXT NOT NULL DEFAULT 'unknown';",
+      );
     } catch (_) {}
 
     // Treasury: أعمدة الجهة والرصيد
@@ -2223,6 +2228,14 @@ class SqlDatabase {
         );
       } catch (_) {}
     }
+
+    if (oldVersion < 50) {
+      try {
+        await db.execute(
+          "ALTER TABLE Client ADD COLUMN creation_platform TEXT NOT NULL DEFAULT 'unknown';",
+        );
+      } catch (_) {}
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -2319,7 +2332,8 @@ class SqlDatabase {
       rc TEXT NOT NULL DEFAULT '',
       ai TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      creation_platform TEXT NOT NULL DEFAULT 'unknown'
     )
     ''');
 
@@ -3085,7 +3099,7 @@ class SqlDatabase {
   ]) async {
     Database? myDb = await db;
     var res = await myDb!.rawInsert(
-      'INSERT INTO Client (id, firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO Client (id, firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at, creation_platform) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         _nextDistributedId(),
         firstname,
@@ -3100,6 +3114,7 @@ class SqlDatabase {
         ai,
         now,
         now,
+        _currentCreationPlatform,
       ],
     );
     CloudSyncService().notifyChangeImmediate();
@@ -3145,6 +3160,15 @@ class SqlDatabase {
 
   Future<int> deleteClient(dynamic id) {
     return _retryAfterDatabaseMove(() => _deleteClientOnce(id));
+  }
+
+  String get _currentCreationPlatform {
+    if (kIsWeb) return 'web';
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return 'computer';
+    }
+    if (Platform.isAndroid || Platform.isIOS) return 'phone';
+    return 'unknown';
   }
 
   Future<int> _deleteClientOnce(dynamic id) async {
@@ -6170,16 +6194,57 @@ class SqlDatabase {
     }
   }
 
-  Future<int> deleteCommande(int id) async {
+  Future<int> deleteCommande(int id) {
+    return _retryAfterDatabaseMove(() => _deleteCommandeOnce(id));
+  }
+
+  Future<int> _deleteCommandeOnce(int id) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
-    await myDb.delete(
-      'Treasury',
-      where: "reference_id = ? AND entity_type = 'Client'",
-      whereArgs: [id],
-    );
-    var res = await myDb.delete('Commandes', where: 'id = ?', whereArgs: [id]);
-    CloudSyncService().notifyChange();
+
+    // Track every affected record before it is deleted so Firebase receives
+    // the deletion as well, and keep the operation atomic on every device.
+    await _ensureSyncTombstoneInfrastructure(myDb);
+    final res = await myDb.transaction((txn) async {
+      final details = await txn.query(
+        'Commandes_details',
+        columns: ['id'],
+        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        whereArgs: [id, id.toString()],
+      );
+
+      // Some existing databases were created before foreign-key cascades were
+      // enabled. Delete dependent rows explicitly so an order never leaves
+      // old components, deliveries, or worker assignments behind.
+      for (final detail in details) {
+        final detailId = detail['id'];
+        if (detailId == null) continue;
+        await txn.delete(
+          'WorkerAllocations',
+          where: 'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
+          whereArgs: [detailId, detailId.toString()],
+        );
+      }
+      await txn.delete(
+        'Commandes_deliveries',
+        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        whereArgs: [id, id.toString()],
+      );
+      await txn.delete(
+        'Commandes_details',
+        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        whereArgs: [id, id.toString()],
+      );
+      await txn.delete(
+        'Treasury',
+        where: "reference_id = ? AND entity_type = 'Client'",
+        whereArgs: [id],
+      );
+      return txn.delete('Commandes', where: 'id = ?', whereArgs: [id]);
+    });
+    if (res > 0) {
+      CloudSyncService().notifyChangeImmediate();
+    }
     return res;
   }
 
@@ -9168,7 +9233,8 @@ class SqlDatabase {
         email TEXT,
         address TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        creation_platform TEXT NOT NULL DEFAULT 'unknown'
       )
     ''');
     await db.execute('''
@@ -9329,6 +9395,7 @@ class SqlDatabase {
       "ALTER TABLE Commandes_details ADD COLUMN drawing_image_path TEXT",
       "ALTER TABLE Commandes_details ADD COLUMN window_type TEXT",
       "ALTER TABLE Commandes_details ADD COLUMN partitions_json TEXT",
+      "ALTER TABLE Client ADD COLUMN creation_platform TEXT NOT NULL DEFAULT 'unknown'",
       "ALTER TABLE Accessories ADD COLUMN material_type TEXT NOT NULL DEFAULT 'Aluminium'",
       "ALTER TABLE Accessories ADD COLUMN scope TEXT NOT NULL DEFAULT 'Global'",
       "ALTER TABLE Accessories ADD COLUMN series_id INTEGER",
