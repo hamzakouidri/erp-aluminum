@@ -87,6 +87,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
   List<Map<String, dynamic>> _lowStockItems = [];
   int _newOrdersCount = 0;
 
+  // Desktop dashboard data.  These values are loaded from the same local
+  // database that is kept in sync with Firebase, so the Windows view never
+  // needs a separate source of truth.
+  List<Map<String, dynamic>> _desktopOrders = [];
+  double _treasuryBalance = 0.0;
+  int _activeWorkersCount = 0;
+  int _workersCount = 0;
+  int _pendingOrdersCount = 0;
+
   Future<void> _markOrdersAsRead() async {
     try {
       final allCmds = await db.readCommande();
@@ -313,10 +322,24 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
   Future<void> _loadStats() async {
     try {
-      final stats = await db.getDashboardStats();
-      final profiles = await db.readProfile();
-      final chartData = await db.getOrderStatusStats();
-      final allCmds = await db.readCommande();
+      final dashboardData = await Future.wait<dynamic>([
+        db.getDashboardStats(),
+        db.readProfile(),
+        db.getOrderStatusStats(),
+        db.readCommande(),
+        db.readCommandesWithClients(),
+        db.readTreasury(),
+        db.readEmployees(),
+      ]);
+      final stats = dashboardData[0] as Map<String, dynamic>;
+      final profiles = dashboardData[1] as List<Map<String, dynamic>>;
+      final chartData = dashboardData[2] as Map<String, dynamic>;
+      final allCmds = dashboardData[3] as List<Map<String, dynamic>>;
+      final desktopOrders = List<Map<String, dynamic>>.from(
+        dashboardData[4] as List<Map<String, dynamic>>,
+      );
+      final treasuryRows = dashboardData[5] as List<Map<String, dynamic>>;
+      final employees = dashboardData[6] as List<Map<String, dynamic>>;
       final prefs = await SharedPreferences.getInstance();
       final lastCmdCount = prefs.getInt('last_seen_orders_count');
       int unreadOrders = 0;
@@ -340,12 +363,57 @@ class _WelcomScreenState extends State<WelcomScreen> {
           _ordersByMonth = Map<String, int>.from(
             (chartData['monthly'] as Map<String, int>?) ?? {},
           );
+          _desktopOrders = desktopOrders;
+          _treasuryBalance = _calculateTreasuryBalance(treasuryRows);
+          _workersCount = employees.length;
+          _activeWorkersCount = employees.where(_isActiveEmployee).length;
+          _pendingOrdersCount = desktopOrders.where(_isOpenOrder).length;
         });
       }
       await _checkLowStock();
     } catch (e) {
       debugPrint("Error loading stats: $e");
     }
+  }
+
+  bool _isActiveEmployee(Map<String, dynamic> employee) {
+    final active = employee['is_active'];
+    if (active is num) return active != 0;
+    if (active is bool) return active;
+    if (active != null) {
+      final value = active.toString().trim().toLowerCase();
+      if (value == 'false' || value == '0' || value == 'inactive') return false;
+    }
+    return true;
+  }
+
+  bool _isOpenOrder(Map<String, dynamic> order) {
+    final status = (order['status'] ?? '').toString().trim().toLowerCase();
+    return !{
+      'done',
+      'completed',
+      'complete',
+      'archived',
+      'finished',
+      'منتهية',
+      'مكتملة',
+      'أرشيف',
+    }.contains(status);
+  }
+
+  double _calculateTreasuryBalance(List<Map<String, dynamic>> rows) {
+    double balance = 0.0;
+    for (final row in rows) {
+      final type = (row['transaction_type'] ?? '').toString().toLowerCase();
+      final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
+      final isExpense = type == 'expense' ||
+          type.contains('décaissement') ||
+          type.contains('decaissement') ||
+          type.contains('achat') ||
+          type.contains('purchase');
+      balance += isExpense ? -amount : amount;
+    }
+    return balance;
   }
 
   Future<void> _loadUserData() async {
@@ -528,13 +596,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
         drawer: AppDrawer(),
         body: Stack(
           children: [
-            Positioned.fill(
-              child: _WaterWaveBackground(enabled: settings.enablePremiumAnimations),
-            ),
-          RefreshIndicator(
-            onRefresh: _autoSyncData,
-            color: Colors.blue,
-            child: CustomScrollView(
+            if (!_isWindowsDesktop)
+              Positioned.fill(
+                child: _WaterWaveBackground(enabled: settings.enablePremiumAnimations),
+              ),
+            RefreshIndicator(
+              onRefresh: _autoSyncData,
+              color: Colors.blue,
+              child: _isWindowsDesktop
+                  ? _buildDesktopDashboard(context)
+                  : CustomScrollView(
               slivers: [
               _buildSliverHeader(context),
               SliverPadding(
@@ -568,7 +639,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
               ),
             ],
           ),
-          ),
+            ),
         ],
       ),
     ), // end Scaffold
@@ -576,6 +647,767 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   // ── SliverAppBar ──────────────────────────────────────────────────────────
+  String _desktopText(AppLanguage lang, String arabic, String french, String english) {
+    if (lang == AppLanguage.arabic) return arabic;
+    if (lang == AppLanguage.french) return french;
+    return english;
+  }
+
+  Widget _buildDesktopDashboard(BuildContext context) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pageColor = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final cardColor = isDark ? const Color(0xFF172033) : Colors.white;
+    final contentColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF17233A);
+    final mutedColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+    return Container(
+      color: pageColor,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 36),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1440),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 660;
+                    final title = Row(
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB).withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(14),
+                            image: _cachedLogoProvider == null
+                                ? null
+                                : DecorationImage(
+                                    image: _cachedLogoProvider!,
+                                    fit: BoxFit.cover,
+                                  ),
+                          ),
+                          child: _cachedLogoProvider == null
+                              ? const Icon(
+                                  Icons.carpenter_rounded,
+                                  color: Color(0xFF2563EB),
+                                  size: 25,
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _workshopName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: contentColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                _desktopText(lang, 'لوحة التحكم', 'Tableau de bord', 'Dashboard'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: mutedColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                    final refresh = FilledButton.icon(
+                      onPressed: _isManualSyncing
+                          ? null
+                          : () => _autoSyncData(showSnackBar: true),
+                      icon: _isManualSyncing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 18),
+                      label: Text(
+                        _desktopText(lang, 'تحديث البيانات', 'Actualiser', 'Refresh data'),
+                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                      ),
+                    );
+                    if (narrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [title, const SizedBox(height: 14), refresh],
+                      );
+                    }
+                    return Row(
+                      children: [Expanded(child: title), refresh],
+                    );
+                  },
+                ),
+                const SizedBox(height: 22),
+                _buildDesktopMetrics(context, cardColor, contentColor, mutedColor),
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final sideWidth = 290.0;
+                    final isCompact = constraints.maxWidth < 980;
+                    final orders = _buildDesktopOrdersPanel(context, cardColor, contentColor, mutedColor);
+                    final side = Column(
+                      children: [
+                        _buildDesktopWorkloadPanel(context, cardColor, contentColor, mutedColor),
+                        const SizedBox(height: 16),
+                        _buildDesktopActivityPanel(context, cardColor, contentColor, mutedColor),
+                      ],
+                    );
+                    if (isCompact) {
+                      return Column(children: [orders, const SizedBox(height: 16), side]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: orders),
+                        const SizedBox(width: 16),
+                        SizedBox(width: sideWidth, child: side),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+                _buildDesktopLowStockPanel(context, cardColor, contentColor, mutedColor),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopMetrics(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final values = _ordersByMonth.values.map((value) => value.toDouble()).toList();
+    final cards = <Widget>[
+      if (settings.canViewOrders())
+        _DesktopMetricCard(
+          icon: Icons.receipt_long_rounded,
+          title: _desktopText(lang, 'إجمالي الطلبيات', 'Total des commandes', 'Total orders'),
+          value: _commandesCount,
+          caption: _cmdTrend.isEmpty ? _desktopText(lang, 'كل الطلبيات', 'Toutes les commandes', 'All orders') : _cmdTrend,
+          color: const Color(0xFF2563EB),
+          values: values,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: _openOrders,
+        ),
+      if (settings.canAccessTreasury())
+        _DesktopMetricCard(
+          icon: Icons.account_balance_wallet_rounded,
+          title: _desktopText(lang, 'رصيد الخزينة', 'Solde de trésorerie', 'Treasury balance'),
+          value: _formatCurrency(_treasuryBalance),
+          caption: _desktopText(lang, 'المتاح حالياً', 'Disponible actuellement', 'Available now'),
+          color: const Color(0xFF0EA5A4),
+          values: values,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: _desktopText(lang, 'الخزينة', 'Trésorerie', 'Treasury'),
+            icon: Icons.account_balance_wallet_rounded,
+            screen: TreasuryScreen(db: db),
+          ),
+        ),
+      _DesktopMetricCard(
+        icon: Icons.groups_rounded,
+        title: _desktopText(lang, 'العاملون النشطون', 'Employés actifs', 'Active workers'),
+        value: _activeWorkersCount.toString(),
+        caption: _workersCount == 0
+            ? _desktopText(lang, 'لا يوجد عاملون مسجلون', 'Aucun employé enregistré', 'No registered workers')
+            : _desktopText(lang, 'من أصل $_workersCount عامل', 'sur $_workersCount employés', 'of $_workersCount workers'),
+        color: const Color(0xFF8B5CF6),
+        values: values,
+        backgroundColor: cardColor,
+        textColor: contentColor,
+        mutedColor: mutedColor,
+        onTap: settings.canViewMyTasks()
+            ? () => openAdaptiveScreen(
+                  context,
+                  title: _desktopText(lang, 'مهامي وتصنيعاتي', 'Mes tâches', 'My tasks'),
+                  icon: Icons.assignment_turned_in_rounded,
+                  screen: WorkerTasksScreen(db: db),
+                )
+            : null,
+      ),
+      if (settings.canViewOrders())
+        _DesktopMetricCard(
+          icon: Icons.pending_actions_rounded,
+          title: _desktopText(lang, 'طلبيات مفتوحة', 'Commandes ouvertes', 'Open orders'),
+          value: _pendingOrdersCount.toString(),
+          caption: _desktopText(lang, 'تحتاج إلى متابعة', 'À suivre', 'Need follow-up'),
+          color: const Color(0xFFF59E0B),
+          values: values,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: _openOrders,
+        ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 16.0;
+        final columns = constraints.maxWidth >= 1180 ? 4 : constraints.maxWidth >= 660 ? 2 : 1;
+        final width = (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [for (final card in cards) SizedBox(width: width, child: card)],
+        );
+      },
+    );
+  }
+
+  Widget _buildDesktopOrdersPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(lang, 'متابعة الطلبيات', 'Suivi des commandes', 'Orders tracking'),
+      subtitle: _desktopText(lang, 'أحدث الطلبيات المسجلة', 'Dernières commandes enregistrées', 'Latest recorded orders'),
+      icon: Icons.table_rows_rounded,
+      color: const Color(0xFF2563EB),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      action: TextButton.icon(
+        onPressed: _openOrders,
+        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+        label: Text(_desktopText(lang, 'كل الطلبيات', 'Tout voir', 'View all'), style: const TextStyle(fontFamily: 'Cairo')),
+      ),
+      child: SizedBox(
+        height: 318,
+        child: _desktopOrders.isEmpty
+            ? Center(
+                child: Text(
+                  _desktopText(lang, 'لا توجد طلبيات بعد', 'Aucune commande pour le moment', 'No orders yet'),
+                  style: TextStyle(fontFamily: 'Cairo', color: mutedColor),
+                ),
+              )
+            : Column(
+                children: [
+                  _desktopOrderHeader(contentColor, mutedColor, lang),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: ListView.separated(
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: math.min(6, _desktopOrders.length),
+                      separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withOpacity(0.18)),
+                      itemBuilder: (context, index) => _desktopOrderRow(
+                        context,
+                        _desktopOrders[index],
+                        contentColor,
+                        mutedColor,
+                        lang,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _desktopOrderHeader(Color contentColor, Color mutedColor, AppLanguage lang) {
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2563EB).withOpacity(0.07),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          _desktopTableCell(_desktopText(lang, 'الطلبية', 'Commande', 'Order'), 2, mutedColor, true),
+          _desktopTableCell(_desktopText(lang, 'الزبون', 'Client', 'Customer'), 3, mutedColor, true),
+          _desktopTableCell(_desktopText(lang, 'التاريخ', 'Date', 'Date'), 2, mutedColor, true),
+          _desktopTableCell(_desktopText(lang, 'الحالة', 'Statut', 'Status'), 2, mutedColor, true),
+          _desktopTableCell(_desktopText(lang, 'التقدم', 'Progression', 'Progress'), 3, mutedColor, true),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopOrderRow(
+    BuildContext context,
+    Map<String, dynamic> order,
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
+    final status = (order['status'] ?? 'Pending').toString();
+    final color = _desktopStatusColor(status);
+    final firstName = (order['firstname'] ?? '').toString().trim();
+    final lastName = (order['lastname'] ?? '').toString().trim();
+    final clientName = '$firstName $lastName'.trim();
+    final orderId = order['id']?.toString() ?? '—';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openOrders,
+        child: SizedBox(
+          height: 43,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                _desktopTableCell('#$orderId', 2, contentColor, false, colorOverride: const Color(0xFF2563EB)),
+                _desktopTableCell(
+                  clientName.isEmpty ? _desktopText(lang, 'زبون', 'Client', 'Customer') : clientName,
+                  3,
+                  contentColor,
+                  false,
+                ),
+                _desktopTableCell(_formatDate(order['created_at']), 2, mutedColor, false),
+                Expanded(
+                  flex: 2,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: color.withOpacity(0.13), borderRadius: BorderRadius.circular(12)),
+                      child: Text(
+                        _desktopStatusText(status, lang),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800, fontFamily: 'Cairo'),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 16),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: LinearProgressIndicator(
+                        value: _desktopStatusProgress(status),
+                        minHeight: 6,
+                        backgroundColor: mutedColor.withOpacity(0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(color),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopTableCell(String text, int flex, Color color, bool isHeader, {Color? colorOverride}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: colorOverride ?? color,
+          fontFamily: 'Cairo',
+          fontSize: isHeader ? 10 : 11,
+          fontWeight: isHeader ? FontWeight.w700 : FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopWorkloadPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final total = _desktopOrders.length;
+    final completed = math.max(0, total - _pendingOrdersCount);
+    final rate = total == 0 ? 0.0 : completed / total;
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(lang, 'حالة سير العمل', 'État du travail', 'Work progress'),
+      icon: Icons.track_changes_rounded,
+      color: const Color(0xFF0EA5E9),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      child: SizedBox(
+        height: 168,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 104,
+              height: 104,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CircularProgressIndicator(
+                    value: rate,
+                    strokeWidth: 9,
+                    backgroundColor: mutedColor.withOpacity(0.14),
+                    valueColor: const AlwaysStoppedAnimation(Color(0xFF06B6D4)),
+                  ),
+                  Center(
+                    child: Text(
+                      '${(rate * 100).round()}%',
+                      style: TextStyle(color: contentColor, fontWeight: FontWeight.w800, fontSize: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _desktopText(lang, '$completed مكتملة', '$completed terminées', '$completed completed'),
+                    style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontWeight: FontWeight.w800, fontSize: 15),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _desktopText(lang, 'من أصل $total طلبية', 'sur $total commandes', 'out of $total orders'),
+                    style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _desktopText(lang, '$_activeWorkersCount عامل نشط', '$_activeWorkersCount employés actifs', '$_activeWorkersCount active workers'),
+                    style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0EA5A4), fontSize: 11, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopActivityPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final entries = _ordersByMonth.values.map((value) => value.toDouble()).toList();
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(lang, 'نشاط الطلبيات', 'Activité des commandes', 'Order activity'),
+      icon: Icons.show_chart_rounded,
+      color: const Color(0xFF2563EB),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      child: SizedBox(
+        height: 138,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _DesktopSparkline(values: entries, color: const Color(0xFF2563EB), fill: true)),
+            const SizedBox(height: 6),
+            Text(
+              _desktopText(lang, 'الستة أشهر الأخيرة', 'Six derniers mois', 'Last six months'),
+              style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLowStockPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(lang, 'تنبيهات المخزون', 'Alertes de stock', 'Inventory alerts'),
+      subtitle: _lowStockCount == 0
+          ? _desktopText(lang, 'المخزون ضمن الحدود الآمنة', 'Le stock est dans les limites sûres', 'Stock levels are within safe limits')
+          : _desktopText(lang, '$_lowStockCount عناصر تحتاج إلى متابعة', '$_lowStockCount éléments à suivre', '$_lowStockCount items need attention'),
+      icon: Icons.inventory_2_rounded,
+      color: _lowStockCount == 0 ? const Color(0xFF10B981) : const Color(0xFFF97316),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      action: settings.canAccessInventory()
+          ? TextButton.icon(
+              onPressed: () => openAdaptiveScreen(
+                context,
+                title: _desktopText(lang, 'المخزون', 'Stock', 'Inventory'),
+                icon: Icons.warehouse_rounded,
+                screen: InventoryScreen(db: db),
+              ),
+              icon: const Icon(Icons.open_in_new_rounded, size: 15),
+              label: Text(_desktopText(lang, 'فتح المخزون', 'Ouvrir le stock', 'Open inventory'), style: const TextStyle(fontFamily: 'Cairo')),
+            )
+          : null,
+      child: _lowStockItems.isEmpty
+          ? SizedBox(
+              height: 68,
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_rounded, color: Color(0xFF10B981), size: 28),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _desktopText(lang, 'لا يوجد أي نقص في المواد ذات حد التنبيه.', 'Aucun manque dans les articles suivis.', 'No low-stock items need attention.'),
+                      style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final items = _lowStockItems.take(4).toList();
+                final columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 540 ? 2 : 1;
+                const gap = 10.0;
+                final itemWidth = (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final item in items)
+                      SizedBox(
+                        width: itemWidth,
+                        child: _desktopStockItem(item, contentColor, mutedColor, lang),
+                      ),
+                  ],
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _desktopStockItem(Map<String, dynamic> item, Color contentColor, Color mutedColor, AppLanguage lang) {
+    final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+    final minQuantity = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
+    final name = (item['item_name'] ?? item['name'] ?? _desktopText(lang, 'عنصر', 'Article', 'Item')).toString();
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF97316).withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF97316).withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Color(0xFFF97316), size: 17),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(name, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800, color: contentColor, fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _desktopText(lang, 'الرصيد: ${_formatQuantity(quantity)} / الحد: ${_formatQuantity(minQuantity)}', 'Solde : ${_formatQuantity(quantity)} / min. : ${_formatQuantity(minQuantity)}', 'Stock: ${_formatQuantity(quantity)} / min: ${_formatQuantity(minQuantity)}'),
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopPanel({
+    required BuildContext context,
+    required String title,
+    String? subtitle,
+    required IconData icon,
+    required Color color,
+    required Color backgroundColor,
+    required Color textColor,
+    required Color mutedColor,
+    required Widget child,
+    Widget? action,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.18 : 0.055),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: color, size: 19),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Cairo', color: textColor, fontSize: 14, fontWeight: FontWeight.w800)),
+                    if (subtitle != null)
+                      Text(subtitle, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 10)),
+                  ],
+                ),
+              ),
+              if (action != null) action,
+            ],
+          ),
+          const SizedBox(height: 13),
+          child,
+        ],
+      ),
+    );
+  }
+
+  void _openOrders() {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    _markOrdersAsRead();
+    openAdaptiveScreen(
+      context,
+      title: _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
+      icon: Icons.receipt_long_rounded,
+      screen: const Commande(),
+    );
+  }
+
+  String _formatCurrency(double value) {
+    final sign = value < 0 ? '-' : '';
+    final text = value.abs().round().toString();
+    final buffer = StringBuffer();
+    for (var index = 0; index < text.length; index++) {
+      if (index > 0 && (text.length - index) % 3 == 0) buffer.write(' ');
+      buffer.write(text[index]);
+    }
+    return '$sign${buffer.toString()} دج';
+  }
+
+  String _formatQuantity(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toStringAsFixed(2);
+
+  String _formatDate(dynamic raw) {
+    final date = DateTime.tryParse((raw ?? '').toString());
+    if (date == null) return '—';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  double _desktopStatusProgress(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'pending':
+      case 'draft':
+      case 'new':
+        return 0.12;
+      case 'confirmed':
+        return 0.25;
+      case 'in progress':
+        return 0.45;
+      case 'partial manufacturing':
+        return 0.60;
+      case 'full manufacturing':
+        return 0.72;
+      case 'partial distribution':
+        return 0.82;
+      case 'full distribution':
+        return 0.90;
+      case 'installation':
+      case 'reserve':
+        return 0.95;
+      case 'done':
+      case 'completed':
+      case 'finished':
+        return 1.0;
+      default:
+        return 0.2;
+    }
+  }
+
+  Color _desktopStatusColor(String status) {
+    final progress = _desktopStatusProgress(status);
+    if (progress >= 1) return const Color(0xFF10B981);
+    if (progress >= 0.80) return const Color(0xFF06B6D4);
+    if (progress >= 0.45) return const Color(0xFF2563EB);
+    return const Color(0xFFF59E0B);
+  }
+
+  String _desktopStatusText(String status, AppLanguage lang) {
+    final normalized = status.trim().toLowerCase();
+    final values = <String, List<String>>{
+      'pending': ['قيد الانتظار', 'En attente', 'Pending'],
+      'draft': ['مسودة', 'Brouillon', 'Draft'],
+      'new': ['جديدة', 'Nouvelle', 'New'],
+      'confirmed': ['مؤكدة', 'Confirmée', 'Confirmed'],
+      'in progress': ['قيد التنفيذ', 'En cours', 'In progress'],
+      'partial manufacturing': ['تصنيع جزئي', 'Fabrication partielle', 'Partial manufacturing'],
+      'full manufacturing': ['تم التصنيع', 'Fabrication terminée', 'Manufactured'],
+      'partial distribution': ['توزيع جزئي', 'Distribution partielle', 'Partial distribution'],
+      'full distribution': ['تم التوزيع', 'Distribution terminée', 'Distributed'],
+      'installation': ['تركيب', 'Installation', 'Installation'],
+      'reserve': ['تحفّظ', 'Réserve', 'Reserve'],
+      'done': ['مكتملة', 'Terminée', 'Completed'],
+      'completed': ['مكتملة', 'Terminée', 'Completed'],
+      'finished': ['مكتملة', 'Terminée', 'Completed'],
+    };
+    final translated = values[normalized];
+    if (translated == null) return status;
+    return lang == AppLanguage.arabic ? translated[0] : lang == AppLanguage.french ? translated[1] : translated[2];
+  }
+
   Widget _buildSliverHeader(BuildContext context) {
     final isDesktop = _isWindowsDesktop;
     return SliverAppBar(
@@ -1266,6 +2098,170 @@ class _WelcomScreenState extends State<WelcomScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// بطاقة إحصائية ثلاثية الأبعاد مع حركة دخول تدريجية وسحب مطاطي مرن وتباعد تفاعلي
+class _DesktopMetricCard extends StatelessWidget {
+  const _DesktopMetricCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.caption,
+    required this.color,
+    required this.values,
+    required this.backgroundColor,
+    required this.textColor,
+    required this.mutedColor,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String caption;
+  final Color color;
+  final List<double> values;
+  final Color backgroundColor;
+  final Color textColor;
+  final Color mutedColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          // Windows can use larger system text and the treasury value can be
+          // much longer than the other metrics.  Keep enough vertical room
+          // and scale only the value when its available width is limited.
+          height: 154,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(isDark ? 0.10 : 0.09),
+                blurRadius: 16,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: mutedColor, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+                    child: Icon(icon, size: 18, color: color),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 32,
+                width: double.infinity,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 23, color: textColor, fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              SizedBox(height: 20, child: _DesktopSparkline(values: values, color: color)),
+              const SizedBox(height: 4),
+              Text(
+                caption,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: mutedColor),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopSparkline extends StatelessWidget {
+  const _DesktopSparkline({required this.values, required this.color, this.fill = false});
+
+  final List<double> values;
+  final Color color;
+  final bool fill;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.expand(
+      child: CustomPaint(
+        painter: _DesktopSparklinePainter(values: values, color: color, fill: fill),
+      ),
+    );
+  }
+}
+
+class _DesktopSparklinePainter extends CustomPainter {
+  const _DesktopSparklinePainter({required this.values, required this.color, required this.fill});
+
+  final List<double> values;
+  final Color color;
+  final bool fill;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final source = values.length < 2 ? <double>[0, 0] : values;
+    final maxValue = source.reduce((a, b) => a > b ? a : b);
+    final minValue = source.reduce((a, b) => a < b ? a : b);
+    final range = maxValue == minValue ? 1.0 : maxValue - minValue;
+    final path = Path();
+    for (var index = 0; index < source.length; index++) {
+      final x = size.width * index / (source.length - 1);
+      final y = size.height - ((source[index] - minValue) / range * (size.height - 5)) - 2;
+      if (index == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    if (fill) {
+      final fillPath = Path.from(path)
+        ..lineTo(size.width, size.height)
+        ..lineTo(0, size.height)
+        ..close();
+      canvas.drawPath(fillPath, Paint()..color = color.withOpacity(0.12));
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DesktopSparklinePainter oldDelegate) =>
+      oldDelegate.values != values || oldDelegate.color != color || oldDelegate.fill != fill;
+}
+
 class _StatCard extends StatefulWidget {
   final IconData icon;
   final String label;

@@ -1,6 +1,9 @@
 // Force compile sync trigger
 import 'dart:math' as math;
 import 'dart:async';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart' show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/Commande/window_painter.dart';
@@ -25,6 +28,13 @@ class WindowView extends StatefulWidget {
 }
 
 class _WindowViewState extends State<WindowView> {
+  static const double _minUserScale = 0.5;
+  static const double _maxUserScale = 5.0;
+  static const double _zoomStep = 1.15;
+
+  bool get _isWindowsDesktop =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
   bool get isSlidingSupported {
     if (widget.systemMode == 'mixed') return true;
     final type = activeSeriesForSystem?.type;
@@ -892,6 +902,39 @@ class _WindowViewState extends State<WindowView> {
       (localDx - widget.model.canvasDx) / widget.model.canvasScale,
       (localDy - widget.model.canvasDy) / widget.model.canvasScale,
     );
+  }
+
+  void _changeDrawingZoom(double factor, Offset focalPoint) {
+    final double nextScale = (_userScale * factor).clamp(
+      _minUserScale,
+      _maxUserScale,
+    );
+    if (nextScale == _userScale) return;
+
+    setState(() {
+      final scaleRatio = nextScale / _userScale;
+      _userPan = focalPoint - (focalPoint - _userPan) * scaleRatio;
+      _userScale = nextScale;
+    });
+  }
+
+  void _handleDrawingPointerSignal(PointerSignalEvent event) {
+    if (!_isWindowsDesktop || event is! PointerScrollEvent) return;
+    final verticalDelta = event.scrollDelta.dy;
+    if (verticalDelta == 0) return;
+
+    // Up zooms in and down zooms out, centred exactly below the mouse cursor.
+    _changeDrawingZoom(
+      verticalDelta < 0 ? _zoomStep : 1 / _zoomStep,
+      event.localPosition,
+    );
+  }
+
+  void _resetDrawingZoom() {
+    setState(() {
+      _userScale = 1.0;
+      _userPan = Offset.zero;
+    });
   }
 
   @override
@@ -2395,27 +2438,110 @@ class _WindowViewState extends State<WindowView> {
                                 _draggedSashZoneId = null;
                                 _draggedDecorZoneId = null;
                               },
-                              child: Container(
-                                width: double.infinity,
-                                height: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).brightness == Brightness.dark
-                                      ? const Color(0xFF232332)
-                                      : const Color(0xFFF5F5F5),
-                                ),
-                                child: CustomPaint(
-                                  size: Size(
-                                    constraints.maxWidth,
-                                    constraints.maxHeight,
-                                  ),
-                                  painter: AppWorkspacePainter(
-                                    model: widget.model,
-                                    userScale: _userScale,
-                                    userPan: _userPan,
+                              child: Listener(
+                                onPointerSignal: _handleDrawingPointerSignal,
+                                child: MouseRegion(
+                                  cursor: _isWindowsDesktop
+                                      ? SystemMouseCursors.precise
+                                      : MouseCursor.defer,
+                                  child: Container(
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? const Color(0xFF232332)
+                                          : const Color(0xFFF5F5F5),
+                                    ),
+                                    child: CustomPaint(
+                                      size: Size(
+                                        constraints.maxWidth,
+                                        constraints.maxHeight,
+                                      ),
+                                      painter: AppWorkspacePainter(
+                                        model: widget.model,
+                                        userScale: _userScale,
+                                        userPan: _userPan,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
+                            if (_isWindowsDesktop)
+                              Positioned(
+                                top: 18,
+                                right: _paintbrushSecondsLeft > 0 ? 150 : 18,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).cardColor.withValues(alpha: 0.94),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: Theme.of(context).dividerColor.withValues(alpha: 0.7),
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.18),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Semantics(
+                                          button: true,
+                                          label: 'تكبير الرسم',
+                                          child: IconButton(
+                                            icon: const Icon(Icons.add),
+                                            onPressed: () => _changeDrawingZoom(
+                                              _zoomStep,
+                                              Offset(
+                                                constraints.maxWidth / 2,
+                                                constraints.maxHeight / 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 26,
+                                          height: 1,
+                                          color: Theme.of(context).dividerColor,
+                                        ),
+                                        Semantics(
+                                          button: true,
+                                          label: 'تصغير الرسم',
+                                          child: IconButton(
+                                            icon: const Icon(Icons.remove),
+                                            onPressed: () => _changeDrawingZoom(
+                                              1 / _zoomStep,
+                                              Offset(
+                                                constraints.maxWidth / 2,
+                                                constraints.maxHeight / 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 26,
+                                          height: 1,
+                                          color: Theme.of(context).dividerColor,
+                                        ),
+                                        Semantics(
+                                          button: true,
+                                          label: 'إعادة حجم الرسم',
+                                          child: IconButton(
+                                            icon: const Icon(Icons.center_focus_strong_outlined),
+                                            onPressed: _resetDrawingZoom,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                             if (_paintbrushSecondsLeft > 0 &&
                                 (_activePaintFinish != null ||
                                     _activePaintZoneContent != null ||
