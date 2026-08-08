@@ -1706,13 +1706,18 @@ class WindowPainter extends CustomPainter {
     if (_isWoodColor() && TextureCache.woodTexture != null) {
       _applyWoodShader(paint, Rect.fromLTWH(0, 0, w, h));
     } else {
-      paint.color = _fc[1];
+      final Color baseColor = _fc[1];
+      if (baseColor == Colors.white || baseColor.value == 0xFFFFFFFF) {
+        paint.color = const Color(0xFFE2E8F0);
+      } else {
+        paint.color = baseColor;
+      }
     }
     paint.style = PaintingStyle.fill;
     final Paint border = Paint()
-      ..color = _fb
+      ..color = (_fb == Colors.white || _fb.value == 0xFFFFFFFF) ? const Color(0xFF475569) : _fb
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+      ..strokeWidth = 1.2;
     final List<_MullionSegment> horizontalSegments = [];
     final List<_MullionSegment> verticalSegments = [];
 

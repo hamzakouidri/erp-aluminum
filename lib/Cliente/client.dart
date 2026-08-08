@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/Cliente/show_client.dart';
 import 'package:flutter/material.dart';
 import '../sql_database.dart';
@@ -18,6 +20,158 @@ class _CustomersState extends State<Customers> {
   final SqlDatabase db = SqlDatabase();
   final TextEditingController searchController = TextEditingController();
   String _searchQuery = '';
+
+  final Map<String, TextEditingController> _clientColumnControllers = {
+    'id': TextEditingController(),
+    'name': TextEditingController(),
+    'phone': TextEditingController(),
+    'address': TextEditingController(),
+    'email': TextEditingController(),
+    'fiscal': TextEditingController(),
+    'date': TextEditingController(),
+    'creator': TextEditingController(),
+  };
+
+  String? _clientSortColumn;
+  bool _clientSortAscending = true;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    for (final controller in _clientColumnControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _clearAllClientColumnFilters() {
+    setState(() {
+      for (final controller in _clientColumnControllers.values) {
+        controller.clear();
+      }
+      _clientSortColumn = null;
+      _clientSortAscending = true;
+    });
+  }
+
+  bool get _hasActiveClientColumnFilters {
+    return _clientSortColumn != null ||
+        _clientColumnControllers.values.any((c) => c.text.trim().isNotEmpty);
+  }
+
+  List<Map<String, dynamic>> _applyClientFiltersAndSort(
+    List<Map<String, dynamic>> rawData,
+  ) {
+    List<Map<String, dynamic>> filtered = rawData.where((d) {
+      final q = _searchQuery.toLowerCase().trim();
+      if (q.isNotEmpty) {
+        final first = (d['firstname'] ?? '').toString().toLowerCase();
+        final last = (d['lastname'] ?? '').toString().toLowerCase();
+        final phone = (d['phone1'] ?? '').toString().toLowerCase();
+        final full = '$first $last $phone';
+        if (!q.split(' ').every((term) => full.contains(term))) {
+          return false;
+        }
+      }
+
+      for (final entry in _clientColumnControllers.entries) {
+        final colKey = entry.key;
+        final filterVal = entry.value.text.toLowerCase().trim();
+        if (filterVal.isEmpty) continue;
+
+        switch (colKey) {
+          case 'id':
+            final idStr = (d['id'] ?? '').toString().toLowerCase();
+            if (!idStr.contains(filterVal)) return false;
+            break;
+          case 'name':
+            final first = (d['firstname'] ?? '').toString().toLowerCase();
+            final last = (d['lastname'] ?? '').toString().toLowerCase();
+            final nameStr = '$first $last'.trim();
+            if (!nameStr.contains(filterVal)) return false;
+            break;
+          case 'phone':
+            final p1 = (d['phone1'] ?? '').toString().toLowerCase();
+            final p2 = (d['phone2'] ?? '').toString().toLowerCase();
+            final pStr = '$p1 $p2'.trim();
+            if (!pStr.contains(filterVal)) return false;
+            break;
+          case 'address':
+            final addr = (d['address'] ?? '').toString().toLowerCase();
+            if (!addr.contains(filterVal)) return false;
+            break;
+          case 'email':
+            final email = (d['email'] ?? '').toString().toLowerCase();
+            if (!email.contains(filterVal)) return false;
+            break;
+          case 'fiscal':
+            final nif = (d['nif'] ?? '').toString().toLowerCase();
+            final nis = (d['nis'] ?? '').toString().toLowerCase();
+            final rc = (d['rc'] ?? '').toString().toLowerCase();
+            final ai = (d['ai'] ?? '').toString().toLowerCase();
+            final fStr = '$nif $nis $rc $ai'.trim();
+            if (!fStr.contains(filterVal)) return false;
+            break;
+          case 'date':
+            final dt = formatDate(d['created_at'] ?? '').toLowerCase();
+            if (!dt.contains(filterVal)) return false;
+            break;
+          case 'creator':
+            final cr = _formatCreatorDisplay(d['creation_platform']?.toString()).toLowerCase();
+            if (!cr.contains(filterVal)) return false;
+            break;
+        }
+      }
+
+      return true;
+    }).toList();
+
+    if (_clientSortColumn != null) {
+      filtered.sort((a, b) {
+        int cmp = 0;
+        switch (_clientSortColumn) {
+          case 'id':
+            final idA = (a['id'] as num?)?.toInt() ?? 0;
+            final idB = (b['id'] as num?)?.toInt() ?? 0;
+            cmp = idA.compareTo(idB);
+            break;
+          case 'name':
+            final nameA = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'.trim();
+            final nameB = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''}'.trim();
+            cmp = nameA.compareTo(nameB);
+            break;
+          case 'phone':
+            final pA = (a['phone1'] ?? '').toString();
+            final pB = (b['phone1'] ?? '').toString();
+            cmp = pA.compareTo(pB);
+            break;
+          case 'address':
+            final addrA = (a['address'] ?? '').toString();
+            final addrB = (b['address'] ?? '').toString();
+            cmp = addrA.compareTo(addrB);
+            break;
+          case 'email':
+            final emailA = (a['email'] ?? '').toString();
+            final emailB = (b['email'] ?? '').toString();
+            cmp = emailA.compareTo(emailB);
+            break;
+          case 'date':
+            final dtA = (a['created_at'] ?? '').toString();
+            final dtB = (b['created_at'] ?? '').toString();
+            cmp = dtA.compareTo(dtB);
+            break;
+          case 'creator':
+            final crA = _formatCreatorDisplay(a['creation_platform']?.toString());
+            final crB = _formatCreatorDisplay(b['creation_platform']?.toString());
+            cmp = crA.compareTo(crB);
+            break;
+        }
+        return _clientSortAscending ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
+  }
 
   late Future<List<Map<String, dynamic>>> _data;
 
@@ -202,6 +356,7 @@ class _CustomersState extends State<Customers> {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    final isDesktop = MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -209,62 +364,83 @@ class _CustomersState extends State<Customers> {
         title: Text(
           Localization.translate("Customers", lang),
         ),
-        centerTitle: true,
+        centerTitle: !isDesktop,
         backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        actions: [
+          if (isDesktop && settings.canCreateClients())
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: ElevatedButton.icon(
+                onPressed: () => _showAddClientDialog(context),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                label: Text(
+                  Localization.translate("Add Client", lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF0EA5E9),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+        ],
       ),
       body: Column(
         children: [
-          // 🔍 Filter section — matches commande.dart style
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            margin: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              border: Border.all(width: 1, color: Colors.grey),
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.filter_alt_outlined, color: Colors.blue),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        Localization.translate("Filters Clients", lang),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+          // 🔍 Filter section — shown only on Mobile
+          if (!(MediaQuery.of(context).size.width >= 900 || Platform.isWindows))
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              margin: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(width: 1, color: Colors.grey),
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.filter_alt_outlined, color: Colors.blue),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          Localization.translate("Filters Clients", lang),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: searchController,
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val;
-                      _data = val.isEmpty
-                          ? db.readClient()
-                          : db.searchClient(val);
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: Localization.translate(
-                      "Search by name or phone",
-                      lang,
-                    ),
-                    prefixIcon: const Icon(Icons.search),
-                    border: const OutlineInputBorder(),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: searchController,
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val;
+                        _data = val.isEmpty
+                            ? db.readClient()
+                            : db.searchClient(val);
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: Localization.translate(
+                        "Search by name or phone",
+                        lang,
+                      ),
+                      prefixIcon: const Icon(Icons.search),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
           // 📋 List section
           Expanded(
@@ -458,6 +634,10 @@ class _CustomersState extends State<Customers> {
                         style: const TextStyle(fontSize: 16),
                       ),
                     );
+                  }
+
+                  if (MediaQuery.of(context).size.width >= 900 || Platform.isWindows) {
+                    return _buildDesktopClientsTableView(context, data, lang);
                   }
 
                   return ListView.builder(
@@ -659,7 +839,7 @@ class _CustomersState extends State<Customers> {
         ],
       ),
 
-      floatingActionButton: settings.canCreateClients()
+      floatingActionButton: (!isDesktop && settings.canCreateClients())
           ? FloatingActionButton(
               onPressed: () => _showAddClientDialog(context),
               backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -675,6 +855,368 @@ class _CustomersState extends State<Customers> {
               child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
+    );
+  }
+
+  Future<void> _deleteClient(dynamic id) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(Localization.translate("Delete Client", lang)),
+        content: Text(Localization.translate("Are you sure you want to delete this client?", lang)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(Localization.translate("Cancel", lang))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(Localization.translate("Delete", lang), style: const TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await db.deleteClient(id);
+      if (mounted) _refreshData();
+    }
+  }
+
+  String _formatCreatorDisplay(String? rawPlatform) {
+    String raw = (rawPlatform ?? '').trim();
+    if (raw.isNotEmpty &&
+        raw != 'unknown' &&
+        raw != 'تطبيق' &&
+        raw != 'phone' &&
+        raw != 'computer' &&
+        raw != 'web' &&
+        raw != 'هاتف' &&
+        raw != 'كمبيوتر') {
+      return raw;
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final emailName = user.email?.contains('@') == true ? user.email!.split('@').first : '';
+      final displayName = user.displayName?.trim().isNotEmpty == true ? user.displayName!.trim() : emailName;
+      if (displayName.isNotEmpty) {
+        if (raw.isNotEmpty) {
+          return '$displayName ($raw)';
+        }
+        return displayName;
+      }
+    }
+    return 'المدير / عامل الورشة';
+  }
+
+  Widget _buildSortableHeaderCell({
+    required int flex,
+    required String label,
+    required String colKey,
+    required Color mutedColor,
+  }) {
+    final isSorted = _clientSortColumn == colKey;
+    return Expanded(
+      flex: flex,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (_clientSortColumn == colKey) {
+              if (_clientSortAscending) {
+                _clientSortAscending = false;
+              } else {
+                _clientSortColumn = null;
+                _clientSortAscending = true;
+              }
+            } else {
+              _clientSortColumn = colKey;
+              _clientSortAscending = true;
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isSorted ? const Color(0xFF0EA5E9) : mutedColor,
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: isSorted ? FontWeight.w900 : FontWeight.bold,
+                  ),
+                ),
+              ),
+              if (isSorted) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  _clientSortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                  size: 13,
+                  color: const Color(0xFF0EA5E9),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterInputCell({
+    required int flex,
+    required TextEditingController controller,
+    required String hintText,
+    required BuildContext context,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: SizedBox(
+          height: 36,
+          child: TextField(
+            controller: controller,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(
+              fontSize: 11.5,
+              fontFamily: 'Cairo',
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(fontSize: 10.5, color: Colors.grey.shade400, fontFamily: 'Cairo'),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              filled: true,
+              fillColor: Theme.of(context).cardColor,
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF0EA5E9), width: 1.5),
+              ),
+              suffixIcon: controller.text.isNotEmpty
+                  ? InkWell(
+                      onTap: () {
+                        controller.clear();
+                        setState(() {});
+                      },
+                      child: const Icon(Icons.close, size: 14, color: Colors.red),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopClientsTableView(
+    BuildContext context,
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
+    final cardColor = Theme.of(context).cardColor;
+    final contentColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
+    final mutedColor = Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
+
+    final data = _applyClientFiltersAndSort(rawData);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _buildSortableHeaderCell(flex: 1, label: '#', colKey: 'id', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 3, label: Localization.translate('اسم الزبون', lang), colKey: 'name', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('رقم الهاتف', lang), colKey: 'phone', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('العنوان', lang), colKey: 'address', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('البريد الإلكتروني', lang), colKey: 'email', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 3, label: Localization.translate('البيانات الجبائية (NIF/RC)', lang), colKey: 'fiscal', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('تاريخ الإضافة', lang), colKey: 'date', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('العامل المُضيف', lang), colKey: 'creator', mutedColor: mutedColor),
+                    Expanded(
+                      flex: 2,
+                      child: Row(
+                        children: [
+                          Text(
+                            Localization.translate('إجراءات', lang),
+                            style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          if (_hasActiveClientColumnFilters) ...[
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: _clearAllClientColumnFilters,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.clear_all, size: 12, color: Colors.red),
+                                    SizedBox(width: 2),
+                                    Text('مسح', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _buildFilterInputCell(flex: 1, controller: _clientColumnControllers['id']!, hintText: 'بحث...', context: context),
+                    _buildFilterInputCell(flex: 3, controller: _clientColumnControllers['name']!, hintText: 'بحث بالاسم...', context: context),
+                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['phone']!, hintText: 'بحث بالهاتف...', context: context),
+                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['address']!, hintText: 'بحث بالعنوان...', context: context),
+                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['email']!, hintText: 'بحث بالبريد...', context: context),
+                    _buildFilterInputCell(flex: 3, controller: _clientColumnControllers['fiscal']!, hintText: 'NIF / NIS...', context: context),
+                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['date']!, hintText: 'سنة-شهر-يوم...', context: context),
+                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['creator']!, hintText: 'المُضيف...', context: context),
+                    const Expanded(flex: 2, child: SizedBox.shrink()),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: data.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          Localization.translate("No matching results", lang),
+                          style: TextStyle(fontSize: 15, color: Colors.grey.shade600, fontFamily: 'Cairo'),
+                        ),
+                        if (_hasActiveClientColumnFilters) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: _clearAllClientColumnFilters,
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('إعادة ضبط البحث والتصفية', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: data.length,
+                    separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withValues(alpha: 0.12)),
+                    itemBuilder: (context, index) {
+                      final client = data[index];
+                      final clientId = (client['id'] as num?)?.toInt() ?? 0;
+                      final firstName = (client['firstname'] ?? '').toString().trim();
+                      final lastName = (client['lastname'] ?? '').toString().trim();
+                      final fullName = '$firstName $lastName'.trim();
+
+                      final phone1 = (client['phone1'] ?? '').toString().trim();
+                      final phone2 = (client['phone2'] ?? '').toString().trim();
+                      final phoneDisplay = phone1.isNotEmpty
+                          ? (phone2.isNotEmpty && phone2 != '0' ? '$phone1 / $phone2' : phone1)
+                          : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
+
+                      final addressDisplay = (client['address'] ?? '').toString().trim().isNotEmpty
+                          ? client['address'].toString().trim()
+                          : '—';
+
+                      final emailDisplay = (client['email'] ?? '').toString().trim().isNotEmpty
+                          ? client['email'].toString().trim()
+                          : '—';
+
+                      final nif = (client['nif'] ?? '').toString().trim();
+                      final nis = (client['nis'] ?? '').toString().trim();
+                      final rc = (client['rc'] ?? '').toString().trim();
+                      final ai = (client['ai'] ?? '').toString().trim();
+
+                      final List<String> taxParts = [];
+                      if (nif.isNotEmpty) taxParts.add('NIF: $nif');
+                      if (nis.isNotEmpty) taxParts.add('NIS: $nis');
+                      if (rc.isNotEmpty) taxParts.add('RC: $rc');
+                      if (ai.isNotEmpty) taxParts.add('AI: $ai');
+                      final taxDisplay = taxParts.isNotEmpty ? taxParts.join(' | ') : '—';
+
+                      final addedBy = _formatCreatorDisplay(client['creation_platform']?.toString());
+                      final createdAt = formatDate(client['created_at'] ?? '');
+
+                      return Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          children: [
+                            Expanded(flex: 1, child: Text('#$clientId', style: const TextStyle(color: Color(0xFF0EA5E9), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold))),
+                            Expanded(flex: 3, child: Text(fullName.isEmpty ? 'زبون #$clientId' : fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF0EA5E9), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold))),
+                            Expanded(flex: 2, child: Text(phoneDisplay, overflow: TextOverflow.ellipsis, style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(flex: 2, child: Text(addressDisplay, overflow: TextOverflow.ellipsis, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(flex: 2, child: Text(emailDisplay, overflow: TextOverflow.ellipsis, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(flex: 3, child: Text(taxDisplay, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF8B5CF6), fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(flex: 2, child: Text(createdAt, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(flex: 2, child: Text(addedBy, overflow: TextOverflow.ellipsis, style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(
+                              flex: 2,
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.blue),
+                                    onPressed: () => _showUpdateClientDialog(context, client),
+                                    tooltip: Localization.translate('تعديل', lang),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                                    onPressed: () => _deleteClient(client['id']),
+                                    tooltip: Localization.translate('حذف', lang),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

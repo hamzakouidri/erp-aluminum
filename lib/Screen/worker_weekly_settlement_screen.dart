@@ -5,7 +5,6 @@ import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../Commande/add_commande.dart';
-import '../widgets/lazy_window_image.dart';
 import 'package:intl/intl.dart';
 import '../services/cloud_sync_service.dart';
 
@@ -29,6 +28,7 @@ String _formatNote(String rawNote, AppLanguage lang) {
 
 class WorkerWeeklySettlementScreen extends StatefulWidget {
   final SqlDatabase db;
+
   /// وضع العرض فقط — يخفي زر تسوية الحساب
   final bool readOnly;
 
@@ -80,11 +80,14 @@ class _WorkerWeeklySettlementScreenState
         final empIdStr = w['id']?.toString() ?? '';
         final empEmail = w['email']?.toString() ?? '';
 
-        final targetKey = uid.isNotEmpty ? uid : (empEmail.isNotEmpty ? empEmail : empIdStr);
+        final targetKey = uid.isNotEmpty ? uid : (empEmail.isNotEmpty
+            ? empEmail
+            : empIdStr);
         if (targetKey.isEmpty) continue;
 
         // 1. Unsettled work/earnings
-        final allocs = await widget.db.readWorkerUnsettledAllocations(targetKey);
+        final allocs = await widget.db.readWorkerUnsettledAllocations(
+            targetKey);
         double totalEarned = 0.0;
         for (var a in allocs) {
           if (a['is_manufactured'] == 1) {
@@ -95,7 +98,8 @@ class _WorkerWeeklySettlementScreenState
         }
 
         // 1b. Unsettled daily jobs (عمل يومي)
-        final dailyJobs = await widget.db.readWorkerUnsettledDailyJobs(targetKey);
+        final dailyJobs = await widget.db.readWorkerUnsettledDailyJobs(
+            targetKey);
         for (var j in dailyJobs) {
           totalEarned += (j['price'] as num?)?.toDouble() ?? 0.0;
         }
@@ -133,35 +137,41 @@ class _WorkerWeeklySettlementScreenState
     }
   }
 
-  Future<void> _confirmResetWeeklySettlementData(BuildContext context, AppLanguage lang) async {
+  Future<void> _confirmResetWeeklySettlementData(BuildContext context,
+      AppLanguage lang) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          lang == AppLanguage.arabic ? 'تأكيد تصفير المحاسبة الأسبوعية' : 'Reset Settlement Data',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
-        ),
-        content: Text(
-          lang == AppLanguage.arabic 
-            ? 'هل أنت تأكد من تصفير كافة تسويات وسجلات المحاسبة الأسبوعية للعمال ومستحقاتهم بالتطوير؟'
-            : 'Voulez-vous réinitialiser toutes les données de règlement des ouvriers ?',
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              lang == AppLanguage.arabic ? 'مسح كلي 🧹' : 'Effacer tout 🧹',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      builder: (ctx) =>
+          AlertDialog(
+            title: Text(
+              lang == AppLanguage.arabic
+                  ? 'تأكيد تصفير المحاسبة الأسبوعية'
+                  : 'Reset Settlement Data',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
             ),
+            content: Text(
+              lang == AppLanguage.arabic
+                  ? 'هل أنت تأكد من تصفير كافة تسويات وسجلات المحاسبة الأسبوعية للعمال ومستحقاتهم بالتطوير؟'
+                  : 'Voulez-vous réinitialiser toutes les données de règlement des ouvriers ?',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  lang == AppLanguage.arabic ? 'مسح كلي 🧹' : 'Effacer tout 🧹',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (confirm == true) {
@@ -170,7 +180,9 @@ class _WorkerWeeklySettlementScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(lang == AppLanguage.arabic ? 'تم تصفير ومسح بيانات المحاسبة الأسبوعية للعمال بنجاح 🧹' : 'Données de règlement réinitialisées 🧹'),
+            content: Text(lang == AppLanguage.arabic
+                ? 'تم تصفير ومسح بيانات المحاسبة الأسبوعية للعمال بنجاح 🧹'
+                : 'Données de règlement réinitialisées 🧹'),
             backgroundColor: Colors.red,
           ),
         );
@@ -180,23 +192,35 @@ class _WorkerWeeklySettlementScreenState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme
+          .of(context)
+          .scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          lang == AppLanguage.arabic ? 'المحاسبة الأسبوعية للعمال' : 'Calcul Hebdomadaire',
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
+          lang == AppLanguage.arabic
+              ? 'المحاسبة الأسبوعية للعمال'
+              : 'Calcul Hebdomadaire',
+          style: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        backgroundColor: isDark ? Theme
+            .of(context)
+            .appBarTheme
+            .backgroundColor : Colors.blue,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep, color: Colors.white),
-            tooltip: lang == AppLanguage.arabic ? 'تصفير المحاسبة (للتطوير)' : 'Réinitialiser règlements (Dev)',
+            tooltip: lang == AppLanguage.arabic
+                ? 'تصفير المحاسبة (للتطوير)'
+                : 'Réinitialiser règlements (Dev)',
             onPressed: () => _confirmResetWeeklySettlementData(context, lang),
           ),
           IconButton(
@@ -214,20 +238,31 @@ class _WorkerWeeklySettlementScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  lang == AppLanguage.arabic ? '🧪 تصفير المحاسبة (للتطوير)' : '🧪 Réinitialiser (Dev)',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
+                  lang == AppLanguage.arabic
+                      ? '🧪 تصفير المحاسبة (للتطوير)'
+                      : '🧪 Réinitialiser (Dev)',
+                  style: const TextStyle(color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 13),
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.red.shade900,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
                   ),
-                  onPressed: () => _confirmResetWeeklySettlementData(context, lang),
+                  onPressed: () =>
+                      _confirmResetWeeklySettlementData(context, lang),
                   icon: const Icon(Icons.delete_sweep, size: 18),
                   label: Text(
-                    lang == AppLanguage.arabic ? 'تصفير المحاسبة 🧹' : 'Effacer Tout 🧹',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
+                    lang == AppLanguage.arabic
+                        ? 'تصفير المحاسبة 🧹'
+                        : 'Effacer Tout 🧹',
+                    style: const TextStyle(fontWeight: FontWeight.bold,
+                        fontFamily: 'Cairo',
+                        fontSize: 12),
                   ),
                 ),
               ],
@@ -237,148 +272,152 @@ class _WorkerWeeklySettlementScreenState
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _workers.isEmpty
-                    ? Center(
-                        child: Text(
-                          lang == AppLanguage.arabic ? 'لا يوجد عمال مسجلون حالياً' : 'Aucun ouvrier',
-                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 15),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadData,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _workers.length,
-                          itemBuilder: (context, index) {
-                      final worker = _workers[index];
-                      final uid = worker['uid']?.toString() ?? '';
-                      final summary = _workerSummaries[uid] ??
-                          {'earned': 0.0, 'advances': 0.0, 'due': 0.0};
+                ? Center(
+              child: Text(
+                lang == AppLanguage.arabic
+                    ? 'لا يوجد عمال مسجلون حالياً'
+                    : 'Aucun ouvrier',
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 15),
+              ),
+            )
+                : RefreshIndicator(
+              onRefresh: _loadData,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _workers.length,
+                itemBuilder: (context, index) {
+                  final worker = _workers[index];
+                  final uid = worker['uid']?.toString() ?? '';
+                  final summary = _workerSummaries[uid] ??
+                      {'earned': 0.0, 'advances': 0.0, 'due': 0.0};
 
-                      final double earned = summary['earned']!;
-                      final double advances = summary['advances']!;
-                      final double due = summary['due']!;
+                  final double earned = summary['earned']!;
+                  final double advances = summary['advances']!;
+                  final double due = summary['due']!;
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        color: Theme.of(context).cardColor,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    WorkerSettlementDetailScreen(
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    color: Theme
+                        .of(context)
+                        .cardColor,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                WorkerSettlementDetailScreen(
                                   worker: worker,
                                   db: widget.db,
                                   readOnly: widget.readOnly,
                                 ),
-                              ),
-                            );
-                            _loadData();
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          ),
+                        );
+                        _loadData();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 24,
-                                      backgroundColor: isDark
-                                          ? Colors.blue.shade900
-                                          : Colors.blue.shade50,
-                                      child: Text(
-                                        (worker['name']?.toString() ?? 'U')
-                                            .substring(0, 1)
-                                            .toUpperCase(),
-                                        style: TextStyle(
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: isDark
+                                      ? Colors.blue.shade900
+                                      : Colors.blue.shade50,
+                                  child: Text(
+                                    (worker['name']?.toString() ?? 'U')
+                                        .substring(0, 1)
+                                        .toUpperCase(),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Cairo',
+                                      color: isDark
+                                          ? Colors.blue.shade200
+                                          : Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        worker['name']?.toString() ?? '',
+                                        style: const TextStyle(
                                           fontWeight: FontWeight.bold,
+                                          fontSize: 16,
                                           fontFamily: 'Cairo',
-                                          color: isDark
-                                              ? Colors.blue.shade200
-                                              : Colors.blue.shade700,
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            worker['name']?.toString() ?? '',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                          Text(
-                                            worker['job_role']?.toString() ??
-                                                (lang == AppLanguage.arabic
-                                                    ? 'عامل'
-                                                    : 'Ouvrier'),
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ],
+                                      Text(
+                                        worker['job_role']?.toString() ??
+                                            (lang == AppLanguage.arabic
+                                                ? 'عامل'
+                                                : 'Ouvrier'),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
+                                          fontFamily: 'Cairo',
+                                        ),
                                       ),
-                                    ),
-                                    Icon(
-                                      Icons.arrow_forward_ios_rounded,
-                                      size: 16,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                                const Divider(height: 24),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    _buildSummaryItem(
-                                      title: lang == AppLanguage.arabic
-                                          ? 'عمل هذا الأسبوع'
-                                          : 'Production',
-                                      value: '$earned د.ج',
-                                      color: Colors.blue.shade700,
-                                    ),
-                                    _buildSummaryItem(
-                                      title: lang == AppLanguage.arabic
-                                          ? 'سلفات وسحوبات'
-                                          : 'Avances',
-                                      value: '$advances د.ج',
-                                      color: Colors.orange.shade700,
-                                    ),
-                                    _buildSummaryItem(
-                                      title: lang == AppLanguage.arabic
-                                          ? 'صافي المستحق'
-                                          : 'Net dû',
-                                      value: '$due د.ج',
-                                      color: due >= 0
-                                          ? Colors.green.shade700
-                                          : Colors.red.shade700,
-                                      isBold: true,
-                                    ),
-                                  ],
+                                Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 16,
+                                  color: Colors.grey.shade400,
                                 ),
                               ],
                             ),
-                          ),
+                            const Divider(height: 24),
+                            Row(
+                              mainAxisAlignment:
+                              MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildSummaryItem(
+                                  title: lang == AppLanguage.arabic
+                                      ? 'عمل هذا الأسبوع'
+                                      : 'Production',
+                                  value: '$earned د.ج',
+                                  color: Colors.blue.shade700,
+                                ),
+                                _buildSummaryItem(
+                                  title: lang == AppLanguage.arabic
+                                      ? 'سلفات وسحوبات'
+                                      : 'Avances',
+                                  value: '$advances د.ج',
+                                  color: Colors.orange.shade700,
+                                ),
+                                _buildSummaryItem(
+                                  title: lang == AppLanguage.arabic
+                                      ? 'صافي المستحق'
+                                      : 'Net dû',
+                                  value: '$due د.ج',
+                                  color: due >= 0
+                                      ? Colors.green.shade700
+                                      : Colors.red.shade700,
+                                  isBold: true,
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -478,7 +517,9 @@ class _WorkerSettlementDetailScreenState
       final empIdStr = widget.worker['id']?.toString() ?? '';
       final empEmail = widget.worker['email']?.toString() ?? '';
 
-      final targetKey = uid.isNotEmpty ? uid : (empEmail.isNotEmpty ? empEmail : empIdStr);
+      final targetKey = uid.isNotEmpty ? uid : (empEmail.isNotEmpty
+          ? empEmail
+          : empIdStr);
 
       // Unsettled allocations
       List<Map<String, dynamic>> uAllocs = [];
@@ -531,10 +572,15 @@ class _WorkerSettlementDetailScreenState
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
 
-    List<String> caisseNames = ['الصندوق الرئيسي', 'الصندوق المفرد', 'الحساب البنكي / البنك'];
+    List<String> caisseNames = [
+      'الصندوق الرئيسي',
+      'الصندوق المفرد',
+      'الحساب البنكي / البنك'
+    ];
     try {
       final caissesData = await widget.db.readCaisses();
-      final names = caissesData.map((c) => c['name']?.toString() ?? '').where((n) => n.isNotEmpty).toList();
+      final names = caissesData.map((c) => c['name']?.toString() ?? '').where((
+          n) => n.isNotEmpty).toList();
       if (names.isNotEmpty) {
         caisseNames = names;
         if (!caisseNames.contains('الحساب البنكي / البنك')) {
@@ -549,107 +595,143 @@ class _WorkerSettlementDetailScreenState
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          title: Text(
-            _tr('تسجيل دفعة وتسوية الحساب', 'Enregistrer un paiement & régler', 'Record Payment & Settle Account', lang),
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_tr("صافي المستحق للعامل:", "Solde net dû à l'ouvrier:", "Net due to worker:", lang)} ${NumberFormat('#,##0.00').format(netDue)} د.ج\n${_tr("المبلغ المكتوب أدناه سيسجل بالكامل كدفع في الصندوق المختار.", "Le montant ci-dessous sera intégralement déduit de la caisse sélectionnée.", "The amount below will be fully recorded as a payout in the selected caisse.", lang)}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+      builder: (context) =>
+          StatefulBuilder(
+            builder: (context, setStateDialog) =>
+                AlertDialog(
+                  title: Text(
+                    _tr('تسجيل دفعة وتسوية الحساب',
+                        'Enregistrer un paiement & régler',
+                        'Record Payment & Settle Account', lang),
+                    style: const TextStyle(fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16),
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: payCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: _tr('المبلغ المدفوع فعلياً (د.ج)', 'Montant payé (DZD)', 'Actual Amount Paid (DZD)', lang),
-                      border: const OutlineInputBorder(),
-                    ),
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty) return _tr('يرجى إدخال المبلغ', 'Veuillez entrer le montant', 'Please enter amount', lang);
-                      if (double.tryParse(val.trim()) == null) return _tr('الرجاء إدخال رقم صحيح', 'Veuillez entrer un nombre valide', 'Please enter a valid number', lang);
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    value: selectedCaisse,
-                    decoration: InputDecoration(
-                      labelText: _tr('الدفع من صندوق / الخزينة', 'Caisse de paiement', 'Pay from Caisse', lang),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: caisseNames
-                        .map((cName) => DropdownMenuItem<String>(
-                              value: cName,
-                              child: Text(
-                                Localization.translate(cName, lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setStateDialog(() => selectedCaisse = val);
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF059669),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () async {
-                if (formKey.currentState!.validate()) {
-                  final amt = double.parse(payCtrl.text.trim());
-                  Navigator.pop(context);
-
-                  setState(() => _isLoading = true);
-
-                  await widget.db.settleWorkerWeek(
-                    widget.worker['uid']?.toString() ?? '',
-                    (widget.worker['id'] as num?)?.toInt() ?? 0,
-                    amt,
-                    settings.userDisplayName,
-                    widget.worker['name']?.toString() ?? '',
-                    caisseName: selectedCaisse,
-                  );
-
-                  await _loadDetails();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(_tr('تمت تسوية أسبوع العامل بنجاح وخصم المبلغ من الصندوق', 'Règlement effectué avec succès et déduit de la caisse', 'Worker settlement successfully recorded and deducted from Caisse', lang)),
-                        backgroundColor: Colors.green,
+                  content: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_tr("صافي المستحق للعامل:",
+                                "Solde net dû à l'ouvrier:",
+                                "Net due to worker:", lang)} ${NumberFormat(
+                                '#,##0.00').format(netDue)} د.ج\n${_tr(
+                                "المبلغ المكتوب أدناه سيسجل بالكامل كدفع في الصندوق المختار.",
+                                "Le montant ci-dessous sera intégralement déduit de la caisse sélectionnée.",
+                                "The amount below will be fully recorded as a payout in the selected caisse.",
+                                lang)}',
+                            style: const TextStyle(
+                                fontFamily: 'Cairo', fontSize: 13),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: payCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            decoration: InputDecoration(
+                              labelText: _tr('المبلغ المدفوع فعلياً (د.ج)',
+                                  'Montant payé (DZD)',
+                                  'Actual Amount Paid (DZD)', lang),
+                              border: const OutlineInputBorder(),
+                            ),
+                            validator: (val) {
+                              if (val == null || val
+                                  .trim()
+                                  .isEmpty) return _tr('يرجى إدخال المبلغ',
+                                  'Veuillez entrer le montant',
+                                  'Please enter amount', lang);
+                              if (double.tryParse(val.trim()) == null)
+                                return _tr('الرجاء إدخال رقم صحيح',
+                                    'Veuillez entrer un nombre valide',
+                                    'Please enter a valid number', lang);
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: selectedCaisse,
+                            decoration: InputDecoration(
+                              labelText: _tr('الدفع من صندوق / الخزينة',
+                                  'Caisse de paiement', 'Pay from Caisse',
+                                  lang),
+                              border: const OutlineInputBorder(),
+                            ),
+                            items: caisseNames
+                                .map((cName) =>
+                                DropdownMenuItem<String>(
+                                  value: cName,
+                                  child: Text(
+                                    Localization.translate(cName, lang),
+                                    style: const TextStyle(
+                                        fontFamily: 'Cairo', fontSize: 13),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ))
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setStateDialog(() => selectedCaisse = val);
+                              }
+                            },
+                          ),
+                        ],
                       ),
-                    );
-                  }
-                }
-              },
-              child: Text(_tr('تسوية ودفع', 'Régler & Payer', 'Settle & Pay', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang),
+                          style: const TextStyle(fontFamily: 'Cairo')),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        if (formKey.currentState!.validate()) {
+                          final amt = double.parse(payCtrl.text.trim());
+                          Navigator.pop(context);
+
+                          setState(() => _isLoading = true);
+
+                          await widget.db.settleWorkerWeek(
+                            widget.worker['uid']?.toString() ?? '',
+                            (widget.worker['id'] as num?)?.toInt() ?? 0,
+                            amt,
+                            settings.userDisplayName,
+                            widget.worker['name']?.toString() ?? '',
+                            caisseName: selectedCaisse,
+                          );
+
+                          await _loadDetails();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(_tr(
+                                    'تمت تسوية أسبوع العامل بنجاح وخصم المبلغ من الصندوق',
+                                    'Règlement effectué avec succès et déduit de la caisse',
+                                    'Worker settlement successfully recorded and deducted from Caisse',
+                                    lang)),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: Text(_tr(
+                          'تسوية ودفع', 'Régler & Payer', 'Settle & Pay', lang),
+                          style: const TextStyle(fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+          ),
     );
   }
 
@@ -667,7 +749,8 @@ class _WorkerSettlementDetailScreenState
         DateTime.sunday: 'الأحد',
       };
       final dayName = dayNames[dt.weekday] ?? '';
-      final timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      final timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute
+          .toString().padLeft(2, '0')}';
       final dateStr = '${dt.day}/${dt.month}/${dt.year}';
       return '$dayName - الساعة $timeStr - $dateStr';
     } catch (_) {
@@ -675,337 +758,560 @@ class _WorkerSettlementDetailScreenState
     }
   }
 
+  double _priceFromValue(dynamic value) {
+    if (value is num) return value.toDouble();
+    final normalized = value?.toString().trim().replaceAll(',', '.') ?? '';
+    return double.tryParse(normalized) ?? 0.0;
+  }
+
   void _showAllocationDetailsDialog(Map<String, dynamic> alloc) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
+    final isArabic = lang == AppLanguage.arabic;
 
     final windowType = alloc['window_type']?.toString() ?? 'Window';
-    final int largeur = (alloc['largeur'] as num?)?.toInt() ?? 0;
-    final int hauteur = (alloc['hauteur'] as num?)?.toInt() ?? 0;
-    final int qty = (alloc['quantity'] as num?)?.toInt() ?? 0;
-    final color = alloc['color']?.toString() ?? '';
-    final glass = alloc['glass']?.toString() ?? '';
-    final clientName = '${alloc['firstname'] ?? ''} ${alloc['lastname'] ?? ''}'.trim();
-    final double currentPrice = (alloc['worker_price'] as num?)?.toDouble() ?? 0.0;
-    final int detailId = (alloc['commande_detail_id'] as num?)?.toInt() ?? 0;
-    final int allocId = (alloc['id'] as num?)?.toInt() ?? 0;
-    final int cmdId = (alloc['id_commandes'] as num?)?.toInt() ?? 0;
-    
-    final priceCtrl = TextEditingController(text: currentPrice > 0 ? currentPrice.toString() : '');
-    final formKey = GlobalKey<FormState>();
+    final largeur = _priceFromValue(alloc['largeur']).round();
+    final hauteur = _priceFromValue(alloc['hauteur']).round();
+    final quantity = _priceFromValue(alloc['quantity']).round();
+    final currentPrice = _priceFromValue(alloc['worker_price']);
+    final total = quantity * currentPrice;
+    final clientName = '${alloc['firstname'] ?? ''} ${alloc['lastname'] ?? ''}'
+        .trim();
+    final color = alloc['color']?.toString().trim() ?? '';
+    final glass = alloc['glass']?.toString().trim() ?? '';
+    final allocationId = _priceFromValue(alloc['id']).round();
+    final commandeId = _priceFromValue(alloc['id_commandes']).round();
+    final isManufactured = _priceFromValue(alloc['is_manufactured']).round() ==
+        1;
+    final date = _formatDateTime(alloc['assigned_at']?.toString());
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              scrollable: true,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Text(
-                    lang == AppLanguage.arabic ? 'تفاصيل النافذة المنجزة' : 'Détails de l\'ouvrage',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+      builder: (dialogContext) {
+        final scheme = Theme
+            .of(dialogContext)
+            .colorScheme;
+
+        Widget detailRow(IconData icon, String label, String value) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 18, color: scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: DefaultTextStyle
+                          .of(dialogContext)
+                          .style
+                          .copyWith(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: '$label: ',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        TextSpan(text: value),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-              content: Form(
-                key: formKey,
+                ),
+              ],
+            ),
+          );
+        }
+
+        return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20, vertical: 24),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.assignment_outlined, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isArabic ? 'تفاصيل المهمة' : 'Détails de la tâche',
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Window image preview
-                    Container(
-                      height: 150,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: LazyWindowImage(
-                        db: widget.db,
-                        detailId: detailId,
-                        initialImagePath: alloc['drawing_image_path']?.toString() ?? '',
-                        partitionsJson: alloc['partitions_json'],
-                        drawingImageBase64: alloc['drawing_image_base64']?.toString(),
-                        height: 130,
-                        width: double.infinity,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Dimensions and details
                     Text(
-                      '${Localization.translate(windowType, lang)} ($largeur x $hauteur مم)',
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    const SizedBox(height: 6),
-                    if (color.isNotEmpty) ...[
-                      Text('${lang == AppLanguage.arabic ? "اللون:" : "Couleur:"} $color', style: const TextStyle(fontSize: 12)),
-                      const SizedBox(height: 2),
-                    ],
-                    if (glass.isNotEmpty) ...[
-                      Text('${lang == AppLanguage.arabic ? "الزجاج:" : "Vitrage:"} $glass', style: const TextStyle(fontSize: 12)),
-                      const SizedBox(height: 2),
-                    ],
-                    Text('${lang == AppLanguage.arabic ? "الكمية المنجزة:" : "Quantité réalisée:"} $qty ${lang == AppLanguage.arabic ? "قطع" : "pcs"}', style: const TextStyle(fontSize: 12)),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${lang == AppLanguage.arabic ? "حالة التصنيع:" : "Statut:"} ${alloc['is_manufactured'] == 1 ? (lang == AppLanguage.arabic ? "تم التصنيع ✅" : "Terminé") : (lang == AppLanguage.arabic ? "لم يتم التصنيع بعد ⏳" : "En cours")}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: alloc['is_manufactured'] == 1 ? Colors.green : Colors.orange,
-                        fontWeight: FontWeight.bold,
+                      Localization.translate(windowType, lang),
+                      style: const TextStyle(
                         fontFamily: 'Cairo',
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${lang == AppLanguage.arabic ? "الأجر المحتسب:" : "Gain:"} ${alloc['is_manufactured'] == 1 ? "${qty * currentPrice} د.ج" : (lang == AppLanguage.arabic ? "0 د.ج (غير مصنع بعد)" : "0 DA (non fabriqué)")}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: alloc['is_manufactured'] == 1 ? Colors.blue : Colors.blueGrey,
                         fontWeight: FontWeight.bold,
-                        fontFamily: 'Cairo',
+                        fontSize: 17,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${lang == AppLanguage.arabic ? "اسم الزبون:" : "Client:"} ${clientName.isNotEmpty ? clientName : (lang == AppLanguage.arabic ? "غير محدد" : "Non spécifié")}',
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey),
+                    const SizedBox(height: 14),
+                    detailRow(
+                      Icons.straighten_outlined,
+                      isArabic ? 'المقاس' : 'Dimensions',
+                      '$largeur × $hauteur مم',
                     ),
-                    const Divider(height: 20),
+                    detailRow(
+                      Icons.layers_outlined,
+                      isArabic ? 'الكمية' : 'Quantité',
+                      '$quantity ${isArabic ? 'قطعة' : 'pièce(s)'}',
+                    ),
+                    if (clientName.isNotEmpty)
+                      detailRow(
+                        Icons.person_outline,
+                        isArabic ? 'الزبون' : 'Client',
+                        clientName,
+                      ),
+                    if (color.isNotEmpty)
+                      detailRow(
+                        Icons.color_lens_outlined,
+                        isArabic ? 'اللون' : 'Couleur',
+                        color,
+                      ),
+                    if (glass.isNotEmpty)
+                      detailRow(
+                        Icons.grid_view_outlined,
+                        isArabic ? 'الزجاج' : 'Vitrage',
+                        glass,
+                      ),
+                    if (date.isNotEmpty)
+                      detailRow(
+                        Icons.schedule_outlined,
+                        isArabic ? 'تاريخ الإسناد' : 'Date d’affectation',
+                        date,
+                      ),
+                    const Divider(height: 22),
+                    detailRow(
+                      isManufactured
+                          ? Icons.check_circle_outline
+                          : Icons.pending_outlined,
+                      isArabic ? 'حالة التصنيع' : 'État de fabrication',
+                      isManufactured
+                          ? (isArabic ? 'تم التصنيع' : 'Fabriqué')
+                          : (isArabic ? 'لم يتم التصنيع بعد' : 'En attente'),
+                    ),
+                    detailRow(
+                      Icons.monetization_on_outlined,
+                      isArabic ? 'سعر القطعة للعامل' : 'Tarif par pièce',
+                      currentPrice > 0
+                          ? '$currentPrice ${isArabic ? 'د.ج' : 'DA'}'
+                          : (isArabic ? 'غير مُدخل' : 'Non renseigné'),
+                    ),
+                    if (currentPrice > 0)
+                      detailRow(
+                        Icons.calculate_outlined,
+                        isArabic ? 'الإجمالي' : 'Total',
+                        '$total ${isArabic ? 'د.ج' : 'DA'}',
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              if (commandeId > 0)
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            CommandePage(
+                              db: widget.db,
+                              editCommandeId: commandeId,
+                            ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: Text(
+                    isArabic ? 'فتح الطلبية' : 'Ouvrir la commande',
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ),
+              if (!widget.readOnly && allocationId > 0)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    _showAllocationPriceDialog(alloc);
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text(
+                    currentPrice > 0
+                        ? (isArabic ? 'تعديل السعر' : 'Modifier le tarif')
+                        : (isArabic ? 'إدخال السعر' : 'Saisir le tarif'),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(
+                  isArabic ? 'إغلاق' : 'Fermer',
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+            ],
+          );
+      },
+    );
+  }
 
-                    // Price input section
-                    if (currentPrice == 0.0) ...[
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(8),
+  Future<void> _showAllocationPriceDialog(Map<String, dynamic> alloc) async {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+    final isArabic = lang == AppLanguage.arabic;
+    final allocationId = _priceFromValue(alloc['id']).round();
+    if (allocationId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isArabic
+                ? 'تعذر تحديد المهمة المراد تحديث سعرها.'
+                : 'Impossible d’identifier la tâche à mettre à jour.',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final currentPrice = _priceFromValue(alloc['worker_price']);
+    final priceCtrl = TextEditingController(
+      text: currentPrice > 0 ? currentPrice.toString() : '',
+    );
+    final formKey = GlobalKey<FormState>();
+    var isSaving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) =>
+          StatefulBuilder(
+            builder: (dialogContext, setDialogState) => AlertDialog(
+                    insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    title: Row(
+                      children: [
+                        const Icon(Icons.monetization_on_outlined,
+                            color: Colors.green),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            isArabic
+                                ? 'إدخال سعر العامل'
+                                : 'Saisir le tarif de l’ouvrier',
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
                         ),
-                        child: Row(
+                      ],
+                    ),
+                    content: SizedBox(
+                      width: 360,
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                lang == AppLanguage.arabic 
-                                  ? 'سعر العامل غير مدخل! لن يتم احتسابه في المستحقات حتى تحدد سعراً.'
-                                  : 'Prix ouvrier non défini !',
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold),
+                            Text(
+                              '${Localization.translate(alloc['window_type']
+                                  ?.toString() ?? 'Window', lang)} '
+                                  '(${_priceFromValue(alloc['largeur'])
+                                  .round()} × ${_priceFromValue(
+                                  alloc['hauteur']).round()} مم)',
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: priceCtrl,
+                              autofocus: true,
+                              enabled: !isSaving,
+                              keyboardType: const TextInputType
+                                  .numberWithOptions(decimal: true),
+                              decoration: InputDecoration(
+                                labelText: isArabic
+                                    ? 'أجر تصنيع القطعة الواحدة (د.ج)'
+                                    : 'Tarif par pièce (DA)',
+                                hintText: isArabic
+                                    ? 'مثال: 250'
+                                    : 'Exemple : 250',
+                                prefixIcon: const Icon(Icons.payments_outlined),
+                                border: const OutlineInputBorder(),
+                              ),
+                              validator: (value) {
+                                final price = _priceFromValue(value);
+                                if (value == null || value
+                                    .trim()
+                                    .isEmpty || price <= 0) {
+                                  return isArabic
+                                      ? 'أدخل سعراً صحيحاً أكبر من صفر'
+                                      : 'Saisissez un tarif supérieur à zéro';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              isArabic
+                                  ? 'هذا السعر خاص بهذه المهمة فقط.'
+                                  : 'Ce tarif concerne uniquement cette tâche.',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: Theme
+                                    .of(dialogContext)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    TextFormField(
-                      controller: priceCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: lang == AppLanguage.arabic ? 'أجر تصنيع القطعة الواحدة (د.ج)' : 'Tarif par pièce (DA)',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.monetization_on_outlined, size: 20),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return lang == AppLanguage.arabic ? 'يرجى إدخال السعر' : 'Entrez le tarif';
-                        }
-                        if (double.tryParse(val.trim()) == null) {
-                          return lang == AppLanguage.arabic ? 'أدخل رقماً صحيحاً' : 'Nombre invalide';
-                        }
-                        return null;
-                      },
                     ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.blue,
-                          side: const BorderSide(color: Colors.blue),
+                    actions: [
+                      TextButton(
+                        onPressed: isSaving ? null : () =>
+                            Navigator.of(dialogContext).pop(),
+                        child: Text(
+                          isArabic ? 'إلغاء' : 'Annuler',
+                          style: const TextStyle(fontFamily: 'Cairo'),
                         ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CommandePage(
-                                db: widget.db,
-                                editCommandeId: cmdId,
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: isSaving
+                            ? null
+                            : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          final newPrice = _priceFromValue(priceCtrl.text);
+                          setDialogState(() => isSaving = true);
+                          try {
+                            await widget.db.updateWorkerAllocationPrice(
+                              allocationId,
+                              newPrice,
+                            );
+                            if (!mounted) return;
+                            await _loadDetails();
+                            if (!mounted) return;
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  isArabic
+                                      ? 'تم حفظ سعر العامل بنجاح.'
+                                      : 'Tarif de l’ouvrier enregistré.',
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                                backgroundColor: Colors.green,
                               ),
-                            ),
-                          );
+                            );
+                          } catch (error) {
+                            if (!mounted) return;
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  isArabic
+                                      ? 'تعذر حفظ السعر: $error'
+                                      : 'Impossible d’enregistrer le tarif : $error',
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
                         },
-                        icon: const Icon(Icons.folder_open_outlined, size: 18),
+                        icon: isSaving
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                            : const Icon(Icons.save_outlined, size: 18),
                         label: Text(
-                          lang == AppLanguage.arabic ? 'الذهاب إلى صفحة الطلبية بالكامل' : 'Voir la commande complète',
-                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                          isArabic ? 'حفظ السعر' : 'Enregistrer',
+                          style: const TextStyle(fontFamily: 'Cairo'),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler', style: const TextStyle(fontFamily: 'Cairo')),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
+                    ],
                   ),
-                  onPressed: () async {
-                    if (formKey.currentState!.validate()) {
-                      final newPrice = double.parse(priceCtrl.text.trim());
-                      Navigator.pop(context);
-                      
-                      setState(() => _isLoading = true);
-                      await widget.db.updateWorkerAllocationPrice(allocId, newPrice);
-                      await _loadDetails();
-
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(lang == AppLanguage.arabic ? 'تم تحديث أجر العامل بنجاح 💰' : 'Tarif mis à jour successfully'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  child: Text(lang == AppLanguage.arabic ? 'حفظ السعر' : 'Enregistrer', style: const TextStyle(fontFamily: 'Cairo')),
-                ),
-              ],
-            );
-          },
-        );
-      },
+          ),
     );
+    priceCtrl.dispose();
   }
 
   Future<void> _showAddDailyJobDialog() async {
     final titleCtrl = TextEditingController(text: 'عمل يومي');
     final noteCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
-    final dateCtrl = TextEditingController(text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    final dateCtrl = TextEditingController(
+        text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
     final formKey = GlobalKey<FormState>();
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.work_history, color: Colors.orange),
-            const SizedBox(width: 8),
-            Text(
-              lang == AppLanguage.arabic ? 'إضافة عمل يومي للعامل' : 'Ajouter travail journalier',
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-          ],
-        ),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+      builder: (ctx) =>
+          AlertDialog(
+            title: Row(
               children: [
-                TextFormField(
-                  controller: titleCtrl,
-                  decoration: InputDecoration(
-                    labelText: lang == AppLanguage.arabic ? 'عنوان العمل (مثلاً: عمل يومي، تحفظات، تركيب خارج)' : 'Titre',
-                    border: const OutlineInputBorder(),
-                  ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? (lang == AppLanguage.arabic ? 'العنوان مطلوب' : 'Titre requis') : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: dateCtrl,
-                  readOnly: true,
-                  decoration: InputDecoration(
-                    labelText: lang == AppLanguage.arabic ? 'التاريخ' : 'Date',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: const Icon(Icons.calendar_today),
-                  ),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: DateTime.tryParse(dateCtrl.text) ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: priceCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: lang == AppLanguage.arabic ? 'أجرة/سعر هذا اليوم (د.ج)' : 'Prix / Tarif (DA)',
-                    border: const OutlineInputBorder(),
-                    suffixText: 'د.ج',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return lang == AppLanguage.arabic ? 'السعر مطلوب' : 'Prix requis';
-                    if (double.tryParse(v.trim()) == null || double.parse(v.trim()) < 0) {
-                      return lang == AppLanguage.arabic ? 'أدخل مبلغاً صحيحاً' : 'Montant invalide';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: noteCtrl,
-                  decoration: InputDecoration(
-                    labelText: lang == AppLanguage.arabic ? 'ملاحظات / تفاصيل العمل' : 'Notes / Détails',
-                    border: const OutlineInputBorder(),
-                  ),
+                const Icon(Icons.work_history, color: Colors.orange),
+                const SizedBox(width: 8),
+                Text(
+                  lang == AppLanguage.arabic
+                      ? 'إضافة عمل يومي للعامل'
+                      : 'Ajouter travail journalier',
+                  style: const TextStyle(fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
                 ),
               ],
             ),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: titleCtrl,
+                      decoration: InputDecoration(
+                        labelText: lang == AppLanguage.arabic
+                            ? 'عنوان العمل (مثلاً: عمل يومي، تحفظات، تركيب خارج)'
+                            : 'Titre',
+                        border: const OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                      (v == null || v
+                          .trim()
+                          .isEmpty) ? (lang == AppLanguage.arabic
+                          ? 'العنوان مطلوب'
+                          : 'Titre requis') : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: dateCtrl,
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: lang == AppLanguage.arabic
+                            ? 'التاريخ'
+                            : 'Date',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: const Icon(Icons.calendar_today),
+                      ),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: DateTime.tryParse(dateCtrl.text) ??
+                              DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) dateCtrl.text =
+                            DateFormat('yyyy-MM-dd').format(picked);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: priceCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: InputDecoration(
+                        labelText: lang == AppLanguage.arabic
+                            ? 'أجرة/سعر هذا اليوم (د.ج)'
+                            : 'Prix / Tarif (DA)',
+                        border: const OutlineInputBorder(),
+                        suffixText: 'د.ج',
+                      ),
+                      validator: (v) {
+                        if (v == null || v
+                            .trim()
+                            .isEmpty) return lang == AppLanguage.arabic
+                            ? 'السعر مطلوب'
+                            : 'Prix requis';
+                        if (double.tryParse(v.trim()) == null ||
+                            double.parse(v.trim()) < 0) {
+                          return lang == AppLanguage.arabic
+                              ? 'أدخل مبلغاً صحيحاً'
+                              : 'Montant invalide';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: noteCtrl,
+                      decoration: InputDecoration(
+                        labelText: lang == AppLanguage.arabic
+                            ? 'ملاحظات / تفاصيل العمل'
+                            : 'Notes / Détails',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade800,
+                    foregroundColor: Colors.white),
+                onPressed: () {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(ctx, true);
+                  }
+                },
+                child: Text(lang == AppLanguage.arabic
+                    ? 'حفظ العمل اليومي'
+                    : 'Enregistrer'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(lang == AppLanguage.arabic ? 'إلغاء' : 'Annuler'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            child: Text(lang == AppLanguage.arabic ? 'حفظ العمل اليومي' : 'Enregistrer'),
-          ),
-        ],
-      ),
     );
 
     if (result == true && mounted) {
-      final uid = widget.worker['uid']?.toString() ?? widget.worker['id']?.toString() ?? '';
+      final uid = widget.worker['uid']?.toString() ??
+          widget.worker['id']?.toString() ?? '';
       final price = double.parse(priceCtrl.text.trim());
       await widget.db.addWorkerDailyJob(
         workerUid: uid,
         workDate: dateCtrl.text,
         title: titleCtrl.text.trim(),
-        note: noteCtrl.text.trim().isNotEmpty ? noteCtrl.text.trim() : null,
+        note: noteCtrl.text
+            .trim()
+            .isNotEmpty ? noteCtrl.text.trim() : null,
         price: price,
       );
       _loadDetails();
@@ -1014,7 +1320,9 @@ class _WorkerSettlementDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
 
@@ -1040,591 +1348,676 @@ class _WorkerSettlementDetailScreenState
     final double netDue = earnedTotal - advancesTotal;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme
+          .of(context)
+          .scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           widget.worker['name']?.toString() ?? '',
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
+          style: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
         ),
         bottom: TabBar(
           controller: _tabController,
-          labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          labelStyle: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.bold),
           unselectedLabelStyle: const TextStyle(fontFamily: 'Cairo'),
           tabs: [
-            Tab(text: lang == AppLanguage.arabic ? 'الأسبوع الحالي' : 'Semaine Actuelle'),
-            Tab(text: lang == AppLanguage.arabic ? 'الأرشيف (آخر 6 أشهر)' : 'Archives'),
+            Tab(text: lang == AppLanguage.arabic
+                ? 'الأسبوع الحالي'
+                : 'Semaine Actuelle'),
+            Tab(text: lang == AppLanguage.arabic
+                ? 'الأرشيف (آخر 6 أشهر)'
+                : 'Archives'),
           ],
         ),
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        backgroundColor: isDark ? Theme
+            .of(context)
+            .appBarTheme
+            .backgroundColor : Colors.blue,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : TabBarView(
-              controller: _tabController,
-              children: [
-                // TAB 1: Current Week (Unsettled)
-                Column(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Section: Manufactured items
-                            Text(
-                              lang == AppLanguage.arabic ? '🛠️ النوافذ والأبواب المنجزة هذا الأسبوع:' : 'Ouvrages réalisés:',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 15,
-                                  color: Colors.blue),
-                            ),
-                            const SizedBox(height: 8),
-                            _unsettledAllocs.isEmpty
-                                ? Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? Colors.grey[900] : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      lang == AppLanguage.arabic
-                                          ? 'لم يتم تسجيل عمل منجز هذا الأسبوع بعد'
-                                          : 'Aucun travail enregistré',
-                                      style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontSize: 13,
-                                          color: Colors.grey),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    itemCount: _unsettledAllocs.length,
-                                    itemBuilder: (context, idx) {
-                                      final a = _unsettledAllocs[idx];
-                                      final windowType = a['window_type']?.toString() ?? 'Window';
-                                      final int largeur = (a['largeur'] as num?)?.toInt() ?? 0;
-                                      final int hauteur = (a['hauteur'] as num?)?.toInt() ?? 0;
-                                      final int qty = (a['quantity'] as num?)?.toInt() ?? 0;
-                                      final price = (a['worker_price'] as num?)?.toDouble() ?? 0.0;
-                                      final total = qty * price;
-                                      final dateStr = _formatDateTime(a['assigned_at']);
-
-                                      return Card(
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        elevation: 1,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12)),
-                                        child: ListTile(
-                                          title: Text(
-                                            '${Localization.translate(windowType, lang)} ($largeur x $hauteur) | $qty قطعة',
-                                            style: const TextStyle(
-                                                fontFamily: 'Cairo',
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13),
-                                          ),
-                                          subtitle: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'الزبون: ${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'.trim().isNotEmpty 
-                                                    ? 'الزبون: ${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'.trim()
-                                                    : 'الزبون: غير محدد',
-                                                style: const TextStyle(
-                                                    fontFamily: 'Cairo',
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.blueGrey,
-                                                    fontSize: 12),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                price == 0.0
-                                                    ? '⚠️ السعر غير مدخل!'
-                                                    : (a['is_manufactured'] == 1 
-                                                        ? 'سعر القطعة: $price د.ج | المجموع: $total د.ج' 
-                                                        : 'سعر القطعة: $price د.ج | المجموع: 0 د.ج (لم تصنع بعد ⏳)'),
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: price == 0.0 ? Colors.red : (a['is_manufactured'] == 1 ? null : Colors.orange),
-                                                  fontWeight: price == 0.0 ? FontWeight.bold : null,
-                                                ),
-                                              ),
-                                              Text(
-                                                '📅 $dateStr',
-                                                style: const TextStyle(fontSize: 11),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: a['is_manufactured'] == 1 ? Colors.green.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      a['is_manufactured'] == 1 ? 'تم الصنع ✅' : 'لم يصنع بعد ⏳',
-                                                      style: TextStyle(
-                                                        color: a['is_manufactured'] == 1 ? Colors.green : Colors.orange,
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.bold,
-                                                        fontFamily: 'Cairo',
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: a['is_glass_installed'] == 1 ? Colors.blue.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      a['is_glass_installed'] == 1 ? 'تم تركيب الزجاج 💎' : 'لم يركب الزجاج ⏳',
-                                                      style: TextStyle(
-                                                        color: a['is_glass_installed'] == 1 ? Colors.blue : Colors.orange,
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.bold,
-                                                        fontFamily: 'Cairo',
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                          leading: price == 0.0
-                                              ? TextButton.icon(
-                                                  style: TextButton.styleFrom(
-                                                    foregroundColor: Colors.red,
-                                                    backgroundColor: Colors.red.withOpacity(0.08),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius: BorderRadius.circular(8),
-                                                    ),
-                                                  ),
-                                                  onPressed: () => _showAllocationDetailsDialog(a),
-                                                  icon: const Icon(Icons.edit, size: 14),
-                                                  label: const Text(
-                                                    'إدخال السعر',
-                                                    style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
-                                                  ),
-                                                )
-                                              : const Icon(Icons.open_in_new, size: 16, color: Colors.blue),
-                                          onTap: () => _showAllocationDetailsDialog(a),
-                                        ),
-                                      );
-                                    },
-                                  ),
-
-                            const SizedBox(height: 16),
-
-                            // Section: Daily Jobs (عمل يومي)
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  lang == AppLanguage.arabic ? '🗓️ الأعمال اليومية هذا الأسبوع:' : 'Travaux journaliers:',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontFamily: 'Cairo',
-                                      fontSize: 15,
-                                      color: Colors.amber),
-                                ),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.amber.shade800,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  ),
-                                  onPressed: _showAddDailyJobDialog,
-                                  icon: const Icon(Icons.add, size: 16),
-                                  label: Text(
-                                    lang == AppLanguage.arabic ? 'إضافة عمل يومي' : 'Ajouter',
-                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            _unsettledDailyJobs.isEmpty
-                                ? Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? Colors.grey[900] : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      lang == AppLanguage.arabic
-                                          ? 'لا توجد أعمال يومية مسجلة هذا الأسبوع'
-                                          : 'Aucun travail journalier',
-                                      style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontSize: 13,
-                                          color: Colors.grey),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    itemCount: _unsettledDailyJobs.length,
-                                    itemBuilder: (context, idx) {
-                                      final j = _unsettledDailyJobs[idx];
-                                      final jobId = (j['id'] as num?)?.toInt() ?? 0;
-                                      final price = (j['price'] as num?)?.toDouble() ?? 0.0;
-                                      return Card(
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        elevation: 1,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                        child: ListTile(
-                                          leading: const CircleAvatar(
-                                            backgroundColor: Colors.amber,
-                                            child: Icon(Icons.work_history, color: Colors.white, size: 18),
-                                          ),
-                                          title: Text(
-                                            '${j['title']} — $price د.ج',
-                                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
-                                          ),
-                                          subtitle: Text(
-                                            '📅 ${j['work_date'] ?? ''}${j['note'] != null ? '\n📝 ${j['note']}' : ''}',
-                                            style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
-                                          ),
-                                          trailing: IconButton(
-                                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                                            onPressed: () async {
-                                              if (jobId > 0) {
-                                                await widget.db.deleteWorkerDailyJob(jobId);
-                                                _loadDetails();
-                                              }
-                                            },
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-
-                            const SizedBox(height: 24),
-
-                            // Section: Advances / Transactions
-                            Text(
-                              lang == AppLanguage.arabic ? '💰 سلفات ومدفوعات هذا الأسبوع:' : 'Avances de la semaine:',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 15,
-                                  color: Colors.orange),
-                            ),
-                            const SizedBox(height: 8),
-                            _unsettledTxs.isEmpty
-                                ? Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? Colors.grey[900] : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      lang == AppLanguage.arabic
-                                          ? 'لا توجد سلفات مسجلة هذا الأسبوع'
-                                          : 'Aucune avance cette semaine',
-                                      style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontSize: 13,
-                                          color: Colors.grey),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    itemCount: _unsettledTxs.length,
-                                    itemBuilder: (context, idx) {
-                                      final t = _unsettledTxs[idx];
-                                      final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
-                                      final note = t['note']?.toString() ?? '';
-                                      final type = t['transaction_type'] == 'advance'
-                                          ? 'سلفة'
-                                          : 'دفعة أجر';
-                                      final dateStr = t['created_at'] != null
-                                          ? t['created_at'].toString().split('T')[0]
-                                          : '';
-
-                                      return Card(
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        elevation: 1,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12)),
-                                        child: ListTile(
-                                          title: Text(
-                                            '$amt د.ج ($type)',
-                                            style: const TextStyle(
-                                                fontFamily: 'Cairo',
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                                color: Colors.red),
-                                          ),
-                                          subtitle: Text(
-                                            '${_formatNote(note, lang)}\n📅 $dateStr',
-                                            style: const TextStyle(fontSize: 11),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Net accounting summary and Settle button
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[900] : Colors.grey[100],
-                        border: Border(
-                          top: BorderSide(
-                              color: isDark
-                                  ? Colors.grey.shade800
-                                  : Colors.grey.shade300),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                lang == AppLanguage.arabic ? 'صافي المستحق للأسبوع:' : 'Net dû pour la semaine :',
-                                style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15),
-                              ),
-                              Text(
-                                '$netDue د.ج',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: netDue >= 0
-                                      ? Colors.green.shade600
-                                      : Colors.red.shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          if (!widget.readOnly)
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: () => _showPaymentDialog(netDue),
-                                icon: const Icon(Icons.handshake),
-                                label: Text(
-                                  lang == AppLanguage.arabic
-                                      ? 'تسجيل دفعة وتسوية الحساب'
-                                      : 'Enregistrer paiement & Clôturer',
-                                  style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontWeight: FontWeight.bold),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  backgroundColor: Colors.teal,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                // TAB 2: Archives (Settled)
-                SingleChildScrollView(
+        controller: _tabController,
+        children: [
+          // TAB 1: Current Week (Unsettled)
+          Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Section: Settled items
+                      // Section: Manufactured items
                       Text(
-                        lang == AppLanguage.arabic ? '🛠️ الأعمال المؤرشفة المسواة (آخر 6 أشهر):' : 'Travaux archivés (6 mois) :',
+                        lang == AppLanguage.arabic
+                            ? '🛠️ النوافذ والأبواب المنجزة هذا الأسبوع:'
+                            : 'Ouvrages réalisés:',
                         style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontFamily: 'Cairo',
                             fontSize: 15,
-                            color: Colors.blueGrey),
+                            color: Colors.blue),
                       ),
                       const SizedBox(height: 8),
-                      _settledAllocs.isEmpty
+                      _unsettledAllocs.isEmpty
                           ? Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.grey[900] : Colors.grey[100],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                lang == AppLanguage.arabic
-                                    ? 'لا يوجد أرشيف أعمال لهذا العامل'
-                                    : 'Aucune archive disponible',
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[900] : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          lang == AppLanguage.arabic
+                              ? 'لم يتم تسجيل عمل منجز هذا الأسبوع بعد'
+                              : 'Aucun travail enregistré',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                          : ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _unsettledAllocs.length,
+                        itemBuilder: (context, idx) {
+                          final a = _unsettledAllocs[idx];
+                          final windowType = a['window_type']?.toString() ??
+                              'Window';
+                          final int largeur = (a['largeur'] as num?)?.toInt() ??
+                              0;
+                          final int hauteur = (a['hauteur'] as num?)?.toInt() ??
+                              0;
+                          final int qty = (a['quantity'] as num?)?.toInt() ?? 0;
+                          final price = (a['worker_price'] as num?)
+                              ?.toDouble() ?? 0.0;
+                          final total = qty * price;
+                          final dateStr = _formatDateTime(a['assigned_at']);
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            child: ListTile(
+                              title: Text(
+                                '${Localization.translate(windowType,
+                                    lang)} ($largeur x $hauteur) | $qty قطعة',
                                 style: const TextStyle(
                                     fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                    color: Colors.grey),
-                                textAlign: TextAlign.center,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13),
                               ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _settledAllocs.length,
-                              itemBuilder: (context, idx) {
-                                final a = _settledAllocs[idx];
-                                final windowType = a['window_type']?.toString() ?? 'Window';
-                                final int largeur = (a['largeur'] as num?)?.toInt() ?? 0;
-                                final int hauteur = (a['hauteur'] as num?)?.toInt() ?? 0;
-                                final int qty = (a['quantity'] as num?)?.toInt() ?? 0;
-                                final price = (a['worker_price'] as num?)?.toDouble() ?? 0.0;
-                                final total = qty * price;
-                                final dateStr = _formatDateTime(a['settled_at']);
-
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  elevation: 1,
-                                  color: isDark ? Colors.grey[900] : Colors.grey[50],
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12)),
-                                  child: ListTile(
-                                    title: Text(
-                                      '${Localization.translate(windowType, lang)} ($largeur x $hauteur) | $qty قطعة',
-                                      style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13),
-                                    ),
-                                    subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'الزبون: ${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'.trim().isNotEmpty 
-                                              ? 'الزبون: ${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'.trim()
-                                              : 'الزبون: غير محدد',
-                                          style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.blueGrey,
-                                              fontSize: 12),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'سعر القطعة: $price د.ج | المجموع: $total د.ج\n📅 تاريخ التسوية: $dateStr',
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                      ],
-                                    ),
-                                    leading: price == 0.0
-                                        ? TextButton.icon(
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: Colors.red,
-                                              backgroundColor: Colors.red.withOpacity(0.08),
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                            ),
-                                            onPressed: () => _showAllocationDetailsDialog(a),
-                                            icon: const Icon(Icons.edit, size: 14),
-                                            label: const Text(
-                                              'إدخال السعر',
-                                              style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
-                                            ),
-                                          )
-                                        : const Icon(Icons.open_in_new, size: 16, color: Colors.blue),
-                                    onTap: () => _showAllocationDetailsDialog(a),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'الزبون: ${a['firstname'] ??
+                                        ''} ${a['lastname'] ?? ''}'
+                                        .trim()
+                                        .isNotEmpty
+                                        ? 'الزبون: ${a['firstname'] ??
+                                        ''} ${a['lastname'] ?? ''}'.trim()
+                                        : 'الزبون: غير محدد',
+                                    style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blueGrey,
+                                        fontSize: 12),
                                   ),
-                                );
-                              },
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    price == 0.0
+                                        ? '⚠️ السعر غير مدخل!'
+                                        : (a['is_manufactured'] == 1
+                                        ? 'سعر القطعة: $price د.ج | المجموع: $total د.ج'
+                                        : 'سعر القطعة: $price د.ج | المجموع: 0 د.ج (لم تصنع بعد ⏳)'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: price == 0.0
+                                          ? Colors.red
+                                          : (a['is_manufactured'] == 1
+                                          ? null
+                                          : Colors.orange),
+                                      fontWeight: price == 0.0
+                                          ? FontWeight.bold
+                                          : null,
+                                    ),
+                                  ),
+                                  Text(
+                                    '📅 $dateStr',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: a['is_manufactured'] == 1
+                                              ? Colors.green.withOpacity(0.12)
+                                              : Colors.orange.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(
+                                              6),
+                                        ),
+                                        child: Text(
+                                          a['is_manufactured'] == 1
+                                              ? 'تم الصنع ✅'
+                                              : 'لم يصنع بعد ⏳',
+                                          style: TextStyle(
+                                            color: a['is_manufactured'] == 1
+                                                ? Colors.green
+                                                : Colors.orange,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: a['is_glass_installed'] == 1
+                                              ? Colors.blue.withOpacity(0.12)
+                                              : Colors.orange.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(
+                                              6),
+                                        ),
+                                        child: Text(
+                                          a['is_glass_installed'] == 1
+                                              ? 'تم تركيب الزجاج 💎'
+                                              : 'لم يركب الزجاج ⏳',
+                                          style: TextStyle(
+                                            color: a['is_glass_installed'] == 1
+                                                ? Colors.blue
+                                                : Colors.orange,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              leading: price == 0.0
+                                  ? TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  backgroundColor: Colors.red.withOpacity(0.08),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: () => _showAllocationPriceDialog(a),
+                                icon: const Icon(Icons.edit, size: 14),
+                                label: const Text(
+                                  'إدخال السعر',
+                                  style: TextStyle(fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              )
+                                  : const Icon(Icons.open_in_new, size: 16,
+                                  color: Colors.blue),
+                              onTap: () => _showAllocationDetailsDialog(a),
                             ),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Section: Daily Jobs (عمل يومي)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            lang == AppLanguage.arabic
+                                ? '🗓️ الأعمال اليومية هذا الأسبوع:'
+                                : 'Travaux journaliers:',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
+                                fontSize: 15,
+                                color: Colors.amber),
+                          ),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.amber.shade800,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                            ),
+                            onPressed: _showAddDailyJobDialog,
+                            icon: const Icon(Icons.add, size: 16),
+                            label: Text(
+                              lang == AppLanguage.arabic
+                                  ? 'إضافة عمل يومي'
+                                  : 'Ajouter',
+                              style: const TextStyle(fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _unsettledDailyJobs.isEmpty
+                          ? Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[900] : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          lang == AppLanguage.arabic
+                              ? 'لا توجد أعمال يومية مسجلة هذا الأسبوع'
+                              : 'Aucun travail journalier',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                          : ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _unsettledDailyJobs.length,
+                        itemBuilder: (context, idx) {
+                          final j = _unsettledDailyJobs[idx];
+                          final jobId = (j['id'] as num?)?.toInt() ?? 0;
+                          final price = (j['price'] as num?)?.toDouble() ?? 0.0;
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Colors.amber,
+                                child: Icon(
+                                    Icons.work_history, color: Colors.white,
+                                    size: 18),
+                              ),
+                              title: Text(
+                                '${j['title']} — $price د.ج',
+                                style: const TextStyle(fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                '📅 ${j['work_date'] ?? ''}${j['note'] != null
+                                    ? '\n📝 ${j['note']}'
+                                    : ''}',
+                                style: const TextStyle(
+                                    fontSize: 11, fontFamily: 'Cairo'),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                    Icons.delete_outline, color: Colors.red,
+                                    size: 20),
+                                onPressed: () async {
+                                  if (jobId > 0) {
+                                    await widget.db.deleteWorkerDailyJob(jobId);
+                                    _loadDetails();
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
 
                       const SizedBox(height: 24),
 
-                      // Section: Settled Transactions
+                      // Section: Advances / Transactions
                       Text(
-                        lang == AppLanguage.arabic ? '💰 المدفوعات والسلف المؤرشفة (آخر 6 أشهر):' : 'Transactions archivées (6 mois) :',
+                        lang == AppLanguage.arabic
+                            ? '💰 سلفات ومدفوعات هذا الأسبوع:'
+                            : 'Avances de la semaine:',
                         style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontFamily: 'Cairo',
                             fontSize: 15,
-                            color: Colors.blueGrey),
+                            color: Colors.orange),
                       ),
                       const SizedBox(height: 8),
-                      _settledTxs.isEmpty
+                      _unsettledTxs.isEmpty
                           ? Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.grey[900] : Colors.grey[100],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                lang == AppLanguage.arabic
-                                    ? 'لا يوجد أرشيف مدفوعات لهذا العامل'
-                                    : 'Aucune archive disponible',
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[900] : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          lang == AppLanguage.arabic
+                              ? 'لا توجد سلفات مسجلة هذا الأسبوع'
+                              : 'Aucune avance cette semaine',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                          : ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _unsettledTxs.length,
+                        itemBuilder: (context, idx) {
+                          final t = _unsettledTxs[idx];
+                          final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
+                          final note = t['note']?.toString() ?? '';
+                          final type = t['transaction_type'] == 'advance'
+                              ? 'سلفة'
+                              : 'دفعة أجر';
+                          final dateStr = t['created_at'] != null
+                              ? t['created_at'].toString().split('T')[0]
+                              : '';
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            child: ListTile(
+                              title: Text(
+                                '$amt د.ج ($type)',
                                 style: const TextStyle(
                                     fontFamily: 'Cairo',
+                                    fontWeight: FontWeight.bold,
                                     fontSize: 13,
-                                    color: Colors.grey),
-                                textAlign: TextAlign.center,
+                                    color: Colors.red),
                               ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _settledTxs.length,
-                              itemBuilder: (context, idx) {
-                                final t = _settledTxs[idx];
-                                final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
-                                final note = t['note']?.toString() ?? '';
-                                final dateStr = _formatDateTime(t['settled_at']);
-
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  elevation: 1,
-                                  color: isDark ? Colors.grey[900] : Colors.grey[50],
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12)),
-                                  child: ListTile(
-                                    title: Text(
-                                      '$amt د.ج',
-                                      style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13),
-                                    ),
-                                     subtitle: Text(
-                                       '${_formatNote(note, lang)}\n📅 ${_tr("تاريخ التسوية:", "Date de règlement:", "Settlement Date:", lang)} $dateStr',
-                                       style: const TextStyle(fontSize: 11),
-                                     ),
-                                  ),
-                                );
-                              },
+                              subtitle: Text(
+                                '${_formatNote(note, lang)}\n📅 $dateStr',
+                                style: const TextStyle(fontSize: 11),
+                              ),
                             ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
+              ),
+              // Net accounting summary and Settle button
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[900] : Colors.grey[100],
+                  border: Border(
+                    top: BorderSide(
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade300),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          lang == AppLanguage.arabic
+                              ? 'صافي المستحق للأسبوع:'
+                              : 'Net dû pour la semaine :',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15),
+                        ),
+                        Text(
+                          '$netDue د.ج',
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: netDue >= 0
+                                ? Colors.green.shade600
+                                : Colors.red.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (!widget.readOnly)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showPaymentDialog(netDue),
+                          icon: const Icon(Icons.handshake),
+                          label: Text(
+                            lang == AppLanguage.arabic
+                                ? 'تسجيل دفعة وتسوية الحساب'
+                                : 'Enregistrer paiement & Clôturer',
+                            style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: Colors.teal,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // TAB 2: Archives (Settled)
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Section: Settled items
+                Text(
+                  lang == AppLanguage.arabic
+                      ? '🛠️ الأعمال المؤرشفة المسواة (آخر 6 أشهر):'
+                      : 'Travaux archivés (6 mois) :',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 15,
+                      color: Colors.blueGrey),
+                ),
+                const SizedBox(height: 8),
+                _settledAllocs.isEmpty
+                    ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.grey[900] : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    lang == AppLanguage.arabic
+                        ? 'لا يوجد أرشيف أعمال لهذا العامل'
+                        : 'Aucune archive disponible',
+                    style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+                    : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _settledAllocs.length,
+                  itemBuilder: (context, idx) {
+                    final a = _settledAllocs[idx];
+                    final windowType = a['window_type']?.toString() ?? 'Window';
+                    final int largeur = (a['largeur'] as num?)?.toInt() ?? 0;
+                    final int hauteur = (a['hauteur'] as num?)?.toInt() ?? 0;
+                    final int qty = (a['quantity'] as num?)?.toInt() ?? 0;
+                    final price = (a['worker_price'] as num?)?.toDouble() ??
+                        0.0;
+                    final total = qty * price;
+                    final dateStr = _formatDateTime(a['settled_at']);
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      elevation: 1,
+                      color: isDark ? Colors.grey[900] : Colors.grey[50],
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        title: Text(
+                          '${Localization.translate(windowType,
+                              lang)} ($largeur x $hauteur) | $qty قطعة',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'الزبون: ${a['firstname'] ??
+                                  ''} ${a['lastname'] ?? ''}'
+                                  .trim()
+                                  .isNotEmpty
+                                  ? 'الزبون: ${a['firstname'] ??
+                                  ''} ${a['lastname'] ?? ''}'.trim()
+                                  : 'الزبون: غير محدد',
+                              style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey,
+                                  fontSize: 12),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'سعر القطعة: $price د.ج | المجموع: $total د.ج\n📅 تاريخ التسوية: $dateStr',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                        leading: price == 0.0
+                            ? TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            backgroundColor: Colors.red.withOpacity(0.08),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () => _showAllocationPriceDialog(a),
+                          icon: const Icon(Icons.edit, size: 14),
+                          label: const Text(
+                            'إدخال السعر',
+                            style: TextStyle(fontFamily: 'Cairo',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        )
+                            : const Icon(Icons.open_in_new, size: 16,
+                            color: Colors.blue),
+                        onTap: () => _showAllocationDetailsDialog(a),
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 24),
+
+                // Section: Settled Transactions
+                Text(
+                  lang == AppLanguage.arabic
+                      ? '💰 المدفوعات والسلف المؤرشفة (آخر 6 أشهر):'
+                      : 'Transactions archivées (6 mois) :',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 15,
+                      color: Colors.blueGrey),
+                ),
+                const SizedBox(height: 8),
+                _settledTxs.isEmpty
+                    ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.grey[900] : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    lang == AppLanguage.arabic
+                        ? 'لا يوجد أرشيف مدفوعات لهذا العامل'
+                        : 'Aucune archive disponible',
+                    style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+                    : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _settledTxs.length,
+                  itemBuilder: (context, idx) {
+                    final t = _settledTxs[idx];
+                    final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
+                    final note = t['note']?.toString() ?? '';
+                    final dateStr = _formatDateTime(t['settled_at']);
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      elevation: 1,
+                      color: isDark ? Colors.grey[900] : Colors.grey[50],
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        title: Text(
+                          '$amt د.ج',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          '${_formatNote(note, lang)}\n📅 ${_tr(
+                              "تاريخ التسوية:", "Date de règlement:",
+                              "Settlement Date:", lang)} $dateStr',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
+          ),
+        ],
+      ),
     );
   }
 }

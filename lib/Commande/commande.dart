@@ -185,18 +185,180 @@ class _CommandeState extends State<Commande> {
     });
   }
 
+  final Map<String, TextEditingController> _orderColumnControllers = {
+    'id': TextEditingController(),
+    'client_project': TextEditingController(),
+    'date': TextEditingController(),
+    'total': TextEditingController(),
+    'advance': TextEditingController(),
+    'remaining': TextEditingController(),
+    'status': TextEditingController(),
+    'creator': TextEditingController(),
+  };
+
+  String? _orderSortColumn;
+  bool _orderSortAscending = true;
+
   @override
   void dispose() {
     _syncRefreshDebounce?.cancel();
     _dbUpdateSubscription?.cancel();
     _scrollController.dispose();
+    for (final controller in _orderColumnControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  void _clearAllOrderColumnFilters() {
+    setState(() {
+      for (final controller in _orderColumnControllers.values) {
+        controller.clear();
+      }
+      _orderSortColumn = null;
+      _orderSortAscending = true;
+    });
+  }
+
+  bool get _hasActiveOrderColumnFilters {
+    return _orderSortColumn != null ||
+        _orderColumnControllers.values.any((c) => c.text.trim().isNotEmpty);
+  }
+
+  List<Map<String, dynamic>> _applyOrderFiltersAndSort(
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
+    List<Map<String, dynamic>> filtered = rawData.where((d) {
+      final query = _searchQuery.toLowerCase().trim();
+      if (query.isNotEmpty) {
+        final first = (d['firstname'] ?? '').toString().toLowerCase();
+        final last = (d['lastname'] ?? '').toString().toLowerCase();
+        final phone = (d['phone'] ?? '').toString().toLowerCase();
+        final full = '$first $last $phone';
+        if (!query.split(' ').every((term) => full.contains(term))) {
+          return false;
+        }
+      }
+
+      for (final entry in _orderColumnControllers.entries) {
+        final colKey = entry.key;
+        final filterVal = entry.value.text.toLowerCase().trim();
+        if (filterVal.isEmpty) continue;
+
+        switch (colKey) {
+          case 'id':
+            final idStr = (d['id'] ?? '').toString().toLowerCase();
+            if (!idStr.contains(filterVal)) return false;
+            break;
+          case 'client_project':
+            final clientFirst = (d['firstname'] ?? '').toString().toLowerCase();
+            final clientLast = (d['lastname'] ?? '').toString().toLowerCase();
+            final clientName = '$clientFirst $clientLast'.trim();
+            final projectName = (d['project_name'] ?? '').toString().toLowerCase();
+            final cpStr = '$clientName $projectName'.trim();
+            if (!cpStr.contains(filterVal)) return false;
+            break;
+          case 'date':
+            final dt = formatDate(d).toLowerCase();
+            if (!dt.contains(filterVal)) return false;
+            break;
+          case 'total':
+            final netPayable = (d['net_payable'] as num?)?.toDouble() ?? (d['total'] as num?)?.toDouble() ?? 0.0;
+            final tStr = netPayable.toStringAsFixed(0);
+            if (!tStr.contains(filterVal)) return false;
+            break;
+          case 'advance':
+            final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final aStr = advance.toStringAsFixed(0);
+            if (!aStr.contains(filterVal)) return false;
+            break;
+          case 'remaining':
+            final netPayable = (d['net_payable'] as num?)?.toDouble() ?? (d['total'] as num?)?.toDouble() ?? 0.0;
+            final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final remaining = netPayable - advance;
+            final rStr = remaining.toStringAsFixed(0);
+            if (!rStr.contains(filterVal)) return false;
+            break;
+          case 'status':
+            final rawStatus = (d['status'] ?? 'Pending').toString();
+            final statusStr = _translateStatus(rawStatus, lang).toLowerCase();
+            if (!statusStr.contains(filterVal) && !rawStatus.toLowerCase().contains(filterVal)) return false;
+            break;
+          case 'creator':
+            final creator = _formatCreatorDisplay(d['creation_platform']?.toString()).toLowerCase();
+            if (!creator.contains(filterVal)) return false;
+            break;
+        }
+      }
+
+      return true;
+    }).toList();
+
+    if (_orderSortColumn != null) {
+      filtered.sort((a, b) {
+        int cmp = 0;
+        switch (_orderSortColumn) {
+          case 'id':
+            final idA = (a['id'] as num?)?.toInt() ?? 0;
+            final idB = (b['id'] as num?)?.toInt() ?? 0;
+            cmp = idA.compareTo(idB);
+            break;
+          case 'client_project':
+            final nameA = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}'.trim();
+            final nameB = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}'.trim();
+            cmp = nameA.compareTo(nameB);
+            break;
+          case 'date':
+            final dtA = (a['created_at'] ?? '').toString();
+            final dtB = (b['created_at'] ?? '').toString();
+            cmp = dtA.compareTo(dtB);
+            break;
+          case 'total':
+            final tA = (a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0;
+            final tB = (b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0;
+            cmp = tA.compareTo(tB);
+            break;
+          case 'advance':
+            final advA = (a['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final advB = (b['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            cmp = advA.compareTo(advB);
+            break;
+          case 'remaining':
+            final netA = (a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0;
+            final advA = (a['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final remA = netA - advA;
+
+            final netB = (b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0;
+            final advB = (b['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final remB = netB - advB;
+
+            cmp = remA.compareTo(remB);
+            break;
+          case 'status':
+            final stA = _translateStatus(a['status'] ?? 'Pending', lang);
+            final stB = _translateStatus(b['status'] ?? 'Pending', lang);
+            cmp = stA.compareTo(stB);
+            break;
+          case 'creator':
+            final crA = _formatCreatorDisplay(a['creation_platform']?.toString());
+            final crB = _formatCreatorDisplay(b['creation_platform']?.toString());
+            cmp = crA.compareTo(crB);
+            break;
+        }
+        return _orderSortAscending ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    final isDesktop = MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -206,60 +368,94 @@ class _CommandeState extends State<Commande> {
             lang,
           ),
         ),
-        centerTitle: true,
+        centerTitle: !isDesktop,
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
+        actions: [
+          if (isDesktop && settings.canCreateOrders())
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => CommandePage(db: db)),
+                  );
+                  if (!mounted) return;
+                  if (result == true) {
+                    setState(() {
+                      _data = db.readCommandesWithClients();
+                    });
+                  }
+                },
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                label: Text(
+                  lang == AppLanguage.arabic
+                      ? 'إضافة طلبية جديدة'
+                      : (lang == AppLanguage.french ? 'Nouvelle commande' : 'Add New Order'),
+                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF2563EB),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+        ],
       ),
       body: Column(
         children: [
-          // 🔍 Filters
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            margin: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              border: Border.all(width: 1, color: Theme.of(context).dividerColor),
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.filter_alt_outlined, color: Colors.blue),
-                    const SizedBox(width: 10),
-                    Text(
-                      Localization.translate(
-                        "Filters Commandes",
+          // 🔍 Filters — shown only on Mobile
+          if (!(MediaQuery.of(context).size.width >= 900 || Platform.isWindows))
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(width: 1, color: Theme.of(context).dividerColor),
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.filter_alt_outlined, color: Colors.blue),
+                      const SizedBox(width: 10),
+                      Text(
+                        Localization.translate(
+                          "Filters Commandes",
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val;
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: Localization.translate(
+                        "Search",
                         Provider.of<AppSettingsProvider>(context).language,
                       ),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      prefixIcon: const Icon(Icons.search),
+                      border: const OutlineInputBorder(),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: Localization.translate(
-                      "Search",
-                      Provider.of<AppSettingsProvider>(context).language,
-                    ),
-                    prefixIcon: const Icon(Icons.search),
-                    border: const OutlineInputBorder(),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           Expanded(
             child: Container(
               margin: const EdgeInsets.all(10),
@@ -482,6 +678,10 @@ class _CommandeState extends State<Commande> {
                     );
                   }
 
+                  if (MediaQuery.of(context).size.width >= 900 || Platform.isWindows) {
+                    return _buildDesktopOrdersTableView(context, rawData, lang);
+                  }
+
                   return ListView.builder(
                     controller: _scrollController,
                     itemCount: data.length,
@@ -687,7 +887,7 @@ class _CommandeState extends State<Commande> {
         ],
       ),
 
-      floatingActionButton: settings.canCreateOrders()
+      floatingActionButton: (!isDesktop && settings.canCreateOrders())
           ? FloatingActionButton(
               onPressed: () async {
                 final result = await Navigator.push(
@@ -2448,6 +2648,331 @@ class _CommandeState extends State<Commande> {
       }),
     );
     await ready.future;
+  }
+
+  String _formatCreatorDisplay(String? rawPlatform) {
+    String raw = (rawPlatform ?? '').trim();
+    if (raw.isNotEmpty &&
+        raw != 'unknown' &&
+        raw != 'تطبيق' &&
+        raw != 'phone' &&
+        raw != 'computer' &&
+        raw != 'web' &&
+        raw != 'هاتف' &&
+        raw != 'كمبيوتر') {
+      return raw;
+    }
+    return 'المدير / عامل الورشة';
+  }
+
+  Widget _buildOrderSortableHeaderCell({
+    required int flex,
+    required String label,
+    required String colKey,
+    required Color mutedColor,
+  }) {
+    final isSorted = _orderSortColumn == colKey;
+    return Expanded(
+      flex: flex,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (_orderSortColumn == colKey) {
+              if (_orderSortAscending) {
+                _orderSortAscending = false;
+              } else {
+                _orderSortColumn = null;
+                _orderSortAscending = true;
+              }
+            } else {
+              _orderSortColumn = colKey;
+              _orderSortAscending = true;
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isSorted ? const Color(0xFF2563EB) : mutedColor,
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: isSorted ? FontWeight.w900 : FontWeight.bold,
+                  ),
+                ),
+              ),
+              if (isSorted) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  _orderSortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                  size: 13,
+                  color: const Color(0xFF2563EB),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderFilterInputCell({
+    required int flex,
+    required TextEditingController controller,
+    required String hintText,
+    required BuildContext context,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: SizedBox(
+          height: 36,
+          child: TextField(
+            controller: controller,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(
+              fontSize: 11.5,
+              fontFamily: 'Cairo',
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(fontSize: 10.5, color: Colors.grey.shade400, fontFamily: 'Cairo'),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              filled: true,
+              fillColor: Theme.of(context).cardColor,
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+              ),
+              suffixIcon: controller.text.isNotEmpty
+                  ? InkWell(
+                      onTap: () {
+                        controller.clear();
+                        setState(() {});
+                      },
+                      child: const Icon(Icons.close, size: 14, color: Colors.red),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopOrdersTableView(
+    BuildContext context,
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
+    final cardColor = Theme.of(context).cardColor;
+    final contentColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
+    final mutedColor = Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
+
+    final data = _applyOrderFiltersAndSort(rawData, lang);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2563EB).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _buildOrderSortableHeaderCell(flex: 1, label: '#', colKey: 'id', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 3, label: Localization.translate('الزبون والمشروع', lang), colKey: 'client_project', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('تاريخ الإنشاء', lang), colKey: 'date', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المجموع الكلي (د.ج)', lang), colKey: 'total', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المدفوع', lang), colKey: 'advance', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المتبقي', lang), colKey: 'remaining', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('حالة الورشة', lang), colKey: 'status', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المُدخل', lang), colKey: 'creator', mutedColor: mutedColor),
+                    Expanded(
+                      flex: 1,
+                      child: Row(
+                        children: [
+                          Text(
+                            Localization.translate('إجراءات', lang),
+                            style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          if (_hasActiveOrderColumnFilters) ...[
+                            const SizedBox(width: 2),
+                            InkWell(
+                              onTap: _clearAllOrderColumnFilters,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Icon(Icons.clear_all, size: 12, color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _buildOrderFilterInputCell(flex: 1, controller: _orderColumnControllers['id']!, hintText: '#...', context: context),
+                    _buildOrderFilterInputCell(flex: 3, controller: _orderColumnControllers['client_project']!, hintText: 'زبون / مشروع...', context: context),
+                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['date']!, hintText: 'سنة-شهر...', context: context),
+                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['total']!, hintText: 'المجموع...', context: context),
+                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['advance']!, hintText: 'المدفوع...', context: context),
+                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['remaining']!, hintText: 'المتبقي...', context: context),
+                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['status']!, hintText: 'حالة الورشة...', context: context),
+                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['creator']!, hintText: 'المُدخل...', context: context),
+                    const Expanded(flex: 1, child: SizedBox.shrink()),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: data.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          Localization.translate("No matching results", lang),
+                          style: TextStyle(fontSize: 15, color: Colors.grey.shade600, fontFamily: 'Cairo'),
+                        ),
+                        if (_hasActiveOrderColumnFilters) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: _clearAllOrderColumnFilters,
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('إعادة ضبط البحث والتصفية', style: TextStyle(fontFamily: 'Cairo')),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    controller: _scrollController,
+                    itemCount: data.length,
+                    separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withOpacity(0.12)),
+                    itemBuilder: (context, index) {
+                      final order = data[index];
+                      final orderId = (order['id'] as num?)?.toInt() ?? 0;
+                      final clientFirst = order['firstname'] ?? '';
+                      final clientLast = order['lastname'] ?? '';
+                      final clientName = '$clientFirst $clientLast'.trim();
+                      final projectName = (order['project_name'] ?? '').toString().trim();
+                      final clientProject = projectName.isNotEmpty ? '$clientName ($projectName)' : (clientName.isEmpty ? 'زبون عام' : clientName);
+
+                      final netPayable = (order['net_payable'] as num?)?.toDouble() ?? (order['total'] as num?)?.toDouble() ?? 0.0;
+                      final advance = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
+                      final remaining = netPayable - advance;
+                      final status = (order['status'] ?? 'Pending').toString();
+                      final statusColor = _getStatusColor(status);
+                      final creator = _formatCreatorDisplay(order['creation_platform']?.toString());
+
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _showOrderOptions(context, order),
+                          child: Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                Expanded(flex: 1, child: Text('#$orderId', style: const TextStyle(color: Color(0xFF2563EB), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold))),
+                                Expanded(flex: 3, child: Text(clientProject, overflow: TextOverflow.ellipsis, style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.w600))),
+                                Expanded(flex: 2, child: Text(formatDate(order), style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
+                                Expanded(flex: 2, child: Text(netPayable.toStringAsFixed(0), style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.w600))),
+                                Expanded(flex: 2, child: Text(advance.toStringAsFixed(0), style: const TextStyle(color: Color(0xFF10B981), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.w600))),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    remaining.toStringAsFixed(0),
+                                    style: TextStyle(
+                                      color: remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(color: statusColor.withOpacity(0.13), borderRadius: BorderRadius.circular(12)),
+                                      child: Text(
+                                        _translateStatus(status, lang),
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w800, fontFamily: 'Cairo'),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(flex: 2, child: Text(creator, overflow: TextOverflow.ellipsis, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
+                                Expanded(
+                                  flex: 1,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.settings_suggest_rounded, size: 20, color: Color(0xFF2563EB)),
+                                    onPressed: () => _showOrderOptions(context, order),
+                                    tooltip: 'خصائص وخيارات الطلبية',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _dismissHeavyLoadingDialog() {

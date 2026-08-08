@@ -191,7 +191,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 50,
+          version: 52,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -202,7 +202,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 50,
+      version: 52,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -305,6 +305,21 @@ class SqlDatabase {
     try {
       await db.execute(
         "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Sections ADD COLUMN is_frame INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Sections ADD COLUMN is_sash INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0;',
       );
     } catch (_) {}
 
@@ -2236,6 +2251,45 @@ class SqlDatabase {
         );
       } catch (_) {}
     }
+
+    if (oldVersion < 51) {
+      try {
+        await db.execute('ALTER TABLE Client ADD COLUMN latitude REAL;');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE Client ADD COLUMN longitude REAL;');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 52) {
+      try {
+        await db.execute(
+          'ALTER TABLE Sections ADD COLUMN is_frame INTEGER NOT NULL DEFAULT 0;',
+        );
+      } catch (_) {}
+      try {
+        await db.execute(
+          'ALTER TABLE Sections ADD COLUMN is_sash INTEGER NOT NULL DEFAULT 0;',
+        );
+      } catch (_) {}
+      try {
+        await db.execute(
+          'ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0;',
+        );
+      } catch (_) {}
+      // Preserve the role implied by the old primary type.
+      try {
+        await db.execute(
+          "UPDATE Sections SET is_frame = 1 WHERE is_frame = 0 AND LOWER(type) = 'frame';",
+        );
+        await db.execute(
+          "UPDATE Sections SET is_sash = 1 WHERE is_sash = 0 AND LOWER(type) LIKE 'sash%';",
+        );
+        await db.execute(
+          "UPDATE Sections SET is_mullion = 1 WHERE is_mullion = 0 AND LOWER(type) = 'mullion';",
+        );
+      } catch (_) {}
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -2314,6 +2368,9 @@ class SqlDatabase {
       max_glass_thickness REAL NOT NULL DEFAULT 0.0,
       linked_parclose_double_id INTEGER,
       allows_side_cover INTEGER NOT NULL DEFAULT 1,
+      is_frame INTEGER NOT NULL DEFAULT 0,
+      is_sash INTEGER NOT NULL DEFAULT 0,
+      is_mullion INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (series_id) REFERENCES Series(id) ON DELETE CASCADE
     )
     ''');
@@ -3024,6 +3081,9 @@ class SqlDatabase {
     double maxGlassThickness = 0.0,
     int? linkedParcloseDoubleId,
     int allowsSideCover = 1,
+    int isFrame = 0,
+    int isSash = 0,
+    int isMullion = 0,
   }) async {
     Database? myDb = await db;
     var res = await myDb!.insert('Sections', {
@@ -3045,6 +3105,9 @@ class SqlDatabase {
       'max_glass_thickness': maxGlassThickness,
       'linked_parclose_double_id': linkedParcloseDoubleId,
       'allows_side_cover': allowsSideCover,
+      'is_frame': isFrame,
+      'is_sash': isSash,
+      'is_mullion': isMullion,
     });
     CloudSyncService().notifyChange();
     return res;
@@ -3158,17 +3221,44 @@ class SqlDatabase {
     return res;
   }
 
+  Future<int> updateClientCoordinates(int id, double latitude, double longitude) async {
+    Database? myDb = await db;
+    if (myDb == null) return 0;
+    try {
+      var res = await myDb.update(
+        'Client',
+        {
+          'latitude': latitude,
+          'longitude': longitude,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyChangeImmediate();
+      return res;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<int> deleteClient(dynamic id) {
     return _retryAfterDatabaseMove(() => _deleteClientOnce(id));
   }
 
   String get _currentCreationPlatform {
-    if (kIsWeb) return 'web';
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return 'computer';
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email ?? '';
+    final platformStr = kIsWeb
+        ? 'ويب'
+        : (Platform.isWindows || Platform.isLinux || Platform.isMacOS
+            ? 'كمبيوتر'
+            : 'هاتف');
+    if (email.isNotEmpty) {
+      final namePart = email.split('@').first;
+      return '$namePart ($platformStr)';
     }
-    if (Platform.isAndroid || Platform.isIOS) return 'phone';
-    return 'unknown';
+    return platformStr;
   }
 
   Future<int> _deleteClientOnce(dynamic id) async {
@@ -3838,6 +3928,47 @@ class SqlDatabase {
       debugPrint('Error computing order sequence number: $e');
     }
     return (orderId % 1000).abs();
+  }
+
+  /// Returns a short, stable client reference for documents. Client primary
+  /// keys are distributed IDs, so displaying them would expose a long
+  /// timestamp-like value instead of a usable client number.
+  Future<int> getClientSequenceNumber(int clientId) async {
+    if (clientId <= 0) return 0;
+    if (clientId < 100000) return clientId;
+
+    try {
+      final myDb = await db;
+      if (myDb == null) return 0;
+      final rows = await myDb.query(
+        'Client',
+        columns: ['created_at'],
+        where: 'id = ? OR CAST(id AS TEXT) = ?',
+        whereArgs: [clientId, clientId.toString()],
+        limit: 1,
+      );
+      if (rows.isEmpty) return 0;
+
+      final createdAt = rows.first['created_at']?.toString().trim() ?? '';
+      final countResult = createdAt.isEmpty
+          ? await myDb.rawQuery(
+              'SELECT COUNT(*) AS seq FROM Client WHERE id <= ?',
+              [clientId],
+            )
+          : await myDb.rawQuery(
+              '''
+              SELECT COUNT(*) AS seq FROM Client
+              WHERE created_at < ? OR (created_at = ? AND id <= ?)
+              ''',
+              [createdAt, createdAt, clientId],
+            );
+      if (countResult.isEmpty) return 0;
+      final sequence = (countResult.first['seq'] as num?)?.toInt() ?? 0;
+      return sequence > 0 ? sequence : 0;
+    } catch (e) {
+      debugPrint('Error computing client sequence number: $e');
+      return 0;
+    }
   }
 
   Future<Map<String, dynamic>?> readCommandeWithClientById(int id) async {
@@ -11489,5 +11620,29 @@ class SqlDatabase {
       ],
     );
     CloudSyncService().notifyChange();
+  }
+
+  Future<Map<int, String>> getOrderAssignedWorkersMap() async {
+    Database? myDb = await db;
+    if (myDb == null) return {};
+    try {
+      final rows = await myDb.rawQuery('''
+        SELECT cd.id_commandes as order_id, COALESCE(NULLIF(TRIM(e.name), ''), wa.worker_uid) as worker_name
+        FROM WorkerAllocations wa
+        JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
+        LEFT JOIN Employees e ON wa.worker_uid = CAST(e.id AS TEXT) OR wa.worker_uid = e.phone
+      ''');
+      final Map<int, Set<String>> orderWorkers = {};
+      for (final row in rows) {
+        final orderId = (row['order_id'] as num?)?.toInt() ?? 0;
+        final name = row['worker_name']?.toString().trim() ?? '';
+        if (orderId > 0 && name.isNotEmpty) {
+          orderWorkers.putIfAbsent(orderId, () => {}).add(name);
+        }
+      }
+      return orderWorkers.map((key, val) => MapEntry(key, val.join(', ')));
+    } catch (_) {
+      return {};
+    }
   }
 }

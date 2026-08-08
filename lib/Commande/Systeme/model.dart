@@ -935,6 +935,7 @@ class WindowSnapshot {
   final bool hasFramePlintheBottom;
   final List<WindowZone> zones;
   final Map<String, MullionProfileType> mullionProfiles;
+  final Map<String, Map<String, dynamic>> mullionSectionOverrides;
   final Map<String, dynamic>? selectedDbColor;
   final Map<String, dynamic> componentOverrides;
   final double archHeight;
@@ -963,6 +964,7 @@ class WindowSnapshot {
     this.hasFramePlintheBottom,
     this.zones,
     this.mullionProfiles,
+    this.mullionSectionOverrides,
     this.selectedDbColor,
     this.componentOverrides,
     this.archHeight,
@@ -1476,12 +1478,11 @@ class WindowModel extends ChangeNotifier {
     if (systemMode == 'sliding') return true;
     if (systemMode != 'mixed') return false;
 
-    final occupiedZones =
-        zones.where((zone) => zone.content != ZoneContent.empty).toList();
+    final occupiedZones = zones
+        .where((zone) => zone.content != ZoneContent.empty)
+        .toList();
     return occupiedZones.isNotEmpty &&
-        occupiedZones.every(
-          (zone) => zone.content == ZoneContent.slidingSash,
-        );
+        occupiedZones.every((zone) => zone.content == ZoneContent.slidingSash);
   }
 
   bool _isPvcSeries(AluminumSeries? series) {
@@ -1497,13 +1498,24 @@ class WindowModel extends ChangeNotifier {
   }
 
   bool get isPVC => _isPvcSeries(
-        usesSlidingPrimaryProfiles ? activeSlidingSeries : activeSeries,
-      );
+    usesSlidingPrimaryProfiles ? activeSlidingSeries : activeSeries,
+  );
+
+  /// Series and override used for the visible outer frame. In a mixed system
+  /// the opening series owns the outer frame, while a sliding-only system uses
+  /// the sliding series.
+  AluminumSeries? get activeFrameSeries => usesSlidingPrimaryProfiles
+      ? (activeSlidingSeries ?? activeSeries)
+      : activeSeries;
+
+  Map<String, dynamic>? get activeFrameOverride =>
+      usesSlidingPrimaryProfiles ? slidingFrameOverride : frameOverride;
+
+  bool get isFramePVC => _isPvcSeries(activeFrameSeries);
 
   /// Material of a sliding zone.  This must stay independent from [isPVC]
   /// because a mixed drawing has two independently selected series.
-  bool get isSlidingPVC =>
-      _isPvcSeries(activeSlidingSeries ?? activeSeries);
+  bool get isSlidingPVC => _isPvcSeries(activeSlidingSeries ?? activeSeries);
 
   double profileThickness;
 
@@ -1518,8 +1530,119 @@ class WindowModel extends ChangeNotifier {
 
   double get mullionThickness {
     final s = getSectionByType('mullion');
-    if (s != null) return s.visibleWidth;
+    if (s != null) {
+      if (s.visibleWidth > 0) return s.visibleWidth;
+      if (s.thickness > 0) return s.thickness;
+    }
     return profileThickness;
+  }
+
+  String _mullionKey(bool isHorizontal, double position) =>
+      '${isHorizontal ? 'H' : 'V'}_${position.toStringAsFixed(1)}';
+
+  AluminumSection? _frameForMullion(MullionProfileType profileType) {
+    final series = activeFrameSeries;
+    if (series == null) return null;
+
+    final frames = series.sections
+        .where(
+          (section) => section.isFrame || section.type.toLowerCase() == 'frame',
+        )
+        .toList();
+    if (frames.isEmpty) return null;
+
+    if (profileType == MullionProfileType.grooved) {
+      for (final frame in frames) {
+        final code = frame.code.toLowerCase();
+        final name = frame.name.toLowerCase();
+        if (code.contains('140') || name.contains('140')) return frame;
+      }
+    }
+
+    if (selectedFrameCode != null && selectedFrameCode!.isNotEmpty) {
+      for (final frame in frames) {
+        if (frame.code == selectedFrameCode) return frame;
+      }
+    }
+
+    return frames.first;
+  }
+
+  /// Returns the selected profile for a mullion. A null result intentionally
+  /// means that the standard mullion profile should be used.
+  Map<String, dynamic>? effectiveMullionSectionAt(
+    bool isHorizontal,
+    double position,
+  ) {
+    final key = _mullionKey(isHorizontal, position);
+    final override = mullionSectionOverrides[key];
+    if (override != null) return Map<String, dynamic>.from(override);
+
+    final profileType = mullionProfiles[key] ?? MullionProfileType.standard;
+    if (profileType == MullionProfileType.standard) return null;
+
+    if (profileType == MullionProfileType.flat && activeFrameOverride != null) {
+      return Map<String, dynamic>.from(activeFrameOverride!);
+    }
+
+    return _frameForMullion(profileType)?.toMap();
+  }
+
+  bool _isEnabledFlag(Object? value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      return value.trim().toLowerCase() == 'true' || value.trim() == '1';
+    }
+    return false;
+  }
+
+  /// A flat mullion is represented by two frame profiles. An explicit flag on
+  /// a per-mullion override takes precedence, allowing imported orders to
+  /// retain their original construction.
+  bool isDoubleFrameMullionAt(bool isHorizontal, double position) {
+    final key = _mullionKey(isHorizontal, position);
+    final override = mullionSectionOverrides[key];
+    if (override != null) {
+      for (final flag in const [
+        'is_double_frame',
+        'isDoubleFrame',
+        'double_frame',
+        'doubleFrame',
+      ]) {
+        if (override.containsKey(flag)) return _isEnabledFlag(override[flag]);
+      }
+    }
+    return mullionProfiles[key] == MullionProfileType.flat;
+  }
+
+  double _sectionVisibleWidth(Map<String, dynamic>? section) {
+    if (section == null) return 0.0;
+    for (final field in const ['visible_width', 'thickness']) {
+      final value = section[field];
+      if (value is num && value > 0) return value.toDouble();
+    }
+    return 0.0;
+  }
+
+  /// Uses the widest selected mullion while finding adjoining zones. This
+  /// keeps a custom frame-140 or double-frame selection from being skipped.
+  double get maximumMullionThickness {
+    var maximum = mullionThickness;
+    for (final section in mullionSectionOverrides.values) {
+      final width = _sectionVisibleWidth(section);
+      if (width > maximum) maximum = width;
+    }
+    for (final profileType in mullionProfiles.values) {
+      if (profileType == MullionProfileType.standard) continue;
+      final width = _sectionVisibleWidth(
+        profileType == MullionProfileType.flat ? activeFrameOverride : null,
+      );
+      final frameWidth = _frameForMullion(profileType)?.visibleWidth ?? 0.0;
+      if (width > maximum) maximum = width;
+      if (frameWidth > maximum) maximum = frameWidth;
+    }
+    return maximum;
   }
 
   double get plintheHeight {
@@ -1649,18 +1772,34 @@ class WindowModel extends ChangeNotifier {
   AluminumSection? selectedSideCover;
 
   List<AluminumSection> get availableSideCovers {
-    if (activeSeries == null) return [];
-    return activeSeries!.sections.where((s) {
+    // The cover must follow the series that draws the visible outer frame.
+    // In mixed/sliding drawings this can be different from activeSeries.
+    final series = activeFrameSeries ?? activeSeries;
+    if (series == null) return [];
+    return series.sections.where((s) {
       final type = s.type.toLowerCase();
+      final name = s.name.toLowerCase();
       return type.contains('couvre') ||
           type.contains('side_cover') ||
           type.contains('غطاء') ||
-          type.contains('جانبي');
+          type.contains('جانبي') ||
+          name.contains('couvre') ||
+          name.contains('cover') ||
+          name.contains('غطاء') ||
+          name.contains('جانبي') ||
+          // TPR 40000 may encode the cover in the integrated frame only.
+          s.couvreJointWidth > 0;
     }).toList();
   }
 
   bool get isSideCoverAllowed {
     final frame = getSectionByType('frame');
+    // A cover found in the active frame series is always drawable when the
+    // user enables it. This protects older TPR catalogue rows whose legacy
+    // allows_side_cover flag was stored as zero.
+    if (availableSideCovers.isNotEmpty || (frame?.couvreJointWidth ?? 0) > 0) {
+      return true;
+    }
     if (frame != null && !frame.allowsSideCover) {
       return false;
     }
@@ -1716,10 +1855,21 @@ class WindowModel extends ChangeNotifier {
 
   double get sideCoverWidth {
     if (frameOverride != null) {
-      final double? w =
-          (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ??
-          (frameOverride!['visible_width'] as num?)?.toDouble();
-      if (w != null && w > 0) return w;
+      final double w =
+          (frameOverride!['couvre_joint_width'] as num?)?.toDouble() ?? 0.0;
+      if (w > 0) return w;
+    }
+
+    // For a standalone TPR cover its width must win over the ordinary frame.
+    if (selectedSideCover != null) {
+      final primary = sideCoverUseSecondWidth
+          ? selectedSideCover!.visibleWidth
+          : selectedSideCover!.couvreJointWidth;
+      final secondary = sideCoverUseSecondWidth
+          ? selectedSideCover!.couvreJointWidth
+          : selectedSideCover!.visibleWidth;
+      if (primary > 0) return primary;
+      if (secondary > 0) return secondary;
     }
 
     final frame = getSectionByType('frame');
@@ -1729,12 +1879,6 @@ class WindowModel extends ChangeNotifier {
         return frame.visibleWidth!;
     }
 
-    if (selectedSideCover != null) {
-      final w1 = selectedSideCover!.couvreJointWidth;
-      final w2 = selectedSideCover!.visibleWidth;
-      if (w2 > 0) return w2;
-      if (w1 > 0) return w1;
-    }
     return 40.0;
   }
 
@@ -1786,6 +1930,7 @@ class WindowModel extends ChangeNotifier {
 
   List<WindowZone> zones = [];
   Map<String, MullionProfileType> mullionProfiles = {};
+  Map<String, Map<String, dynamic>> mullionSectionOverrides = {};
   String? primaryMullionAxis;
   SelectionInfo selection = SelectionInfo.none;
   String? activeSubZone;
@@ -1830,7 +1975,11 @@ class WindowModel extends ChangeNotifier {
 
   Future<void> _loadColorsForProfile(int profileId) async {
     final previousColorId = _selectedDbColor?['id'];
-    final previousColorName = (_selectedDbColor?['name'] ?? _selectedDbColor?['color_name'])?.toString().toLowerCase().trim();
+    final previousColorName =
+        (_selectedDbColor?['name'] ?? _selectedDbColor?['color_name'])
+            ?.toString()
+            .toLowerCase()
+            .trim();
     availableColors = await db.getColorsForProfile(profileId);
 
     Map<String, dynamic>? selectedColor;
@@ -1842,10 +1991,18 @@ class WindowModel extends ChangeNotifier {
         }
       }
     }
-    if (selectedColor == null && previousColorName != null && previousColorName.isNotEmpty) {
+    if (selectedColor == null &&
+        previousColorName != null &&
+        previousColorName.isNotEmpty) {
       for (final color in availableColors) {
-        final cName = (color['name'] ?? color['color_name'])?.toString().toLowerCase().trim();
-        if (cName == previousColorName || (cName != null && (cName.contains(previousColorName) || previousColorName.contains(cName)))) {
+        final cName = (color['name'] ?? color['color_name'])
+            ?.toString()
+            .toLowerCase()
+            .trim();
+        if (cName == previousColorName ||
+            (cName != null &&
+                (cName.contains(previousColorName) ||
+                    previousColorName.contains(cName)))) {
           selectedColor = color;
           break;
         }
@@ -1853,14 +2010,36 @@ class WindowModel extends ChangeNotifier {
     }
     if (selectedColor == null && _selectedDbColor != null) {
       selectedColor = _selectedDbColor;
-    } else {
-      selectedColor ??= availableColors.isNotEmpty ? availableColors.first : null;
     }
+    // A new drawing must begin with the white finish, independently of the
+    // order in which the colours happen to be stored in the database.
+    selectedColor ??= _defaultFrameColor();
 
     _selectedDbColor = selectedColor;
     for (final zone in zones) {
       zone.selectedDbColor = selectedColor;
     }
+  }
+
+  Map<String, dynamic>? _defaultFrameColor() {
+    for (final color in availableColors) {
+      final name = (color['name'] ?? color['color_name'] ?? '')
+          .toString()
+          .toLowerCase()
+          .trim();
+      final hex = (color['hex_code'] ?? color['hex'] ?? '')
+          .toString()
+          .replaceAll('#', '')
+          .toLowerCase();
+      if (name.contains('white') ||
+          name.contains('blanc') ||
+          name.contains('أبيض') ||
+          hex == 'ffffff' ||
+          hex == 'fff') {
+        return color;
+      }
+    }
+    return availableColors.isNotEmpty ? availableColors.first : null;
   }
 
   WindowModel({
@@ -2967,7 +3146,9 @@ class WindowModel extends ChangeNotifier {
       t = (sash['thickness'] as num?)?.toDouble() ?? 0.0;
       if (t > 0 && t <= 80.0) return t;
     }
-    if (!useSliding && type.toLowerCase() == 'sash' && selectedSashCode.isNotEmpty) {
+    if (!useSliding &&
+        type.toLowerCase() == 'sash' &&
+        selectedSashCode.isNotEmpty) {
       for (var sec in series.sections) {
         if (sec.type.toLowerCase() == 'sash' && sec.code == selectedSashCode) {
           return sec.visibleWidth;
@@ -2985,9 +3166,7 @@ class WindowModel extends ChangeNotifier {
   AluminumSection? getSectionByType(String type) {
     final useSliding =
         usesSlidingPrimaryProfiles && activeSlidingSeries != null;
-    final series = useSliding
-        ? activeSlidingSeries!
-        : activeSeries;
+    final series = useSliding ? activeSlidingSeries! : activeSeries;
     if (series == null) return null;
     final normalizedType = type.toLowerCase();
 
@@ -3023,7 +3202,25 @@ class WindowModel extends ChangeNotifier {
       }
       if (result == null) {
         for (var sec in series.sections) {
-          if (sec.type.toLowerCase() == normalizedType ||
+          final sectionType = sec.type.toLowerCase();
+          final sectionName = sec.name.toLowerCase();
+          final isMullion =
+              normalizedType == 'mullion' &&
+              (sectionType == 'mullion' ||
+                  sectionType.contains('traverse') ||
+                  sectionType.contains('meneau') ||
+                  sectionType.contains('montant') ||
+                  sectionType.contains('تقسيم') ||
+                  sectionName.contains('mullion') ||
+                  sectionName.contains('traverse') ||
+                  sectionName.contains('meneau') ||
+                  sectionName.contains('montant') ||
+                  sectionName.contains('تقسيم')) &&
+              !sectionType.contains('sash') &&
+              !sectionType.contains('ouvrant') &&
+              !sectionType.contains('ضلفة');
+          if (sectionType == normalizedType ||
+              isMullion ||
               (normalizedType == 'frame' && sec.isFrame)) {
             result = sec;
             break;
@@ -3152,6 +3349,9 @@ class WindowModel extends ChangeNotifier {
 
   Future<void> setActiveSeries(AluminumSeries series) async {
     _saveSnapshot();
+    final double previousFrameThickness = profileThickness;
+    final double previousMullionThickness = mullionThickness;
+    final bool affectsVisibleDivisions = !usesSlidingPrimaryProfiles;
     final bool seriesChanged =
         (activeSeries != null && activeSeries!.id != series.id) ||
         (activeSeries == null && loadedSeriesId == null) ||
@@ -3181,6 +3381,14 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('حديد الظلفة (Renfort Sash)');
       componentOverrides.remove('حديد الظلفة الخاص بالمفاصل');
       _clearAccessoryOverrides();
+
+      // Profile identifiers from another series (for example TPR) cannot be
+      // reused safely.  Let the newly selected series provide its own standard
+      // mullion instead of retaining an incompatible old shape.
+      if (affectsVisibleDivisions) {
+        mullionProfiles.clear();
+        mullionSectionOverrides.clear();
+      }
 
       // Reset plinthe state: check if new series has a plinthe section
       // If it doesn't, disable plinthe and restore hasBottomFrame
@@ -4079,6 +4287,12 @@ class WindowModel extends ChangeNotifier {
     }
 
     updateProfileThickness();
+    if (seriesChanged && affectsVisibleDivisions) {
+      _synchronizeDivisionGapsForSeries(
+        previousFrameThickness,
+        previousMullionThickness,
+      );
+    }
     updateAllSashThicknesses();
     final covers = availableSideCovers;
     if (covers.isNotEmpty &&
@@ -4099,6 +4313,9 @@ class WindowModel extends ChangeNotifier {
 
   Future<void> setActiveSlidingSeries(AluminumSeries series) async {
     _saveSnapshot();
+    final double previousFrameThickness = profileThickness;
+    final double previousMullionThickness = mullionThickness;
+    final bool affectsVisibleDivisions = usesSlidingPrimaryProfiles;
     final bool seriesChanged =
         (activeSlidingSeries != null && activeSlidingSeries!.id != series.id) ||
         (activeSlidingSeries == null && loadedSlidingSeriesId == null) ||
@@ -4112,6 +4329,11 @@ class WindowModel extends ChangeNotifier {
       slidingSashOverride = null;
       _clearSlidingProfileOverrides();
       _clearAccessoryOverrides();
+
+      if (affectsVisibleDivisions) {
+        mullionProfiles.clear();
+        mullionSectionOverrides.clear();
+      }
 
       // Auto-matching opening series for System Mixed
       if (activeSeries != null) {
@@ -4251,6 +4473,12 @@ class WindowModel extends ChangeNotifier {
     // Only affects a drawing made entirely of sliding zones in mixed mode.
     // A mixed drawing that still has opening zones keeps its opening frame.
     updateProfileThickness();
+    if (seriesChanged && affectsVisibleDivisions) {
+      _synchronizeDivisionGapsForSeries(
+        previousFrameThickness,
+        previousMullionThickness,
+      );
+    }
 
     await _loadColorsForProfile(series.profileId);
     final d = await db.db;
@@ -4712,6 +4940,9 @@ class WindowModel extends ChangeNotifier {
         hasFramePlintheBottom,
         zones.map((z) => z.clone()).toList(),
         Map.from(mullionProfiles),
+        mullionSectionOverrides.map(
+          (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
+        ),
         selectedDbColor != null ? Map.from(selectedDbColor!) : null,
         Map.from(componentOverrides),
         archHeight,
@@ -5143,6 +5374,9 @@ class WindowModel extends ChangeNotifier {
         hasFramePlintheBottom,
         zones.map((z) => z.clone()).toList(),
         Map.from(mullionProfiles),
+        mullionSectionOverrides.map(
+          (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
+        ),
         selectedDbColor != null ? Map.from(selectedDbColor!) : null,
         Map.from(componentOverrides),
         archHeight,
@@ -5174,6 +5408,9 @@ class WindowModel extends ChangeNotifier {
     hasFramePlintheBottom = snap.hasFramePlintheBottom;
     zones = snap.zones;
     mullionProfiles = snap.mullionProfiles;
+    mullionSectionOverrides = snap.mullionSectionOverrides.map(
+      (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
+    );
     _selectedDbColor = snap.selectedDbColor;
     componentOverrides = snap.componentOverrides;
     archHeight = snap.archHeight;
@@ -5212,6 +5449,9 @@ class WindowModel extends ChangeNotifier {
         hasFramePlintheBottom,
         zones.map((z) => z.clone()).toList(),
         Map.from(mullionProfiles),
+        mullionSectionOverrides.map(
+          (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
+        ),
         selectedDbColor != null ? Map.from(selectedDbColor!) : null,
         Map.from(componentOverrides),
         archHeight,
@@ -5243,6 +5483,9 @@ class WindowModel extends ChangeNotifier {
     hasFramePlintheBottom = snap.hasFramePlintheBottom;
     zones = snap.zones;
     mullionProfiles = snap.mullionProfiles;
+    mullionSectionOverrides = snap.mullionSectionOverrides.map(
+      (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
+    );
     _selectedDbColor = snap.selectedDbColor;
     componentOverrides = snap.componentOverrides;
     archHeight = snap.archHeight;
@@ -5310,8 +5553,7 @@ class WindowModel extends ChangeNotifier {
     // camera then fits the window *and* its dimension lines, rather than
     // shrinking the drawing by an arbitrary percentage.
     const double viewportPadding = 24.0;
-    final bool isTallViewport =
-        widgetSize.height > widgetSize.width * 1.15;
+    final bool isTallViewport = widgetSize.height > widgetSize.width * 1.15;
     final double preferredCenterY =
         widgetSize.height * (isTallViewport ? 0.61 : 0.52);
 
@@ -5335,7 +5577,9 @@ class WindowModel extends ChangeNotifier {
 
     // The dimension labels sit outside the physical frame.  Include their
     // space in the camera bounds so their text and ticks never get clipped.
-    final double sideCoverExtension = hasSideCovers ? sideCoverWidth + 15.0 : 0.0;
+    final double sideCoverExtension = hasSideCovers
+        ? sideCoverWidth + 15.0
+        : 0.0;
     final double dimensionLeft = 90.0 + sideCoverExtension;
     final double dimensionRight = 90.0 + sideCoverExtension;
     final double dimensionTop =
@@ -5422,17 +5666,17 @@ class WindowModel extends ChangeNotifier {
         for (int j = i + 1; j < zones.length; j++) {
           final z1 = zones[i].boundary;
           final z2 = zones[j].boundary;
-          if ((z1.bottom - z2.top).abs() <= mullionT + 2 ||
-              (z2.bottom - z1.top).abs() <= mullionT + 2) {
+          if ((z1.bottom - z2.top).abs() <= mullionT + 4 ||
+              (z2.bottom - z1.top).abs() <= mullionT + 4) {
             double yCenter = (z1.bottom + z2.top) / 2;
-            if ((z2.bottom - z1.top).abs() <= mullionT + 2) {
+            if ((z2.bottom - z1.top).abs() <= mullionT + 4) {
               yCenter = (z2.bottom + z1.top) / 2;
             }
             double overlapLeft = math.max(z1.left, z2.left);
             double overlapRight = math.min(z1.right, z2.right);
             if (overlapLeft < overlapRight &&
-                pos.dx >= overlapLeft &&
-                pos.dx <= overlapRight &&
+                pos.dx >= overlapLeft - 10 &&
+                pos.dx <= overlapRight + 10 &&
                 (pos.dy - yCenter).abs() < hitSlop) {
               selection = SelectionInfo(
                 type: SelectionType.mullion,
@@ -5447,17 +5691,17 @@ class WindowModel extends ChangeNotifier {
               return;
             }
           }
-          if ((z1.right - z2.left).abs() <= mullionT + 2 ||
-              (z2.right - z1.left).abs() <= mullionT + 2) {
+          if ((z1.right - z2.left).abs() <= mullionT + 4 ||
+              (z2.right - z1.left).abs() <= mullionT + 4) {
             double xCenter = (z1.right + z2.left) / 2;
-            if ((z2.right - z1.left).abs() <= mullionT + 2) {
+            if ((z2.right - z1.left).abs() <= mullionT + 4) {
               xCenter = (z2.right + z1.left) / 2;
             }
             double overlapTop = math.max(z1.top, z2.top);
             double overlapBottom = math.min(z1.bottom, z2.bottom);
             if (overlapTop < overlapBottom &&
-                pos.dy >= overlapTop &&
-                pos.dy <= overlapBottom &&
+                pos.dy >= overlapTop - 10 &&
+                pos.dy <= overlapBottom + 10 &&
                 (pos.dx - xCenter).abs() < hitSlop) {
               selection = SelectionInfo(
                 type: SelectionType.mullion,
@@ -5477,109 +5721,109 @@ class WindowModel extends ChangeNotifier {
     }
     for (var z in zones) {
       if (z.boundary.contains(pos)) {
-        if (isDrawingMode &&
-            drawingMode == 'split' &&
+        final sashT =
             (z.content == ZoneContent.singleSash ||
-                z.content == ZoneContent.doubleSash)) {
-          final sashT = z.sashThickness ?? _calculateSashThickness(z.isSash105);
-          final isDouble = z.content == ZoneContent.doubleSash;
+                z.content == ZoneContent.doubleSash)
+            ? (z.sashThickness ?? _calculateSashThickness(z.isSash105))
+            : 0.0;
+        final isDouble = z.content == ZoneContent.doubleSash;
 
-          SelectionInfo? checkSashDivisions(Rect sashRect, bool isRight) {
-            final glassR = getSafeGlassRect(sashRect, sashT);
-            final hPositions = isRight
-                ? z.rightInnerHPositions
-                : z.innerHPositions;
-            final vPositions = isRight
-                ? z.rightInnerVPositions
-                : z.innerVPositions;
-            final innerH = isRight ? z.rightInnerH : z.innerH;
-            final innerV = isRight ? z.rightInnerV : z.innerV;
+        SelectionInfo? checkSashDivisions(Rect sashRect, bool isRight) {
+          final glassR = sashT > 0
+              ? getSafeGlassRect(sashRect, sashT)
+              : sashRect;
+          final hPositions = isRight
+              ? z.rightInnerHPositions
+              : z.innerHPositions;
+          final vPositions = isRight
+              ? z.rightInnerVPositions
+              : z.innerVPositions;
+          final innerH = isRight ? z.rightInnerH : z.innerH;
+          final innerV = isRight ? z.rightInnerV : z.innerV;
 
-            List<double> finalHPos = List.from(hPositions);
-            if (finalHPos.isEmpty && innerH > 0) {
-              double stepY = 1.0 / (innerH + 1);
-              for (int i = 1; i <= innerH; i++) {
-                finalHPos.add(stepY * i);
-              }
+          List<double> finalHPos = List.from(hPositions);
+          if (finalHPos.isEmpty && innerH > 0) {
+            double stepY = 1.0 / (innerH + 1);
+            for (int i = 1; i <= innerH; i++) {
+              finalHPos.add(stepY * i);
             }
-            List<double> finalVPos = List.from(vPositions);
-            if (finalVPos.isEmpty && innerV > 0) {
-              double stepX = 1.0 / (innerV + 1);
-              for (int i = 1; i <= innerV; i++) {
-                finalVPos.add(stepX * i);
-              }
+          }
+          List<double> finalVPos = List.from(vPositions);
+          if (finalVPos.isEmpty && innerV > 0) {
+            double stepX = 1.0 / (innerV + 1);
+            for (int i = 1; i <= innerV; i++) {
+              finalVPos.add(stepX * i);
             }
-
-            final double hitThreshold = 25.0;
-
-            for (int i = 0; i < finalHPos.length; i++) {
-              double y = glassR.top + glassR.height * finalHPos[i];
-              if ((pos.dy - y).abs() < hitThreshold &&
-                  pos.dx >= glassR.left &&
-                  pos.dx <= glassR.right) {
-                return SelectionInfo(
-                  type: SelectionType.innerDivision,
-                  zoneId: z.id,
-                  isHorizontalInnerDivision: true,
-                  isRightSashInnerDivision: isRight,
-                  innerDivisionIndex: i,
-                );
-              }
-            }
-
-            for (int i = 0; i < finalVPos.length; i++) {
-              double x = glassR.left + glassR.width * finalVPos[i];
-              if ((pos.dx - x).abs() < hitThreshold &&
-                  pos.dy >= glassR.top &&
-                  pos.dy <= glassR.bottom) {
-                return SelectionInfo(
-                  type: SelectionType.innerDivision,
-                  zoneId: z.id,
-                  isHorizontalInnerDivision: false,
-                  isRightSashInnerDivision: isRight,
-                  innerDivisionIndex: i,
-                );
-              }
-            }
-            return null;
           }
 
-          final doubleSashSplitX =
-              z.boundary.left + z.boundary.width * z.doubleSashRatio;
-          final isRightClick = isDouble && (pos.dx > doubleSashSplitX);
+          final double hitThreshold = 30.0;
 
-          SelectionInfo? hit;
-          if (isDouble) {
-            final sep = 4.0;
-            final leftR = Rect.fromLTRB(
-              z.boundary.left,
-              z.boundary.top,
-              doubleSashSplitX - sep / 2,
-              z.boundary.bottom,
-            );
-            final rightR = Rect.fromLTRB(
-              doubleSashSplitX + sep / 2,
-              z.boundary.top,
-              z.boundary.right,
-              z.boundary.bottom,
-            );
-            hit = isRightClick
-                ? checkSashDivisions(rightR, true)
-                : checkSashDivisions(leftR, false);
-          } else {
-            hit = checkSashDivisions(z.boundary, false);
+          for (int i = 0; i < finalHPos.length; i++) {
+            double y = glassR.top + glassR.height * finalHPos[i];
+            if ((pos.dy - y).abs() < hitThreshold &&
+                pos.dx >= glassR.left - 10 &&
+                pos.dx <= glassR.right + 10) {
+              return SelectionInfo(
+                type: SelectionType.innerDivision,
+                zoneId: z.id,
+                isHorizontalInnerDivision: true,
+                isRightSashInnerDivision: isRight,
+                innerDivisionIndex: i,
+              );
+            }
           }
 
-          if (hit != null) {
-            selection = hit;
-            showZoneMenu = false;
-            activeSubZone = null;
-            notifyListeners();
-            return;
+          for (int i = 0; i < finalVPos.length; i++) {
+            double x = glassR.left + glassR.width * finalVPos[i];
+            if ((pos.dx - x).abs() < hitThreshold &&
+                pos.dy >= glassR.top - 10 &&
+                pos.dy <= glassR.bottom + 10) {
+              return SelectionInfo(
+                type: SelectionType.innerDivision,
+                zoneId: z.id,
+                isHorizontalInnerDivision: false,
+                isRightSashInnerDivision: isRight,
+                innerDivisionIndex: i,
+              );
+            }
           }
+          return null;
+        }
+
+        final doubleSashSplitX =
+            z.boundary.left + z.boundary.width * z.doubleSashRatio;
+        final isRightClick = isDouble && (pos.dx > doubleSashSplitX);
+
+        SelectionInfo? hit;
+        if (isDouble) {
+          final sep = 4.0;
+          final leftR = Rect.fromLTRB(
+            z.boundary.left,
+            z.boundary.top,
+            doubleSashSplitX - sep / 2,
+            z.boundary.bottom,
+          );
+          final rightR = Rect.fromLTRB(
+            doubleSashSplitX + sep / 2,
+            z.boundary.top,
+            z.boundary.right,
+            z.boundary.bottom,
+          );
+          hit = isRightClick
+              ? checkSashDivisions(rightR, true)
+              : checkSashDivisions(leftR, false);
+        } else {
+          hit = checkSashDivisions(z.boundary, false);
+        }
+
+        if (hit != null) {
+          selection = hit;
+          showZoneMenu = false;
+          activeSubZone = null;
+          notifyListeners();
+          return;
         }
         selection = SelectionInfo(type: SelectionType.zone, zoneId: z.id);
-        bool isDouble = z.content == ZoneContent.doubleSash;
         bool isSingle = z.content == ZoneContent.singleSash;
         bool isSliding = z.content == ZoneContent.slidingSash;
         if (isSliding) {
@@ -7678,6 +7922,13 @@ class WindowModel extends ChangeNotifier {
     if (value && hasArchOrSlant) return;
     _saveSnapshot();
     hasSideCovers = value;
+    if (value) {
+      final covers = availableSideCovers;
+      if (covers.isNotEmpty &&
+          !covers.any((cover) => cover.id == selectedSideCover?.id)) {
+        selectedSideCover = covers.first;
+      }
+    }
     if (activeSeries != null && activeSeries!.sections.isNotEmpty) {
       final frames = activeSeries!.sections
           .where((s) => s.isFrame || s.type.toLowerCase() == 'frame')
@@ -7837,6 +8088,121 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  /// Keeps the empty space between two zones equal to the profile that is
+  /// actually drawn after a series switch.  Otherwise the canvas retains the
+  /// old gap while the painter uses the new series' profile width, which makes
+  /// TPR (and other series) mullions look clipped, too wide, or disappear.
+  void _synchronizeDivisionGapsForSeries(
+    double previousFrameThickness,
+    double previousMullionThickness,
+  ) {
+    if (zones.length < 2 ||
+        previousFrameThickness <= 0 ||
+        profileThickness <= 0) {
+      return;
+    }
+
+    final oldMullion = previousMullionThickness > 0
+        ? previousMullionThickness
+        : previousFrameThickness;
+    final newMullion = mullionThickness > 0
+        ? mullionThickness
+        : profileThickness;
+    _synchronizeAxisDivisionGaps(
+      isVertical: true,
+      oldFrameGap: previousFrameThickness * 2,
+      newFrameGap: profileThickness * 2,
+      oldMullionGap: oldMullion,
+      newMullionGap: newMullion,
+    );
+    _synchronizeAxisDivisionGaps(
+      isVertical: false,
+      oldFrameGap: previousFrameThickness * 2,
+      newFrameGap: profileThickness * 2,
+      oldMullionGap: oldMullion,
+      newMullionGap: newMullion,
+    );
+  }
+
+  void _synchronizeAxisDivisionGaps({
+    required bool isVertical,
+    required double oldFrameGap,
+    required double newFrameGap,
+    required double oldMullionGap,
+    required double newMullionGap,
+  }) {
+    final Map<double, double> replacements = {};
+
+    void registerGap(double firstEdge, double secondEdge) {
+      final gap = secondEdge - firstEdge;
+      if (gap <= 0.0) return;
+
+      double? targetGap;
+      if (coupleFrames && (gap - oldFrameGap).abs() <= 3.0) {
+        targetGap = newFrameGap;
+      } else if ((gap - oldMullionGap).abs() <= 3.0) {
+        targetGap = newMullionGap;
+      }
+      if (targetGap == null || (targetGap - gap).abs() < 0.1) return;
+
+      final center = (firstEdge + secondEdge) / 2.0;
+      replacements[firstEdge] = center - targetGap / 2.0;
+      replacements[secondEdge] = center + targetGap / 2.0;
+    }
+
+    for (var i = 0; i < zones.length; i++) {
+      final first = zones[i].boundary;
+      for (var j = i + 1; j < zones.length; j++) {
+        final second = zones[j].boundary;
+        if (isVertical) {
+          final overlap =
+              math.min(first.bottom, second.bottom) -
+              math.max(first.top, second.top);
+          if (overlap <= 5.0) continue;
+          if (first.right <= second.left) {
+            registerGap(first.right, second.left);
+          } else if (second.right <= first.left) {
+            registerGap(second.right, first.left);
+          }
+        } else {
+          final overlap =
+              math.min(first.right, second.right) -
+              math.max(first.left, second.left);
+          if (overlap <= 5.0) continue;
+          if (first.bottom <= second.top) {
+            registerGap(first.bottom, second.top);
+          } else if (second.bottom <= first.top) {
+            registerGap(second.bottom, first.top);
+          }
+        }
+      }
+    }
+
+    if (replacements.isEmpty) return;
+
+    double replacementFor(double value) {
+      for (final entry in replacements.entries) {
+        if ((entry.key - value).abs() <= 0.5) return entry.value;
+      }
+      return value;
+    }
+
+    for (final zone in zones) {
+      final boundary = zone.boundary;
+      final left = isVertical ? replacementFor(boundary.left) : boundary.left;
+      final right = isVertical
+          ? replacementFor(boundary.right)
+          : boundary.right;
+      final top = isVertical ? boundary.top : replacementFor(boundary.top);
+      final bottom = isVertical
+          ? boundary.bottom
+          : replacementFor(boundary.bottom);
+      if (right > left + 1.0 && bottom > top + 1.0) {
+        zone.boundary = Rect.fromLTRB(left, top, right, bottom);
+      }
+    }
+  }
+
   void updateProfileThickness() {
     double oldThickness = profileThickness;
     final useSliding =
@@ -7850,8 +8216,7 @@ class WindowModel extends ChangeNotifier {
         profileThickness = t;
       } else {
         profileThickness =
-            (activeFrame['thickness'] as num?)?.toDouble() ??
-            profileThickness;
+            (activeFrame['thickness'] as num?)?.toDouble() ?? profileThickness;
       }
     } else if (series != null && series.sections.isNotEmpty) {
       final frames = series.sections
@@ -9249,8 +9614,13 @@ class WindowModel extends ChangeNotifier {
   }
 
   void startDrawing(Offset pos) {
-    // Auto-detect mode: if start is inside the window → split, otherwise → add_frame
-    if (zones.isNotEmpty) {
+    // A blank canvas can only create its first frame.  Keeping the previous
+    // `add_frame` mode here used to create a second zone immediately, which
+    // appeared as an unwanted central mullion.
+    if (zones.isEmpty) {
+      drawingMode = 'new_frame';
+    } else {
+      // Auto-detect mode: if start is inside the window → split, otherwise → add_frame
       final windowRect = Rect.fromLTWH(0, 0, width, height);
       if (windowRect.contains(pos)) {
         drawingMode = 'split';
@@ -9305,9 +9675,19 @@ class WindowModel extends ChangeNotifier {
               height - bottomOffset - pHeight,
             ),
             sashThickness: _calculateSashThickness(false),
+            sashColor: FrameColor.white,
+            selectedDbColor: _selectedDbColor,
           ),
         );
       }
+
+      // The initial drag always produces one undivided frame.  In particular,
+      // it must never continue into the add-frame branch left over from a
+      // previous drawing.
+      drawingStart = null;
+      drawingCurrent = null;
+      notifyListeners();
+      return;
     }
     if (drawingMode == 'add_frame') {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
@@ -10155,6 +10535,7 @@ class WindowModel extends ChangeNotifier {
     selection = SelectionInfo.none;
     String key = "${isH ? 'H' : 'V'}_${pos.toStringAsFixed(1)}";
     mullionProfiles.remove(key);
+    mullionSectionOverrides.remove(key);
     updatePrimaryMullionAxis();
     notifyListeners();
   }
@@ -10313,12 +10694,17 @@ class WindowModel extends ChangeNotifier {
     width = 0;
     height = 0;
     mullionProfiles.clear();
+    mullionSectionOverrides.clear();
     primaryMullionAxis = null;
     selection = SelectionInfo.none;
     activeSubZone = null;
     isDrawingMode = true;
+    drawingMode = 'new_frame';
     drawnLeft = null;
     drawnTop = null;
+    _frameColor = FrameColor.white;
+    _selectedDbColor = _defaultFrameColor();
+    _selectedAccessoryColor = null;
 
     // Reset slants
     topSlantLeftY = 0.0;

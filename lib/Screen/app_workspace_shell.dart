@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -413,11 +415,15 @@ class _WorkspaceHeader extends StatelessWidget {
   final String modeTitle;
   final String modeSubtitle;
   final Widget? bottom;
+  final VoidCallback? onToggleSidebar;
+  final bool isSidebarOpen;
 
   const _WorkspaceHeader({
     required this.modeTitle,
     required this.modeSubtitle,
     this.bottom,
+    this.onToggleSidebar,
+    this.isSidebarOpen = true,
   });
 
   @override
@@ -474,10 +480,12 @@ class _WorkspaceHeader extends StatelessWidget {
                     children: [
                       Builder(
                         builder: (innerContext) => IconButton(
-                          onPressed: () =>
-                              Scaffold.of(innerContext).openDrawer(),
-                          icon: const Icon(
-                            Icons.menu_rounded,
+                          tooltip: isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                          onPressed: onToggleSidebar ?? () => Scaffold.of(innerContext).openDrawer(),
+                          icon: Icon(
+                            onToggleSidebar != null
+                                ? (isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded)
+                                : Icons.menu_rounded,
                             color: Colors.white,
                           ),
                           style: IconButton.styleFrom(
@@ -589,13 +597,159 @@ class _WorkspaceHeader extends StatelessWidget {
   }
 }
 
-class _TabbedWorkspaceView extends StatelessWidget {
+class _HeaderWorkshopBrand extends StatefulWidget {
+  const _HeaderWorkshopBrand();
+
+  @override
+  State<_HeaderWorkshopBrand> createState() => _HeaderWorkshopBrandState();
+}
+
+class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
+  String _workshopName = 'ورشة الألمنيوم';
+  String? _logoUrl;
+  ImageProvider? _cachedLogo;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalProfile();
+  }
+
+  Future<void> _loadLocalProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('workshop_name');
+      final savedLogo = prefs.getString('workshop_logo_base64');
+      if (mounted) {
+        setState(() {
+          if (savedName != null && savedName.isNotEmpty) _workshopName = savedName;
+          if (savedLogo != null && savedLogo.isNotEmpty) {
+            _logoUrl = savedLogo;
+            _updateLogoProvider(savedLogo);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _updateLogoProvider(String? url) {
+    if (url == null || url.isEmpty) {
+      _cachedLogo = null;
+      return;
+    }
+    if (url.startsWith('http')) {
+      _cachedLogo = NetworkImage(url);
+    } else {
+      try {
+        final clean = url.contains(',') ? url.split(',').last : url;
+        final bytes = base64Decode(clean);
+        if (bytes.isNotEmpty) {
+          _cachedLogo = MemoryImage(bytes);
+        }
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    return StreamBuilder<DocumentSnapshot>(
+      stream: user == null
+          ? null
+          : FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data?.data() != null) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          final firestoreName = (data['workshopName'] as String?)?.trim();
+          final firestoreLogo = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+              ? data['workshopLogoUrl']
+              : data['logoUrl'];
+
+          if (firestoreName != null && firestoreName.isNotEmpty) {
+            _workshopName = firestoreName;
+          }
+          if (firestoreLogo != null && firestoreLogo != _logoUrl) {
+            _logoUrl = firestoreLogo;
+            _updateLogoProvider(firestoreLogo);
+          }
+        }
+
+        final initial = _workshopName.length >= 2
+            ? _workshopName.substring(0, 2).toUpperCase()
+            : _workshopName.toUpperCase();
+
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: const Color(0xFF2563EB),
+                backgroundImage: _cachedLogo,
+                child: _cachedLogo == null
+                    ? Text(
+                        initial,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          fontFamily: 'Cairo',
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  _workshopName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TabbedWorkspaceView extends StatefulWidget {
   const _TabbedWorkspaceView();
+
+  @override
+  State<_TabbedWorkspaceView> createState() => _TabbedWorkspaceViewState();
+}
+
+class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
+  bool _isSidebarOpen = true;
 
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
-    return PopScope(
+    final isDesktop = _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+
+    final mainContent = PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
@@ -603,7 +757,7 @@ class _TabbedWorkspaceView extends StatelessWidget {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFEAF1FB),
-        drawer: AppDrawer(),
+        drawer: isDesktop ? null : const AppDrawer(),
         body: Column(
           children: [
             Container(
@@ -614,18 +768,39 @@ class _TabbedWorkspaceView extends StatelessWidget {
                   height: 60,
                   child: Row(
                     children: [
-                      if (_isWindowsDesktop)
-                        Builder(
-                          builder: (menuContext) => IconButton(
-                            tooltip: 'القائمة',
-                            onPressed: () => Scaffold.of(menuContext).openDrawer(),
-                            icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                      Builder(
+                        builder: (menuContext) => IconButton(
+                          tooltip: _isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                          onPressed: () {
+                            if (isDesktop) {
+                              setState(() => _isSidebarOpen = !_isSidebarOpen);
+                            } else {
+                              Scaffold.of(menuContext).openDrawer();
+                            }
+                          },
+                          icon: Icon(
+                            isDesktop
+                                ? (_isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded)
+                                : Icons.menu_rounded,
+                            color: Colors.white,
                           ),
                         ),
+                      ),
+                      if (isDesktop) ...[
+                        const SizedBox(width: 4),
+                        const _HeaderWorkshopBrand(),
+                        const SizedBox(width: 10),
+                        Container(
+                          height: 24,
+                          width: 1,
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
                       Expanded(
                         child: ListView.builder(
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            12,
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                            isDesktop ? 0 : 8,
                             10,
                             12,
                             0,
@@ -758,15 +933,44 @@ class _TabbedWorkspaceView extends StatelessWidget {
         ),
       ),
     );
+
+    if (isDesktop) {
+      return Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.fastOutSlowIn,
+            width: _isSidebarOpen ? 310 : 0,
+            child: _isSidebarOpen
+                ? const Material(
+                    elevation: 6,
+                    child: AppDrawer(),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          Expanded(child: mainContent),
+        ],
+      );
+    }
+
+    return mainContent;
   }
 }
 
-class _FloatingWorkspaceView extends StatelessWidget {
+class _FloatingWorkspaceView extends StatefulWidget {
   const _FloatingWorkspaceView();
+
+  @override
+  State<_FloatingWorkspaceView> createState() => _FloatingWorkspaceViewState();
+}
+
+class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
+  bool _isSidebarOpen = true;
 
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
+    final isDesktop = _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
     final immersiveIndex = workspace.entries.indexWhere(
       (entry) => entry.immersive,
     );
@@ -777,14 +981,14 @@ class _FloatingWorkspaceView extends StatelessWidget {
       return 0;
     });
 
-    return PopScope(
+    final mainContent = PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         workspace.handleBackNavigation();
       },
       child: Scaffold(
-        drawer: AppDrawer(),
+        drawer: isDesktop ? null : AppDrawer(),
         body: LayoutBuilder(
           builder: (context, constraints) {
             final headerHeight = immersiveIndex == -1
@@ -880,9 +1084,11 @@ class _FloatingWorkspaceView extends StatelessWidget {
 
             return Column(
               children: [
-                const _WorkspaceHeader(
+                _WorkspaceHeader(
                   modeTitle: 'نظام النوافذ',
                   modeSubtitle: 'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته',
+                  onToggleSidebar: isDesktop ? () => setState(() => _isSidebarOpen = !_isSidebarOpen) : null,
+                  isSidebarOpen: _isSidebarOpen,
                 ),
                 if (_isWindowsDesktop)
                   DesktopCommandBar(
@@ -900,6 +1106,27 @@ class _FloatingWorkspaceView extends StatelessWidget {
         ),
       ),
     );
+
+    if (isDesktop) {
+      return Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.fastOutSlowIn,
+            width: _isSidebarOpen ? 310 : 0,
+            child: _isSidebarOpen
+                ? const Material(
+                    elevation: 6,
+                    child: AppDrawer(),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          Expanded(child: mainContent),
+        ],
+      );
+    }
+
+    return mainContent;
   }
 }
 

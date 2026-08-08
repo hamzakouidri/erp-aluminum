@@ -13,16 +13,21 @@ import '../settings/localization.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cloud_sync_service.dart';
+import 'map_picker_screen.dart';
 
 class DistributionTrackingScreen extends StatefulWidget {
   const DistributionTrackingScreen({super.key});
 
   @override
-  State<DistributionTrackingScreen> createState() => _DistributionTrackingScreenState();
+  State<DistributionTrackingScreen> createState() =>
+      _DistributionTrackingScreenState();
 }
 
-class _DistributionTrackingScreenState extends State<DistributionTrackingScreen> with SingleTickerProviderStateMixin {
+class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
+    with SingleTickerProviderStateMixin {
   final SqlDatabase _db = SqlDatabase();
   List<Map<String, dynamic>> _deliveries = [];
   bool _isLoading = true;
@@ -32,20 +37,26 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   // Live Tracking state
   bool _isTracking = false;
   bool _isSettingWorkshop = false;
-  LatLng _launchPosition = const LatLng(36.7538, 3.0588); // Starting/Launch location
-  LatLng _driverPosition = const LatLng(36.7538, 3.0588); // Start at workshop (Algiers)
+  LatLng _launchPosition = const LatLng(
+    36.7538,
+    3.0588,
+  ); // Starting/Launch location
+  LatLng _driverPosition = const LatLng(
+    36.7538,
+    3.0588,
+  ); // Start at workshop (Algiers)
   LatLng _clientPosition = const LatLng(36.7372, 3.0855); // Client location
   double _distanceRemaining = 5.2; // in km
   int _etaMinutes = 12;
   double _speedKmh = 0.0;
-  
+
   // Telemetry details
   String _trackingSource = 'Phone GPS'; // Phone GPS vs OBD Device
   int _satellites = 12;
   double _batteryVoltage = 13.8;
   int _engineRpm = 1800;
   double _fuelRate = 6.4; // L/100km
-  
+
   Timer? _simulationTimer;
   int _simulationStep = 0;
   List<LatLng> _routePoints = [];
@@ -101,17 +112,19 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
 
   Future<void> _fetchRoadRoute(LatLng start, LatLng end) async {
     final url = Uri.parse(
-      'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson'
+      'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson',
     );
     try {
       final response = await http.get(url).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
+        if (data['code'] == 'Ok' &&
+            data['routes'] != null &&
+            data['routes'].isNotEmpty) {
           final route = data['routes'][0];
           final geometry = route['geometry'];
           final coordinates = geometry['coordinates'] as List;
-          
+
           List<LatLng> points = coordinates.map((coord) {
             final l = coord as List;
             return LatLng(l[1].toDouble(), l[0].toDouble());
@@ -148,8 +161,12 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   void _selectDelivery(Map<String, dynamic> delivery) {
     setState(() {
       _selectedDelivery = delivery;
-      double cLat = delivery['latitude'] != null ? double.tryParse(delivery['latitude'].toString()) ?? 36.7372 : 36.7372;
-      double cLng = delivery['longitude'] != null ? double.tryParse(delivery['longitude'].toString()) ?? 3.0855 : 3.0855;
+      double cLat = delivery['latitude'] != null
+          ? double.tryParse(delivery['latitude'].toString()) ?? 36.7372
+          : 36.7372;
+      double cLng = delivery['longitude'] != null
+          ? double.tryParse(delivery['longitude'].toString()) ?? 3.0855
+          : 3.0855;
       _clientPosition = LatLng(cLat, cLng);
       _driverPosition = _launchPosition;
       _speedKmh = 0.0;
@@ -158,7 +175,7 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     });
 
     _fetchRoadRoute(_launchPosition, _clientPosition);
-    
+
     // Animate map camera to fit both launch position and client
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _mapController.fitCamera(
@@ -185,20 +202,58 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   double _calculateDistance(LatLng p1, LatLng p2) {
     var p = 0.017453292519943295;
     var c = math.cos;
-    var a = 0.5 - c((p2.latitude - p1.latitude) * p)/2 + 
-          c(p1.latitude * p) * c(p2.latitude * p) * 
-          (1 - c((p2.longitude - p1.longitude) * p))/2;
+    var a =
+        0.5 -
+        c((p2.latitude - p1.latitude) * p) / 2 +
+        c(p1.latitude * p) *
+            c(p2.latitude * p) *
+            (1 - c((p2.longitude - p1.longitude) * p)) /
+            2;
     return 12742 * math.asin(math.sqrt(a)); // 2 * R; R = 6371 km
   }
 
   Future<void> _loadWorkshopLocation() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      double? lat = prefs.getDouble('workshop_latitude');
-      double? lng = prefs.getDouble('workshop_longitude');
+      double? lat;
+      double? lng;
+
+      // The workshop point belongs to the workshop, not to one device.  Read
+      // Firebase first so workers and managers start from the same location.
+      final workshopId =
+          CloudSyncService().workshopId ??
+          prefs.getString('workshop_code') ??
+          FirebaseAuth.instance.currentUser?.uid;
+      if (workshopId != null && workshopId.isNotEmpty) {
+        try {
+          final snapshot = await FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(workshopId)
+              .get();
+          final data = snapshot.data();
+          final cloudLat = data?['distribution_workshop_latitude'];
+          final cloudLng = data?['distribution_workshop_longitude'];
+          lat = cloudLat is num
+              ? cloudLat.toDouble()
+              : double.tryParse(cloudLat?.toString() ?? '');
+          lng = cloudLng is num
+              ? cloudLng.toDouble()
+              : double.tryParse(cloudLng?.toString() ?? '');
+          if (lat != null && lng != null) {
+            await prefs.setDouble('workshop_latitude', lat);
+            await prefs.setDouble('workshop_longitude', lng);
+          }
+        } catch (error) {
+          debugPrint('Could not load workshop location from Firebase: $error');
+        }
+      }
+
+      lat ??= prefs.getDouble('workshop_latitude');
+      lng ??= prefs.getDouble('workshop_longitude');
       if (lat != null && lng != null) {
+        if (!mounted) return;
         setState(() {
-          _launchPosition = LatLng(lat, lng);
+          _launchPosition = LatLng(lat!, lng!);
           _driverPosition = LatLng(lat, lng);
         });
       }
@@ -212,12 +267,37 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('workshop_latitude', point.latitude);
       await prefs.setDouble('workshop_longitude', point.longitude);
+      final workshopId =
+          CloudSyncService().workshopId ??
+          prefs.getString('workshop_code') ??
+          FirebaseAuth.instance.currentUser?.uid;
+      if (workshopId != null && workshopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(workshopId)
+              .set({
+                'distribution_workshop_latitude': point.latitude,
+                'distribution_workshop_longitude': point.longitude,
+                'distribution_workshop_location_updated_at':
+                    FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+        } catch (error) {
+          // Local save remains available offline; it will be read on this
+          // device until Firebase is reachable again.
+          debugPrint('Could not save workshop location to Firebase: $error');
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _launchPosition = point;
         _driverPosition = point;
       });
       await _fetchRoadRoute(_launchPosition, _clientPosition);
-      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -233,31 +313,42 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   }
 
   Future<void> _updateClientLocation(LatLng point) async {
-    if (_selectedDelivery == null || _selectedDelivery!['client_id'] == null) return;
+    if (_selectedDelivery == null || _selectedDelivery!['client_id'] == null)
+      return;
     try {
-      final dbInstance = await _db.db;
-      if (dbInstance != null) {
-        await dbInstance.rawUpdate('''
-          UPDATE Client
-          SET latitude = ?, longitude = ?
-          WHERE id = ?
-        ''', [point.latitude.toString(), point.longitude.toString(), _selectedDelivery!['client_id']]);
-        
-        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      final clientId = int.tryParse(_selectedDelivery!['client_id'].toString());
+      if (clientId != null && clientId > 0) {
+        await _db.updateClientCoordinates(
+          clientId,
+          point.latitude,
+          point.longitude,
+        );
+        if (!mounted) return;
+        setState(() {
+          _clientPosition = point;
+          _selectedDelivery = Map<String, dynamic>.from(_selectedDelivery!)
+            ..['latitude'] = point.latitude
+            ..['longitude'] = point.longitude;
+        });
+        final lang = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).language;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              Localization.translate('تم تعيين موقع الزبون الجديد بنجاح!', lang),
+              Localization.translate(
+                'تم تعيين موقع الزبون الجديد بنجاح!',
+                lang,
+              ),
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
           ),
         );
 
-        // Refresh deliveries list to update local cached state
-        await _loadDeliveries();
-        
-        // Fetch real road route
+        // This helper immediately schedules Firebase synchronization, then the
+        // route is redrawn without resetting the selected delivery.
         await _fetchRoadRoute(_launchPosition, point);
       }
     } catch (e) {
@@ -266,7 +357,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   }
 
   Future<void> _toggleGPSTracking() async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
 
     if (_isTracking) {
       _gpsSubscription?.cancel();
@@ -286,7 +380,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            Localization.translate('الرجاء تفعيل خدمة الموقع GPS في الهاتف', lang),
+            Localization.translate(
+              'الرجاء تفعيل خدمة الموقع GPS في الهاتف',
+              lang,
+            ),
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -302,7 +399,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              Localization.translate('تم رفض صلاحية الوصول للموقع الجغرافي', lang),
+              Localization.translate(
+                'تم رفض صلاحية الوصول للموقع الجغرافي',
+                lang,
+              ),
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
@@ -316,7 +416,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            Localization.translate('تم رفض صلاحيات الموقع بشكل دائم. يرجى تفعيلها من الإعدادات', lang),
+            Localization.translate(
+              'تم رفض صلاحيات الموقع بشكل دائم. يرجى تفعيلها من الإعدادات',
+              lang,
+            ),
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -329,42 +432,54 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       _isTracking = true;
     });
 
-    _gpsSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
-    ).listen((Position position) {
-      LatLng currentPos = LatLng(position.latitude, position.longitude);
-      setState(() {
-        _driverPosition = currentPos;
-        _speedKmh = position.speed * 3.6; // convert m/s to km/h
-        _distanceRemaining = _calculateDistance(_driverPosition, _clientPosition);
-        _etaMinutes = _speedKmh > 5 ? (_distanceRemaining / (_speedKmh / 60)).round() : (_distanceRemaining / 0.5).round();
-      });
+    _gpsSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10,
+          ),
+        ).listen(
+          (Position position) {
+            LatLng currentPos = LatLng(position.latitude, position.longitude);
+            setState(() {
+              _driverPosition = currentPos;
+              _speedKmh = position.speed * 3.6; // convert m/s to km/h
+              _distanceRemaining = _calculateDistance(
+                _driverPosition,
+                _clientPosition,
+              );
+              _etaMinutes = _speedKmh > 5
+                  ? (_distanceRemaining / (_speedKmh / 60)).round()
+                  : (_distanceRemaining / 0.5).round();
+            });
 
-      // Update actual road route dynamically from current position to client position
-      _fetchRoadRoute(currentPos, _clientPosition);
+            // Update actual road route dynamically from current position to client position
+            _fetchRoadRoute(currentPos, _clientPosition);
 
-      _mapController.move(_driverPosition, _mapController.camera.zoom);
+            _mapController.move(_driverPosition, _mapController.camera.zoom);
 
-      // Check if driver has reached destination (within 50 meters)
-      if (_distanceRemaining < 0.05) {
-        _gpsSubscription?.cancel();
-        _gpsSubscription = null;
-        setState(() {
-          _isTracking = false;
-          _speedKmh = 0.0;
-        });
-        _showDeliveryFinishedDialog();
-      }
-    }, onError: (e) {
-      debugPrint("GPS stream error: $e");
-    });
+            // Check if driver has reached destination (within 50 meters)
+            if (_distanceRemaining < 0.05) {
+              _gpsSubscription?.cancel();
+              _gpsSubscription = null;
+              setState(() {
+                _isTracking = false;
+                _speedKmh = 0.0;
+              });
+              _showDeliveryFinishedDialog();
+            }
+          },
+          onError: (e) {
+            debugPrint("GPS stream error: $e");
+          },
+        );
   }
 
   void _showDeliveryFinishedDialog() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -375,19 +490,25 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
             const SizedBox(width: 8),
             Text(
               Localization.translate('وصلت الشحنة', lang),
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
         content: Text(
-          Localization.translate('لقد وصلت المركبة إلى موقع تسليم الزبون بنجاح.', lang),
+          Localization.translate(
+            'لقد وصلت المركبة إلى موقع تسليم الزبون بنجاح.',
+            lang,
+          ),
           style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('OK', style: TextStyle(fontFamily: 'Cairo')),
-          )
+          ),
         ],
       ),
     );
@@ -402,7 +523,10 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
 
   void _markAsDelivered() async {
     if (_selectedDelivery == null) return;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
 
     // إظهار مؤشر تقدم فوري
     showDialog(
@@ -430,12 +554,15 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     final orderId = _selectedDelivery!['id_commandes'];
     await _db.updateCommandeStatus(orderId, 'Full Distribution');
 
-    if (mounted) Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
+    if (mounted)
+      Navigator.of(context, rootNavigator: true).pop(); // أغلق التقدم
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(Localization.translate('تم تحديث حالة التوزيع بنجاح!', lang)),
+          content: Text(
+            Localization.translate('تم تحديث حالة التوزيع بنجاح!', lang),
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -444,8 +571,11 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
   }
 
   void _showCreatePlanDialog() async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+
     // Load confirmed/paid/in-progress orders
     List<Map<String, dynamic>> allOrders = [];
     try {
@@ -460,10 +590,15 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Text(
             Localization.translate('إنشاء خطة توزيع جديدة', lang),
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
           ),
           content: SizedBox(
             width: 600,
@@ -471,6 +606,8 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
               orders: allOrders,
               db: _db,
               lang: lang,
+              workshopLocation: _launchPosition,
+              onWorkshopLocationChanged: _saveWorkshopLocation,
               onSuccess: () {
                 Navigator.pop(dialogContext);
                 _loadDeliveries();
@@ -482,12 +619,21 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
     );
   }
 
-  Future<void> _confirmResetInstallationData(BuildContext context, AppLanguage lang) async {
+  Future<void> _confirmResetInstallationData(
+    BuildContext context,
+    AppLanguage lang,
+  ) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد المسح الكلي للتركيبات', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
-        content: const Text('هل أنت تأكد من تصفير ومسح جميع بيانات التركيبات والتحفظات الميدانية بالتطوير؟', style: TextStyle(fontFamily: 'Cairo')),
+        title: const Text(
+          'تأكيد المسح الكلي للتركيبات',
+          style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+        ),
+        content: const Text(
+          'هل أنت تأكد من تصفير ومسح جميع بيانات التركيبات والتحفظات الميدانية بالتطوير؟',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -496,7 +642,13 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('مسح كلي 🧹', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'مسح كلي 🧹',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -524,14 +676,20 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(Localization.translate('خطط التوزيع والتتبع المباشر', lang)),
+        title: Text(
+          Localization.translate('خطط التوزيع والتتبع المباشر', lang),
+        ),
         actions: [
           ElevatedButton.icon(
             onPressed: () => _confirmResetInstallationData(context, lang),
             icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
             label: const Text(
               'تصفير التركيبات 🧹',
-              style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red.shade700,
@@ -544,10 +702,15 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
             icon: Icon(Icons.add, color: Theme.of(context).cardColor),
             label: Text(
               Localization.translate('خطة جديدة', lang),
-              style: TextStyle(fontFamily: 'Cairo', color: Theme.of(context).cardColor),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                color: Theme.of(context).cardColor,
+              ),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade700,
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? Theme.of(context).appBarTheme.backgroundColor
+                  : Colors.blue.shade700,
               elevation: 0,
             ),
           ),
@@ -555,527 +718,779 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadDeliveries,
-          )
+          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _deliveries.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.local_shipping_outlined, size: 80, color: Colors.blue.shade200),
-                      const SizedBox(height: 16),
-                      Text(
-                        Localization.translate('لا توجد خطط توزيع حالية', lang),
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _showCreatePlanDialog,
-                        icon: const Icon(Icons.add),
-                        label: Text(
-                          Localization.translate('إنشاء خطة توزيع جديدة', lang),
-                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                        ),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.local_shipping_outlined,
+                    size: 80,
+                    color: Colors.blue.shade200,
                   ),
-                )
-              : Row(
-                  children: [
-                    // Left list panel: Active distributions (collapsable)
-                    if (_isSidebarOpen)
-                      Container(
-                        width: 320,
-                        decoration: BoxDecoration(color: Theme.of(context).cardColor,
-                          border: Border(
-                            right: BorderSide(color: Theme.of(context).dividerColor, width: isAr ? 0 : 1),
-                            left: BorderSide(color: Theme.of(context).dividerColor, width: isAr ? 1 : 0),
-                          ),
-                        ),
-                        child: ListView.builder(
-                          itemCount: _deliveries.length,
-                          itemBuilder: (context, index) {
-                            final del = _deliveries[index];
-                            final isSelected = _selectedDelivery?['id'] == del['id'];
-                            final clientName = del['firstname'] != null 
-                                ? '${del['firstname']} ${del['lastname'] ?? ''}'
-                                : 'Client #${del['client_id']}';
-                            final dateStr = del['delivery_date']?.toString() ?? '';
-
-                            return Container(
-                              color: isSelected ? Colors.blue.shade50 : Colors.transparent,
-                              child: ListTile(
-                                onTap: () => _selectDelivery(del),
-                                title: Text(
-                                  clientName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${Localization.translate('رقم الطلبية:', lang)} #${del['id_commandes']}',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                    Text(
-                                      '${Localization.translate('تاريخ التوزيع:', lang)} $dateStr',
-                                      style: TextStyle(fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                                trailing: Icon(
-                                  Icons.delivery_dining,
-                                  color: isSelected ? Colors.blue : Colors.grey,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                  const SizedBox(height: 16),
+                  Text(
+                    Localization.translate('لا توجد خطط توزيع حالية', lang),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 16,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _showCreatePlanDialog,
+                    icon: const Icon(Icons.add),
+                    label: Text(
+                      Localization.translate('إنشاء خطة توزيع جديدة', lang),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
                       ),
-
-                    // Side panel collapse/expand tab handle
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isSidebarOpen = !_isSidebarOpen;
-                        });
-                      },
-                      child: Container(
-                        width: 22,
-                        height: 70,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade800,
-                          borderRadius: BorderRadius.only(
-                            topRight: Radius.circular(isAr ? 0 : 8),
-                            bottomRight: Radius.circular(isAr ? 0 : 8),
-                            topLeft: Radius.circular(isAr ? 8 : 0),
-                            bottomLeft: Radius.circular(isAr ? 8 : 0),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: const Offset(1, 1),
-                            )
-                          ],
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : Row(
+              children: [
+                // Left list panel: Active distributions (collapsable)
+                if (_isSidebarOpen)
+                  Container(
+                    width: 320,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      border: Border(
+                        right: BorderSide(
+                          color: Theme.of(context).dividerColor,
+                          width: isAr ? 0 : 1,
                         ),
-                        child: Icon(
-                          _isSidebarOpen 
-                              ? (isAr ? Icons.chevron_right : Icons.chevron_left) 
-                              : (isAr ? Icons.chevron_left : Icons.chevron_right),
-                          color: Theme.of(context).cardColor,
-                          size: 16,
+                        left: BorderSide(
+                          color: Theme.of(context).dividerColor,
+                          width: isAr ? 1 : 0,
                         ),
                       ),
                     ),
-                    // Right panel: Map + Telemetry details
-                    Expanded(
-                      child: Column(
-                        children: [
-                          // Map Section
-                          Expanded(
-                            flex: 3,
-                            child: Stack(
+                    child: ListView.builder(
+                      itemCount: _deliveries.length,
+                      itemBuilder: (context, index) {
+                        final del = _deliveries[index];
+                        final isSelected =
+                            _selectedDelivery?['id'] == del['id'];
+                        final clientName = del['firstname'] != null
+                            ? '${del['firstname']} ${del['lastname'] ?? ''}'
+                            : 'Client #${del['client_id']}';
+                        final dateStr = del['delivery_date']?.toString() ?? '';
+
+                        return Container(
+                          color: isSelected
+                              ? Colors.blue.shade50
+                              : Colors.transparent,
+                          child: ListTile(
+                            onTap: () => _selectDelivery(del),
+                            title: Text(
+                              clientName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                FlutterMap(
-                                  mapController: _mapController,
-                                  options: MapOptions(
-                                    initialCenter: _driverPosition,
-                                    initialZoom: 14.0,
-                                    onTap: (tapPosition, point) {
-                                      if (_isSettingWorkshop) {
-                                        _saveWorkshopLocation(point);
-                                        setState(() {
-                                          _isSettingWorkshop = false;
-                                        });
-                                      } else {
-                                        _updateClientLocation(point);
-                                      }
-                                    },
-                                  ),
-                                  children: [
-                                    TileLayer(
-                                      urlTemplate: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                                      userAgentPackageName: 'erp_aluminum_app',
-                                    ),
-                                    PolylineLayer(
-                                      polylines: [
-                                        Polyline(
-                                          points: _routePoints,
-                                          color: Colors.blue.shade600,
-                                          strokeWidth: 4.5,
-                                        ),
-                                      ],
-                                    ),
-                                    MarkerLayer(
-                                      markers: [
-                                        // Starting / Launch Point
-                                        Marker(
-                                          point: _launchPosition,
-                                          width: 100,
-                                          height: 70,
-                                          alignment: Alignment.topCenter,
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green.shade800,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: Text(
-                                                  Localization.translate('الانطلاق', lang),
-                                                  style: TextStyle(
-                                                    color: Theme.of(context).cardColor,
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontFamily: 'Cairo',
-                                                  ),
-                                                ),
-                                              ),
-                                              const Icon(
-                                                Icons.location_on,
-                                                color: Colors.green,
-                                                size: 32,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        // Client / Destination Location
-                                        Marker(
-                                          point: _clientPosition,
-                                          width: 100,
-                                          height: 70,
-                                          alignment: Alignment.topCenter,
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.red.shade800,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: Text(
-                                                  Localization.translate('الزبون', lang),
-                                                  style: TextStyle(
-                                                    color: Theme.of(context).cardColor,
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontFamily: 'Cairo',
-                                                  ),
-                                                ),
-                                              ),
-                                              const Icon(
-                                                Icons.location_on,
-                                                color: Colors.red,
-                                                size: 32,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        // Driver / Vehicle location
-                                        Marker(
-                                          point: _driverPosition,
-                                          width: 50,
-                                          height: 50,
-                                          child: Image.asset(
-                                            'Icon/icon.png',
-                                            width: 38,
-                                            height: 38,
-                                            errorBuilder: (_, __, ___) => CircleAvatar(
-                                              backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade800,
-                                              child: Icon(
-                                                Icons.local_shipping,
-                                                color: Theme.of(context).cardColor,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                Text(
+                                  '${Localization.translate('رقم الطلبية:', lang)} #${del['id_commandes']}',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                Text(
+                                  '${Localization.translate('تاريخ التوزيع:', lang)} $dateStr',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                              ],
+                            ),
+                            trailing: Icon(
+                              Icons.delivery_dining,
+                              color: isSelected ? Colors.blue : Colors.grey,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                // Side panel collapse/expand tab handle
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isSidebarOpen = !_isSidebarOpen;
+                    });
+                  },
+                  child: Container(
+                    width: 22,
+                    height: 70,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade800,
+                      borderRadius: BorderRadius.only(
+                        topRight: Radius.circular(isAr ? 0 : 8),
+                        bottomRight: Radius.circular(isAr ? 0 : 8),
+                        topLeft: Radius.circular(isAr ? 8 : 0),
+                        bottomLeft: Radius.circular(isAr ? 8 : 0),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: const Offset(1, 1),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isSidebarOpen
+                          ? (isAr ? Icons.chevron_right : Icons.chevron_left)
+                          : (isAr ? Icons.chevron_left : Icons.chevron_right),
+                      color: Theme.of(context).cardColor,
+                      size: 16,
+                    ),
+                  ),
+                ),
+                // Right panel: Map + Telemetry details
+                Expanded(
+                  child: Column(
+                    children: [
+                      // Map Section
+                      Expanded(
+                        flex: 3,
+                        child: Stack(
+                          children: [
+                            FlutterMap(
+                              mapController: _mapController,
+                              options: MapOptions(
+                                initialCenter: _driverPosition,
+                                initialZoom: 14.0,
+                                onTap: (tapPosition, point) {
+                                  if (_isSettingWorkshop) {
+                                    _saveWorkshopLocation(point);
+                                    setState(() {
+                                      _isSettingWorkshop = false;
+                                    });
+                                  } else {
+                                    _updateClientLocation(point);
+                                  }
+                                },
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate:
+                                      'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                                  userAgentPackageName: 'erp_aluminum_app',
+                                ),
+                                PolylineLayer(
+                                  polylines: [
+                                    Polyline(
+                                      points: _routePoints,
+                                      color: Colors.blue.shade600,
+                                      strokeWidth: 4.5,
                                     ),
                                   ],
                                 ),
-                                // Floating Workshop Settings Buttons
-                                Positioned(
-                                  top: 16,
-                                  right: isAr ? 16 : null,
-                                  left: isAr ? null : 16,
-                                  child: Column(
-                                    crossAxisAlignment: isAr ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-                                    children: [
-                                      FloatingActionButton.small(
-                                        heroTag: 'workshop_gps_btn',
-                                        onPressed: () async {
-                                          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                                          if (!serviceEnabled) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  Localization.translate('الرجاء تفعيل خدمة الموقع GPS في الهاتف', lang),
-                                                  style: const TextStyle(fontFamily: 'Cairo'),
-                                                ),
-                                                backgroundColor: Colors.red,
-                                              ),
-                                            );
-                                            return;
-                                          }
-                                          Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-                                          await _saveWorkshopLocation(LatLng(position.latitude, position.longitude));
-                                        },
-                                        backgroundColor: Colors.orange.shade800,
-                                        foregroundColor: Theme.of(context).cardColor,
-                                        tooltip: Localization.translate('تعيين موقع الورشة من الـ GPS الحالي', lang),
-                                        child: const Icon(Icons.storefront),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      FloatingActionButton.small(
-                                        heroTag: 'workshop_map_btn',
-                                        onPressed: () {
-                                          setState(() {
-                                            _isSettingWorkshop = !_isSettingWorkshop;
-                                          });
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                Localization.translate(
-                                                  _isSettingWorkshop 
-                                                      ? 'اضغط الآن على الخريطة لتحديد موقع الورشة' 
-                                                      : 'تم الخروج من وضع تحديد موقع الورشة', 
-                                                lang),
-                                                style: const TextStyle(fontFamily: 'Cairo'),
-                                              ),
-                                              backgroundColor: _isSettingWorkshop ? Colors.orange : Colors.grey,
-                                            ),
-                                          );
-                                        },
-                                        backgroundColor: _isSettingWorkshop ? Colors.green : Colors.orange.shade300,
-                                        foregroundColor: Theme.of(context).cardColor,
-                                        tooltip: Localization.translate('تحديد موقع الورشة على الخريطة', lang),
-                                        child: const Icon(Icons.add_location_alt),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Floating Speed and Distance Card
-                                Positioned(
-                                  top: 16,
-                                  right: isAr ? null : 16,
-                                  left: isAr ? 16 : null,
-                                  child: Card(
-                                    elevation: 6,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12.0),
+                                MarkerLayer(
+                                  markers: [
+                                    // Starting / Launch Point
+                                    Marker(
+                                      point: _launchPosition,
+                                      width: 100,
+                                      height: 70,
+                                      alignment: Alignment.topCenter,
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Row(
-                                            children: [
-                                              const Icon(Icons.speed, color: Colors.blue, size: 20),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '${_speedKmh.toStringAsFixed(0)} ${Localization.translate('كم/سا', lang)}',
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade800,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              Localization.translate(
+                                                'الانطلاق',
+                                                lang,
                                               ),
-                                            ],
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).cardColor,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
                                           ),
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            children: [
-                                              const Icon(Icons.navigation, color: Colors.green, size: 20),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '${_distanceRemaining.toStringAsFixed(1)} ${Localization.translate('كم متبقي', lang)}',
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            children: [
-                                              const Icon(Icons.timer, color: Colors.orange, size: 20),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '${Localization.translate('الوصول المتوقع:', lang)} $_etaMinutes ${Localization.translate('دقيقة', lang)}',
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                              ),
-                                            ],
+                                          const Icon(
+                                            Icons.location_on,
+                                            color: Colors.green,
+                                            size: 32,
                                           ),
                                         ],
                                       ),
                                     ),
-                                  ),
+                                    // Client / Destination Location
+                                    Marker(
+                                      point: _clientPosition,
+                                      width: 100,
+                                      height: 70,
+                                      alignment: Alignment.topCenter,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red.shade800,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              Localization.translate(
+                                                'الزبون',
+                                                lang,
+                                              ),
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).cardColor,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ),
+                                          const Icon(
+                                            Icons.location_on,
+                                            color: Colors.red,
+                                            size: 32,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // Driver / Vehicle location
+                                    Marker(
+                                      point: _driverPosition,
+                                      width: 50,
+                                      height: 50,
+                                      child: Image.asset(
+                                        'Icon/icon.png',
+                                        width: 38,
+                                        height: 38,
+                                        errorBuilder: (_, __, ___) =>
+                                            CircleAvatar(
+                                              backgroundColor:
+                                                  Theme.of(
+                                                        context,
+                                                      ).brightness ==
+                                                      Brightness.dark
+                                                  ? Theme.of(context)
+                                                        .appBarTheme
+                                                        .backgroundColor
+                                                  : Colors.blue.shade800,
+                                              child: Icon(
+                                                Icons.local_shipping,
+                                                color: Theme.of(
+                                                  context,
+                                                ).cardColor,
+                                              ),
+                                            ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ),
-                          // Driver Actions and Simulated GPS Panel
-                          Container(
-                            height: 240,
-                            padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                            decoration: BoxDecoration(color: Theme.of(context).cardColor,
-                              border: Border(top: BorderSide(color: Theme.of(context).dividerColor, width: 1)),
-                            ),
-                            child: _selectedDelivery == null
-                                ? Center(
-                                    child: Text(
-                                      Localization.translate('اختر خطة توزيع لعرض التفاصيل', lang),
-                                      style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey, fontSize: 13),
-                                    ),
-                                  )
-                                : SingleChildScrollView(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Row 1: Title and Actions
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                '${Localization.translate('تفاصيل التوصيل', lang)} (${_selectedDelivery!['firstname'] ?? ''} ${_selectedDelivery!['lastname'] ?? ''})',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  fontFamily: 'Cairo',
-                                                  color: Colors.blue,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
+                            // Floating Workshop Settings Buttons
+                            Positioned(
+                              top: 16,
+                              right: isAr ? 16 : null,
+                              left: isAr ? null : 16,
+                              child: Column(
+                                crossAxisAlignment: isAr
+                                    ? CrossAxisAlignment.start
+                                    : CrossAxisAlignment.end,
+                                children: [
+                                  FloatingActionButton.small(
+                                    heroTag: 'workshop_gps_btn',
+                                    onPressed: () async {
+                                      bool serviceEnabled =
+                                          await Geolocator.isLocationServiceEnabled();
+                                      if (!serviceEnabled) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              Localization.translate(
+                                                'الرجاء تفعيل خدمة الموقع GPS في الهاتف',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
                                               ),
                                             ),
-                                            Wrap(
-                                              spacing: 8,
-                                              runSpacing: 4,
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      Position position =
+                                          await Geolocator.getCurrentPosition(
+                                            desiredAccuracy:
+                                                LocationAccuracy.high,
+                                          );
+                                      await _saveWorkshopLocation(
+                                        LatLng(
+                                          position.latitude,
+                                          position.longitude,
+                                        ),
+                                      );
+                                    },
+                                    backgroundColor: Colors.orange.shade800,
+                                    foregroundColor: Theme.of(
+                                      context,
+                                    ).cardColor,
+                                    tooltip: Localization.translate(
+                                      'تعيين موقع الورشة من الـ GPS الحالي',
+                                      lang,
+                                    ),
+                                    child: const Icon(Icons.storefront),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  FloatingActionButton.small(
+                                    heroTag: 'workshop_map_btn',
+                                    onPressed: () {
+                                      setState(() {
+                                        _isSettingWorkshop =
+                                            !_isSettingWorkshop;
+                                      });
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            Localization.translate(
+                                              _isSettingWorkshop
+                                                  ? 'اضغط الآن على الخريطة لتحديد موقع الورشة'
+                                                  : 'تم الخروج من وضع تحديد موقع الورشة',
+                                              lang,
+                                            ),
+                                            style: const TextStyle(
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                          backgroundColor: _isSettingWorkshop
+                                              ? Colors.orange
+                                              : Colors.grey,
+                                        ),
+                                      );
+                                    },
+                                    backgroundColor: _isSettingWorkshop
+                                        ? Colors.green
+                                        : Colors.orange.shade300,
+                                    foregroundColor: Theme.of(
+                                      context,
+                                    ).cardColor,
+                                    tooltip: Localization.translate(
+                                      'تحديد موقع الورشة على الخريطة',
+                                      lang,
+                                    ),
+                                    child: const Icon(Icons.add_location_alt),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Floating Speed and Distance Card
+                            Positioned(
+                              top: 16,
+                              right: isAr ? null : 16,
+                              left: isAr ? 16 : null,
+                              child: Card(
+                                elevation: 6,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.speed,
+                                            color: Colors.blue,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${_speedKmh.toStringAsFixed(0)} ${Localization.translate('كم/سا', lang)}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.navigation,
+                                            color: Colors.green,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${_distanceRemaining.toStringAsFixed(1)} ${Localization.translate('كم متبقي', lang)}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.timer,
+                                            color: Colors.orange,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${Localization.translate('الوصول المتوقع:', lang)} $_etaMinutes ${Localization.translate('دقيقة', lang)}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Driver Actions and Simulated GPS Panel
+                      Container(
+                        height: 240,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.0,
+                          vertical: 10.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          border: Border(
+                            top: BorderSide(
+                              color: Theme.of(context).dividerColor,
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                        child: _selectedDelivery == null
+                            ? Center(
+                                child: Text(
+                                  Localization.translate(
+                                    'اختر خطة توزيع لعرض التفاصيل',
+                                    lang,
+                                  ),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    color: Colors.grey,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              )
+                            : SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Row 1: Title and Actions
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            '${Localization.translate('تفاصيل التوصيل', lang)} (${_selectedDelivery!['firstname'] ?? ''} ${_selectedDelivery!['lastname'] ?? ''})',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              fontFamily: 'Cairo',
+                                              color: Colors.blue,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            if (_selectedDelivery!['phone1'] !=
+                                                null)
+                                              ElevatedButton.icon(
+                                                onPressed: () => _callClient(
+                                                  _selectedDelivery!['phone1'],
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.phone,
+                                                  size: 14,
+                                                ),
+                                                label: Text(
+                                                  Localization.translate(
+                                                    'اتصال بالزبون',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      Colors.green.shade700,
+                                                  foregroundColor: Theme.of(
+                                                    context,
+                                                  ).cardColor,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
+                                                      ),
+                                                ),
+                                              ),
+                                            ElevatedButton.icon(
+                                              onPressed: _markAsDelivered,
+                                              icon: const Icon(
+                                                Icons.check_circle_outline,
+                                                size: 14,
+                                              ),
+                                              label: Text(
+                                                Localization.translate(
+                                                  'توزيع تام / تسليم ناجح',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    Theme.of(
+                                                          context,
+                                                        ).brightness ==
+                                                        Brightness.dark
+                                                    ? Theme.of(context)
+                                                          .appBarTheme
+                                                          .backgroundColor
+                                                    : Colors.blue.shade800,
+                                                foregroundColor: Theme.of(
+                                                  context,
+                                                ).cardColor,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 6,
+                                                    ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    // Row 2: Customer Address and Phone
+                                    Text(
+                                      '${Localization.translate('الهاتف:', lang)} ${_selectedDelivery!['phone1'] ?? 'Non Spécifié'} | ${Localization.translate('العنوان:', lang)} ${_selectedDelivery!['address'] ?? 'Non Spécifié'}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                    ),
+                                    const Divider(height: 16),
+                                    // Row 3: Vehicle & GPS Telemetry Card
+                                    Card(
+                                      color: Colors.grey.shade50,
+                                      elevation: 0,
+                                      margin: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        side: BorderSide(
+                                          color: Theme.of(context).dividerColor,
+                                        ),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
                                               children: [
-                                                if (_selectedDelivery!['phone1'] != null)
-                                                  ElevatedButton.icon(
-                                                    onPressed: () => _callClient(_selectedDelivery!['phone1']),
-                                                    icon: const Icon(Icons.phone, size: 14),
+                                                Text(
+                                                  Localization.translate(
+                                                    'موقع السائق وحالة الـ GPS',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _isTracking
+                                                      ? 'تتبع نشط 🟢'
+                                                      : 'غير متصل 🔴',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        '${Localization.translate('خط العرض:', lang)} ${_driverPosition.latitude.toStringAsFixed(5)}',
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          fontFamily: 'Cairo',
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        '${Localization.translate('خط الطول:', lang)} ${_driverPosition.longitude.toStringAsFixed(5)}',
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          fontFamily: 'Cairo',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        '${Localization.translate('السرعة الحالية:', lang)} ${_speedKmh.toStringAsFixed(1)} كم/سا',
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          fontFamily: 'Cairo',
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        '${Localization.translate('المسافة المتبقية:', lang)} ${_distanceRemaining.toStringAsFixed(2)} كم',
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          fontFamily: 'Cairo',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                SizedBox(
+                                                  width: 170,
+                                                  height: 32,
+                                                  child: ElevatedButton.icon(
+                                                    onPressed:
+                                                        _toggleGPSTracking,
+                                                    icon: Icon(
+                                                      _isTracking
+                                                          ? Icons.stop
+                                                          : Icons.play_arrow,
+                                                      size: 16,
+                                                    ),
                                                     label: Text(
-                                                      Localization.translate('اتصال بالزبون', lang),
-                                                      style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
+                                                      Localization.translate(
+                                                        _isTracking
+                                                            ? 'إيقاف التتبع'
+                                                            : 'بدء التتبع / المحاكاة',
+                                                        lang,
+                                                      ),
+                                                      style: const TextStyle(
+                                                        fontFamily: 'Cairo',
+                                                        fontSize: 11,
+                                                      ),
                                                     ),
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: Colors.green.shade700,
-                                                      foregroundColor: Theme.of(context).cardColor,
-                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                    ),
-                                                  ),
-                                                ElevatedButton.icon(
-                                                  onPressed: _markAsDelivered,
-                                                  icon: const Icon(Icons.check_circle_outline, size: 14),
-                                                  label: Text(
-                                                    Localization.translate('توزيع تام / تسليم ناجح', lang),
-                                                    style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
-                                                  ),
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade800,
-                                                    foregroundColor: Theme.of(context).cardColor,
-                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                    style:
+                                                        ElevatedButton.styleFrom(
+                                                          backgroundColor:
+                                                              _isTracking
+                                                              ? Colors.red
+                                                              : Colors.green,
+                                                          foregroundColor:
+                                                              Theme.of(
+                                                                context,
+                                                              ).cardColor,
+                                                        ),
                                                   ),
                                                 ),
                                               ],
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 8),
-                                        // Row 2: Customer Address and Phone
-                                        Text(
-                                          '${Localization.translate('الهاتف:', lang)} ${_selectedDelivery!['phone1'] ?? 'Non Spécifié'} | ${Localization.translate('العنوان:', lang)} ${_selectedDelivery!['address'] ?? 'Non Spécifié'}',
-                                          style: TextStyle(fontSize: 12, fontFamily: 'Cairo'),
-                                        ),
-                                        const Divider(height: 16),
-                                        // Row 3: Vehicle & GPS Telemetry Card
-                                        Card(
-                                          color: Colors.grey.shade50,
-                                          elevation: 0,
-                                          margin: EdgeInsets.zero,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                            side: BorderSide(color: Theme.of(context).dividerColor),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(10.0),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text(
-                                                      Localization.translate('موقع السائق وحالة الـ GPS', lang),
-                                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo'),
-                                                    ),
-                                                    Text(
-                                                      _isTracking ? 'تتبع نشط 🟢' : 'غير متصل 🔴',
-                                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [
-                                                          Text('${Localization.translate('خط العرض:', lang)} ${_driverPosition.latitude.toStringAsFixed(5)}', style: const TextStyle(fontSize: 11, fontFamily: 'Cairo')),
-                                                          const SizedBox(height: 4),
-                                                          Text('${Localization.translate('خط الطول:', lang)} ${_driverPosition.longitude.toStringAsFixed(5)}', style: const TextStyle(fontSize: 11, fontFamily: 'Cairo')),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [
-                                                          Text('${Localization.translate('السرعة الحالية:', lang)} ${_speedKmh.toStringAsFixed(1)} كم/سا', style: const TextStyle(fontSize: 11, fontFamily: 'Cairo')),
-                                                          const SizedBox(height: 4),
-                                                          Text('${Localization.translate('المسافة المتبقية:', lang)} ${_distanceRemaining.toStringAsFixed(2)} كم', style: const TextStyle(fontSize: 11, fontFamily: 'Cairo')),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    SizedBox(
-                                                      width: 170,
-                                                      height: 32,
-                                                      child: ElevatedButton.icon(
-                                                        onPressed: _toggleGPSTracking,
-                                                        icon: Icon(_isTracking ? Icons.stop : Icons.play_arrow, size: 16),
-                                                        label: Text(
-                                                          Localization.translate(_isTracking ? 'إيقاف التتبع' : 'بدء التتبع / المحاكاة', lang),
-                                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
-                                                        ),
-                                                        style: ElevatedButton.styleFrom(
-                                                          backgroundColor: _isTracking ? Colors.red : Colors.green,
-                                                          foregroundColor: Theme.of(context).cardColor,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                          ),
-                        ],
+                                  ],
+                                ),
+                              ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+              ],
+            ),
     );
   }
 }
@@ -1084,6 +1499,8 @@ class CreatePlanDialogContent extends StatefulWidget {
   final List<Map<String, dynamic>> orders;
   final SqlDatabase db;
   final AppLanguage lang;
+  final LatLng workshopLocation;
+  final Future<void> Function(LatLng point) onWorkshopLocationChanged;
   final VoidCallback onSuccess;
 
   const CreatePlanDialogContent({
@@ -1091,21 +1508,44 @@ class CreatePlanDialogContent extends StatefulWidget {
     required this.orders,
     required this.db,
     required this.lang,
+    required this.workshopLocation,
+    required this.onWorkshopLocationChanged,
     required this.onSuccess,
   });
 
   @override
-  State<CreatePlanDialogContent> createState() => _CreatePlanDialogContentState();
+  State<CreatePlanDialogContent> createState() =>
+      _CreatePlanDialogContentState();
 }
 
 class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
   Map<String, dynamic>? _selectedOrder;
   List<Map<String, dynamic>> _orderItems = [];
   bool _loadingItems = false;
-  
+
   // Track delivery quantities for each item ID
   Map<int, int> _deliveryQuantities = {};
   DateTime _deliveryDate = DateTime.now();
+  late LatLng _workshopLocation;
+  LatLng? _deliveryLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _workshopLocation = widget.workshopLocation;
+  }
+
+  double? _coordinate(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  LatLng? _locationFromOrder(Map<String, dynamic> order) {
+    final latitude = _coordinate(order['client_latitude']);
+    final longitude = _coordinate(order['client_longitude']);
+    if (latitude == null || longitude == null) return null;
+    return LatLng(latitude, longitude);
+  }
 
   Future<void> _onOrderSelected(Map<String, dynamic>? order) async {
     if (order == null) return;
@@ -1114,16 +1554,20 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
       _loadingItems = true;
       _orderItems = [];
       _deliveryQuantities = {};
+      _deliveryLocation = _locationFromOrder(order);
     });
 
     try {
-      final items = await widget.db.readCommandeDetails(int.tryParse(order['id']?.toString() ?? '') ?? 0);
+      final items = await widget.db.readCommandeDetails(
+        int.tryParse(order['id']?.toString() ?? '') ?? 0,
+      );
       setState(() {
         _orderItems = items;
         for (var item in items) {
           int itemId = int.tryParse(item['id']?.toString() ?? '') ?? 0;
           int totalQty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
-          int delQty = int.tryParse(item['delivered_qty']?.toString() ?? '') ?? 0;
+          int delQty =
+              int.tryParse(item['delivered_qty']?.toString() ?? '') ?? 0;
           int remaining = totalQty - delQty;
           _deliveryQuantities[itemId] = remaining > 0 ? remaining : 0;
         }
@@ -1161,9 +1605,85 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
     }
   }
 
+  Future<void> _pickWorkshopLocation() async {
+    final point = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => MapPickerScreen(
+          initialLatitude: _workshopLocation.latitude,
+          initialLongitude: _workshopLocation.longitude,
+        ),
+      ),
+    );
+    if (point == null || !mounted) return;
+    setState(() => _workshopLocation = point);
+    await widget.onWorkshopLocationChanged(point);
+  }
+
+  Future<void> _pickDeliveryLocation() async {
+    if (_selectedOrder == null) return;
+    final point = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => MapPickerScreen(
+          initialLatitude: _deliveryLocation?.latitude,
+          initialLongitude: _deliveryLocation?.longitude,
+        ),
+      ),
+    );
+    if (point == null || !mounted) return;
+
+    final clientId = int.tryParse(
+      _selectedOrder!['client_id']?.toString() ?? '',
+    );
+    if (clientId == null || clientId <= 0) return;
+    await widget.db.updateClientCoordinates(
+      clientId,
+      point.latitude,
+      point.longitude,
+    );
+    if (!mounted) return;
+    setState(() => _deliveryLocation = point);
+  }
+
+  Future<void> _openGoogleMapsRoute() async {
+    final destination = _deliveryLocation;
+    if (destination == null) return;
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&origin='
+      '${_workshopLocation.latitude},${_workshopLocation.longitude}'
+      '&destination=${destination.latitude},${destination.longitude}'
+      '&travelmode=driving',
+    );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == AppLanguage.arabic
+                ? 'تعذر فتح Google Maps.'
+                : 'Impossible d’ouvrir Google Maps.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _submit() async {
     if (_selectedOrder == null) return;
-    
+    if (_deliveryLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == AppLanguage.arabic
+                ? 'حدّد نقطة التوصيل الدقيقة للزبون أولاً.'
+                : 'Sélectionnez d’abord le point de livraison exact du client.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     // Build list of selected items
     List<Map<String, dynamic>> partialItems = [];
     double totalAmount = 0.0;
@@ -1190,7 +1710,10 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            Localization.translate('الرجاء تحديد كمية أكبر من الصفر لتوصيلها', widget.lang),
+            Localization.translate(
+              'الرجاء تحديد كمية أكبر من الصفر لتوصيلها',
+              widget.lang,
+            ),
           ),
           backgroundColor: Colors.red,
         ),
@@ -1205,8 +1728,10 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
       final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(_deliveryDate);
       final itemsStr = jsonEncode(partialItems);
 
-      final orderId = int.tryParse(_selectedOrder!['id']?.toString() ?? '') ?? 0;
-      final clientId = int.tryParse(_selectedOrder!['client_id']?.toString() ?? '') ?? 0;
+      final orderId =
+          int.tryParse(_selectedOrder!['id']?.toString() ?? '') ?? 0;
+      final clientId =
+          int.tryParse(_selectedOrder!['client_id']?.toString() ?? '') ?? 0;
 
       // 1. Insert delivery plan
       await widget.db.insertCommandeDelivery(
@@ -1221,11 +1746,14 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
       for (var item in partialItems) {
         int itemId = int.tryParse(item['id']?.toString() ?? '') ?? 0;
         int qty = int.tryParse(item['quantity']?.toString() ?? '') ?? 0;
-        await dbInstance.rawUpdate('''
+        await dbInstance.rawUpdate(
+          '''
           UPDATE Commandes_details 
           SET delivered_qty = COALESCE(delivered_qty, 0) + ? 
           WHERE id = ?
-        ''', [qty, itemId]);
+        ''',
+          [qty, itemId],
+        );
       }
 
       // 3. Update order status to partial/full distribution
@@ -1233,14 +1761,17 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
       bool allDelivered = true;
       for (var detail in updatedDetails) {
         int totalQty = int.tryParse(detail['quantity']?.toString() ?? '') ?? 0;
-        int delQty = int.tryParse(detail['delivered_qty']?.toString() ?? '') ?? 0;
+        int delQty =
+            int.tryParse(detail['delivered_qty']?.toString() ?? '') ?? 0;
         if (delQty < totalQty) {
           allDelivered = false;
           break;
         }
       }
 
-      String newStatus = allDelivered ? 'Full Distribution' : 'Partial Distribution';
+      String newStatus = allDelivered
+          ? 'Full Distribution'
+          : 'Partial Distribution';
       await widget.db.updateCommandeStatus(orderId, newStatus);
 
       widget.onSuccess();
@@ -1268,12 +1799,16 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             decoration: InputDecoration(
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             items: widget.orders.map((o) {
               final id = int.tryParse(o['id']?.toString() ?? '') ?? 0;
-              final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}';
-              final totalStr = (o['total'] as num?)?.toStringAsFixed(2) ?? '0.00';
+              final clientName =
+                  '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}';
+              final totalStr =
+                  (o['total'] as num?)?.toStringAsFixed(2) ?? '0.00';
               return DropdownMenuItem<int>(
                 value: id,
                 child: Text(
@@ -1293,12 +1828,108 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
           ),
           const SizedBox(height: 16),
 
+          if (_selectedOrder != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.42),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child: Column(
+                children: [
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.home_work_outlined),
+                    title: Text(
+                      widget.lang == AppLanguage.arabic
+                          ? 'نقطة الانطلاق: الورشة'
+                          : 'Point de départ : atelier',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    subtitle: Text(
+                      '${_workshopLocation.latitude.toStringAsFixed(6)}, '
+                      '${_workshopLocation.longitude.toStringAsFixed(6)}',
+                    ),
+                    trailing: TextButton(
+                      onPressed: _pickWorkshopLocation,
+                      child: Text(
+                        widget.lang == AppLanguage.arabic
+                            ? 'تعديل'
+                            : 'Modifier',
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 8),
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      _deliveryLocation == null
+                          ? Icons.location_off_outlined
+                          : Icons.location_on_outlined,
+                      color: _deliveryLocation == null
+                          ? Colors.red
+                          : Colors.green,
+                    ),
+                    title: Text(
+                      widget.lang == AppLanguage.arabic
+                          ? 'نقطة توصيل الزبون'
+                          : 'Point de livraison du client',
+                      style: const TextStyle(fontFamily: 'Cairo'),
+                    ),
+                    subtitle: Text(
+                      _deliveryLocation == null
+                          ? (widget.lang == AppLanguage.arabic
+                                ? 'غير محددة — مطلوبة لإنشاء الخطة'
+                                : 'Non définie — requise pour créer le plan')
+                          : '${_deliveryLocation!.latitude.toStringAsFixed(6)}, '
+                                '${_deliveryLocation!.longitude.toStringAsFixed(6)}',
+                    ),
+                    trailing: TextButton(
+                      onPressed: _pickDeliveryLocation,
+                      child: Text(
+                        _deliveryLocation == null
+                            ? (widget.lang == AppLanguage.arabic
+                                  ? 'تحديد'
+                                  : 'Définir')
+                            : (widget.lang == AppLanguage.arabic
+                                  ? 'تعديل'
+                                  : 'Modifier'),
+                      ),
+                    ),
+                  ),
+                  if (_deliveryLocation != null)
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: TextButton.icon(
+                        onPressed: _openGoogleMapsRoute,
+                        icon: const Icon(Icons.directions_outlined),
+                        label: Text(
+                          widget.lang == AppLanguage.arabic
+                              ? 'فتح المسار في Google Maps'
+                              : 'Ouvrir dans Google Maps',
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           if (_loadingItems)
             const Center(child: CircularProgressIndicator())
           else if (_selectedOrder != null) ...[
             Text(
               Localization.translate('تحديد العناصر للشحن:', widget.lang),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Cairo',
+              ),
             ),
             const SizedBox(height: 8),
             Container(
@@ -1312,17 +1943,24 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
                 itemCount: _orderItems.length,
                 itemBuilder: (context, index) {
                   final item = _orderItems[index];
-                  final itemId = int.tryParse(item['id']?.toString() ?? '') ?? 0;
+                  final itemId =
+                      int.tryParse(item['id']?.toString() ?? '') ?? 0;
                   final desc = item['description'] ?? '';
-                  final totalQty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
-                  final delQty = int.tryParse(item['delivered_qty']?.toString() ?? '') ?? 0;
+                  final totalQty =
+                      int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
+                  final delQty =
+                      int.tryParse(item['delivered_qty']?.toString() ?? '') ??
+                      0;
                   final remaining = totalQty - delQty;
                   final currentVal = _deliveryQuantities[itemId] ?? 0;
 
                   return ListTile(
                     title: Text(
                       '${item['window_type'] ?? ''} (${item['largeur']}x${item['hauteur']})',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     subtitle: Text(
                       '$desc\n${Localization.translate('الكمية الكلية:', widget.lang)} $totalQty | ${Localization.translate('المسلم سابقا:', widget.lang)} $delQty',
@@ -1332,19 +1970,34 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                          icon: const Icon(
+                            Icons.remove_circle_outline,
+                            color: Colors.red,
+                          ),
                           onPressed: currentVal > 0
-                              ? () => setState(() => _deliveryQuantities[itemId] = currentVal - 1)
+                              ? () => setState(
+                                  () => _deliveryQuantities[itemId] =
+                                      currentVal - 1,
+                                )
                               : null,
                         ),
                         Text(
                           '$currentVal',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            color: Colors.green,
+                          ),
                           onPressed: currentVal < remaining
-                              ? () => setState(() => _deliveryQuantities[itemId] = currentVal + 1)
+                              ? () => setState(
+                                  () => _deliveryQuantities[itemId] =
+                                      currentVal + 1,
+                                )
                               : null,
                         ),
                       ],
@@ -1375,16 +2028,25 @@ class _CreatePlanDialogContentState extends State<CreatePlanDialogContent> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(Localization.translate('إلغاء', widget.lang), style: const TextStyle(fontFamily: 'Cairo')),
+                  child: Text(
+                    Localization.translate('إلغاء', widget.lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: _submit,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade800,
+                    backgroundColor:
+                        Theme.of(context).brightness == Brightness.dark
+                        ? Theme.of(context).appBarTheme.backgroundColor
+                        : Colors.blue.shade800,
                     foregroundColor: Theme.of(context).cardColor,
                   ),
-                  child: Text(Localization.translate('إنشاء الخطة', widget.lang), style: const TextStyle(fontFamily: 'Cairo')),
+                  child: Text(
+                    Localization.translate('إنشاء الخطة', widget.lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
                 ),
               ],
             ),

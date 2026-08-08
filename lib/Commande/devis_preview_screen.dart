@@ -908,7 +908,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         const SizedBox(width: 16),
         Expanded(
           child: _partyBlock('CLIENT', [
-            '$clientIdPrefix${data.clientId}',
+            if (data.clientReference.isNotEmpty)
+              '$clientIdPrefix${data.clientReference}',
             data.clientName,
             if (data.clientPhone.isNotEmpty) '$phonePrefix${data.clientPhone}',
             if (data.clientNif.isNotEmpty) 'NIF: ${data.clientNif}',

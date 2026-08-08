@@ -558,6 +558,17 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                       ?.toDouble() ??
                                   5.8,
                               imagePath: sec['image_path']?.toString(),
+                              isFrame:
+                                  (sec['is_frame'] as num?)?.toInt() ??
+                                  (sec['type'] == 'frame' ? 1 : 0),
+                              isSash:
+                                  (sec['is_sash'] as num?)?.toInt() ??
+                                  (sec['type'].toString().startsWith('sash')
+                                      ? 1
+                                      : 0),
+                              isMullion:
+                                  (sec['is_mullion'] as num?)?.toInt() ??
+                                  (sec['type'] == 'mullion' ? 1 : 0),
                             );
                           }
                           _loadSections(_selectedSeriesId!);
@@ -635,6 +646,11 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     String displayedType = 'frame';
     String sashSubtype = 'sash_lateral';
     String? selectedImagePath;
+    // `type` remains the primary/legacy type.  These three flags are the
+    // independent roles used by the mixed drawing system.
+    bool isFrameRole = true;
+    bool isSashRole = false;
+    bool isMullionRole = false;
 
     showDialog(
       context: context,
@@ -759,6 +775,11 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     onChanged: (val) {
                       setDialogState(() {
                         displayedType = val!;
+                        // Choosing a primary type gives sensible defaults.
+                        // The user may then tick additional roles below.
+                        isFrameRole = val == 'frame';
+                        isSashRole = val == 'sash';
+                        isMullionRole = val == 'mullion';
                         final bool isTprHps = seriesName.contains('TPR') || seriesName.contains('HPS');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
@@ -771,6 +792,35 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         }
                       });
                     },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
+                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('يُستعمل كإطار (Frame)'),
+                    value: isFrameRole,
+                    onChanged: (value) => setDialogState(
+                      () => isFrameRole = value ?? false,
+                    ),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('يُستعمل كظلفة (Sash)'),
+                    value: isSashRole,
+                    onChanged: (value) => setDialogState(
+                      () => isSashRole = value ?? false,
+                    ),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('يُستعمل كتقسيم (Mullion)'),
+                    value: isMullionRole,
+                    onChanged: (value) => setDialogState(
+                      () => isMullionRole = value ?? false,
+                    ),
                   ),
                   if (displayedType == 'sash' &&
                       (seriesType == 'Coulissant' ||
@@ -1005,6 +1055,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       imagePath: selectedImagePath,
                       maxGlassThickness: double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
                       linkedParcloseDoubleId: selectedParcloseDoubleId,
+                      isFrame: isFrameRole ? 1 : 0,
+                      isSash: isSashRole ? 1 : 0,
+                      isMullion: isMullionRole ? 1 : 0,
                     );
                     _loadSections(_selectedSeriesId!);
                     if (context.mounted) {
@@ -1088,6 +1141,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     if (['sash_lateral', 'sash_central', 'sash_traverse'].contains(displayedType)) {
       displayedType = 'sash';
     }
+    bool readRole(String key, bool fallback) {
+      final value = section[key];
+      if (value == null) return fallback;
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      final text = value.toString().trim().toLowerCase();
+      return text == '1' || text == 'true' || text == 'yes';
+    }
+
+    bool isFrameRole = readRole('is_frame', selectedType == 'frame');
+    bool isSashRole = readRole('is_sash', selectedType.startsWith('sash'));
+    bool isMullionRole = readRole('is_mullion', selectedType == 'mullion');
     String sashSubtype = ['sash_lateral', 'sash_central', 'sash_traverse'].contains(selectedType)
         ? selectedType
         : 'sash_lateral';
@@ -1225,6 +1290,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     onChanged: (val) {
                       setDialogState(() {
                         displayedType = val!;
+                        // Reset only the suggested roles when changing the
+                        // primary type. The user can choose several roles
+                        // immediately below.
+                        isFrameRole = val == 'frame';
+                        isSashRole = val == 'sash';
+                        isMullionRole = val == 'mullion';
                         final bool isTprHps = seriesName.contains('TPR') || seriesName.contains('HPS');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
@@ -1237,6 +1308,35 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         }
                       });
                     },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
+                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('يُستعمل كإطار (Frame)'),
+                    value: isFrameRole,
+                    onChanged: (value) => setDialogState(
+                      () => isFrameRole = value ?? false,
+                    ),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('يُستعمل كظلفة (Sash)'),
+                    value: isSashRole,
+                    onChanged: (value) => setDialogState(
+                      () => isSashRole = value ?? false,
+                    ),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('يُستعمل كتقسيم (Mullion)'),
+                    value: isMullionRole,
+                    onChanged: (value) => setDialogState(
+                      () => isMullionRole = value ?? false,
+                    ),
                   ),
                   if (displayedType == 'sash' &&
                       (seriesType == 'Coulissant' ||
@@ -1506,6 +1606,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         'code': codeCtrl.text,
                         'name': nameCtrl.text,
                         'type': selectedType,
+                        'is_frame': isFrameRole ? 1 : 0,
+                        'is_sash': isSashRole ? 1 : 0,
+                        'is_mullion': isMullionRole ? 1 : 0,
                         'thickness': double.tryParse(visibleWidthCtrl.text) ?? 45.0,
                         'bar_length': double.tryParse(barLengthCtrl.text) ?? 5.8,
                         'glass_deduction':
@@ -1871,6 +1974,17 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                       ?.toDouble() ??
                                   5.8,
                               imagePath: sec['image_path']?.toString(),
+                              isFrame:
+                                  (sec['is_frame'] as num?)?.toInt() ??
+                                  (sec['type'] == 'frame' ? 1 : 0),
+                              isSash:
+                                  (sec['is_sash'] as num?)?.toInt() ??
+                                  (sec['type'].toString().startsWith('sash')
+                                      ? 1
+                                      : 0),
+                              isMullion:
+                                  (sec['is_mullion'] as num?)?.toInt() ??
+                                  (sec['type'] == 'mullion' ? 1 : 0),
                             );
                           }
                         }

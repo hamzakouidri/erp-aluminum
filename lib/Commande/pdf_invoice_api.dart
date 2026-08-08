@@ -413,7 +413,8 @@ class PdfInvoiceApi {
         pw.SizedBox(width: 20),
         pw.Expanded(
           child: _partyBlock(_ar(t('CLIENT')), [
-            '$clientIdPrefix${data.clientId}',
+            if (data.clientReference.isNotEmpty)
+              '$clientIdPrefix${data.clientReference}',
             data.clientName,
             if (data.clientPhone.isNotEmpty) '$phonePrefix${data.clientPhone}',
             if (data.clientNif.isNotEmpty) 'NIF: ${data.clientNif}',

@@ -586,6 +586,8 @@ class ComponentCalculator {
     bool hasSingleSash = singleSashCount > 0;
     bool hasSlidingSash = slidingSashCount > 0;
     bool hasShutter = window.hasShutter;
+    final outerFrameOverride = window.activeFrameOverride;
+    final isOuterFramePvc = window.isFramePVC;
 
     // تحديد نوع الغطاء الجانبي:
     // مدمج: مقطع الإطار نفسه فيه couvreJointWidth > 0
@@ -782,16 +784,6 @@ class ComponentCalculator {
       gachePortes = 0;
     }
 
-    // --- إضافة هذا المنطق داخل دالة generateBom ---
-
-    // 1. تحديد هل الإطار من نوع 103
-    bool isFrame103 =
-        (window.frameOverride != null) &&
-        (window.frameOverride!['name'].toString().contains('Cadre cj') ||
-            window.frameOverride!['code'].toString().contains('103'));
-
-
-
     double rawEspaLen = hasShutter ? window.height - 350 : window.height - 200;
     double espaLength = 300;
     if (rawEspaLen >= 400) {
@@ -931,8 +923,8 @@ class ComponentCalculator {
       return result;
     }
 
-    final double weldVal = window.isPVC ? 5.0 : 0.0;
-    final double noBottomWeldVal = window.isPVC ? 3.0 : 0.0;
+    final double weldVal = isOuterFramePvc ? 5.0 : 0.0;
+    final double noBottomWeldVal = isOuterFramePvc ? 3.0 : 0.0;
 
     double frameWidth;
     double frameNetHeight;
@@ -984,15 +976,15 @@ class ComponentCalculator {
     List<double> renfortFramePieces = [];
 
     double renfortFrameDeduction = 140.0;
-    if (window.frameOverride != null) {
+    if (outerFrameOverride != null) {
       renfortFrameDeduction =
-          (window.frameOverride!['renfort_deduction'] as num?)?.toDouble() ??
+          (outerFrameOverride['renfort_deduction'] as num?)?.toDouble() ??
           140.0;
     }
 
     double integratedCoverW = window.sideCoverWidth;
-    if (integratedCoverW <= 0 && window.frameOverride != null) {
-      integratedCoverW = ((window.frameOverride!['couvre_joint_width'] ?? window.frameOverride!['visible_width']) as num?)?.toDouble() ?? 0.0;
+    if (integratedCoverW <= 0 && outerFrameOverride != null) {
+      integratedCoverW = ((outerFrameOverride['couvre_joint_width'] ?? outerFrameOverride['visible_width']) as num?)?.toDouble() ?? 0.0;
     }
     if (integratedCoverW <= 0) {
       final sec = window.getSectionByType('frame');
@@ -1024,14 +1016,14 @@ class ComponentCalculator {
         framePieces.addAll([wPiece, hPiece, hPiece]);
         if (window.hasFramePlintheBottom) {
           double fThickness = window.profileThickness;
-          if (window.frameOverride != null) {
-            fThickness = ((window.frameOverride!['visible_width'] ?? window.frameOverride!['thickness']) as num?)?.toDouble() ?? window.profileThickness;
+          if (outerFrameOverride != null) {
+            fThickness = ((outerFrameOverride['visible_width'] ?? outerFrameOverride['thickness']) as num?)?.toDouble() ?? window.profileThickness;
           }
           framePlinthePieces.add((fWidth - (2 * fThickness)) / 1000.0);
         }
       }
 
-      if (window.isPVC) {
+      if (isOuterFramePvc) {
         double rw = r.width - renfortFrameDeduction;
         double rh = r.height - renfortFrameDeduction;
         if (rw < 0.0) rw = 0.0;
@@ -1051,9 +1043,7 @@ class ComponentCalculator {
         colorName,
         pieces: framePieces,
         unit: 'قطاع',
-        overrideMap: window.usesSlidingPrimaryProfiles
-            ? window.slidingFrameOverride
-            : window.frameOverride,
+        overrideMap: outerFrameOverride,
       ),
     );
 
@@ -2708,11 +2698,42 @@ class ComponentCalculator {
     // --- 3.5 حساب أعمدة التقسيم للألمنيوم (Traverse / Mullion) ---
     double totalMullionLengthMeters = 0.0;
     List<double> mullionPieces = [];
+    final Map<String, List<double>> selectedMullionPieces = {};
+    final Map<String, Map<String, dynamic>> selectedMullionSections = {};
+
+    void addOuterMullionPiece(_MullionSegment segment, bool isHorizontal) {
+      final length = (segment.end - segment.start) / 1000.0;
+      if (length <= 0) return;
+
+      final section = window.effectiveMullionSectionAt(
+        isHorizontal,
+        segment.position,
+      );
+      final isDoubleFrame = window.isDoubleFrameMullionAt(
+        isHorizontal,
+        segment.position,
+      );
+      if (section == null) {
+        mullionPieces.add(length);
+        totalMullionLengthMeters += length;
+        return;
+      }
+
+      final sectionId = section['id']?.toString() ?? 'custom';
+      final groupKey = '$sectionId:${isDoubleFrame ? 'double' : 'single'}';
+      final pieces = selectedMullionPieces.putIfAbsent(groupKey, () => []);
+      final physicalPieces = isDoubleFrame ? 2 : 1;
+      for (var i = 0; i < physicalPieces; i++) {
+        pieces.add(length);
+      }
+      selectedMullionSections[groupKey] = section;
+      totalMullionLengthMeters += length * physicalPieces;
+    }
 
     // Collect all frame mullion segments from adjacent zones
     final List<_MullionSegment> horizontalSegments = [];
     final List<_MullionSegment> verticalSegments = [];
-    final double mullionT = window.mullionThickness;
+    final double mullionT = window.maximumMullionThickness;
 
     for (int i = 0; i < window.zones.length; i++) {
       final z1 = window.zones[i];
@@ -2779,19 +2800,11 @@ class ComponentCalculator {
     }
 
     for (var seg in finalH) {
-      double len = (seg.end - seg.start) / 1000.0;
-      if (len > 0) {
-        mullionPieces.add(len);
-        totalMullionLengthMeters += len;
-      }
+      addOuterMullionPiece(seg, true);
     }
 
     for (var seg in finalV) {
-      double len = (seg.end - seg.start) / 1000.0;
-      if (len > 0) {
-        mullionPieces.add(len);
-        totalMullionLengthMeters += len;
-      }
+      addOuterMullionPiece(seg, false);
     }
 
     final sashSection = window.getSectionByType('sash');
@@ -3188,27 +3201,51 @@ class ComponentCalculator {
     }
 
     if (totalMullionLengthMeters > 0) {
-      items.add(
-        createProfile(
-          'تقسيم الزجاج (Mullion)',
-          colorName,
-          pieces: mullionPieces,
-          unit: 'قطاع',
-        ),
-      );
+      final allMullionPieces = <double>[
+        ...mullionPieces,
+        for (final pieces in selectedMullionPieces.values) ...pieces,
+      ];
+
+      if (mullionPieces.isNotEmpty) {
+        items.add(
+          createProfile(
+            'تقسيم الزجاج (Mullion)',
+            colorName,
+            pieces: mullionPieces,
+            unit: 'قطاع',
+          ),
+        );
+      }
+      for (final entry in selectedMullionPieces.entries) {
+        final section = selectedMullionSections[entry.key]!;
+        final isDoubleFrame = entry.key.endsWith(':double');
+        final label = isDoubleFrame
+            ? 'Cadre doublé — ${section['code'] ?? section['name'] ?? ''}'
+            : 'تقسيم الزجاج (Mullion) — ${section['code'] ?? section['name'] ?? ''}';
+        items.add(
+          createProfile(
+            label,
+            colorName,
+            pieces: entry.value,
+            unit: 'قطاع',
+            overrideMap: section,
+            preferOverrideMap: true,
+          ),
+        );
+      }
 
       if (window.isPVC) {
         items.add(
           createProfile(
             'حديد التقسيم (Renfort Mullion)',
             null,
-            pieces: mullionPieces,
+            pieces: allMullionPieces,
             unit: 'قطاع',
           ),
         );
         // Add screws for this reinforcement
         int mullionRenfortScrews = 0;
-        for (var p in mullionPieces) {
+        for (var p in allMullionPieces) {
           mullionRenfortScrews += ((p * 1000.0 / 500.0) + 1).ceilToDouble().toInt();
         }
 
@@ -3229,17 +3266,23 @@ class ComponentCalculator {
     final bool canHaveDivisionTasso = window.systemMode != 'sliding' && 
         !(window.system?.name.toLowerCase().contains('tpr') ?? false);
     if (canHaveDivisionTasso) {
-      tassoQty += mullionPieces.length * 2;
+      tassoQty +=
+          (mullionPieces.length +
+              selectedMullionPieces.values.fold<int>(
+                0,
+                (sum, pieces) => sum + pieces.length,
+              )) *
+          2;
     }
 
     // Condition B: PVC window with Shutter and monobloc/integrated frame
-    final bool isFrameMonobloc = (window.frameOverride != null) &&
-        (window.frameOverride!['name'].toString().contains('Cadre cj') ||
-         window.frameOverride!['code'].toString().contains('103') ||
-         window.frameOverride!['name'].toString().toLowerCase().contains('monobloc') ||
-         window.frameOverride!['code'].toString().toLowerCase().contains('monobloc'));
+    final bool isFrameMonobloc = (outerFrameOverride != null) &&
+        (outerFrameOverride['name'].toString().contains('Cadre cj') ||
+         outerFrameOverride['code'].toString().contains('103') ||
+         outerFrameOverride['name'].toString().toLowerCase().contains('monobloc') ||
+         outerFrameOverride['code'].toString().toLowerCase().contains('monobloc'));
     
-    if (window.isPVC && hasShutter && isFrameMonobloc) {
+    if (isOuterFramePvc && hasShutter && isFrameMonobloc) {
       tassoQty += 2;
     }
 

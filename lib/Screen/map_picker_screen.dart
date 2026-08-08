@@ -98,8 +98,8 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.noraleur.erpaluminum',
+                urlTemplate: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                userAgentPackageName: 'erp_aluminum_app',
               ),
               MarkerLayer(
                 markers: [

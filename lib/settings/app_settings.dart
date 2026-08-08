@@ -68,14 +68,9 @@ class AppSettingsProvider extends ChangeNotifier {
       _userRole == 'manager' ||
       _userRole == 'co_manager' ||
       _userRole == 'admin' ||
-      isAdmin ||
-      _isPermissionTrue(_workerPermissions['full_manager_permissions']) ||
-      _isPermissionTrue(_workerPermissions['co_manager']);
+      isAdmin;
 
-  bool get isCoManager =>
-      _userRole == 'co_manager' ||
-      _isPermissionTrue(_workerPermissions['full_manager_permissions']) ||
-      _isPermissionTrue(_workerPermissions['co_manager']);
+  bool get isCoManager => _userRole == 'co_manager';
 
   AppSettingsProvider() {
     loadSettings();

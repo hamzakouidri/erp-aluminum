@@ -412,6 +412,8 @@ class WorkerCard extends StatefulWidget {
 }
 
 class _WorkerCardState extends State<WorkerCard> {
+  static const _fullManagerJobRole = 'نائب مدير (صلاحيات كاملة)';
+
   late Map<String, dynamic> perms;
 
   @override
@@ -516,7 +518,65 @@ class _WorkerCardState extends State<WorkerCard> {
     });
   }
 
+  bool _isPermissionEnabled(dynamic value) {
+    if (value == true || value == 1) return true;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == '1';
+    }
+    return false;
+  }
+
+  bool get _hasFullManagerPermissions =>
+      _isPermissionEnabled(perms['full_manager_permissions']) ||
+      _isPermissionEnabled(perms['co_manager']);
+
   Future<void> _updatePermission(String key, bool val) async {
+    final workerUid = widget.worker['uid'].toString();
+    final workerRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(workerUid);
+
+    // A full co-manager always has team management.  If the manager turns off
+    // this switch, remove the full role rather than leaving a contradictory
+    // `co_manager` role that would keep the page visible to the worker.
+    if (key == 'manage_workers' && !val) {
+      var isFullManager = _hasFullManagerPermissions;
+      if (!isFullManager) {
+        try {
+          final cloudWorker = await workerRef.get();
+          final cloudData = cloudWorker.data();
+          final cloudPermissions = cloudData?['permissions'];
+          Map<String, dynamic> cloudFullPermissions = {};
+          if (cloudPermissions is Map) {
+            cloudFullPermissions = Map<String, dynamic>.from(
+              cloudPermissions,
+            );
+          } else if (cloudData?['permissions_json'] is String) {
+            try {
+              final decoded = jsonDecode(cloudData!['permissions_json']);
+              if (decoded is Map) {
+                cloudFullPermissions = Map<String, dynamic>.from(decoded);
+              }
+            } catch (_) {}
+          }
+          isFullManager =
+              cloudData?['role'] == 'co_manager' ||
+              _isPermissionEnabled(
+                cloudFullPermissions['full_manager_permissions'],
+              ) ||
+              _isPermissionEnabled(cloudFullPermissions['co_manager']);
+        } catch (_) {
+          // The normal update below remains available for an ordinary worker
+          // if the current cloud state cannot be read.
+        }
+      }
+      if (isFullManager) {
+        await _toggleFullManagerPermissions(false);
+        return;
+      }
+    }
+
     final previousPerms = Map<String, dynamic>.from(perms);
     final updatedPerms = Map<String, dynamic>.from(perms)..[key] = val;
     final prefs = await SharedPreferences.getInstance();
@@ -526,17 +586,14 @@ class _WorkerCardState extends State<WorkerCard> {
     });
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.worker['uid'])
-          .set({
+      await workerRef.set({
             'isBlocked': updatedPerms['isBlocked'] ?? false,
             'permissions': updatedPerms,
             'permissions_json': jsonEncode(updatedPerms),
             if (workshopId.isNotEmpty) 'workshopId': workshopId,
           }, SetOptions(merge: true));
       await widget.db.updateEmployeePermissions(
-        widget.worker['uid'],
+        workerUid,
         jsonEncode(updatedPerms),
       );
     } catch (e) {
@@ -582,27 +639,28 @@ class _WorkerCardState extends State<WorkerCard> {
     final uid = widget.worker['uid'].toString();
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code') ?? '';
+    final currentJobRole = widget.worker['job_role']?.toString().trim() ?? '';
+    final nextJobRole = grant
+        ? _fullManagerJobRole
+        : (currentJobRole == _fullManagerJobRole ? '' : currentJobRole);
 
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'role': grant ? 'co_manager' : 'worker',
         'permissions': updatedPerms,
         'permissions_json': jsonEncode(updatedPerms),
+        'job_role': nextJobRole,
         if (workshopId.isNotEmpty) 'workshopId': workshopId,
-        if (grant) 'job_role': 'نائب مدير (صلاحيات كاملة)',
       }, SetOptions(merge: true));
       await widget.db.updateEmployeePermissions(uid, jsonEncode(updatedPerms));
-
-      if (grant) {
-        await widget.db.updateEmployeeFullInfo(
-          uid,
-          name: widget.worker['name']?.toString() ?? '',
-          email: widget.worker['email']?.toString() ?? '',
-          phone: widget.worker['phone']?.toString() ?? '',
-          address: widget.worker['address']?.toString() ?? '',
-          jobRole: 'نائب مدير (صلاحيات كاملة)',
-        );
-      }
+      await widget.db.updateEmployeeFullInfo(
+        uid,
+        name: widget.worker['name']?.toString() ?? '',
+        email: widget.worker['email']?.toString() ?? '',
+        phone: widget.worker['phone']?.toString() ?? '',
+        address: widget.worker['address']?.toString() ?? '',
+        jobRole: nextJobRole,
+      );
     } catch (e) {
       debugPrint('Error updating co_manager in Firebase: $e');
       if (mounted) {
@@ -938,7 +996,7 @@ class _WorkerCardState extends State<WorkerCard> {
             // 👑 بطاقة زر "إعطاء مهام نفس مهام المدير"
             Builder(
               builder: (ctx) {
-                final bool isFullManager = (perms['full_manager_permissions'] == true) || (perms['co_manager'] == true);
+                final bool isFullManager = _hasFullManagerPermissions;
                 return Container(
                   margin: const EdgeInsets.all(10),
                   padding: const EdgeInsets.all(12),

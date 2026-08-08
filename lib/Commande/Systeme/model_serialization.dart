@@ -342,6 +342,7 @@ extension WindowModelSerialization on WindowModel {
       'primaryMullionAxis': primaryMullionAxis,
       'zones': zones.map((z) => z.toMap()).toList(),
       'mullionProfiles': mullionProfiles.map((k, v) => MapEntry(k, v.name)),
+      'mullionSectionOverrides': mullionSectionOverrides,
       'componentOverrides': componentOverrides,
       'isReplaced': isReplaced,
       'replacementReason': replacementReason,
@@ -524,6 +525,16 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
             ),
           ),
         );
+  }
+
+  if (map['mullionSectionOverrides'] is Map) {
+    model.mullionSectionOverrides =
+        (map['mullionSectionOverrides'] as Map).map(
+      (key, value) => MapEntry(
+        key.toString(),
+        Map<String, dynamic>.from(value as Map),
+      ),
+    );
   }
 }
 

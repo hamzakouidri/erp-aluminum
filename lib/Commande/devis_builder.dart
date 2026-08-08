@@ -102,6 +102,7 @@ class DevisData {
   final String clientRc;
   final String clientAi;
   final String chequeNumber;
+  final int clientNumber;
   final int clientId;
   final int sequenceNumber;
   final int priorConfirmedWindowsCount;
@@ -136,12 +137,18 @@ class DevisData {
     this.clientRc = '',
     this.clientAi = '',
     this.chequeNumber = '',
+    this.clientNumber = 0,
     this.clientId = 0,
     this.sequenceNumber = 0,
     this.priorConfirmedWindowsCount = 0,
     this.rawOrder,
     this.rawItems,
   });
+
+  /// Human-facing reference. The database id can be a distributed timestamp
+  /// and must never be printed as the client's document number.
+  String get clientReference =>
+      clientNumber > 0 ? clientNumber.toString().padLeft(3, '0') : '';
 }
 
 class DevisBuilder {
@@ -284,9 +291,13 @@ class DevisBuilder {
     String clientNis = '';
     String clientRc = '';
     String clientAi = '';
+    int clientNumber = 0;
 
     final db = SqlDatabase();
-    final clientId = order['client_id'] as int?;
+    final rawClientId = order['client_id'];
+    final clientId = rawClientId is num
+        ? rawClientId.toInt()
+        : int.tryParse(rawClientId?.toString() ?? '');
     if (clientId != null) {
       try {
         final clientRows = await db.getClientById(clientId);
@@ -305,6 +316,11 @@ class DevisBuilder {
         }
       } catch (e) {
         debugPrint('Error getting client details in DevisBuilder: $e');
+      }
+      try {
+        clientNumber = await db.getClientSequenceNumber(clientId);
+      } catch (e) {
+        debugPrint('Error getting client sequence number in DevisBuilder: $e');
       }
     }
 
@@ -363,6 +379,7 @@ class DevisBuilder {
       clientRc: clientRc,
       clientAi: clientAi,
       chequeNumber: chequeNumber,
+      clientNumber: clientNumber,
       clientId: clientId ?? 0,
       sequenceNumber: sequenceNumber,
       priorConfirmedWindowsCount: priorConfirmedWindowsCount,
@@ -777,16 +794,10 @@ class DevisBuilder {
     } else {
       if (displaySeries.isNotEmpty) {
         final cleanSeries = displaySeries.trim();
-        final lowerSeries = cleanSeries.toLowerCase();
-        final lowerSystem = systemType.toLowerCase();
-        if (lowerSeries.contains(lowerSystem) ||
-            lowerSeries.contains('fenêtre') ||
-            lowerSeries.contains('fenetre') ||
-            lowerSeries.contains('window') ||
-            lowerSeries.contains('نافذة')) {
-          title = cleanSeries;
+        if (_isGenericWindowLabel(cleanSeries)) {
+          title = _localizeWindowTitle(cleanSeries, systemType);
         } else {
-          title = "$cleanSeries - $systemType"; // Reversed!
+          title = '$cleanSeries - $systemType';
         }
       } else {
         title = systemType;
@@ -797,7 +808,7 @@ class DevisBuilder {
         map['invoiceTableEdited']?.toString().toLowerCase() == 'true') {
       final editedTitle = map['manualNameOverride']?.toString().trim() ?? '';
       if (editedTitle.isNotEmpty) {
-        title = editedTitle;
+        title = _localizeWindowTitle(editedTitle, systemType);
       }
     }
 
@@ -816,7 +827,10 @@ class DevisBuilder {
     final invoiceTableEdited =
         map['invoiceTableEdited'] == true ||
         map['invoiceTableEdited']?.toString().toLowerCase() == 'true';
-    if (invoiceTableEdited) {
+    // The editable table stores text in the language used while editing. For
+    // another document language, rebuild the technical details from the saved
+    // window structure so labels are localized instead of remaining Arabic.
+    if (invoiceTableEdited && _currentLang == AppLanguage.arabic) {
       final exactDetails = (manualDesc ?? '')
           .split('\n')
           .map((line) => line.trim())
@@ -1054,6 +1068,10 @@ class DevisBuilder {
             lower.startsWith('système coulissant') ||
             lower.startsWith('sliding system') ||
             lower.startsWith('نظام منزلق') ||
+            lower.startsWith('fenêtre coulissante') ||
+            lower.startsWith('fenetre coulissante') ||
+            lower.startsWith('sliding window') ||
+            lower.startsWith('نافذة منزلقة') ||
             lower.startsWith('système battant') ||
             lower.startsWith('battant system') ||
             lower.startsWith('نظام مفصلي') ||
@@ -1679,10 +1697,13 @@ class DevisBuilder {
 
   static String _windowTitle(String? type) {
     final value = type?.toLowerCase() ?? '';
-    if (value.contains('sliding') || value.contains('coulissant')) {
-      if (_currentLang == AppLanguage.french) return 'Système coulissant';
-      if (_currentLang == AppLanguage.english) return 'Sliding system';
-      return 'نظام منزلق';
+    if (value.contains('sliding') ||
+        value.contains('coulissant') ||
+        value.contains('منزلق') ||
+        value.contains('جرار')) {
+      if (_currentLang == AppLanguage.french) return 'Fenêtre coulissante';
+      if (_currentLang == AppLanguage.english) return 'Sliding window';
+      return 'نافذة منزلقة';
     }
     if (value.contains('rolling') ||
         value.contains('roulant') ||
@@ -1696,6 +1717,31 @@ class DevisBuilder {
     if (_currentLang == AppLanguage.french) return 'Système battant';
     if (_currentLang == AppLanguage.english) return 'Battant system';
     return 'نظام مفصلي';
+  }
+
+  static bool _isGenericWindowLabel(String value) {
+    final lower = value.toLowerCase();
+    return lower.contains('fenêtre') ||
+        lower.contains('fenetre') ||
+        lower.contains('window') ||
+        value.contains('نافذة');
+  }
+
+  /// Replaces only the generic window part of a title and keeps a selected
+  /// series prefix, e.g. "TPR - نافذة منزلقة" becomes
+  /// "TPR - Fenêtre coulissante".
+  static String _localizeWindowTitle(String value, String localizedSystemType) {
+    if (!_isGenericWindowLabel(value)) return value;
+
+    final parts = value
+        .split(RegExp(r'\s*[-–—]\s*'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+    if (parts.length > 1 && _isGenericWindowLabel(parts.last)) {
+      return '${parts.sublist(0, parts.length - 1).join(' - ')} - '
+          '$localizedSystemType';
+    }
+    return localizedSystemType;
   }
 
   static String _glassLabel(String glass) {
