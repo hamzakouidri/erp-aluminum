@@ -23,7 +23,11 @@ import 'package:database_data/Commande/partial_proforma_screen.dart';
 import 'package:database_data/Screen/order_allocation_screen.dart';
 
 class Commande extends StatefulWidget {
-  const Commande({super.key});
+  /// Opens the normal new-order form after the orders page has appeared.
+  /// The dashboard uses this so its add action behaves like the page action.
+  final bool openAddOrderOnStart;
+
+  const Commande({super.key, this.openAddOrderOnStart = false});
 
   @override
   State<Commande> createState() => _CommandeState();
@@ -147,6 +151,19 @@ class _CommandeState extends State<Commande> {
     _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
       _scheduleCloudRefresh();
     });
+    if (widget.openAddOrderOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openNewOrderForm();
+      });
+    }
+  }
+
+  Future<void> _openNewOrderForm() async {
+    final result = await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => CommandePage(db: db)));
+    if (!mounted || result != true) return;
+    _fetchCommandes();
   }
 
   void _fetchCommandes() {
@@ -166,8 +183,7 @@ class _CommandeState extends State<Commande> {
   void _removeCommandeFromView(Object? commandeId) {
     final current = _cachedCommandes ?? const <Map<String, dynamic>>[];
     final remaining = current
-        .where((commande) =>
-            commande['id'].toString() != commandeId.toString())
+        .where((commande) => commande['id'].toString() != commandeId.toString())
         .map((commande) => Map<String, dynamic>.from(commande))
         .toList(growable: false);
 
@@ -255,7 +271,9 @@ class _CommandeState extends State<Commande> {
             final clientFirst = (d['firstname'] ?? '').toString().toLowerCase();
             final clientLast = (d['lastname'] ?? '').toString().toLowerCase();
             final clientName = '$clientFirst $clientLast'.trim();
-            final projectName = (d['project_name'] ?? '').toString().toLowerCase();
+            final projectName = (d['project_name'] ?? '')
+                .toString()
+                .toLowerCase();
             final cpStr = '$clientName $projectName'.trim();
             if (!cpStr.contains(filterVal)) return false;
             break;
@@ -264,7 +282,10 @@ class _CommandeState extends State<Commande> {
             if (!dt.contains(filterVal)) return false;
             break;
           case 'total':
-            final netPayable = (d['net_payable'] as num?)?.toDouble() ?? (d['total'] as num?)?.toDouble() ?? 0.0;
+            final netPayable =
+                (d['net_payable'] as num?)?.toDouble() ??
+                (d['total'] as num?)?.toDouble() ??
+                0.0;
             final tStr = netPayable.toStringAsFixed(0);
             if (!tStr.contains(filterVal)) return false;
             break;
@@ -274,7 +295,10 @@ class _CommandeState extends State<Commande> {
             if (!aStr.contains(filterVal)) return false;
             break;
           case 'remaining':
-            final netPayable = (d['net_payable'] as num?)?.toDouble() ?? (d['total'] as num?)?.toDouble() ?? 0.0;
+            final netPayable =
+                (d['net_payable'] as num?)?.toDouble() ??
+                (d['total'] as num?)?.toDouble() ??
+                0.0;
             final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
             final remaining = netPayable - advance;
             final rStr = remaining.toStringAsFixed(0);
@@ -283,10 +307,14 @@ class _CommandeState extends State<Commande> {
           case 'status':
             final rawStatus = (d['status'] ?? 'Pending').toString();
             final statusStr = _translateStatus(rawStatus, lang).toLowerCase();
-            if (!statusStr.contains(filterVal) && !rawStatus.toLowerCase().contains(filterVal)) return false;
+            if (!statusStr.contains(filterVal) &&
+                !rawStatus.toLowerCase().contains(filterVal))
+              return false;
             break;
           case 'creator':
-            final creator = _formatCreatorDisplay(d['creation_platform']?.toString()).toLowerCase();
+            final creator = _formatCreatorDisplay(
+              d['creation_platform']?.toString(),
+            ).toLowerCase();
             if (!creator.contains(filterVal)) return false;
             break;
         }
@@ -305,8 +333,12 @@ class _CommandeState extends State<Commande> {
             cmp = idA.compareTo(idB);
             break;
           case 'client_project':
-            final nameA = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}'.trim();
-            final nameB = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}'.trim();
+            final nameA =
+                '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}'
+                    .trim();
+            final nameB =
+                '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}'
+                    .trim();
             cmp = nameA.compareTo(nameB);
             break;
           case 'date':
@@ -315,8 +347,14 @@ class _CommandeState extends State<Commande> {
             cmp = dtA.compareTo(dtB);
             break;
           case 'total':
-            final tA = (a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0;
-            final tB = (b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0;
+            final tA =
+                (a['net_payable'] as num?)?.toDouble() ??
+                (a['total'] as num?)?.toDouble() ??
+                0.0;
+            final tB =
+                (b['net_payable'] as num?)?.toDouble() ??
+                (b['total'] as num?)?.toDouble() ??
+                0.0;
             cmp = tA.compareTo(tB);
             break;
           case 'advance':
@@ -325,11 +363,17 @@ class _CommandeState extends State<Commande> {
             cmp = advA.compareTo(advB);
             break;
           case 'remaining':
-            final netA = (a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0;
+            final netA =
+                (a['net_payable'] as num?)?.toDouble() ??
+                (a['total'] as num?)?.toDouble() ??
+                0.0;
             final advA = (a['advance_payment'] as num?)?.toDouble() ?? 0.0;
             final remA = netA - advA;
 
-            final netB = (b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0;
+            final netB =
+                (b['net_payable'] as num?)?.toDouble() ??
+                (b['total'] as num?)?.toDouble() ??
+                0.0;
             final advB = (b['advance_payment'] as num?)?.toDouble() ?? 0.0;
             final remB = netB - advB;
 
@@ -341,8 +385,12 @@ class _CommandeState extends State<Commande> {
             cmp = stA.compareTo(stB);
             break;
           case 'creator':
-            final crA = _formatCreatorDisplay(a['creation_platform']?.toString());
-            final crB = _formatCreatorDisplay(b['creation_platform']?.toString());
+            final crA = _formatCreatorDisplay(
+              a['creation_platform']?.toString(),
+            );
+            final crB = _formatCreatorDisplay(
+              b['creation_platform']?.toString(),
+            );
             cmp = crA.compareTo(crB);
             break;
         }
@@ -357,17 +405,13 @@ class _CommandeState extends State<Commande> {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final isDesktop = MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
+    final isDesktop =
+        MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(
-          Localization.translate(
-            "Commande",
-            lang,
-          ),
-        ),
+        title: Text(Localization.translate("Commande", lang)),
         centerTitle: !isDesktop,
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).appBarTheme.backgroundColor
@@ -380,7 +424,9 @@ class _CommandeState extends State<Commande> {
                 onPressed: () async {
                   final result = await Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => CommandePage(db: db)),
+                    MaterialPageRoute(
+                      builder: (context) => CommandePage(db: db),
+                    ),
                   );
                   if (!mounted) return;
                   if (result == true) {
@@ -393,14 +439,22 @@ class _CommandeState extends State<Commande> {
                 label: Text(
                   lang == AppLanguage.arabic
                       ? 'إضافة طلبية جديدة'
-                      : (lang == AppLanguage.french ? 'Nouvelle commande' : 'Add New Order'),
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                      : (lang == AppLanguage.french
+                            ? 'Nouvelle commande'
+                            : 'Add New Order'),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: const Color(0xFF2563EB),
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),
@@ -415,7 +469,10 @@ class _CommandeState extends State<Commande> {
               padding: const EdgeInsets.all(20),
               margin: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                border: Border.all(width: 1, color: Theme.of(context).dividerColor),
+                border: Border.all(
+                  width: 1,
+                  color: Theme.of(context).dividerColor,
+                ),
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -470,7 +527,8 @@ class _CommandeState extends State<Commande> {
                     _cachedCommandes = snapshot.data;
                   }
 
-                  if (snapshot.connectionState == ConnectionState.waiting && _cachedCommandes == null) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      _cachedCommandes == null) {
                     return const Center(child: CircularProgressIndicator());
                   } else if (snapshot.hasError && _cachedCommandes == null) {
                     // 🟢 التصميم التفاعلي لحالة الخطأ (بدون أكواد SQL مرعبة)
@@ -566,7 +624,9 @@ class _CommandeState extends State<Commande> {
                     );
                   }
 
-                  final rawData = snapshot.hasData ? snapshot.data! : (_cachedCommandes ?? <Map<String, dynamic>>[]);
+                  final rawData = snapshot.hasData
+                      ? snapshot.data!
+                      : (_cachedCommandes ?? <Map<String, dynamic>>[]);
 
                   // 🟢 التصميم التفاعلي لحالة عدم وجود طلبات
                   if (rawData.isEmpty) {
@@ -678,7 +738,8 @@ class _CommandeState extends State<Commande> {
                     );
                   }
 
-                  if (MediaQuery.of(context).size.width >= 900 || Platform.isWindows) {
+                  if (MediaQuery.of(context).size.width >= 900 ||
+                      Platform.isWindows) {
                     return _buildDesktopOrdersTableView(context, rawData, lang);
                   }
 
@@ -700,11 +761,14 @@ class _CommandeState extends State<Commande> {
                           ? 'زبون غير معروف'
                           : clientName;
 
-                      final netPayable = (data[index]['net_payable'] as num?)?.toDouble() ?? 0.0;
-                       final rawTotal = (data[index]['total'] as num?)?.toDouble() ?? 0.0;
-                       final total = netPayable > 0.0 ? netPayable : rawTotal;
-                       final status = data[index]['status'] ?? 'New';
-                       final isWindows = Platform.isWindows;
+                      final netPayable =
+                          (data[index]['net_payable'] as num?)?.toDouble() ??
+                          0.0;
+                      final rawTotal =
+                          (data[index]['total'] as num?)?.toDouble() ?? 0.0;
+                      final total = netPayable > 0.0 ? netPayable : rawTotal;
+                      final status = data[index]['status'] ?? 'New';
+                      final isWindows = Platform.isWindows;
 
                       return Card(
                         shape: RoundedRectangleBorder(
@@ -727,7 +791,9 @@ class _CommandeState extends State<Commande> {
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
-                                color: Theme.of(context).textTheme.bodyLarge?.color,
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodyLarge?.color,
                               ),
                               children: [
                                 highlightText(clientDisplay, _searchQuery),
@@ -740,13 +806,19 @@ class _CommandeState extends State<Commande> {
                               const SizedBox(height: 5),
                               Text(
                                 formatDate(data[index]),
-                                style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color),
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).textTheme.bodySmall?.color,
+                                ),
                               ),
                               if (hasPhone)
                                 RichText(
                                   text: TextSpan(
                                     style: TextStyle(
-                                      color: Theme.of(context).textTheme.bodySmall?.color,
+                                      color: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.color,
                                       fontSize: 14,
                                     ),
                                     children: [
@@ -757,25 +829,38 @@ class _CommandeState extends State<Commande> {
                                     ],
                                   ),
                                 ),
-                               if (data[index]['project_name'] != null && data[index]['project_name'].toString().isNotEmpty) ...[
-                                 const SizedBox(height: 4),
-                                 Row(
+                              if (data[index]['project_name'] != null &&
+                                  data[index]['project_name']
+                                      .toString()
+                                      .isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Row(
                                   children: [
                                     Flexible(
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: Colors.blue.shade50,
-                                          borderRadius: BorderRadius.circular(6),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.folder, size: 12, color: Colors.blue.shade700),
+                                            Icon(
+                                              Icons.folder,
+                                              size: 12,
+                                              color: Colors.blue.shade700,
+                                            ),
                                             const SizedBox(width: 4),
                                             Flexible(
                                               child: Text(
-                                                data[index]['project_name'].toString(),
+                                                data[index]['project_name']
+                                                    .toString(),
                                                 overflow: TextOverflow.ellipsis,
                                                 maxLines: 1,
                                                 style: TextStyle(
@@ -789,9 +874,9 @@ class _CommandeState extends State<Commande> {
                                         ),
                                       ),
                                     ),
-                                   ],
-                                 ),
-                               ],
+                                  ],
+                                ),
+                              ],
                               // On Windows, keep the order group and status
                               // independent. ListTile's trailing area can make
                               // the central content too narrow on desktop.
@@ -842,35 +927,44 @@ class _CommandeState extends State<Commande> {
                           trailing: isWindows
                               ? null
                               : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${total.toStringAsFixed(2)} دج',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                  fontSize: 16,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${total.toStringAsFixed(2)} دج',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _getStatusColor(status),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        _translateStatus(
+                                          status,
+                                          Provider.of<AppSettingsProvider>(
+                                            context,
+                                            listen: false,
+                                          ).language,
+                                        ),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 5),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: _getStatusColor(status),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  _translateStatus(status, Provider.of<AppSettingsProvider>(context, listen: false).language),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
                           onTap: settings.canViewOrderDetails()
                               ? () {
                                   _showOrderOptions(context, data[index]);
@@ -907,7 +1001,10 @@ class _CommandeState extends State<Commande> {
     );
   }
 
-  void _showOrderOptions(BuildContext context, Map<String, dynamic> orderData) async {
+  void _showOrderOptions(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+  ) async {
     final orderId = (orderData['id'] as num?)?.toInt() ?? 0;
     final isFullyManufactured = await db.isOrderFullyManufactured(orderId);
     if (!mounted) return;
@@ -919,23 +1016,31 @@ class _CommandeState extends State<Commande> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (BuildContext ctx) {
-        final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+        final settings = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        );
         final lang = settings.language;
         final currentStatus = orderData['status']?.toString() ?? 'Pending';
-        final statusRaw = (orderData['status']?.toString() ?? '').trim().toLowerCase();
-        final isPending = statusRaw == 'en attente' ||
+        final statusRaw = (orderData['status']?.toString() ?? '')
+            .trim()
+            .toLowerCase();
+        final isPending =
+            statusRaw == 'en attente' ||
             statusRaw == 'في الانتظار' ||
             statusRaw == 'pending' ||
             statusRaw == 'draft' ||
             statusRaw == 'new' ||
             statusRaw == 'en_attente';
         final isConfirmedOrBeyond = !isPending;
-        final isManufacturingOrBeyond = isConfirmedOrBeyond &&
+        final isManufacturingOrBeyond =
+            isConfirmedOrBeyond &&
             statusRaw != 'confirmed' &&
             statusRaw != 'مؤكدة' &&
             statusRaw != 'مؤكد';
 
-        final isDistributedOrBeyond = isFullyManufactured ||
+        final isDistributedOrBeyond =
+            isFullyManufactured ||
             statusRaw.contains('full manufacturing') ||
             statusRaw.contains('تصنيع كلي') ||
             statusRaw.contains('distribution') ||
@@ -957,626 +1062,315 @@ class _CommandeState extends State<Commande> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-              Container(
-                width: 50,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(10),
+                Container(
+                  width: 50,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-              // Beautiful Header showing Order details & Status
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${lang == AppLanguage.french ? "Commande" : "طلب"} #${orderData['id']}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              fontFamily: 'Cairo',
-                              color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
+                // Beautiful Header showing Order details & Status
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${lang == AppLanguage.french ? "Commande" : "طلب"} #${orderData['id']}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                fontFamily: 'Cairo',
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            orderData['client_name']?.toString() ?? orderData['client_display']?.toString() ?? "Client",
-                            style: TextStyle(
-                              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey.shade600,
-                              fontSize: 13,
-                              fontFamily: 'Cairo',
+                            const SizedBox(height: 4),
+                            Text(
+                              orderData['client_name']?.toString() ??
+                                  orderData['client_display']?.toString() ??
+                                  "Client",
+                              style: TextStyle(
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600,
+                                fontSize: 13,
+                                fontFamily: 'Cairo',
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(currentStatus),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _translateStatus(currentStatus, lang),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(currentStatus),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _translateStatus(currentStatus, lang),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Cairo',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(),
-              const SizedBox(height: 10),
+                const Divider(),
+                const SizedBox(height: 10),
 
-              // 1. الوثائق والمستندات الرسمية للطلبية
-              // 1. الوثائق والمستندات الرسمية للطلبية
+                // 1. الوثائق والمستندات الرسمية للطلبية
+                // 1. الوثائق والمستندات الرسمية للطلبية
                 ListTile(
                   leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-                title: Text(Localization.translate('doc_devis_menu', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db
-                        .readCommandeDetails(orderData['id'])
-                        .timeout(const Duration(seconds: 10));
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
+                  title: Text(Localization.translate('doc_devis_menu', lang)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _showHeavyLoadingDialog(context, lang);
+                    try {
+                      final rawItems = await db
+                          .readCommandeDetails(orderData['id'])
+                          .timeout(const Duration(seconds: 10));
+                      final List<Map<String, dynamic>> items = rawItems
+                          .map((item) => Map<String, dynamic>.from(item))
+                          .toList();
 
-                    await _restoreDocumentImagesFromStoredBytes(items);
+                      await _restoreDocumentImagesFromStoredBytes(items);
 
-                    final workshop = await DevisBuilder.loadWorkshopInfo()
-                        .timeout(const Duration(seconds: 6));
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      documentTitleKey: 'doc_devis',
-                    ).timeout(const Duration(seconds: 10));
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
-                      ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد الفاتورة: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-              // 1.3. Facture Officielle / Proforma
-              if (settings.canViewOrderDocuments())
-                ListTile(
-                leading: const Icon(Icons.description, color: Colors.indigo),
-                title: Text(Localization.translate('فاتورة رسمية / أولية', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      isProForma: true,
-                    );
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
-                      ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد الفاتورة: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-              
-
-              // Facture de Vente
-              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.receipt_rounded, color: Colors.teal),
-                title: Text(lang == AppLanguage.french ? 'Facture de Vente' : 'فاتورة بيع / Facture de Vente'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      isProForma: false,
-                      documentTitleKey: 'FACTURE_VENTE',
-                    );
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
-                      ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد الفاتورة: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-              // Bon de Route
-              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.directions_car_outlined, color: Colors.blueAccent),
-                title: Text(lang == AppLanguage.french ? 'Bon de Route' : 'بون دو روت / Bon de Route'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      isProForma: false,
-                      documentTitleKey: 'BON_ROUTE',
-                    );
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
-                      ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد المستند: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-
-              // Bon de livraison
-              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.assignment, color: Colors.blue),
-                title: Text(Localization.translate('doc_bon_livraison_menu', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
-
-                    for (var item in items) {
-                      final path = item['drawing_image_path']?.toString() ?? '';
-                      if (path.isEmpty || !File(path).existsSync()) {
-                        final jsonRaw = item['partitions_json'];
-                        if (jsonRaw != null) {
-                          try {
-                            Map<String, dynamic> modelMap = {};
-                            if (jsonRaw is Map<String, dynamic>) {
-                              modelMap = jsonRaw;
-                            } else if (jsonRaw is Map) {
-                              modelMap = Map<String, dynamic>.from(jsonRaw);
-                            } else {
-                              final str = jsonRaw.toString().trim();
-                              if (str.length >= 5) {
-                                modelMap = jsonDecode(str) as Map<String, dynamic>;
-                              }
-                            }
-                            if (modelMap.isNotEmpty) {
-                              final model = WindowModel(db: db);
-                              await applyWindowModelAndLoadCatalog(model, modelMap);
-                              final newPath = await saveWindowImageToDisk(model);
-                              if (newPath.isNotEmpty) {
-                                await db.updateCommandeDetailImagePath(item['id'] as int, newPath);
-                                item['drawing_image_path'] = newPath;
-                              }
-                            }
-                          } catch (err) {
-                            debugPrint('Error generating missing image: $err');
-                          }
-                        }
-                      }
-                    }
-
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      hidePrices: false,
-                      documentTitleKey: 'doc_bon_livraison',
-                    );
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
-                      ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد الفاتورة: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-              // Bon de livraison sans prix
-              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.print_disabled, color: Colors.blueGrey),
-                title: Text(Localization.translate('doc_bon_livraison_sans_prix_menu', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
-
-                    for (var item in items) {
-                      final path = item['drawing_image_path']?.toString() ?? '';
-                      if (path.isEmpty || !File(path).existsSync()) {
-                        final jsonRaw = item['partitions_json'];
-                        if (jsonRaw != null) {
-                          try {
-                            Map<String, dynamic> modelMap = {};
-                            if (jsonRaw is Map<String, dynamic>) {
-                              modelMap = jsonRaw;
-                            } else if (jsonRaw is Map) {
-                              modelMap = Map<String, dynamic>.from(jsonRaw);
-                            } else {
-                              final str = jsonRaw.toString().trim();
-                              if (str.length >= 5) {
-                                modelMap = jsonDecode(str) as Map<String, dynamic>;
-                              }
-                            }
-                            if (modelMap.isNotEmpty) {
-                              final model = WindowModel(db: db);
-                              await applyWindowModelAndLoadCatalog(model, modelMap);
-                              final newPath = await saveWindowImageToDisk(model);
-                              if (newPath.isNotEmpty) {
-                                await db.updateCommandeDetailImagePath(item['id'] as int, newPath);
-                                item['drawing_image_path'] = newPath;
-                              }
-                            }
-                          } catch (err) {
-                            debugPrint('Error generating missing image: $err');
-                          }
-                        }
-                      }
-                    }
-
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      hidePrices: true,
-                      documentTitleKey: 'doc_bon_livraison_sans_prix',
-                    );
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
-                      ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد الفاتورة: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-              // Bon de livraison partiel
-              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.picture_as_pdf_outlined, color: Colors.blue),
-                title: Text(Localization.translate('doc_bon_livraison_partiel_menu', lang)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PartialProformaScreen(
+                      final workshop = await DevisBuilder.loadWorkshopInfo()
+                          .timeout(const Duration(seconds: 6));
+                      final devis = await DevisBuilder.build(
                         order: orderData,
-                        documentTitleKey: 'doc_bon_livraison_partiel',
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              // Bon de livraison partiel sans prix
-              if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.print_disabled_outlined, color: Colors.blueGrey),
-                title: Text(Localization.translate('doc_bon_livraison_partiel_sans_prix_menu', lang)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PartialProformaScreen(
-                        order: orderData,
-                        hidePrices: true,
-                        documentTitleKey: 'doc_bon_livraison_partiel_sans_prix',
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              
-                // Bon de charge
-              if (settings.canViewOrderDocuments() && isManufacturingOrBeyond)
-                ListTile(
-                leading: const Icon(Icons.local_shipping, color: Colors.teal),
-                title: Text(Localization.translate('doc_bon_charge_menu', lang)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  
-                  final choice = await showDialog<String>(
-                    context: context,
-                    builder: (dialogCtx) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      title: Row(
-                        children: [
-                          const Icon(Icons.local_shipping, color: Colors.teal),
-                          const SizedBox(width: 8),
-                          Text(
-                            lang == AppLanguage.french ? 'Type de Bon d\'expédition' : 'نوع فاتورة الشحن',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 16),
-                          ),
-                        ],
-                      ),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ListTile(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)),
-                            leading: const Icon(Icons.inventory_2, color: Colors.blue),
-                            title: Text(
-                              lang == AppLanguage.french ? 'Expédition complète (Toutes les fenêtres)' : lang == AppLanguage.english ? 'Full Shipping (All windows)' : 'فاتورة شحن كلية (جميع النوافذ)',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
-                            ),
-                            onTap: () => Navigator.pop(dialogCtx, 'FULL'),
-                          ),
-                          const SizedBox(height: 10),
-                          ListTile(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)),
-                            leading: const Icon(Icons.local_shipping_outlined, color: Colors.orange),
-                            title: Text(
-                              lang == AppLanguage.french ? 'Expédition partielle (Par bon de livraison)' : lang == AppLanguage.english ? 'Partial Shipping (By delivery note)' : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
-                            ),
-                            onTap: () => Navigator.pop(dialogCtx, 'PARTIAL'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-
-                  if (choice == null) return;
-
-                  if (choice == 'PARTIAL') {
-                    final orderId = orderData['id'] as int;
-                    final deliveries = await db.readCommandeDeliveries(orderId);
-
-                    if (deliveries.isEmpty) {
+                        items: items,
+                        workshop: workshop,
+                        documentTitleKey: 'doc_devis',
+                      ).timeout(const Duration(seconds: 10));
+                      _dismissHeavyLoadingDialog();
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            lang == AppLanguage.french 
-                              ? 'Aucun bon d\'expédition partiel trouvé. Redirection...' 
-                              : 'لا توجد وصولات شحن جزئية مسبقة! سيتم التوجيه لتحديد العناصر المراد شحنها.',
-                            style: const TextStyle(fontFamily: 'Cairo'),
-                          ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => PartialProformaScreen(
-                            order: orderData,
-                            hidePrices: true,
-                            documentTitleKey: 'doc_bon_livraison_partiel',
-                            autoOpenBonDeChargeOnSave: true,
-                          ),
+                          builder: (context) => DevisPreviewScreen(data: devis),
                         ),
                       );
-                      return;
-                    }
-
-                    if (!mounted) return;
-                    final selectedResult = await showModalBottomSheet<dynamic>(
-                      context: context,
-                      isScrollControlled: true,
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-                      builder: (bottomSheetCtx) {
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                lang == AppLanguage.french ? 'Sélectionner un Bon de livraison partiel' : 'اختر وصل تسليم جزئي للتحميل',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Cairo'),
-                              ),
-                              const SizedBox(height: 12),
-                              Expanded(
-                                child: ListView.separated(
-                                  shrinkWrap: true,
-                                  itemCount: deliveries.length,
-                                  separatorBuilder: (_, _) => const Divider(height: 1),
-                                  itemBuilder: (context, index) {
-                                    final del = deliveries[index];
-                                    final isLoaded = (del['is_loaded'] == 1);
-                                    List items = [];
-                                    try {
-                                      items = jsonDecode(del['items_json']);
-                                    } catch (_) {}
-                                    final itemCount = items.length;
-                                    return ListTile(
-                                      leading: Icon(
-                                        isLoaded ? Icons.check_circle : Icons.local_shipping,
-                                        color: isLoaded ? Colors.green : Colors.orange,
-                                      ),
-                                      title: Text('وصل بتاريخ: ${del['delivery_date']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo')),
-                                      subtitle: Text('عدد القطع: $itemCount نافذة', style: const TextStyle(fontSize: 11, fontFamily: 'Cairo')),
-                                      trailing: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isLoaded ? Colors.green.shade100 : Colors.orange.shade100,
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          isLoaded ? (lang == AppLanguage.french ? 'Chargé' : 'تم التحميل') : (lang == AppLanguage.french ? 'En attente' : 'معلق'),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: isLoaded ? Colors.green.shade900 : Colors.orange.shade900,
-                                            fontFamily: 'Cairo',
-                                          ),
-                                        ),
-                                      ),
-                                      onTap: () {
-                                        Navigator.pop(bottomSheetCtx, del);
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.teal,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                onPressed: () {
-                                  Navigator.pop(bottomSheetCtx, {'action': 'NEW'});
-                                },
-                                icon: const Icon(Icons.add, color: Colors.white),
-                                label: Text(
-                                  lang == AppLanguage.french ? '+ Nouveau bon de livraison partiel' : '+ إنشاء توصيل جزئي جديد',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
-                                ),
-                              ),
-                            ],
+                    } catch (e) {
+                      _dismissHeavyLoadingDialog();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                            backgroundColor: Colors.red,
                           ),
                         );
-                      },
-                    );
-
-                    if (selectedResult == null) return;
-
-                    if (selectedResult is Map && selectedResult['action'] == 'NEW') {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PartialProformaScreen(
-                            order: orderData,
-                            hidePrices: true,
-                            documentTitleKey: 'doc_bon_livraison_partiel',
-                            autoOpenBonDeChargeOnSave: true,
-                          ),
-                        ),
-                      );
-                      return;
+                      }
                     }
+                  },
+                ),
 
-                    if (selectedResult is Map<String, dynamic>) {
+                // 1.3. Facture Officielle / Proforma
+                if (settings.canViewOrderDocuments())
+                  ListTile(
+                    leading: const Icon(
+                      Icons.description,
+                      color: Colors.indigo,
+                    ),
+                    title: Text(
+                      Localization.translate('فاتورة رسمية / أولية', lang),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
                       await _showHeavyLoadingDialog(context, lang);
                       try {
-                        final itemsJsonStr = selectedResult['items_json']?.toString() ?? '[]';
-                        final List<dynamic> rawDecoded = jsonDecode(itemsJsonStr);
-                        final List<Map<String, dynamic>> items = rawDecoded.map((it) => Map<String, dynamic>.from(it)).toList();
+                        final rawItems = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final List<Map<String, dynamic>> items = rawItems
+                            .map((item) => Map<String, dynamic>.from(item))
+                            .toList();
+                        final workshop = await DevisBuilder.loadWorkshopInfo();
+                        final devis = await DevisBuilder.build(
+                          order: orderData,
+                          items: items,
+                          workshop: workshop,
+                          isProForma: true,
+                        );
+                        _dismissHeavyLoadingDialog();
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                DevisPreviewScreen(data: devis),
+                          ),
+                        );
+                      } catch (e) {
+                        _dismissHeavyLoadingDialog();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                // Facture de Vente
+                if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.receipt_rounded,
+                      color: Colors.teal,
+                    ),
+                    title: Text(
+                      lang == AppLanguage.french
+                          ? 'Facture de Vente'
+                          : 'فاتورة بيع / Facture de Vente',
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _showHeavyLoadingDialog(context, lang);
+                      try {
+                        final rawItems = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final List<Map<String, dynamic>> items = rawItems
+                            .map((item) => Map<String, dynamic>.from(item))
+                            .toList();
+                        final workshop = await DevisBuilder.loadWorkshopInfo();
+                        final devis = await DevisBuilder.build(
+                          order: orderData,
+                          items: items,
+                          workshop: workshop,
+                          isProForma: false,
+                          documentTitleKey: 'FACTURE_VENTE',
+                        );
+                        _dismissHeavyLoadingDialog();
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                DevisPreviewScreen(data: devis),
+                          ),
+                        );
+                      } catch (e) {
+                        _dismissHeavyLoadingDialog();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                // Bon de Route
+                if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.directions_car_outlined,
+                      color: Colors.blueAccent,
+                    ),
+                    title: Text(
+                      lang == AppLanguage.french
+                          ? 'Bon de Route'
+                          : 'بون دو روت / Bon de Route',
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _showHeavyLoadingDialog(context, lang);
+                      try {
+                        final rawItems = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final List<Map<String, dynamic>> items = rawItems
+                            .map((item) => Map<String, dynamic>.from(item))
+                            .toList();
+                        final workshop = await DevisBuilder.loadWorkshopInfo();
+                        final devis = await DevisBuilder.build(
+                          order: orderData,
+                          items: items,
+                          workshop: workshop,
+                          isProForma: false,
+                          documentTitleKey: 'BON_ROUTE',
+                        );
+                        _dismissHeavyLoadingDialog();
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                DevisPreviewScreen(data: devis),
+                          ),
+                        );
+                      } catch (e) {
+                        _dismissHeavyLoadingDialog();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء توليد المستند: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                // Bon de livraison
+                if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                  ListTile(
+                    leading: const Icon(Icons.assignment, color: Colors.blue),
+                    title: Text(
+                      Localization.translate('doc_bon_livraison_menu', lang),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _showHeavyLoadingDialog(context, lang);
+                      try {
+                        final rawItems = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final List<Map<String, dynamic>> items = rawItems
+                            .map((item) => Map<String, dynamic>.from(item))
+                            .toList();
 
                         for (var item in items) {
-                          final path = item['drawing_image_path']?.toString() ?? '';
+                          final path =
+                              item['drawing_image_path']?.toString() ?? '';
                           if (path.isEmpty || !File(path).existsSync()) {
                             final jsonRaw = item['partitions_json'];
                             if (jsonRaw != null) {
@@ -1589,20 +1383,661 @@ class _CommandeState extends State<Commande> {
                                 } else {
                                   final str = jsonRaw.toString().trim();
                                   if (str.length >= 5) {
-                                    modelMap = jsonDecode(str) as Map<String, dynamic>;
+                                    modelMap =
+                                        jsonDecode(str) as Map<String, dynamic>;
                                   }
                                 }
                                 if (modelMap.isNotEmpty) {
                                   final model = WindowModel(db: db);
-                                  await applyWindowModelAndLoadCatalog(model, modelMap);
-                                  final newPath = await saveWindowImageToDisk(model);
+                                  await applyWindowModelAndLoadCatalog(
+                                    model,
+                                    modelMap,
+                                  );
+                                  final newPath = await saveWindowImageToDisk(
+                                    model,
+                                  );
                                   if (newPath.isNotEmpty) {
-                                    await db.updateCommandeDetailImagePath(item['id'] as int, newPath);
+                                    await db.updateCommandeDetailImagePath(
+                                      item['id'] as int,
+                                      newPath,
+                                    );
                                     item['drawing_image_path'] = newPath;
                                   }
                                 }
                               } catch (err) {
-                                debugPrint('Error generating missing image: $err');
+                                debugPrint(
+                                  'Error generating missing image: $err',
+                                );
+                              }
+                            }
+                          }
+                        }
+
+                        final workshop = await DevisBuilder.loadWorkshopInfo();
+                        final devis = await DevisBuilder.build(
+                          order: orderData,
+                          items: items,
+                          workshop: workshop,
+                          hidePrices: false,
+                          documentTitleKey: 'doc_bon_livraison',
+                        );
+                        _dismissHeavyLoadingDialog();
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                DevisPreviewScreen(data: devis),
+                          ),
+                        );
+                      } catch (e) {
+                        _dismissHeavyLoadingDialog();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                // Bon de livraison sans prix
+                if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.print_disabled,
+                      color: Colors.blueGrey,
+                    ),
+                    title: Text(
+                      Localization.translate(
+                        'doc_bon_livraison_sans_prix_menu',
+                        lang,
+                      ),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _showHeavyLoadingDialog(context, lang);
+                      try {
+                        final rawItems = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final List<Map<String, dynamic>> items = rawItems
+                            .map((item) => Map<String, dynamic>.from(item))
+                            .toList();
+
+                        for (var item in items) {
+                          final path =
+                              item['drawing_image_path']?.toString() ?? '';
+                          if (path.isEmpty || !File(path).existsSync()) {
+                            final jsonRaw = item['partitions_json'];
+                            if (jsonRaw != null) {
+                              try {
+                                Map<String, dynamic> modelMap = {};
+                                if (jsonRaw is Map<String, dynamic>) {
+                                  modelMap = jsonRaw;
+                                } else if (jsonRaw is Map) {
+                                  modelMap = Map<String, dynamic>.from(jsonRaw);
+                                } else {
+                                  final str = jsonRaw.toString().trim();
+                                  if (str.length >= 5) {
+                                    modelMap =
+                                        jsonDecode(str) as Map<String, dynamic>;
+                                  }
+                                }
+                                if (modelMap.isNotEmpty) {
+                                  final model = WindowModel(db: db);
+                                  await applyWindowModelAndLoadCatalog(
+                                    model,
+                                    modelMap,
+                                  );
+                                  final newPath = await saveWindowImageToDisk(
+                                    model,
+                                  );
+                                  if (newPath.isNotEmpty) {
+                                    await db.updateCommandeDetailImagePath(
+                                      item['id'] as int,
+                                      newPath,
+                                    );
+                                    item['drawing_image_path'] = newPath;
+                                  }
+                                }
+                              } catch (err) {
+                                debugPrint(
+                                  'Error generating missing image: $err',
+                                );
+                              }
+                            }
+                          }
+                        }
+
+                        final workshop = await DevisBuilder.loadWorkshopInfo();
+                        final devis = await DevisBuilder.build(
+                          order: orderData,
+                          items: items,
+                          workshop: workshop,
+                          hidePrices: true,
+                          documentTitleKey: 'doc_bon_livraison_sans_prix',
+                        );
+                        _dismissHeavyLoadingDialog();
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                DevisPreviewScreen(data: devis),
+                          ),
+                        );
+                      } catch (e) {
+                        _dismissHeavyLoadingDialog();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                // Bon de livraison partiel
+                if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.picture_as_pdf_outlined,
+                      color: Colors.blue,
+                    ),
+                    title: Text(
+                      Localization.translate(
+                        'doc_bon_livraison_partiel_menu',
+                        lang,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PartialProformaScreen(
+                            order: orderData,
+                            documentTitleKey: 'doc_bon_livraison_partiel',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                // Bon de livraison partiel sans prix
+                if (settings.canViewOrderDocuments() && isConfirmedOrBeyond)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.print_disabled_outlined,
+                      color: Colors.blueGrey,
+                    ),
+                    title: Text(
+                      Localization.translate(
+                        'doc_bon_livraison_partiel_sans_prix_menu',
+                        lang,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PartialProformaScreen(
+                            order: orderData,
+                            hidePrices: true,
+                            documentTitleKey:
+                                'doc_bon_livraison_partiel_sans_prix',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                // Bon de charge
+                if (settings.canViewOrderDocuments() && isManufacturingOrBeyond)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.local_shipping,
+                      color: Colors.teal,
+                    ),
+                    title: Text(
+                      Localization.translate('doc_bon_charge_menu', lang),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+
+                      final choice = await showDialog<String>(
+                        context: context,
+                        builder: (dialogCtx) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          title: Row(
+                            children: [
+                              const Icon(
+                                Icons.local_shipping,
+                                color: Colors.teal,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                lang == AppLanguage.french
+                                    ? 'Type de Bon d\'expédition'
+                                    : 'نوع فاتورة الشحن',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                leading: const Icon(
+                                  Icons.inventory_2,
+                                  color: Colors.blue,
+                                ),
+                                title: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Expédition complète (Toutes les fenêtres)'
+                                      : lang == AppLanguage.english
+                                      ? 'Full Shipping (All windows)'
+                                      : 'فاتورة شحن كلية (جميع النوافذ)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Cairo',
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                onTap: () => Navigator.pop(dialogCtx, 'FULL'),
+                              ),
+                              const SizedBox(height: 10),
+                              ListTile(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                leading: const Icon(
+                                  Icons.local_shipping_outlined,
+                                  color: Colors.orange,
+                                ),
+                                title: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Expédition partielle (Par bon de livraison)'
+                                      : lang == AppLanguage.english
+                                      ? 'Partial Shipping (By delivery note)'
+                                      : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Cairo',
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                onTap: () =>
+                                    Navigator.pop(dialogCtx, 'PARTIAL'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+
+                      if (choice == null) return;
+
+                      if (choice == 'PARTIAL') {
+                        final orderId = orderData['id'] as int;
+                        final deliveries = await db.readCommandeDeliveries(
+                          orderId,
+                        );
+
+                        if (deliveries.isEmpty) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                lang == AppLanguage.french
+                                    ? 'Aucun bon d\'expédition partiel trouvé. Redirection...'
+                                    : 'لا توجد وصولات شحن جزئية مسبقة! سيتم التوجيه لتحديد العناصر المراد شحنها.',
+                                style: const TextStyle(fontFamily: 'Cairo'),
+                              ),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PartialProformaScreen(
+                                order: orderData,
+                                hidePrices: true,
+                                documentTitleKey: 'doc_bon_livraison_partiel',
+                                autoOpenBonDeChargeOnSave: true,
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (!mounted) return;
+                        final selectedResult = await showModalBottomSheet<dynamic>(
+                          context: context,
+                          isScrollControlled: true,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                          ),
+                          builder: (bottomSheetCtx) {
+                            return Container(
+                              padding: const EdgeInsets.all(16),
+                              constraints: BoxConstraints(
+                                maxHeight:
+                                    MediaQuery.of(context).size.height * 0.7,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    lang == AppLanguage.french
+                                        ? 'Sélectionner un Bon de livraison partiel'
+                                        : 'اختر وصل تسليم جزئي للتحميل',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      fontFamily: 'Cairo',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: ListView.separated(
+                                      shrinkWrap: true,
+                                      itemCount: deliveries.length,
+                                      separatorBuilder: (_, _) =>
+                                          const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        final del = deliveries[index];
+                                        final isLoaded =
+                                            (del['is_loaded'] == 1);
+                                        List items = [];
+                                        try {
+                                          items = jsonDecode(del['items_json']);
+                                        } catch (_) {}
+                                        final itemCount = items.length;
+                                        return ListTile(
+                                          leading: Icon(
+                                            isLoaded
+                                                ? Icons.check_circle
+                                                : Icons.local_shipping,
+                                            color: isLoaded
+                                                ? Colors.green
+                                                : Colors.orange,
+                                          ),
+                                          title: Text(
+                                            'وصل بتاريخ: ${del['delivery_date']}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                            'عدد القطع: $itemCount نافذة',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                          trailing: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isLoaded
+                                                  ? Colors.green.shade100
+                                                  : Colors.orange.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              isLoaded
+                                                  ? (lang == AppLanguage.french
+                                                        ? 'Chargé'
+                                                        : 'تم التحميل')
+                                                  : (lang == AppLanguage.french
+                                                        ? 'En attente'
+                                                        : 'معلق'),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: isLoaded
+                                                    ? Colors.green.shade900
+                                                    : Colors.orange.shade900,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ),
+                                          onTap: () {
+                                            Navigator.pop(bottomSheetCtx, del);
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.teal,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(bottomSheetCtx, {
+                                        'action': 'NEW',
+                                      });
+                                    },
+                                    icon: const Icon(
+                                      Icons.add,
+                                      color: Colors.white,
+                                    ),
+                                    label: Text(
+                                      lang == AppLanguage.french
+                                          ? '+ Nouveau bon de livraison partiel'
+                                          : '+ إنشاء توصيل جزئي جديد',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+
+                        if (selectedResult == null) return;
+
+                        if (selectedResult is Map &&
+                            selectedResult['action'] == 'NEW') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PartialProformaScreen(
+                                order: orderData,
+                                hidePrices: true,
+                                documentTitleKey: 'doc_bon_livraison_partiel',
+                                autoOpenBonDeChargeOnSave: true,
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (selectedResult is Map<String, dynamic>) {
+                          await _showHeavyLoadingDialog(context, lang);
+                          try {
+                            final itemsJsonStr =
+                                selectedResult['items_json']?.toString() ??
+                                '[]';
+                            final List<dynamic> rawDecoded = jsonDecode(
+                              itemsJsonStr,
+                            );
+                            final List<Map<String, dynamic>> items = rawDecoded
+                                .map((it) => Map<String, dynamic>.from(it))
+                                .toList();
+
+                            for (var item in items) {
+                              final path =
+                                  item['drawing_image_path']?.toString() ?? '';
+                              if (path.isEmpty || !File(path).existsSync()) {
+                                final jsonRaw = item['partitions_json'];
+                                if (jsonRaw != null) {
+                                  try {
+                                    Map<String, dynamic> modelMap = {};
+                                    if (jsonRaw is Map<String, dynamic>) {
+                                      modelMap = jsonRaw;
+                                    } else if (jsonRaw is Map) {
+                                      modelMap = Map<String, dynamic>.from(
+                                        jsonRaw,
+                                      );
+                                    } else {
+                                      final str = jsonRaw.toString().trim();
+                                      if (str.length >= 5) {
+                                        modelMap =
+                                            jsonDecode(str)
+                                                as Map<String, dynamic>;
+                                      }
+                                    }
+                                    if (modelMap.isNotEmpty) {
+                                      final model = WindowModel(db: db);
+                                      await applyWindowModelAndLoadCatalog(
+                                        model,
+                                        modelMap,
+                                      );
+                                      final newPath =
+                                          await saveWindowImageToDisk(model);
+                                      if (newPath.isNotEmpty) {
+                                        await db.updateCommandeDetailImagePath(
+                                          item['id'] as int,
+                                          newPath,
+                                        );
+                                        item['drawing_image_path'] = newPath;
+                                      }
+                                    }
+                                  } catch (err) {
+                                    debugPrint(
+                                      'Error generating missing image: $err',
+                                    );
+                                  }
+                                }
+                              }
+                            }
+
+                            final workshop =
+                                await DevisBuilder.loadWorkshopInfo();
+                            final devis = await DevisBuilder.build(
+                              order: orderData,
+                              items: items,
+                              workshop: workshop,
+                              hidePrices: true,
+                              documentTitleKey: 'BON_CHARGE',
+                            );
+                            _dismissHeavyLoadingDialog();
+                            if (!mounted) return;
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DevisPreviewScreen(
+                                  data: devis,
+                                  deliveryId: selectedResult['id'] as int?,
+                                  initialIsLoaded:
+                                      (selectedResult['is_loaded'] == 1),
+                                ),
+                              ),
+                            );
+                          } catch (e) {
+                            _dismissHeavyLoadingDialog();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('خطأ أثناء توليد الفاتورة: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                          return;
+                        }
+                      }
+
+                      // Full loading flow (FULL)
+                      await _showHeavyLoadingDialog(context, lang);
+                      try {
+                        final rawItems = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final List<Map<String, dynamic>> items = rawItems
+                            .map((item) => Map<String, dynamic>.from(item))
+                            .toList();
+
+                        for (var item in items) {
+                          final path =
+                              item['drawing_image_path']?.toString() ?? '';
+                          if (path.isEmpty || !File(path).existsSync()) {
+                            final jsonRaw = item['partitions_json'];
+                            if (jsonRaw != null) {
+                              try {
+                                Map<String, dynamic> modelMap = {};
+                                if (jsonRaw is Map<String, dynamic>) {
+                                  modelMap = jsonRaw;
+                                } else if (jsonRaw is Map) {
+                                  modelMap = Map<String, dynamic>.from(jsonRaw);
+                                } else {
+                                  final str = jsonRaw.toString().trim();
+                                  if (str.length >= 5) {
+                                    modelMap =
+                                        jsonDecode(str) as Map<String, dynamic>;
+                                  }
+                                }
+                                if (modelMap.isNotEmpty) {
+                                  final model = WindowModel(db: db);
+                                  await applyWindowModelAndLoadCatalog(
+                                    model,
+                                    modelMap,
+                                  );
+                                  final newPath = await saveWindowImageToDisk(
+                                    model,
+                                  );
+                                  if (newPath.isNotEmpty) {
+                                    await db.updateCommandeDetailImagePath(
+                                      item['id'] as int,
+                                      newPath,
+                                    );
+                                    item['drawing_image_path'] = newPath;
+                                  }
+                                }
+                              } catch (err) {
+                                debugPrint(
+                                  'Error generating missing image: $err',
+                                );
                               }
                             }
                           }
@@ -1621,11 +2056,8 @@ class _CommandeState extends State<Commande> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => DevisPreviewScreen(
-                              data: devis,
-                              deliveryId: selectedResult['id'] as int?,
-                              initialIsLoaded: (selectedResult['is_loaded'] == 1),
-                            ),
+                            builder: (context) =>
+                                DevisPreviewScreen(data: devis),
                           ),
                         );
                       } catch (e) {
@@ -1639,156 +2071,123 @@ class _CommandeState extends State<Commande> {
                           );
                         }
                       }
-                      return;
-                    }
-                  }
+                    },
+                  ),
+                if (isConfirmedOrBeyond) const Divider(),
 
-                  // Full loading flow (FULL)
-                  await _showHeavyLoadingDialog(context, lang);
-                  try {
-                    final rawItems = await db.readCommandeDetails(orderData['id']);
-                    final List<Map<String, dynamic>> items = rawItems.map((item) => Map<String, dynamic>.from(item)).toList();
-
-                    for (var item in items) {
-                      final path = item['drawing_image_path']?.toString() ?? '';
-                      if (path.isEmpty || !File(path).existsSync()) {
-                        final jsonRaw = item['partitions_json'];
-                        if (jsonRaw != null) {
-                          try {
-                            Map<String, dynamic> modelMap = {};
-                            if (jsonRaw is Map<String, dynamic>) {
-                              modelMap = jsonRaw;
-                            } else if (jsonRaw is Map) {
-                              modelMap = Map<String, dynamic>.from(jsonRaw);
-                            } else {
-                              final str = jsonRaw.toString().trim();
-                              if (str.length >= 5) {
-                                modelMap = jsonDecode(str) as Map<String, dynamic>;
-                              }
-                            }
-                            if (modelMap.isNotEmpty) {
-                              final model = WindowModel(db: db);
-                              await applyWindowModelAndLoadCatalog(model, modelMap);
-                              final newPath = await saveWindowImageToDisk(model);
-                              if (newPath.isNotEmpty) {
-                                await db.updateCommandeDetailImagePath(item['id'] as int, newPath);
-                                item['drawing_image_path'] = newPath;
-                              }
-                            }
-                          } catch (err) {
-                            debugPrint('Error generating missing image: $err');
-                          }
-                        }
-                      }
-                    }
-
-                    final workshop = await DevisBuilder.loadWorkshopInfo();
-                    final devis = await DevisBuilder.build(
-                      order: orderData,
-                      items: items,
-                      workshop: workshop,
-                      hidePrices: true,
-                      documentTitleKey: 'BON_CHARGE',
-                    );
-                    _dismissHeavyLoadingDialog();
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DevisPreviewScreen(data: devis),
+                // 2. Fiche de Coupe
+                if (settings.canViewFicheDeCoupe())
+                  ListTile(
+                    leading: const Icon(Icons.cut, color: Colors.orange),
+                    title: Text(
+                      Localization.translate(
+                        'ورقة التقطيع (Fiche de Coupe)',
+                        lang,
                       ),
-                    );
-                  } catch (e) {
-                    _dismissHeavyLoadingDialog();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('خطأ أثناء توليد الفاتورة: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-          if (isConfirmedOrBeyond)
-            const Divider(),
-
-              // 2. Fiche de Coupe
-              if (settings.canViewFicheDeCoupe())
-                ListTile(
-                  leading: const Icon(Icons.cut, color: Colors.orange),
-                  title: Text(Localization.translate('ورقة التقطيع (Fiche de Coupe)', lang)),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(Localization.translate('جاري تجهيز جدول التقطيع...', lang)),
-                        ),
-                      );
-                    }
-                    try {
-                      final items = await db.readCommandeDetails(orderData['id']);
-                      final prefs = await SharedPreferences.getInstance();
-                      final workshopName =
-                          prefs.getString('workshop_name') ?? 'ورشتي';
-                      await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
-                        order: orderData,
-                        items: items,
-                        workshopName: workshopName,
-                      );
-                    } catch (e) {
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e'),
-                            backgroundColor: Colors.red,
+                            content: Text(
+                              Localization.translate(
+                                'جاري تجهيز جدول التقطيع...',
+                                lang,
+                              ),
+                            ),
                           ),
                         );
                       }
-                    }
-                  },
-                ),
-
-              // 3. Fiche de Consommation & المواد والسلع المطلوبة
-              if (settings.canViewOrderMaterials()) ...[
-                ListTile(
-                  leading: const Icon(Icons.inventory_2, color: Colors.indigo),
-                  title: Text(Localization.translate('سلع الطلبية وموادها (تقرير النواقص)', lang)),
-                  onTap: () {},
-                ),
-
-                ListTile(
-                  leading: const Icon(Icons.shopping_basket, color: Colors.deepPurple),
-                  title: Text(Localization.translate('السلع المطلوبة', lang)),
-                  subtitle: Text(
-                    Localization.translate('مجموع سلع جميع المنتجات مجمّعة', lang),
-                    style: const TextStyle(fontSize: 11),
+                      try {
+                        final items = await db.readCommandeDetails(
+                          orderData['id'],
+                        );
+                        final prefs = await SharedPreferences.getInstance();
+                        final workshopName =
+                            prefs.getString('workshop_name') ?? 'ورشتي';
+                        await PdfFicheCoupeApi.generateAndPrintFicheCoupe(
+                          order: orderData,
+                          items: items,
+                          workshopName: workshopName,
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e',
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OrderRequiredGoodsScreen(
-                          orderData: orderData,
-                          db: db,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
 
-              
+                // 3. Fiche de Consommation & المواد والسلع المطلوبة
+                if (settings.canViewOrderMaterials()) ...[
+                  ListTile(
+                    leading: const Icon(
+                      Icons.inventory_2,
+                      color: Colors.indigo,
+                    ),
+                    title: Text(
+                      Localization.translate(
+                        'سلع الطلبية وموادها (تقرير النواقص)',
+                        lang,
+                      ),
+                    ),
+                    onTap: () {},
+                  ),
+
+                  ListTile(
+                    leading: const Icon(
+                      Icons.shopping_basket,
+                      color: Colors.deepPurple,
+                    ),
+                    title: Text(Localization.translate('السلع المطلوبة', lang)),
+                    subtitle: Text(
+                      Localization.translate(
+                        'مجموع سلع جميع المنتجات مجمّعة',
+                        lang,
+                      ),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OrderRequiredGoodsScreen(
+                            orderData: orderData,
+                            db: db,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+
                 // 3.8 تأكيد القياسات والملصقات
                 if (settings.canConfirmMeasurements())
                   ListTile(
-                    leading: const Icon(Icons.line_weight_rounded, color: Colors.indigoAccent),
-                    title: Text(Localization.translate('تأكيد القياسات والملصقات (Stickers)', lang)),
+                    leading: const Icon(
+                      Icons.line_weight_rounded,
+                      color: Colors.indigoAccent,
+                    ),
+                    title: Text(
+                      Localization.translate(
+                        'تأكيد القياسات والملصقات (Stickers)',
+                        lang,
+                      ),
+                    ),
                     subtitle: Text(
-                      Localization.translate('تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة', lang),
+                      Localization.translate(
+                        'تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة',
+                        lang,
+                      ),
                       style: const TextStyle(fontSize: 11),
                     ),
                     onTap: () {
@@ -1808,17 +2207,20 @@ class _CommandeState extends State<Commande> {
                 // 3.9 توزيع المهام وإسناد العمل للعمال (تختفي عند التصنيع الكلي، التوزيع، التركيب، التحفظات أو الانتهاء)
                 if (settings.canAllocateTasks() && !isDistributedOrBeyond)
                   ListTile(
-                    leading: const Icon(Icons.engineering_rounded, color: Colors.purple),
+                    leading: const Icon(
+                      Icons.engineering_rounded,
+                      color: Colors.purple,
+                    ),
                     title: Text(
-                      lang == AppLanguage.french 
-                        ? 'Affectation des tâches aux ouvriers' 
-                        : 'توزيع المهام على العمال (إسناد الورشة)',
+                      lang == AppLanguage.french
+                          ? 'Affectation des tâches aux ouvriers'
+                          : 'توزيع المهام على العمال (إسناد الورشة)',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
                       lang == AppLanguage.french
-                        ? 'Répartir la fabrication des éléments sur l\'équipe'
-                        : 'توزيع النوافذ وتحديد أجر تصنيع كل عنصر للعمال',
+                          ? 'Répartir la fabrication des éléments sur l\'équipe'
+                          : 'توزيع النوافذ وتحديد أجر تصنيع كل عنصر للعمال',
                       style: const TextStyle(fontSize: 11),
                     ),
                     onTap: () {
@@ -1835,53 +2237,154 @@ class _CommandeState extends State<Commande> {
                     },
                   ),
 
-              const Divider(),
+                const Divider(),
 
-              // 4. Move to Next Stage (نقل إلى المرحلة التالية)
-              if (settings.canPassNextStage())
-                ListTile(
-                  leading: const Icon(Icons.forward_rounded, color: Colors.green),
-                  title: Text(lang == AppLanguage.french ? 'Passer à l\'étape suivante' : 'نقل إلى المرحلة التالية'),
-                  subtitle: Text(
-                    lang == AppLanguage.french
-                        ? 'Passer la commande de "${_translateStatus(currentStatus, lang)}" à l\'étape suivante'
-                        : 'نقل الطلبية من حالة "${_translateStatus(currentStatus, lang)}" إلى المرحلة التي تليها',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    const stagesSequence = [
-                      'Pending',
-                      'Confirmed',
-                      'In Progress',
-                      'Partial Manufacturing',
-                      'Partial Distribution',
-                      'Full Manufacturing',
-                      'Full Distribution',
-                      'Installation',
-                      'Reserve',
-                      'Done',
-                    ];
+                // 4. Move to Next Stage (نقل إلى المرحلة التالية)
+                if (settings.canPassNextStage())
+                  ListTile(
+                    leading: const Icon(
+                      Icons.forward_rounded,
+                      color: Colors.green,
+                    ),
+                    title: Text(
+                      lang == AppLanguage.french
+                          ? 'Passer à l\'étape suivante'
+                          : 'نقل إلى المرحلة التالية',
+                    ),
+                    subtitle: Text(
+                      lang == AppLanguage.french
+                          ? 'Passer la commande de "${_translateStatus(currentStatus, lang)}" à l\'étape suivante'
+                          : 'نقل الطلبية من حالة "${_translateStatus(currentStatus, lang)}" إلى المرحلة التي تليها',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      const stagesSequence = [
+                        'Pending',
+                        'Confirmed',
+                        'In Progress',
+                        'Partial Manufacturing',
+                        'Partial Distribution',
+                        'Full Manufacturing',
+                        'Full Distribution',
+                        'Installation',
+                        'Reserve',
+                        'Done',
+                      ];
 
-                    final normalizedStatus = (currentStatus == 'en_attente' || currentStatus == 'في الانتظار' || currentStatus == 'Draft' || currentStatus == 'New')
-                        ? 'Pending'
-                        : currentStatus;
+                      final normalizedStatus =
+                          (currentStatus == 'en_attente' ||
+                              currentStatus == 'في الانتظار' ||
+                              currentStatus == 'Draft' ||
+                              currentStatus == 'New')
+                          ? 'Pending'
+                          : currentStatus;
 
-                    int currentIndex = stagesSequence.indexOf(normalizedStatus);
-                    if (currentIndex == -1) {
-                      if (normalizedStatus.toLowerCase().contains('attente') || normalizedStatus.toLowerCase().contains('انتظار')) {
-                        currentIndex = 0;
-                      } else if (normalizedStatus.toLowerCase().contains('confirm')) {
-                        currentIndex = 1;
-                      } else {
-                        currentIndex = 0;
+                      int currentIndex = stagesSequence.indexOf(
+                        normalizedStatus,
+                      );
+                      if (currentIndex == -1) {
+                        if (normalizedStatus.toLowerCase().contains(
+                              'attente',
+                            ) ||
+                            normalizedStatus.toLowerCase().contains('انتظار')) {
+                          currentIndex = 0;
+                        } else if (normalizedStatus.toLowerCase().contains(
+                          'confirm',
+                        )) {
+                          currentIndex = 1;
+                        } else {
+                          currentIndex = 0;
+                        }
                       }
-                    }
 
-                    if (currentIndex < stagesSequence.length - 1) {
-                      final nextStatus = stagesSequence[currentIndex + 1];
+                      if (currentIndex < stagesSequence.length - 1) {
+                        final nextStatus = stagesSequence[currentIndex + 1];
 
-                      if (normalizedStatus == 'In Progress') {
+                        if (normalizedStatus == 'In Progress') {
+                          if (!mounted) return;
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) => PopScope(
+                              canPop: false,
+                              child: AlertDialog(
+                                content: Row(
+                                  children: [
+                                    const CircularProgressIndicator(),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Text(
+                                        lang == AppLanguage.french
+                                            ? 'Vérification des mesures…'
+                                            : 'جاري التحقق من القياسات…',
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                          await WidgetsBinding.instance.endOfFrame;
+                          var allConfirmed = false;
+                          Object? measurementCheckError;
+                          try {
+                            allConfirmed = await _areAllMeasurementsConfirmed(
+                              orderData['id'],
+                            ).timeout(const Duration(seconds: 15));
+                          } catch (error) {
+                            measurementCheckError = error;
+                          } finally {
+                            if (mounted) {
+                              Navigator.of(context, rootNavigator: true).pop();
+                            }
+                          }
+                          if (measurementCheckError != null) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    lang == AppLanguage.french
+                                        ? 'Impossible de vérifier les mesures de cette commande.'
+                                        : 'تعذر التحقق من قياسات هذه الطلبية. راجع بيانات القياسات ثم حاول مجددًا.',
+                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  ),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          if (!allConfirmed) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    lang == AppLanguage.french
+                                        ? 'Impossible de passer à la fabrication sans valider les mesures !'
+                                        : 'لا يمكن الانتقال للتصنيع إن لم تقم بتأكيد القياسات!',
+                                  ),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      OrderMeasurementsConfirmScreen(
+                                        orderData: orderData,
+                                        db: db,
+                                      ),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                        }
+
                         if (!mounted) return;
                         showDialog(
                           context: context,
@@ -1896,9 +2399,11 @@ class _CommandeState extends State<Commande> {
                                   Expanded(
                                     child: Text(
                                       lang == AppLanguage.french
-                                          ? 'Vérification des mesures…'
-                                          : 'جاري التحقق من القياسات…',
-                                      style: const TextStyle(fontFamily: 'Cairo'),
+                                          ? 'Mise à jour de la commande…'
+                                          : 'جاري تحديث حالة الطلبية…',
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1906,28 +2411,29 @@ class _CommandeState extends State<Commande> {
                             ),
                           ),
                         );
+
                         await WidgetsBinding.instance.endOfFrame;
-                        var allConfirmed = false;
-                        Object? measurementCheckError;
+                        Object? statusUpdateError;
                         try {
-                          allConfirmed = await _areAllMeasurementsConfirmed(
-                            orderData['id'],
-                          ).timeout(const Duration(seconds: 15));
+                          await db
+                              .updateCommandeStatus(orderData['id'], nextStatus)
+                              .timeout(const Duration(seconds: 30));
                         } catch (error) {
-                          measurementCheckError = error;
+                          statusUpdateError = error;
                         } finally {
                           if (mounted) {
                             Navigator.of(context, rootNavigator: true).pop();
                           }
                         }
-                        if (measurementCheckError != null) {
+
+                        if (statusUpdateError != null) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   lang == AppLanguage.french
-                                      ? 'Impossible de vérifier les mesures de cette commande.'
-                                      : 'تعذر التحقق من قياسات هذه الطلبية. راجع بيانات القياسات ثم حاول مجددًا.',
+                                      ? 'Échec du passage à l’étape suivante. Veuillez réessayer.'
+                                      : 'تعذر نقل الطلبية إلى المرحلة التالية. يرجى المحاولة مجددًا.',
                                   style: const TextStyle(fontFamily: 'Cairo'),
                                 ),
                                 backgroundColor: Colors.redAccent,
@@ -1936,16 +2442,21 @@ class _CommandeState extends State<Commande> {
                           }
                           return;
                         }
-                        if (!allConfirmed) {
+                        if (!mounted) return;
+                        setState(() {
+                          _data = db.readCommandesWithClients();
+                        });
+
+                        if (nextStatus == 'In Progress') {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   lang == AppLanguage.french
-                                      ? 'Impossible de passer à la fabrication sans valider les mesures !'
-                                      : 'لا يمكن الانتقال للتصنيع إن لم تقم بتأكيد القياسات!',
+                                      ? 'Commande passée à: Confirmation des mesures'
+                                      : 'تم نقل الطلبية إلى مرحلة تأكيد القياسات. يرجى تأكيد المقاسات.',
                                 ),
-                                backgroundColor: Colors.redAccent,
+                                backgroundColor: Colors.indigo,
                               ),
                             );
                             Navigator.push(
@@ -1958,91 +2469,19 @@ class _CommandeState extends State<Commande> {
                               ),
                             );
                           }
-                          return;
-                        }
-                      }
-
-                      if (!mounted) return;
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (_) => PopScope(
-                          canPop: false,
-                          child: AlertDialog(
-                            content: Row(
-                              children: [
-                                const CircularProgressIndicator(),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Text(
-                                    lang == AppLanguage.french
-                                        ? 'Mise à jour de la commande…'
-                                        : 'جاري تحديث حالة الطلبية…',
-                                    style: const TextStyle(fontFamily: 'Cairo'),
-                                  ),
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
+                                      : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-
-                      await WidgetsBinding.instance.endOfFrame;
-                      Object? statusUpdateError;
-                      try {
-                        await db
-                            .updateCommandeStatus(orderData['id'], nextStatus)
-                            .timeout(const Duration(seconds: 30));
-                      } catch (error) {
-                        statusUpdateError = error;
-                      } finally {
-                        if (mounted) {
-                          Navigator.of(context, rootNavigator: true).pop();
-                        }
-                      }
-
-                      if (statusUpdateError != null) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                lang == AppLanguage.french
-                                    ? 'Échec du passage à l’étape suivante. Veuillez réessayer.'
-                                    : 'تعذر نقل الطلبية إلى المرحلة التالية. يرجى المحاولة مجددًا.',
-                                style: const TextStyle(fontFamily: 'Cairo'),
+                                backgroundColor: Colors.green,
                               ),
-                              backgroundColor: Colors.redAccent,
-                            ),
-                          );
-                        }
-                        return;
-                      }
-                      if (!mounted) return;
-                      setState(() {
-                        _data = db.readCommandesWithClients();
-                      });
-
-                      if (nextStatus == 'In Progress') {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                lang == AppLanguage.french
-                                    ? 'Commande passée à: Confirmation des mesures'
-                                    : 'تم نقل الطلبية إلى مرحلة تأكيد القياسات. يرجى تأكيد المقاسات.',
-                              ),
-                              backgroundColor: Colors.indigo,
-                            ),
-                          );
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => OrderMeasurementsConfirmScreen(
-                                orderData: orderData,
-                                db: db,
-                              ),
-                            ),
-                          );
+                            );
+                          }
                         }
                       } else {
                         if (mounted) {
@@ -2050,124 +2489,123 @@ class _CommandeState extends State<Commande> {
                             SnackBar(
                               content: Text(
                                 lang == AppLanguage.french
-                                    ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
-                                    : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
+                                    ? 'La commande est déjà dans la dernière étape (Done)!'
+                                    : 'الطلبية وصلت بالفعل للمرحلة الأخيرة!',
+                              ),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+
+                // 5. Change Status (تغيير الحالة المخصص يدوياً)
+                if (settings.canChangeOrderStatus())
+                  ListTile(
+                    leading: const Icon(Icons.swap_horiz, color: Colors.blue),
+                    title: Text(
+                      Localization.translate('تغيير الحالة المخصص', lang),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showChangeStatusDialog(orderData);
+                    },
+                  ),
+
+                // 6. Modification
+                if (settings.canEditOrders())
+                  ListTile(
+                    leading: const Icon(Icons.edit, color: Colors.blue),
+                    title: Text(Localization.translate("Edit Order", lang)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CommandePage(
+                            db: db,
+                            editCommandeId: orderData['id'],
+                          ),
+                        ),
+                      ).then((_) {
+                        setState(() {
+                          _data = db.readCommandesWithClients();
+                        });
+                      });
+                    },
+                  ),
+
+                // NEW: 6.5 Duplicate
+                if (settings.canDuplicateOrders())
+                  ListTile(
+                    leading: const Icon(Icons.copy, color: Colors.blueGrey),
+                    title: Text(
+                      Localization.translate('تكرار الطلبية (Duplicate)', lang),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      try {
+                        await _duplicateOrder(orderData);
+                        setState(() {
+                          _data = db.readCommandesWithClients();
+                        });
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                Localization.translate(
+                                  'تم تكرار الطلبية بنجاح!',
+                                  lang,
+                                ),
                               ),
                               backgroundColor: Colors.green,
                             ),
                           );
                         }
-                      }
-                    } else {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              lang == AppLanguage.french
-                                  ? 'La commande est déjà dans la dernière étape (Done)!'
-                                  : 'الطلبية وصلت بالفعل للمرحلة الأخيرة!',
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${Localization.translate('حدث خطأ أثناء التكرار:', lang)} $e',
+                              ),
+                              backgroundColor: Colors.red,
                             ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
+                          );
+                        }
                       }
-                    }
-                  },
-                ),
-
-              // 5. Change Status (تغيير الحالة المخصص يدوياً)
-              if (settings.canChangeOrderStatus())
-                ListTile(
-                  leading: const Icon(Icons.swap_horiz, color: Colors.blue),
-                  title: Text(Localization.translate('تغيير الحالة المخصص', lang)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showChangeStatusDialog(orderData);
-                  },
-                ),
-
-              // 6. Modification
-              if (settings.canEditOrders())
-                ListTile(
-                  leading: const Icon(Icons.edit, color: Colors.blue),
-                  title: Text(
-                    Localization.translate(
-                      "Edit Order",
-                      lang,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            CommandePage(db: db, editCommandeId: orderData['id']),
-                      ),
-                    ).then((_) {
-                      setState(() {
-                        _data = db.readCommandesWithClients();
-                      });
-                    });
-                  },
-                ),
-
-              // NEW: 6.5 Duplicate
-              if (settings.canDuplicateOrders())
-                ListTile(
-                  leading: const Icon(Icons.copy, color: Colors.blueGrey),
-                  title: Text(Localization.translate('تكرار الطلبية (Duplicate)', lang)),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    try {
-                      await _duplicateOrder(orderData);
-                      setState(() {
-                        _data = db.readCommandesWithClients();
-                      });
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(Localization.translate('تم تكرار الطلبية بنجاح!', lang)),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${Localization.translate('حدث خطأ أثناء التكرار:', lang)} $e'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                ),
-
-              const Divider(),
-
-              // 7. Supprimer
-              Consumer<AppSettingsProvider>(
-                builder: (ctx2, settings, _) {
-                  if (!settings.canDeleteOrders()) {
-                    return const SizedBox.shrink();
-                  }
-                  return ListTile(
-                    leading: const Icon(Icons.delete, color: Colors.redAccent),
-                    title: Text(Localization.translate('مسح الطلبية (Supprimer)', lang)),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _showDeleteConfirmDialog(orderData['id']);
                     },
-                  );
-                },
-              ),
-            ],
+                  ),
+
+                const Divider(),
+
+                // 7. Supprimer
+                Consumer<AppSettingsProvider>(
+                  builder: (ctx2, settings, _) {
+                    if (!settings.canDeleteOrders()) {
+                      return const SizedBox.shrink();
+                    }
+                    return ListTile(
+                      leading: const Icon(
+                        Icons.delete,
+                        color: Colors.redAccent,
+                      ),
+                      title: Text(
+                        Localization.translate('مسح الطلبية (Supprimer)', lang),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showDeleteConfirmDialog(orderData['id']);
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    },
+        );
+      },
     );
   }
 
@@ -2189,23 +2627,27 @@ class _CommandeState extends State<Commande> {
       );
     }
 
-    final copiedDetails = items.map((item) => <String, dynamic>{
-      'largeur': (item['largeur'] as num?)?.toInt() ?? 0,
-      'hauteur': (item['hauteur'] as num?)?.toInt() ?? 0,
-      'game': item['game']?.toString() ?? '',
-      'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
-      'glass': item['glass']?.toString() ?? '',
-      'color': item['color']?.toString() ?? '',
-      'volet': item['volet']?.toString() ?? '',
-      'accessories': item['accessories']?.toString() ?? '',
-      'description': item['description']?.toString() ?? '',
-      'price': (item['price'] as num?)?.toDouble() ?? 0.0,
-      'window_type': item['window_type']?.toString() ?? '',
-      'partitions_json': item['partitions_json']?.toString() ?? '{}',
-      'drawing_image_path': item['drawing_image_path']?.toString() ?? '',
-      if (item['drawing_image_base64'] != null)
-        'drawing_image_base64': item['drawing_image_base64'],
-    }).toList(growable: false);
+    final copiedDetails = items
+        .map(
+          (item) => <String, dynamic>{
+            'largeur': (item['largeur'] as num?)?.toInt() ?? 0,
+            'hauteur': (item['hauteur'] as num?)?.toInt() ?? 0,
+            'game': item['game']?.toString() ?? '',
+            'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
+            'glass': item['glass']?.toString() ?? '',
+            'color': item['color']?.toString() ?? '',
+            'volet': item['volet']?.toString() ?? '',
+            'accessories': item['accessories']?.toString() ?? '',
+            'description': item['description']?.toString() ?? '',
+            'price': (item['price'] as num?)?.toDouble() ?? 0.0,
+            'window_type': item['window_type']?.toString() ?? '',
+            'partitions_json': item['partitions_json']?.toString() ?? '{}',
+            'drawing_image_path': item['drawing_image_path']?.toString() ?? '',
+            if (item['drawing_image_base64'] != null)
+              'drawing_image_base64': item['drawing_image_base64'],
+          },
+        )
+        .toList(growable: false);
 
     await db.saveCommandeWithDetails(
       clientId: clientId,
@@ -2370,10 +2812,12 @@ class _CommandeState extends State<Commande> {
   Future<void> _restoreDocumentImagesFromStoredBytes(
     List<Map<String, dynamic>> items,
   ) async {
-    final missingImages = items.where((item) {
-      final path = item['drawing_image_path']?.toString() ?? '';
-      return path.isEmpty || !File(path).existsSync();
-    }).toList(growable: false);
+    final missingImages = items
+        .where((item) {
+          final path = item['drawing_image_path']?.toString() ?? '';
+          return path.isEmpty || !File(path).existsSync();
+        })
+        .toList(growable: false);
     if (missingImages.isEmpty) return;
 
     // A path uploaded by another phone is not valid on this device. Use the
@@ -2411,9 +2855,9 @@ class _CommandeState extends State<Commande> {
           'devis_item_$detailId.img',
         );
         if (!await file.exists() || await file.length() != bytes.length) {
-          await file.writeAsBytes(bytes, flush: false).timeout(
-            const Duration(seconds: 4),
-          );
+          await file
+              .writeAsBytes(bytes, flush: false)
+              .timeout(const Duration(seconds: 4));
         }
         item['drawing_image_path'] = file.path;
       } catch (error) {
@@ -2444,13 +2888,18 @@ class _CommandeState extends State<Commande> {
       'Done',
     ];
 
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
 
     showDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Row(
             children: [
               const Icon(Icons.swap_horiz, color: Colors.blue),
@@ -2458,7 +2907,11 @@ class _CommandeState extends State<Commande> {
               Expanded(
                 child: Text(
                   Localization.translate('تغيير حالة الطلبية', lang),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Cairo'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontFamily: 'Cairo',
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -2466,18 +2919,27 @@ class _CommandeState extends State<Commande> {
           ),
           content: Container(
             width: double.maxFinite,
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: statuses.map((stageKey) {
-                  final bool isCurrent = (stageKey.toLowerCase() == currentStatus.toLowerCase()) ||
-                      (stageKey == 'Pending' && (currentStatus == 'en_attente' || currentStatus == 'في الانتظار' || currentStatus == 'Draft' || currentStatus == 'New'));
+                  final bool isCurrent =
+                      (stageKey.toLowerCase() == currentStatus.toLowerCase()) ||
+                      (stageKey == 'Pending' &&
+                          (currentStatus == 'en_attente' ||
+                              currentStatus == 'في الانتظار' ||
+                              currentStatus == 'Draft' ||
+                              currentStatus == 'New'));
                   final color = _getStatusColor(stageKey);
                   return Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
-                      color: isCurrent ? color.withValues(alpha: 0.12) : Colors.transparent,
+                      color: isCurrent
+                          ? color.withValues(alpha: 0.12)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isCurrent ? color : Colors.grey.shade300,
@@ -2485,40 +2947,72 @@ class _CommandeState extends State<Commande> {
                       ),
                     ),
                     child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       leading: CircleAvatar(
                         radius: 12,
                         backgroundColor: color,
-                        child: isCurrent ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
+                        child: isCurrent
+                            ? const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
+                              )
+                            : null,
                       ),
                       title: Text(
                         _translateStatus(stageKey, lang),
                         style: TextStyle(
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                          color: isCurrent ? color : (Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black87),
+                          fontWeight: isCurrent
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isCurrent
+                              ? color
+                              : (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
                           fontFamily: 'Cairo',
                           fontSize: 14,
                         ),
                       ),
                       trailing: isCurrent
                           ? Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: color,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                lang == AppLanguage.french ? 'Actuel' : 'الحالية',
-                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+                                lang == AppLanguage.french
+                                    ? 'Actuel'
+                                    : 'الحالية',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Cairo',
+                                ),
                               ),
                             )
-                          : const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                          : const Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: Colors.grey,
+                            ),
                       onTap: () async {
                         final progressIndex = statuses.indexOf('In Progress');
                         final targetIndex = statuses.indexOf(stageKey);
 
                         if (targetIndex > progressIndex) {
-                          final allConfirmed = await _areAllMeasurementsConfirmed(orderData['id']);
+                          final allConfirmed =
+                              await _areAllMeasurementsConfirmed(
+                                orderData['id'],
+                              );
                           if (!allConfirmed) {
                             Navigator.pop(dialogContext);
                             if (mounted) {
@@ -2535,10 +3029,11 @@ class _CommandeState extends State<Commande> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => OrderMeasurementsConfirmScreen(
-                                    orderData: orderData,
-                                    db: db,
-                                  ),
+                                  builder: (_) =>
+                                      OrderMeasurementsConfirmScreen(
+                                        orderData: orderData,
+                                        db: db,
+                                      ),
                                 ),
                               );
                             }
@@ -2547,7 +3042,10 @@ class _CommandeState extends State<Commande> {
                         }
 
                         Navigator.pop(dialogContext);
-                        await db.updateCommandeStatus(orderData['id'], stageKey);
+                        await db.updateCommandeStatus(
+                          orderData['id'],
+                          stageKey,
+                        );
                         setState(() {
                           _data = db.readCommandesWithClients();
                         });
@@ -2630,7 +3128,9 @@ class _CommandeState extends State<Commande> {
                 const CircularProgressIndicator(),
                 const SizedBox(width: 20),
                 Text(
-                  lang == AppLanguage.french ? 'Génération du document...' : 'جاري تحضير المستند...',
+                  lang == AppLanguage.french
+                      ? 'Génération du document...'
+                      : 'جاري تحضير المستند...',
                   style: const TextStyle(fontFamily: 'Cairo'),
                 ),
               ],
@@ -2711,7 +3211,9 @@ class _CommandeState extends State<Commande> {
               if (isSorted) ...[
                 const SizedBox(width: 2),
                 Icon(
-                  _orderSortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                  _orderSortAscending
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
                   size: 13,
                   color: const Color(0xFF2563EB),
                 ),
@@ -2734,33 +3236,47 @@ class _CommandeState extends State<Commande> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: SizedBox(
-          height: 36,
+          height: 42,
           child: TextField(
             controller: controller,
             onChanged: (_) => setState(() {}),
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 13,
               fontFamily: 'Cairo',
               color: Theme.of(context).textTheme.bodyLarge?.color,
             ),
             decoration: InputDecoration(
               hintText: hintText,
-              hintStyle: TextStyle(fontSize: 10.5, color: Colors.grey.shade400, fontFamily: 'Cairo'),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              hintStyle: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade400,
+                fontFamily: 'Cairo',
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
               filled: true,
               fillColor: Theme.of(context).cardColor,
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.2),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                borderSide: const BorderSide(
+                  color: Color(0xFF2563EB),
+                  width: 1.5,
+                ),
               ),
               suffixIcon: controller.text.isNotEmpty
                   ? InkWell(
@@ -2768,7 +3284,11 @@ class _CommandeState extends State<Commande> {
                         controller.clear();
                         setState(() {});
                       },
-                      child: const Icon(Icons.close, size: 14, color: Colors.red),
+                      child: const Icon(
+                        Icons.close,
+                        size: 17,
+                        color: Colors.red,
+                      ),
                     )
                   : null,
             ),
@@ -2784,8 +3304,10 @@ class _CommandeState extends State<Commande> {
     AppLanguage lang,
   ) {
     final cardColor = Theme.of(context).cardColor;
-    final contentColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
-    final mutedColor = Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
+    final contentColor =
+        Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
+    final mutedColor =
+        Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
 
     final data = _applyOrderFiltersAndSort(rawData, lang);
 
@@ -2815,21 +3337,69 @@ class _CommandeState extends State<Commande> {
               children: [
                 Row(
                   children: [
-                    _buildOrderSortableHeaderCell(flex: 1, label: '#', colKey: 'id', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 3, label: Localization.translate('الزبون والمشروع', lang), colKey: 'client_project', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('تاريخ الإنشاء', lang), colKey: 'date', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المجموع الكلي (د.ج)', lang), colKey: 'total', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المدفوع', lang), colKey: 'advance', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المتبقي', lang), colKey: 'remaining', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('حالة الورشة', lang), colKey: 'status', mutedColor: mutedColor),
-                    _buildOrderSortableHeaderCell(flex: 2, label: Localization.translate('المُدخل', lang), colKey: 'creator', mutedColor: mutedColor),
+                    _buildOrderSortableHeaderCell(
+                      flex: 1,
+                      label: '#',
+                      colKey: 'id',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 3,
+                      label: Localization.translate('الزبون والمشروع', lang),
+                      colKey: 'client_project',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('تاريخ الإنشاء', lang),
+                      colKey: 'date',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate(
+                        'المجموع الكلي (د.ج)',
+                        lang,
+                      ),
+                      colKey: 'total',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('المدفوع', lang),
+                      colKey: 'advance',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('المتبقي', lang),
+                      colKey: 'remaining',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('حالة الورشة', lang),
+                      colKey: 'status',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildOrderSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('المُدخل', lang),
+                      colKey: 'creator',
+                      mutedColor: mutedColor,
+                    ),
                     Expanded(
                       flex: 1,
                       child: Row(
                         children: [
                           Text(
                             Localization.translate('إجراءات', lang),
-                            style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: mutedColor,
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           if (_hasActiveOrderColumnFilters) ...[
                             const SizedBox(width: 2),
@@ -2837,12 +3407,19 @@ class _CommandeState extends State<Commande> {
                               onTap: _clearAllOrderColumnFilters,
                               borderRadius: BorderRadius.circular(4),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 3,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.red.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: const Icon(Icons.clear_all, size: 12, color: Colors.red),
+                                child: const Icon(
+                                  Icons.clear_all,
+                                  size: 12,
+                                  color: Colors.red,
+                                ),
                               ),
                             ),
                           ],
@@ -2854,14 +3431,54 @@ class _CommandeState extends State<Commande> {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    _buildOrderFilterInputCell(flex: 1, controller: _orderColumnControllers['id']!, hintText: '#...', context: context),
-                    _buildOrderFilterInputCell(flex: 3, controller: _orderColumnControllers['client_project']!, hintText: 'زبون / مشروع...', context: context),
-                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['date']!, hintText: 'سنة-شهر...', context: context),
-                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['total']!, hintText: 'المجموع...', context: context),
-                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['advance']!, hintText: 'المدفوع...', context: context),
-                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['remaining']!, hintText: 'المتبقي...', context: context),
-                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['status']!, hintText: 'حالة الورشة...', context: context),
-                    _buildOrderFilterInputCell(flex: 2, controller: _orderColumnControllers['creator']!, hintText: 'المُدخل...', context: context),
+                    _buildOrderFilterInputCell(
+                      flex: 1,
+                      controller: _orderColumnControllers['id']!,
+                      hintText: '#...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 3,
+                      controller: _orderColumnControllers['client_project']!,
+                      hintText: 'زبون / مشروع...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 2,
+                      controller: _orderColumnControllers['date']!,
+                      hintText: 'سنة-شهر...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 2,
+                      controller: _orderColumnControllers['total']!,
+                      hintText: 'المجموع...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 2,
+                      controller: _orderColumnControllers['advance']!,
+                      hintText: 'المدفوع...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 2,
+                      controller: _orderColumnControllers['remaining']!,
+                      hintText: 'المتبقي...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 2,
+                      controller: _orderColumnControllers['status']!,
+                      hintText: 'حالة الورشة...',
+                      context: context,
+                    ),
+                    _buildOrderFilterInputCell(
+                      flex: 2,
+                      controller: _orderColumnControllers['creator']!,
+                      hintText: 'المُدخل...',
+                      context: context,
+                    ),
                     const Expanded(flex: 1, child: SizedBox.shrink()),
                   ],
                 ),
@@ -2875,18 +3492,29 @@ class _CommandeState extends State<Commande> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           Localization.translate("No matching results", lang),
-                          style: TextStyle(fontSize: 15, color: Colors.grey.shade600, fontFamily: 'Cairo'),
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey.shade600,
+                            fontFamily: 'Cairo',
+                          ),
                         ),
                         if (_hasActiveOrderColumnFilters) ...[
                           const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: _clearAllOrderColumnFilters,
                             icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('إعادة ضبط البحث والتصفية', style: TextStyle(fontFamily: 'Cairo')),
+                            label: const Text(
+                              'إعادة ضبط البحث والتصفية',
+                              style: TextStyle(fontFamily: 'Cairo'),
+                            ),
                           ),
                         ],
                       ],
@@ -2895,22 +3523,33 @@ class _CommandeState extends State<Commande> {
                 : ListView.separated(
                     controller: _scrollController,
                     itemCount: data.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withOpacity(0.12)),
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: mutedColor.withOpacity(0.12)),
                     itemBuilder: (context, index) {
                       final order = data[index];
                       final orderId = (order['id'] as num?)?.toInt() ?? 0;
                       final clientFirst = order['firstname'] ?? '';
                       final clientLast = order['lastname'] ?? '';
                       final clientName = '$clientFirst $clientLast'.trim();
-                      final projectName = (order['project_name'] ?? '').toString().trim();
-                      final clientProject = projectName.isNotEmpty ? '$clientName ($projectName)' : (clientName.isEmpty ? 'زبون عام' : clientName);
+                      final projectName = (order['project_name'] ?? '')
+                          .toString()
+                          .trim();
+                      final clientProject = projectName.isNotEmpty
+                          ? '$clientName ($projectName)'
+                          : (clientName.isEmpty ? 'زبون عام' : clientName);
 
-                      final netPayable = (order['net_payable'] as num?)?.toDouble() ?? (order['total'] as num?)?.toDouble() ?? 0.0;
-                      final advance = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
+                      final netPayable =
+                          (order['net_payable'] as num?)?.toDouble() ??
+                          (order['total'] as num?)?.toDouble() ??
+                          0.0;
+                      final advance =
+                          (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
                       final remaining = netPayable - advance;
                       final status = (order['status'] ?? 'Pending').toString();
                       final statusColor = _getStatusColor(status);
-                      final creator = _formatCreatorDisplay(order['creation_platform']?.toString());
+                      final creator = _formatCreatorDisplay(
+                        order['creation_platform']?.toString(),
+                      );
 
                       return Material(
                         color: Colors.transparent,
@@ -2921,17 +3560,74 @@ class _CommandeState extends State<Commande> {
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             child: Row(
                               children: [
-                                Expanded(flex: 1, child: Text('#$orderId', style: const TextStyle(color: Color(0xFF2563EB), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold))),
-                                Expanded(flex: 3, child: Text(clientProject, overflow: TextOverflow.ellipsis, style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.w600))),
-                                Expanded(flex: 2, child: Text(formatDate(order), style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
-                                Expanded(flex: 2, child: Text(netPayable.toStringAsFixed(0), style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.w600))),
-                                Expanded(flex: 2, child: Text(advance.toStringAsFixed(0), style: const TextStyle(color: Color(0xFF10B981), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.w600))),
+                                Expanded(
+                                  flex: 1,
+                                  child: Text(
+                                    '#$orderId',
+                                    style: const TextStyle(
+                                      color: Color(0xFF2563EB),
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    clientProject,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: contentColor,
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    formatDate(order),
+                                    style: TextStyle(
+                                      color: mutedColor,
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    netPayable.toStringAsFixed(0),
+                                    style: TextStyle(
+                                      color: contentColor,
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    advance.toStringAsFixed(0),
+                                    style: const TextStyle(
+                                      color: Color(0xFF10B981),
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
                                 Expanded(
                                   flex: 2,
                                   child: Text(
                                     remaining.toStringAsFixed(0),
                                     style: TextStyle(
-                                      color: remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                                      color: remaining > 0
+                                          ? const Color(0xFFEF4444)
+                                          : const Color(0xFF10B981),
                                       fontFamily: 'Cairo',
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -2943,22 +3639,49 @@ class _CommandeState extends State<Commande> {
                                   child: Align(
                                     alignment: Alignment.centerRight,
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(color: statusColor.withOpacity(0.13), borderRadius: BorderRadius.circular(12)),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: statusColor.withOpacity(0.13),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
                                       child: Text(
                                         _translateStatus(status, lang),
                                         overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w800, fontFamily: 'Cairo'),
+                                        style: TextStyle(
+                                          color: statusColor,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          fontFamily: 'Cairo',
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                Expanded(flex: 2, child: Text(creator, overflow: TextOverflow.ellipsis, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    creator,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: mutedColor,
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
                                 Expanded(
                                   flex: 1,
                                   child: IconButton(
-                                    icon: const Icon(Icons.settings_suggest_rounded, size: 20, color: Color(0xFF2563EB)),
-                                    onPressed: () => _showOrderOptions(context, order),
+                                    icon: const Icon(
+                                      Icons.settings_suggest_rounded,
+                                      size: 20,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                    onPressed: () =>
+                                        _showOrderOptions(context, order),
                                     tooltip: 'خصائص وخيارات الطلبية',
                                   ),
                                 ),

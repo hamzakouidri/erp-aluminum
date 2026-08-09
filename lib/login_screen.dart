@@ -194,7 +194,10 @@ class _LoginScreenState extends State<LoginScreen>
               'role': 'admin',
               'subscriptionStatus': 'active',
               'isBlocked': false,
-              'workshopId': 'admin_workshop',
+              // The cloud backup is stored under the manager's real UID.
+              // Using a fixed id here made a freshly installed phone look in
+              // an empty workshop and therefore restore no data.
+              'workshopId': userCredential.user!.uid,
             }, SetOptions(merge: true));
       } else {
         if (!doc.exists || (doc.data()?['isBlocked'] == true)) {
@@ -659,7 +662,7 @@ class _LoginScreenState extends State<LoginScreen>
             'role': 'admin',
             'subscriptionStatus': 'active',
             'isBlocked': false,
-            'workshopId': 'admin_workshop',
+            'workshopId': userCredential.user!.uid,
           }, SetOptions(merge: true));
         } else {
           if (!doc.exists) {

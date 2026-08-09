@@ -95,8 +95,9 @@ class AppSettingsProvider extends ChangeNotifier {
         _userRole = 'admin';
         await prefs.setString('user_role', 'admin');
       } else {
-        // Preserve saved role from local preferences until Firestore snapshot updates it
-        _userRole = prefs.getString('user_role') ?? 'manager';
+        // Never grant manager access merely because this computer has no
+        // cached role yet. The first Firestore snapshot is authoritative.
+        _userRole = prefs.getString('user_role') ?? 'worker';
       }
 
       // 🔄 استماع فوري ودائم لتعديلات الصلاحيات والدور من السحابة لجميع الحسابات
@@ -106,33 +107,47 @@ class AppSettingsProvider extends ChangeNotifier {
             .collection('users')
             .doc(user.uid)
             .snapshots()
-            .listen((docSnap) {
-              if (docSnap.exists && docSnap.data() != null) {
-                final data = docSnap.data()!;
-                if (data['role'] != null &&
-                    user?.email != 'kouidrihamza45@gmail.com') {
-                  _userRole = data['role'].toString();
-                  prefs.setString('user_role', _userRole);
-                }
-                // Firestore is the authority for permissions. A worker's local
-                // database can be older than the change made by the manager.
-                Map<String, dynamic> cloudPermissions = {};
-                if (data['permissions_json'] is String &&
-                    (data['permissions_json'] as String).isNotEmpty) {
-                  try {
-                    final decoded = jsonDecode(data['permissions_json']);
-                    if (decoded is Map) {
-                      cloudPermissions = Map<String, dynamic>.from(decoded);
-                    }
-                  } catch (_) {}
-                } else if (data['permissions'] is Map) {
-                  cloudPermissions = Map<String, dynamic>.from(
-                    data['permissions'],
-                  );
-                }
-                _workerPermissions = cloudPermissions;
+            .listen((docSnap) async {
+              // A deleted or incomplete account must not retain permissions
+              // cached on this computer before the manager revoked them.
+              if (!docSnap.exists || docSnap.data() == null) {
+                _userRole = 'worker';
+                _workerPermissions = {};
+                await prefs.setString('user_role', _userRole);
                 notifyListeners();
+                return;
               }
+
+              final data = docSnap.data()!;
+              if (user?.email != 'kouidrihamza45@gmail.com') {
+                final remoteRole = data['role']?.toString() ?? '';
+                final isWorkshopOwner =
+                    data['workshopId']?.toString() == user?.uid;
+                _userRole = remoteRole == 'manager' || isWorkshopOwner
+                    ? 'manager'
+                    : remoteRole == 'co_manager'
+                    ? 'co_manager'
+                    : 'worker';
+                await prefs.setString('user_role', _userRole);
+              }
+              // Firestore is the authority for permissions. A worker's local
+              // database can be older than the change made by the manager.
+              Map<String, dynamic> cloudPermissions = {};
+              if (data['permissions_json'] is String &&
+                  (data['permissions_json'] as String).isNotEmpty) {
+                try {
+                  final decoded = jsonDecode(data['permissions_json']);
+                  if (decoded is Map) {
+                    cloudPermissions = Map<String, dynamic>.from(decoded);
+                  }
+                } catch (_) {}
+              } else if (data['permissions'] is Map) {
+                cloudPermissions = Map<String, dynamic>.from(
+                  data['permissions'],
+                );
+              }
+              _workerPermissions = cloudPermissions;
+              notifyListeners();
             });
       } catch (_) {}
     }

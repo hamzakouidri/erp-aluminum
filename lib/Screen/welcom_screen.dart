@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -7,7 +8,6 @@ import 'dart:convert';
 import 'dart:math' as math;
 import '../Cliente/client.dart';
 import '../Commande/commande.dart';
-import '../Commande/add_commande.dart';
 import '../items_produits/products_menu_screen.dart';
 import '../sql_database.dart';
 import 'projects_screen.dart';
@@ -45,7 +45,8 @@ class WelcomScreen extends StatefulWidget {
 
 class _WelcomScreenState extends State<WelcomScreen> {
   final SqlDatabase db = SqlDatabase();
-  final ValueNotifier<Map<String, dynamic>?> _dragNotifier = ValueNotifier<Map<String, dynamic>?>(null);
+  final ValueNotifier<Map<String, dynamic>?> _dragNotifier =
+      ValueNotifier<Map<String, dynamic>?>(null);
 
   static Offset _getCardCenter(String id) {
     if (id.startsWith('stat_')) {
@@ -93,8 +94,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
   // needs a separate source of truth.
   List<Map<String, dynamic>> _desktopOrders = [];
   List<Map<String, dynamic>> _desktopClients = [];
+  List<Map<String, dynamic>> _desktopTreasury = [];
   Map<int, String> _assignedWorkersMap = {};
-  int _selectedDesktopTableTab = 0; // 0: الطلبيات والمشاريع, 1: الزبائن والحسابات
+  int _selectedDesktopTableTab =
+      0; // 0: الطلبيات, 1: الزبائن, 2: الصندوق
+  final TextEditingController _desktopTreasurySearchController =
+      TextEditingController();
+  String _desktopTreasurySearchQuery = '';
+  bool _showTreasuryTotals = false;
   double _treasuryBalance = 0.0;
   int _activeWorkersCount = 0;
   int _workersCount = 0;
@@ -168,7 +175,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
           final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
           final minQty = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
           if (minQty > 0 && quantity <= minQty) {
-            final key = "${item['item_id']}_${item['item_type']}_${item['color_id']}";
+            final key =
+                "${item['item_id']}_${item['item_type']}_${item['color_id']}";
             if (!uniqueKeys.contains(key)) {
               uniqueKeys.add(key);
               allLowStock.add(item);
@@ -189,19 +197,30 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   void _showLowStockNotifications(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     showDialog(
       context: context,
       builder: (context) {
         final screenWidth = MediaQuery.of(context).size.width;
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        
+
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          backgroundColor: isDark ? Color(0xFF1E293B) : Theme.of(context).cardColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          backgroundColor: isDark
+              ? Color(0xFF1E293B)
+              : Theme.of(context).cardColor,
           title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 28),
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange.shade800,
+                size: 28,
+              ),
               const SizedBox(width: 8),
               Text(
                 Localization.translate('تنبيهات المخزون', lang),
@@ -219,11 +238,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 ? Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 64),
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Colors.green,
+                        size: 64,
+                      ),
                       const SizedBox(height: 16),
                       Text(
-                        Localization.translate('كل الكميات متوفرة بشكل جيد ولا توجد نواقص!', lang),
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 14),
+                        Localization.translate(
+                          'كل الكميات متوفرة بشكل جيد ولا توجد نواقص!',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 14,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -234,16 +263,27 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.orange.shade50.withValues(alpha: isDark ? 0.05 : 1.0),
+                          color: Colors.orange.shade50.withValues(
+                            alpha: isDark ? 0.05 : 1.0,
+                          ),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade200.withValues(alpha: isDark ? 0.3 : 1.0)),
+                          border: Border.all(
+                            color: Colors.orange.shade200.withValues(
+                              alpha: isDark ? 0.3 : 1.0,
+                            ),
+                          ),
                         ),
                         child: Text(
-                          Localization.translate('العناصر التالية وصلت للحد الأدنى أو نفذت من المخزون، يرجى إعادة طلبها قريباً:', lang),
+                          Localization.translate(
+                            'العناصر التالية وصلت للحد الأدنى أو نفذت من المخزون، يرجى إعادة طلبها قريباً:',
+                            lang,
+                          ),
                           style: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
-                            color: isDark ? Colors.orange.shade300 : Colors.orange.shade900,
+                            color: isDark
+                                ? Colors.orange.shade300
+                                : Colors.orange.shade900,
                           ),
                         ),
                       ),
@@ -258,18 +298,28 @@ class _WelcomScreenState extends State<WelcomScreen> {
                             final type = item['item_type'] as String;
                             final color = item['color_name'] as String;
                             final qty = (item['quantity'] as num).toDouble();
-                            final min = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
-                            
+                            final min =
+                                (item['min_qty'] as num?)?.toDouble() ?? 0.0;
+
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 4),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               elevation: 0,
-                              color: isDark ? const Color(0xFF334155) : Colors.grey.shade50,
+                              color: isDark
+                                  ? const Color(0xFF334155)
+                                  : Colors.grey.shade50,
                               child: ListTile(
                                 dense: true,
                                 leading: CircleAvatar(
-                                  backgroundColor: Colors.orange.shade100.withValues(alpha: isDark ? 0.2 : 1.0),
-                                  child: Icon(Icons.inventory_2_rounded, color: Colors.orange.shade800, size: 20),
+                                  backgroundColor: Colors.orange.shade100
+                                      .withValues(alpha: isDark ? 0.2 : 1.0),
+                                  child: Icon(
+                                    Icons.inventory_2_rounded,
+                                    color: Colors.orange.shade800,
+                                    size: 20,
+                                  ),
                                 ),
                                 title: Text(
                                   name,
@@ -281,7 +331,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                                 ),
                                 subtitle: Text(
                                   '${Localization.translate(type, lang)} ${color.isNotEmpty ? "- ${Localization.translate(color, lang)}" : ""}',
-                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 11,
+                                  ),
                                 ),
                                 trailing: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -293,12 +346,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
                                         fontFamily: 'Cairo',
                                         fontWeight: FontWeight.w900,
                                         fontSize: 13,
-                                        color: qty <= 0 ? Colors.red : Colors.orange.shade800,
+                                        color: qty <= 0
+                                            ? Colors.red
+                                            : Colors.orange.shade800,
                                       ),
                                     ),
                                     Text(
                                       '${Localization.translate('الحد الأدنى', lang)}: ${min.toStringAsFixed(min.truncateToDouble() == min ? 0 : 2)}',
-                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 9, color: Colors.grey),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 9,
+                                        color: Colors.grey,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -315,7 +374,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
               onPressed: () => Navigator.pop(context),
               child: Text(
                 Localization.translate('إغلاق', lang),
-                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -359,7 +421,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
         await prefs.setInt('last_seen_orders_count', allCmds.length);
         unreadOrders = 0;
       } else {
-        unreadOrders = allCmds.length > lastCmdCount ? (allCmds.length - lastCmdCount) : 0;
+        unreadOrders = allCmds.length > lastCmdCount
+            ? (allCmds.length - lastCmdCount)
+            : 0;
       }
       if (mounted) {
         setState(() {
@@ -377,6 +441,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           );
           _desktopOrders = desktopOrders;
           _desktopClients = clients;
+          _desktopTreasury = treasuryRows;
           _assignedWorkersMap = assignedWorkersMap;
           _treasuryBalance = _calculateTreasuryBalance(treasuryRows);
           _workersCount = employees.length;
@@ -420,7 +485,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     for (final row in rows) {
       final type = (row['transaction_type'] ?? '').toString().toLowerCase();
       final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
-      final isExpense = type == 'expense' ||
+      final isExpense =
+          type == 'expense' ||
           type.contains('décaissement') ||
           type.contains('decaissement') ||
           type.contains('achat') ||
@@ -428,6 +494,38 @@ class _WelcomScreenState extends State<WelcomScreen> {
       balance += isExpense ? -amount : amount;
     }
     return balance;
+  }
+
+  bool _isTreasuryExpense(Map<String, dynamic> row) {
+    final type = (row['transaction_type'] ?? '').toString().toLowerCase();
+    final description = (row['description'] ?? '').toString().toLowerCase();
+    return type == 'expense' ||
+        type == 'withdrawal' ||
+        type == 'outflow' ||
+        type.contains('décaissement') ||
+        type.contains('decaissement') ||
+        type.contains('achat') ||
+        type.contains('purchase') ||
+        type.contains('سحب') ||
+        type.contains('مصروف') ||
+        type.contains('شراء') ||
+        description.contains('سحب') ||
+        description.contains('مصروف');
+  }
+
+  List<double> _clientAdditionsByMonth() {
+    const monthsToShow = 6;
+    final now = DateTime.now();
+    final counts = List<int>.filled(monthsToShow, 0);
+    for (final client in _desktopClients) {
+      final date = DateTime.tryParse((client['created_at'] ?? '').toString());
+      if (date == null) continue;
+      final monthDifference = (now.year - date.year) * 12 + now.month - date.month;
+      if (monthDifference >= 0 && monthDifference < monthsToShow) {
+        counts[monthsToShow - monthDifference - 1] += 1;
+      }
+    }
+    return counts.map((count) => count.toDouble()).toList();
   }
 
   Future<void> _loadUserData() async {
@@ -448,13 +546,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 if (!mounted) return;
                 final savedName = prefs.getString('workshop_name');
                 final savedLogo = prefs.getString('workshop_logo_base64');
-                final newLogoUrl = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+                final newLogoUrl =
+                    (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
                     ? data['workshopLogoUrl']
                     : savedLogo;
                 setState(() {
-                  _workshopName = (data['workshopName'] as String?)?.isNotEmpty == true
+                  _workshopName =
+                      (data['workshopName'] as String?)?.isNotEmpty == true
                       ? data['workshopName']
-                      : (savedName?.isNotEmpty == true ? savedName! : 'ورشة النجارة');
+                      : (savedName?.isNotEmpty == true
+                            ? savedName!
+                            : 'ورشة النجارة');
                   _workshopPhone = data['phone'] ?? data['phoneNumber'] ?? '';
                   if (data['email'] != null) {
                     _userEmail = data['email'];
@@ -477,7 +579,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
         _statsDebounce?.cancel();
         _statsDebounce = Timer(const Duration(milliseconds: 300), () {
           if (mounted) {
-            Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
+            Provider.of<AppSettingsProvider>(
+              context,
+              listen: false,
+            ).reloadPermissions();
             _loadStats();
           }
         });
@@ -493,7 +598,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
     if (showSnackBar && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('جاري تنزيل وتحديث كافة بيانات الورشة والطلبات من السحابة... ⏳', style: TextStyle(fontFamily: 'Cairo')),
+          content: Text(
+            'جاري تنزيل وتحديث كافة بيانات الورشة والطلبات من السحابة... ⏳',
+            style: TextStyle(fontFamily: 'Cairo'),
+          ),
           duration: Duration(seconds: 2),
           backgroundColor: Colors.blue,
         ),
@@ -502,12 +610,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
     try {
       await CloudSyncService().fullRecoverySync();
       if (mounted) {
-        await Provider.of<AppSettingsProvider>(context, listen: false).reloadPermissions();
+        await Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).reloadPermissions();
         await _loadStats();
         if (showSnackBar) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('تم تنزيل وتحديث البيانات والطلبات من السحابة بنجاح 🔄', style: TextStyle(fontFamily: 'Cairo')),
+              content: Text(
+                'تم تنزيل وتحديث البيانات والطلبات من السحابة بنجاح 🔄',
+                style: TextStyle(fontFamily: 'Cairo'),
+              ),
               duration: Duration(seconds: 2),
               backgroundColor: Colors.green,
             ),
@@ -538,6 +652,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     _userSub?.cancel();
     _databaseUpdateSub?.cancel();
     _statsDebounce?.cancel();
+    _desktopTreasurySearchController.dispose();
     super.dispose();
   }
 
@@ -565,37 +680,56 @@ class _WelcomScreenState extends State<WelcomScreen> {
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: Text(
               lang == AppLanguage.arabic
                   ? 'الخروج من التطبيق'
                   : lang == AppLanguage.french
-                      ? 'Quitter l\'application'
-                      : 'Exit App',
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ? 'Quitter l\'application'
+                  : 'Exit App',
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+              ),
             ),
             content: Text(
               lang == AppLanguage.arabic
                   ? 'هل تريد الخروج من التطبيق؟'
                   : lang == AppLanguage.french
-                      ? 'Voulez-vous quitter l\'application ?'
-                      : 'Do you want to exit the application?',
+                  ? 'Voulez-vous quitter l\'application ?'
+                  : 'Do you want to exit the application?',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
                 child: Text(
-                  lang == AppLanguage.arabic ? 'لا' : lang == AppLanguage.french ? 'Non' : 'No',
+                  lang == AppLanguage.arabic
+                      ? 'لا'
+                      : lang == AppLanguage.french
+                      ? 'Non'
+                      : 'No',
                   style: const TextStyle(fontFamily: 'Cairo'),
                 ),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(ctx).pop(true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
                 child: Text(
-                  lang == AppLanguage.arabic ? 'خروج' : lang == AppLanguage.french ? 'Quitter' : 'Exit',
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  lang == AppLanguage.arabic
+                      ? 'خروج'
+                      : lang == AppLanguage.french
+                      ? 'Quitter'
+                      : 'Exit',
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -612,7 +746,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
           children: [
             if (!_isWindowsDesktop)
               Positioned.fill(
-                child: _WaterWaveBackground(enabled: settings.enablePremiumAnimations),
+                child: _WaterWaveBackground(
+                  enabled: settings.enablePremiumAnimations,
+                ),
               ),
             RefreshIndicator(
               onRefresh: _autoSyncData,
@@ -620,48 +756,61 @@ class _WelcomScreenState extends State<WelcomScreen> {
               child: _isWindowsDesktop
                   ? _buildDesktopDashboard(context)
                   : CustomScrollView(
-              slivers: [
-              _buildSliverHeader(context),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(dashboardPadding, 0, dashboardPadding, 32),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    // ── إحصائيات ────────────────────────────────────────
-                    _buildStatsRow(context),
-                    const SizedBox(height: 24),
+                      slivers: [
+                        _buildSliverHeader(context),
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(
+                            dashboardPadding,
+                            0,
+                            dashboardPadding,
+                            32,
+                          ),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate([
+                              // ── إحصائيات ────────────────────────────────────────
+                              _buildStatsRow(context),
+                              const SizedBox(height: 24),
 
-                    // ── عنوان القسم ──────────────────────────────────────
-                    _sectionLabel(Localization.translate('التنقل السريع', lang)),
-                    const SizedBox(height: 12),
+                              // ── عنوان القسم ──────────────────────────────────────
+                              _sectionLabel(
+                                Localization.translate('التنقل السريع', lang),
+                              ),
+                              const SizedBox(height: 12),
 
-                    // ── شبكة التنقل ──────────────────────────────────────
-                    _buildMeasurementCard(context),
-                    const SizedBox(height: 12),
-                    _buildNavGrid(context),
-                    const SizedBox(height: 24),
+                              // ── شبكة التنقل ──────────────────────────────────────
+                              _buildMeasurementCard(context),
+                              const SizedBox(height: 12),
+                              _buildNavGrid(context),
+                              const SizedBox(height: 24),
 
-                    // ── مخطط الطلبيات ─────────────────────────────────
-                    _sectionLabel(Localization.translate('تحليل الطلبيات', lang)),
-                    const SizedBox(height: 12),
-                    _OrdersChartCard(
-                      byStatus: _ordersByStatus,
-                      byMonth: _ordersByMonth,
+                              // ── مخطط الطلبيات ─────────────────────────────────
+                              _sectionLabel(
+                                Localization.translate('تحليل الطلبيات', lang),
+                              ),
+                              const SizedBox(height: 12),
+                              _OrdersChartCard(
+                                byStatus: _ordersByStatus,
+                                byMonth: _ordersByMonth,
+                              ),
+                            ]),
+                          ),
+                        ),
+                      ],
                     ),
-
-                   ]),
-                ),
-              ),
-            ],
-          ),
             ),
-        ],
-      ),
-    ), // end Scaffold
+          ],
+        ),
+      ), // end Scaffold
     ); // end PopScope
   }
 
   // ── SliverAppBar ──────────────────────────────────────────────────────────
-  String _desktopText(AppLanguage lang, String arabic, String french, String english) {
+  String _desktopText(
+    AppLanguage lang,
+    String arabic,
+    String french,
+    String english,
+  ) {
     if (lang == AppLanguage.arabic) return arabic;
     if (lang == AppLanguage.french) return french;
     return english;
@@ -673,8 +822,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final pageColor = isDark ? const Color(0xFF0F172A) : Colors.white;
     final cardColor = isDark ? const Color(0xFF172033) : Colors.white;
-    final contentColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF17233A);
-    final mutedColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final contentColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF17233A);
+    final mutedColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF64748B);
 
     return Container(
       color: pageColor,
@@ -730,7 +883,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
                                 ),
                               ),
                               Text(
-                                _desktopText(lang, 'لوحة التحكم', 'Tableau de bord', 'Dashboard'),
+                                _desktopText(
+                                  lang,
+                                  'لوحة التحكم',
+                                  'Tableau de bord',
+                                  'Dashboard',
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -753,17 +911,31 @@ class _WelcomScreenState extends State<WelcomScreen> {
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Icon(Icons.sync_rounded, size: 18),
                       label: Text(
-                        _desktopText(lang, 'تحديث البيانات', 'Actualiser', 'Refresh data'),
-                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700),
+                        _desktopText(
+                          lang,
+                          'تحديث البيانات',
+                          'Actualiser',
+                          'Refresh data',
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF2563EB),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 13,
+                        ),
                       ),
                     );
                     if (narrow) {
@@ -773,27 +945,52 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       );
                     }
                     return Row(
-                      children: [Expanded(child: title), refresh],
+                      children: [
+                        Expanded(child: title),
+                        refresh,
+                      ],
                     );
                   },
                 ),
                 const SizedBox(height: 22),
-                _buildDesktopMetrics(context, cardColor, contentColor, mutedColor),
+                _buildDesktopMetrics(
+                  context,
+                  cardColor,
+                  contentColor,
+                  mutedColor,
+                ),
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final sideWidth = 290.0;
                     final isCompact = constraints.maxWidth < 980;
-                    final orders = _buildDesktopOrdersPanel(context, cardColor, contentColor, mutedColor);
+                    final orders = _buildDesktopOrdersPanel(
+                      context,
+                      cardColor,
+                      contentColor,
+                      mutedColor,
+                    );
                     final side = Column(
                       children: [
-                        _buildDesktopWorkloadPanel(context, cardColor, contentColor, mutedColor),
+                        _buildDesktopWorkloadPanel(
+                          context,
+                          cardColor,
+                          contentColor,
+                          mutedColor,
+                        ),
                         const SizedBox(height: 16),
-                        _buildDesktopActivityPanel(context, cardColor, contentColor, mutedColor),
+                        _buildDesktopActivityPanel(
+                          context,
+                          cardColor,
+                          contentColor,
+                          mutedColor,
+                        ),
                       ],
                     );
                     if (isCompact) {
-                      return Column(children: [orders, const SizedBox(height: 16), side]);
+                      return Column(
+                        children: [orders, const SizedBox(height: 16), side],
+                      );
                     }
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -806,7 +1003,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   },
                 ),
                 const SizedBox(height: 18),
-                _buildDesktopLowStockPanel(context, cardColor, contentColor, mutedColor),
+                _buildDesktopLowStockPanel(
+                  context,
+                  cardColor,
+                  contentColor,
+                  mutedColor,
+                ),
               ],
             ),
           ),
@@ -823,14 +1025,29 @@ class _WelcomScreenState extends State<WelcomScreen> {
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final values = _ordersByMonth.values.map((value) => value.toDouble()).toList();
+    final values = _ordersByMonth.values
+        .map((value) => value.toDouble())
+        .toList();
+    final clientValues = _clientAdditionsByMonth();
     final cards = <Widget>[
       if (settings.canViewOrders())
         _DesktopMetricCard(
           icon: Icons.receipt_long_rounded,
-          title: _desktopText(lang, 'إجمالي الطلبيات', 'Total des commandes', 'Total orders'),
+          title: _desktopText(
+            lang,
+            'إجمالي الطلبيات',
+            'Total des commandes',
+            'Total orders',
+          ),
           value: _commandesCount,
-          caption: _cmdTrend.isEmpty ? _desktopText(lang, 'كل الطلبيات', 'Toutes les commandes', 'All orders') : _cmdTrend,
+          caption: _cmdTrend.isEmpty
+              ? _desktopText(
+                  lang,
+                  'كل الطلبيات',
+                  'Toutes les commandes',
+                  'All orders',
+                )
+              : _cmdTrend,
           color: const Color(0xFF2563EB),
           values: values,
           backgroundColor: cardColor,
@@ -841,9 +1058,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
       if (settings.canAccessTreasury())
         _DesktopMetricCard(
           icon: Icons.account_balance_wallet_rounded,
-          title: _desktopText(lang, 'رصيد الخزينة', 'Solde de trésorerie', 'Treasury balance'),
+          title: _desktopText(
+            lang,
+            'رصيد الخزينة',
+            'Solde de trésorerie',
+            'Treasury balance',
+          ),
           value: _formatCurrency(_treasuryBalance),
-          caption: _desktopText(lang, 'المتاح حالياً', 'Disponible actuellement', 'Available now'),
+          caption: _desktopText(
+            lang,
+            'المتاح حالياً',
+            'Disponible actuellement',
+            'Available now',
+          ),
           color: const Color(0xFF0EA5A4),
           values: values,
           backgroundColor: cardColor,
@@ -857,32 +1084,45 @@ class _WelcomScreenState extends State<WelcomScreen> {
           ),
         ),
       _DesktopMetricCard(
-        icon: Icons.groups_rounded,
-        title: _desktopText(lang, 'العاملون النشطون', 'Employés actifs', 'Active workers'),
-        value: _activeWorkersCount.toString(),
-        caption: _workersCount == 0
-            ? _desktopText(lang, 'لا يوجد عاملون مسجلون', 'Aucun employé enregistré', 'No registered workers')
-            : _desktopText(lang, 'من أصل $_workersCount عامل', 'sur $_workersCount employés', 'of $_workersCount workers'),
+        icon: Icons.people_alt_rounded,
+        title: _desktopText(
+          lang,
+          'إجمالي الزبائن',
+          'Total des clients',
+          'Total clients',
+        ),
+        value: _clientsCount,
+        caption: _cliTrend.isEmpty
+            ? _desktopText(
+                lang,
+                'الزبائن المضافون حديثاً',
+                'Clients ajoutés récemment',
+                'Recently added clients',
+              )
+            : _cliTrend,
         color: const Color(0xFF8B5CF6),
-        values: values,
+        values: clientValues,
         backgroundColor: cardColor,
         textColor: contentColor,
         mutedColor: mutedColor,
-        onTap: settings.canViewMyTasks()
-            ? () => openAdaptiveScreen(
-                  context,
-                  title: _desktopText(lang, 'مهامي وتصنيعاتي', 'Mes tâches', 'My tasks'),
-                  icon: Icons.assignment_turned_in_rounded,
-                  screen: WorkerTasksScreen(db: db),
-                )
-            : null,
+        onTap: settings.canViewClients() ? _openClients : null,
       ),
       if (settings.canViewOrders())
         _DesktopMetricCard(
           icon: Icons.pending_actions_rounded,
-          title: _desktopText(lang, 'طلبيات مفتوحة', 'Commandes ouvertes', 'Open orders'),
+          title: _desktopText(
+            lang,
+            'طلبيات مفتوحة',
+            'Commandes ouvertes',
+            'Open orders',
+          ),
           value: _pendingOrdersCount.toString(),
-          caption: _desktopText(lang, 'تحتاج إلى متابعة', 'À suivre', 'Need follow-up'),
+          caption: _desktopText(
+            lang,
+            'تحتاج إلى متابعة',
+            'À suivre',
+            'Need follow-up',
+          ),
           color: const Color(0xFFF59E0B),
           values: values,
           backgroundColor: cardColor,
@@ -895,12 +1135,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         const gap = 16.0;
-        final columns = constraints.maxWidth >= 1180 ? 4 : constraints.maxWidth >= 660 ? 2 : 1;
+        final columns = constraints.maxWidth >= 1180
+            ? 4
+            : constraints.maxWidth >= 660
+            ? 2
+            : 1;
         final width = (constraints.maxWidth - ((columns - 1) * gap)) / columns;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
-          children: [for (final card in cards) SizedBox(width: width, child: card)],
+          children: [
+            for (final card in cards) SizedBox(width: width, child: card),
+          ],
         );
       },
     );
@@ -912,17 +1158,50 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color contentColor,
     Color mutedColor,
   ) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
-    final isOrdersTab = _selectedDesktopTableTab == 0;
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final selectedTab = !settings.canAccessTreasury() && _selectedDesktopTableTab == 2
+        ? 0
+        : _selectedDesktopTableTab;
+    if (selectedTab == 2) {
+      return _buildDesktopTreasuryPanel(
+        context,
+        cardColor,
+        contentColor,
+        mutedColor,
+        lang,
+      );
+    }
+    final isOrdersTab = selectedTab == 0;
 
     return _desktopPanel(
       context: context,
       title: isOrdersTab
-          ? _desktopText(lang, 'متابعة الطلبيات والمشاريع', 'Suivi des commandes', 'Orders & Projects')
-          : _desktopText(lang, 'سجل الزبائن والحسابات', 'Registre des clients', 'Clients & Accounts'),
+          ? _desktopText(
+              lang,
+              'متابعة الطلبيات والمشاريع',
+              'Suivi des commandes',
+              'Orders & Projects',
+            )
+          : _desktopText(
+              lang,
+              'سجل الزبائن والحسابات',
+              'Registre des clients',
+              'Clients & Accounts',
+            ),
       subtitle: isOrdersTab
-          ? _desktopText(lang, 'تفاصيل الحسابات، العمال وحالة العمل بالورشة', 'Détails des commandes', 'Detailed orders & assignments')
-          : _desktopText(lang, 'إجمالي المبيعات، الدفعات والديون المتبقية للزبائن', 'Détails des comptes clients', 'Client balances & debts'),
+          ? _desktopText(
+              lang,
+              'تفاصيل الحسابات، العمال وحالة العمل بالورشة',
+              'Détails des commandes',
+              'Detailed orders & assignments',
+            )
+          : _desktopText(
+              lang,
+              'إجمالي المبيعات، الدفعات والديون المتبقية للزبائن',
+              'Détails des comptes clients',
+              'Client balances & debts',
+            ),
       icon: isOrdersTab ? Icons.table_rows_rounded : Icons.people_alt_rounded,
       color: isOrdersTab ? const Color(0xFF2563EB) : const Color(0xFF0EA5E9),
       backgroundColor: cardColor,
@@ -933,34 +1212,50 @@ class _WelcomScreenState extends State<WelcomScreen> {
         children: [
           Consumer<AppSettingsProvider>(
             builder: (context, appSettings, _) {
-              final canAdd = isOrdersTab ? appSettings.canCreateOrders() : appSettings.canCreateClients();
+              final canAdd = isOrdersTab
+                  ? appSettings.canCreateOrders()
+                  : appSettings.canCreateClients();
               if (!canAdd) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsetsDirectional.only(end: 10),
                 child: FilledButton.icon(
                   onPressed: () {
                     if (isOrdersTab) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => CommandePage(db: db)),
-                      ).then((res) {
-                        if (res == true) _loadStats();
-                      });
+                      _openOrders(openAddOrderOnStart: true);
                     } else {
-                      _openClients();
+                      _openClients(openAddClientOnStart: true);
                     }
                   },
                   icon: const Icon(Icons.add_rounded, size: 16),
                   label: Text(
                     isOrdersTab
-                        ? _desktopText(lang, 'إضافة طلبية', 'Ajouter commande', 'Add Order')
-                        : _desktopText(lang, 'إضافة زبون', 'Ajouter client', 'Add Client'),
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                        ? _desktopText(
+                            lang,
+                            'إضافة طلبية',
+                            'Ajouter commande',
+                            'Add Order',
+                          )
+                        : _desktopText(
+                            lang,
+                            'إضافة زبون',
+                            'Ajouter client',
+                            'Add Client',
+                          ),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                   style: FilledButton.styleFrom(
-                    backgroundColor: isOrdersTab ? const Color(0xFF2563EB) : const Color(0xFF0EA5E9),
+                    backgroundColor: isOrdersTab
+                        ? const Color(0xFF2563EB)
+                        : const Color(0xFF0EA5E9),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                   ),
                 ),
               );
@@ -972,7 +1267,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 value: 0,
                 label: Text(
                   _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 icon: const Icon(Icons.receipt_long_rounded, size: 14),
               ),
@@ -980,12 +1279,29 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 value: 1,
                 label: Text(
                   _desktopText(lang, 'الزبائن', 'Clients', 'Clients'),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 icon: const Icon(Icons.people_alt_rounded, size: 14),
               ),
+              if (settings.canAccessTreasury())
+                ButtonSegment(
+                  value: 2,
+                  label: Text(
+                    _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  icon: const Icon(Icons.account_balance_wallet_rounded, size: 14),
+                ),
             ],
-            selected: {_selectedDesktopTableTab},
+            selected: {selectedTab},
             onSelectionChanged: (set) {
               if (set.isNotEmpty) {
                 setState(() {
@@ -1005,7 +1321,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
             label: Text(
               isOrdersTab
                   ? _desktopText(lang, 'كل الطلبيات', 'Tout voir', 'View all')
-                  : _desktopText(lang, 'كل الزبائن', 'Tous les clients', 'All clients'),
+                  : _desktopText(
+                      lang,
+                      'كل الزبائن',
+                      'Tous les clients',
+                      'All clients',
+                    ),
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
           ),
@@ -1015,17 +1336,132 @@ class _WelcomScreenState extends State<WelcomScreen> {
         height: 380,
         child: isOrdersTab
             ? _buildDetailedOrdersTable(context, contentColor, mutedColor, lang)
-            : _buildDetailedClientsTable(context, contentColor, mutedColor, lang),
+            : _buildDetailedClientsTable(
+                context,
+                contentColor,
+                mutedColor,
+                lang,
+              ),
       ),
     );
   }
 
-  void _openClients() {
+  Widget _buildDesktopTreasuryPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(
+        lang,
+        'سجل الصندوق',
+        'Registre de trésorerie',
+        'Treasury register',
+      ),
+      subtitle: _desktopText(
+        lang,
+        'تابع عمليات الدفع والسحب والمُدخل والتاريخ من مكان واحد',
+        'Suivez les encaissements, décaissements et saisies',
+        'Track income, withdrawals, dates, and entries in one place',
+      ),
+      icon: Icons.account_balance_wallet_rounded,
+      color: const Color(0xFF0EA5A4),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      action: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SegmentedButton<int>(
+            segments: [
+              ButtonSegment(
+                value: 0,
+                label: Text(
+                  _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                icon: const Icon(Icons.receipt_long_rounded, size: 14),
+              ),
+              ButtonSegment(
+                value: 1,
+                label: Text(
+                  _desktopText(lang, 'الزبائن', 'Clients', 'Clients'),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                icon: const Icon(Icons.people_alt_rounded, size: 14),
+              ),
+              ButtonSegment(
+                value: 2,
+                label: Text(
+                  _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                icon: const Icon(Icons.account_balance_wallet_rounded, size: 14),
+              ),
+            ],
+            selected: const {2},
+            onSelectionChanged: (set) {
+              if (set.isNotEmpty) {
+                setState(() => _selectedDesktopTableTab = set.first);
+              }
+            },
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: _openTreasury,
+            icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+            label: Text(
+              _desktopText(lang, 'كل العمليات', 'Tout voir', 'View all'),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+          ),
+        ],
+      ),
+      child: SizedBox(
+        height: 420,
+        child: _buildDetailedTreasuryTable(contentColor, mutedColor, lang),
+      ),
+    );
+  }
+
+  void _openTreasury() {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     openAdaptiveScreen(
       context,
-      title: Localization.translate('الزبائن', Provider.of<AppSettingsProvider>(context, listen: false).language),
+      title: _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'),
+      icon: Icons.account_balance_wallet_rounded,
+      screen: TreasuryScreen(db: db),
+    );
+  }
+
+  void _openClients({bool openAddClientOnStart = false}) {
+    openAdaptiveScreen(
+      context,
+      title: Localization.translate(
+        'الزبائن',
+        Provider.of<AppSettingsProvider>(context, listen: false).language,
+      ),
       icon: Icons.people_alt_rounded,
-      screen: const Customers(),
+      screen: Customers(openAddClientOnStart: openAddClientOnStart),
     );
   }
 
@@ -1038,7 +1474,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
     if (_desktopOrders.isEmpty) {
       return Center(
         child: Text(
-          _desktopText(lang, 'لا توجد طلبيات مسجلة بعد', 'Aucune commande', 'No recorded orders'),
+          _desktopText(
+            lang,
+            'لا توجد طلبيات مسجلة بعد',
+            'Aucune commande',
+            'No recorded orders',
+          ),
           style: TextStyle(fontFamily: 'Cairo', color: mutedColor),
         ),
       );
@@ -1051,7 +1492,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
         Expanded(
           child: ListView.separated(
             itemCount: math.min(10, _desktopOrders.length),
-            separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withOpacity(0.12)),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: mutedColor.withOpacity(0.12)),
             itemBuilder: (context, index) => _desktopDetailedOrderRow(
               context,
               _desktopOrders[index],
@@ -1065,7 +1507,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  Widget _desktopOrdersTableHeader(Color contentColor, Color mutedColor, AppLanguage lang) {
+  Widget _desktopOrdersTableHeader(
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1076,14 +1522,59 @@ class _WelcomScreenState extends State<WelcomScreen> {
       child: Row(
         children: [
           _desktopTableCell('#', 1, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'الزبون والمشروع', 'Client & Projet', 'Client & Project'), 3, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Order Date'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المجموع (د.ج)', 'Total (DA)', 'Total (DA)'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المدفوع', 'Payé', 'Paid'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المتبقي', 'Reste', 'Balance'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'حالة الورشة', 'Statut', 'Status'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المُدخل', 'Inscrit par', 'Recorded By'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'فريق التنفيذ', 'Assignés', 'Assigned Workers'), 3, mutedColor, true),
+          _desktopTableCell(
+            _desktopText(
+              lang,
+              'الزبون والمشروع',
+              'Client & Projet',
+              'Client & Project',
+            ),
+            3,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Order Date'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المجموع (د.ج)', 'Total (DA)', 'Total (DA)'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المتبقي', 'Reste', 'Balance'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'حالة الورشة', 'Statut', 'Status'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المُدخل', 'Inscrit par', 'Recorded By'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'فريق التنفيذ', 'Assignés', 'Assigned Workers'),
+            3,
+            mutedColor,
+            true,
+          ),
         ],
       ),
     );
@@ -1103,8 +1594,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
     }
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final emailName = user.email?.contains('@') == true ? user.email!.split('@').first : '';
-      final displayName = user.displayName?.trim().isNotEmpty == true ? user.displayName!.trim() : emailName;
+      final emailName = user.email?.contains('@') == true
+          ? user.email!.split('@').first
+          : '';
+      final displayName = user.displayName?.trim().isNotEmpty == true
+          ? user.displayName!.trim()
+          : emailName;
       if (displayName.isNotEmpty) {
         if (raw.isNotEmpty) {
           return '$displayName ($raw)';
@@ -1129,12 +1624,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final lastName = (order['lastname'] ?? '').toString().trim();
     final clientName = '$firstName $lastName'.trim();
     final projectName = (order['project_name'] ?? '').toString().trim();
-    final clientProject = projectName.isNotEmpty ? '$clientName ($projectName)' : clientName;
+    final clientProject = projectName.isNotEmpty
+        ? '$clientName ($projectName)'
+        : clientName;
 
-    final total = (order['net_payable'] as num?)?.toDouble() ?? (order['total'] as num?)?.toDouble() ?? 0.0;
+    final total =
+        (order['net_payable'] as num?)?.toDouble() ??
+        (order['total'] as num?)?.toDouble() ??
+        0.0;
     final advance = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
     final remaining = total - advance;
-    final creator = _formatCreatorDisplay(order['creation_platform']?.toString());
+    final creator = _formatCreatorDisplay(
+      order['creation_platform']?.toString(),
+    );
     final assignedWorkers = _assignedWorkersMap[orderId] ?? 'غير مُسند';
 
     return Material(
@@ -1146,15 +1648,38 @@ class _WelcomScreenState extends State<WelcomScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              _desktopTableCell('#$orderId', 1, contentColor, false, colorOverride: const Color(0xFF2563EB)),
-              _desktopTableCell(clientProject.isEmpty ? 'زبون عام' : clientProject, 3, contentColor, false),
-              _desktopTableCell(_formatDate(order['created_at']), 2, mutedColor, false),
+              _desktopTableCell(
+                '#$orderId',
+                1,
+                contentColor,
+                false,
+                colorOverride: const Color(0xFF2563EB),
+              ),
+              _desktopTableCell(
+                clientProject.isEmpty ? 'زبون عام' : clientProject,
+                3,
+                contentColor,
+                false,
+              ),
+              _desktopTableCell(
+                _formatDate(order['created_at']),
+                2,
+                mutedColor,
+                false,
+              ),
               _desktopTableCell(_formatCurrency(total), 2, contentColor, false),
-              _desktopTableCell(_formatCurrency(advance), 2, const Color(0xFF10B981), false),
+              _desktopTableCell(
+                _formatCurrency(advance),
+                2,
+                const Color(0xFF10B981),
+                false,
+              ),
               _desktopTableCell(
                 _formatCurrency(remaining),
                 2,
-                remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                remaining > 0
+                    ? const Color(0xFFEF4444)
+                    : const Color(0xFF10B981),
                 false,
                 fontWeight: FontWeight.bold,
               ),
@@ -1163,12 +1688,23 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: color.withOpacity(0.13), borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.13),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Text(
                       _desktopStatusText(status, lang),
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800, fontFamily: 'Cairo'),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'Cairo',
+                      ),
                     ),
                   ),
                 ),
@@ -1191,7 +1727,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
     if (_desktopClients.isEmpty) {
       return Center(
         child: Text(
-          _desktopText(lang, 'لا يوجد زبائن مسجلين بعد', 'Aucun client', 'No clients'),
+          _desktopText(
+            lang,
+            'لا يوجد زبائن مسجلين بعد',
+            'Aucun client',
+            'No clients',
+          ),
           style: TextStyle(fontFamily: 'Cairo', color: mutedColor),
         ),
       );
@@ -1204,7 +1745,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
         Expanded(
           child: ListView.separated(
             itemCount: math.min(10, _desktopClients.length),
-            separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withOpacity(0.12)),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: mutedColor.withOpacity(0.12)),
             itemBuilder: (context, index) => _desktopDetailedClientRow(
               context,
               _desktopClients[index],
@@ -1218,7 +1760,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  Widget _desktopClientsTableHeader(Color contentColor, Color mutedColor, AppLanguage lang) {
+  Widget _desktopClientsTableHeader(
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1229,17 +1775,77 @@ class _WelcomScreenState extends State<WelcomScreen> {
       child: Row(
         children: [
           _desktopTableCell('#', 1, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'اسم الزبون', 'Nom client', 'Client Name'), 3, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'رقم الهاتف', 'Téléphone', 'Phone'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'العنوان', 'Adresse', 'Address'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'البريد الإلكتروني', 'E-mail', 'Email'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'البيانات الجبائية (NIF/RC)', 'Fiscaux', 'Tax & Com'), 3, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'تاريخ الإضافة', 'Date d\'ajout', 'Added Date'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'مجموع الحسابات', 'Total', 'Total'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المدفوع', 'Payé', 'Paid'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المتبقي', 'Reste', 'Remaining'), 2, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'عدد الطلبيات', 'Cmds', 'Orders'), 1, mutedColor, true),
-          _desktopTableCell(_desktopText(lang, 'المُضيف', 'Ajouté par', 'Added By'), 2, mutedColor, true),
+          _desktopTableCell(
+            _desktopText(lang, 'اسم الزبون', 'Nom client', 'Client Name'),
+            3,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'رقم الهاتف', 'Téléphone', 'Phone'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'العنوان', 'Adresse', 'Address'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'البريد الإلكتروني', 'E-mail', 'Email'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(
+              lang,
+              'البيانات الجبائية (NIF/RC)',
+              'Fiscaux',
+              'Tax & Com',
+            ),
+            3,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'تاريخ الإضافة', 'Date d\'ajout', 'Added Date'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'مجموع الحسابات', 'Total', 'Total'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المتبقي', 'Reste', 'Remaining'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'عدد الطلبيات', 'Cmds', 'Orders'),
+            1,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'المُضيف', 'Ajouté par', 'Added By'),
+            2,
+            mutedColor,
+            true,
+          ),
         ],
       ),
     );
@@ -1263,7 +1869,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
         ? (phone2.isNotEmpty && phone2 != '0' ? '$phone1 / $phone2' : phone1)
         : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
 
-    final addressDisplay = (client['address'] ?? '').toString().trim().isNotEmpty
+    final addressDisplay =
+        (client['address'] ?? '').toString().trim().isNotEmpty
         ? client['address'].toString().trim()
         : '—';
 
@@ -1283,17 +1890,24 @@ class _WelcomScreenState extends State<WelcomScreen> {
     if (ai.isNotEmpty) taxParts.add('AI: $ai');
     final taxDisplay = taxParts.isNotEmpty ? taxParts.join(' | ') : '—';
 
-    final clientOrders = _desktopOrders.where((o) => (o['client_id'] as num?)?.toInt() == clientId).toList();
+    final clientOrders = _desktopOrders
+        .where((o) => (o['client_id'] as num?)?.toInt() == clientId)
+        .toList();
     double totalSum = 0.0;
     double paidSum = 0.0;
     for (var o in clientOrders) {
-      double net = (o['net_payable'] as num?)?.toDouble() ?? (o['total'] as num?)?.toDouble() ?? 0.0;
+      double net =
+          (o['net_payable'] as num?)?.toDouble() ??
+          (o['total'] as num?)?.toDouble() ??
+          0.0;
       double advance = (o['advance_payment'] as num?)?.toDouble() ?? 0.0;
       totalSum += net;
       paidSum += advance;
     }
     double remainingDebt = totalSum - paidSum;
-    final addedBy = _formatCreatorDisplay(client['creation_platform']?.toString());
+    final addedBy = _formatCreatorDisplay(
+      client['creation_platform']?.toString(),
+    );
 
     return Material(
       color: Colors.transparent,
@@ -1304,23 +1918,57 @@ class _WelcomScreenState extends State<WelcomScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              _desktopTableCell('#$clientId', 1, contentColor, false, colorOverride: const Color(0xFF0EA5E9)),
-              _desktopTableCell(fullName.isEmpty ? 'زبون #$clientId' : fullName, 3, contentColor, false, colorOverride: const Color(0xFF0EA5E9)),
+              _desktopTableCell(
+                '#$clientId',
+                1,
+                contentColor,
+                false,
+                colorOverride: const Color(0xFF0EA5E9),
+              ),
+              _desktopTableCell(
+                fullName.isEmpty ? 'زبون #$clientId' : fullName,
+                3,
+                contentColor,
+                false,
+                colorOverride: const Color(0xFF0EA5E9),
+              ),
               _desktopTableCell(phoneDisplay, 2, contentColor, false),
               _desktopTableCell(addressDisplay, 2, mutedColor, false),
               _desktopTableCell(emailDisplay, 2, mutedColor, false),
               _desktopTableCell(taxDisplay, 3, const Color(0xFF8B5CF6), false),
-              _desktopTableCell(_formatDate(client['created_at']), 2, mutedColor, false),
-              _desktopTableCell(_formatCurrency(totalSum), 2, contentColor, false),
-              _desktopTableCell(_formatCurrency(paidSum), 2, const Color(0xFF10B981), false),
+              _desktopTableCell(
+                _formatDate(client['created_at']),
+                2,
+                mutedColor,
+                false,
+              ),
+              _desktopTableCell(
+                _formatCurrency(totalSum),
+                2,
+                contentColor,
+                false,
+              ),
+              _desktopTableCell(
+                _formatCurrency(paidSum),
+                2,
+                const Color(0xFF10B981),
+                false,
+              ),
               _desktopTableCell(
                 _formatCurrency(remainingDebt),
                 2,
-                remainingDebt > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                remainingDebt > 0
+                    ? const Color(0xFFEF4444)
+                    : const Color(0xFF10B981),
                 false,
                 fontWeight: FontWeight.bold,
               ),
-              _desktopTableCell('${clientOrders.length}', 1, contentColor, false),
+              _desktopTableCell(
+                '${clientOrders.length}',
+                1,
+                contentColor,
+                false,
+              ),
               _desktopTableCell(addedBy, 2, mutedColor, false),
             ],
           ),
@@ -1329,7 +1977,374 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  Widget _desktopTableCell(String text, int flex, Color color, bool isHeader, {Color? colorOverride, FontWeight? fontWeight}) {
+  List<Map<String, dynamic>> _filteredDesktopTreasuryRows() {
+    final query = _desktopTreasurySearchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _desktopTreasury;
+    return _desktopTreasury.where((row) {
+      final searchable = [
+        row['id'],
+        row['description'],
+        row['amount'],
+        row['transaction_type'],
+        row['created_at'],
+        row['recorded_by'],
+        row['caisse_name'],
+        row['payment_method'],
+        row['entity_type'],
+      ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+      return searchable.contains(query);
+    }).toList();
+  }
+
+  double _desktopTreasuryTotal(
+    List<Map<String, dynamic>> rows, {
+    required bool expenses,
+  }) {
+    return rows
+        .where((row) => _isTreasuryExpense(row) == expenses)
+        .fold<double>(
+          0,
+          (total, row) => total + ((row['amount'] as num?)?.toDouble() ?? 0),
+        );
+  }
+
+  Widget _buildDetailedTreasuryTable(
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
+    final rows = _filteredDesktopTreasuryRows();
+    return Column(
+      children: [
+        TextField(
+          controller: _desktopTreasurySearchController,
+          onChanged: (value) {
+            setState(() => _desktopTreasurySearchQuery = value);
+          },
+          style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: contentColor),
+          decoration: InputDecoration(
+            isDense: true,
+            prefixIcon: const Icon(Icons.search_rounded, size: 19),
+            hintText: _desktopText(
+              lang,
+              'بحث: البيان، المبلغ، التاريخ أو المُدخل',
+              'Rechercher : libellé, montant, date ou saisi par',
+              'Search description, amount, date, or recorded by',
+            ),
+            hintStyle: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: mutedColor),
+            filled: true,
+            fillColor: mutedColor.withOpacity(0.06),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: mutedColor.withOpacity(0.16)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: mutedColor.withOpacity(0.16)),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _desktopTreasuryTableHeader(mutedColor, lang),
+        const SizedBox(height: 6),
+        Expanded(
+          child: rows.isEmpty
+              ? Center(
+                  child: Text(
+                    _desktopText(
+                      lang,
+                      _desktopTreasurySearchQuery.isEmpty
+                          ? 'لا توجد عمليات صندوق مسجلة بعد'
+                          : 'لا توجد نتائج مطابقة للبحث',
+                      _desktopTreasurySearchQuery.isEmpty
+                          ? 'Aucune opération de trésorerie'
+                          : 'Aucun résultat trouvé',
+                      _desktopTreasurySearchQuery.isEmpty
+                          ? 'No treasury transactions yet'
+                          : 'No matching results',
+                    ),
+                    style: TextStyle(fontFamily: 'Cairo', color: mutedColor),
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: math.min(10, rows.length),
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: mutedColor.withOpacity(0.12)),
+                  itemBuilder: (context, index) => _desktopTreasuryRow(
+                    rows[index],
+                    contentColor,
+                    mutedColor,
+                    lang,
+                  ),
+                ),
+        ),
+        const SizedBox(height: 8),
+        _desktopTreasuryTotalsFooter(rows, contentColor, mutedColor, lang),
+      ],
+    );
+  }
+
+  Widget _desktopTreasuryTableHeader(Color mutedColor, AppLanguage lang) {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0EA5A4).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          _desktopTableCell('#', 1, mutedColor, true),
+          _desktopTableCell(
+            _desktopText(lang, 'البيان', 'Libellé', 'Description'),
+            4,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'الدفع', 'Encaissement', 'Income'),
+            3,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'السحب', 'Décaissement', 'Withdrawal'),
+            3,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Created at'),
+            2,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'أدخلها', 'Saisi par', 'Recorded by'),
+            3,
+            mutedColor,
+            true,
+          ),
+          _desktopTableCell(
+            _desktopText(lang, 'الصندوق', 'Caisse', 'Cashbox'),
+            2,
+            mutedColor,
+            true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopTreasuryRow(
+    Map<String, dynamic> row,
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
+    final id = (row['id'] as num?)?.toInt() ?? 0;
+    final amount = (row['amount'] as num?)?.toDouble() ?? 0;
+    final isExpense = _isTreasuryExpense(row);
+    final description = (row['description'] ?? '').toString().trim();
+    final type = (row['transaction_type'] ?? '').toString().trim();
+    final recordedBy = (row['recorded_by'] ?? '').toString().trim();
+    final cashbox = (row['caisse_name'] ?? '').toString().trim();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openTreasury,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              _desktopTableCell(
+                '#$id',
+                1,
+                contentColor,
+                false,
+                colorOverride: const Color(0xFF0EA5A4),
+              ),
+              _desktopTableCell(
+                description.isEmpty
+                    ? (type.isEmpty
+                        ? _desktopText(lang, 'عملية صندوق', 'Opération de caisse', 'Treasury entry')
+                        : type)
+                    : description,
+                4,
+                contentColor,
+                false,
+              ),
+              _desktopTableCell(
+                isExpense ? '—' : _formatCurrency(amount),
+                3,
+                isExpense ? mutedColor : const Color(0xFF10B981),
+                false,
+                fontWeight: isExpense ? null : FontWeight.bold,
+              ),
+              _desktopTableCell(
+                isExpense ? _formatCurrency(amount) : '—',
+                3,
+                isExpense ? const Color(0xFFEF4444) : mutedColor,
+                false,
+                fontWeight: isExpense ? FontWeight.bold : null,
+              ),
+              _desktopTableCell(
+                _formatDate(row['created_at']),
+                2,
+                mutedColor,
+                false,
+              ),
+              _desktopTableCell(
+                recordedBy.isEmpty || recordedBy == 'system'
+                    ? _desktopText(lang, 'النظام', 'Système', 'System')
+                    : recordedBy,
+                3,
+                mutedColor,
+                false,
+              ),
+              _desktopTableCell(
+                cashbox.isEmpty
+                    ? _desktopText(lang, 'الرئيسي', 'Principale', 'Main')
+                    : cashbox,
+                2,
+                mutedColor,
+                false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopTreasuryTotalsFooter(
+    List<Map<String, dynamic>> rows,
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
+    final income = _desktopTreasuryTotal(rows, expenses: false);
+    final expense = _desktopTreasuryTotal(rows, expenses: true);
+    final balance = income - expense;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Tooltip(
+        message: _desktopText(
+          lang,
+          'اضغط لعرض أو إخفاء تفاصيل الإجماليات',
+          'Cliquez pour afficher ou masquer les totaux',
+          'Click to show or hide total details',
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => setState(() => _showTreasuryTotals = !_showTreasuryTotals),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0EA5A4).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF0EA5A4).withOpacity(0.18)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.calculate_rounded, size: 17, color: const Color(0xFF0EA5A4)),
+                      const SizedBox(width: 7),
+                      Text(
+                        _desktopText(lang, 'الإجماليات', 'Totaux', 'Totals'),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                          color: contentColor,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${rows.length} ${_desktopText(lang, 'عملية', 'opérations', 'entries')}',
+                        style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: mutedColor),
+                      ),
+                      const SizedBox(width: 5),
+                      Icon(
+                        _showTreasuryTotals
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: mutedColor,
+                      ),
+                    ],
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.topCenter,
+                    child: _showTreasuryTotals
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: Wrap(
+                                spacing: 16,
+                                runSpacing: 4,
+                                children: [
+                                  _desktopTreasuryTotalLabel(
+                                    _desktopText(lang, 'الدفع', 'Encaissements', 'Income'),
+                                    _formatCurrency(income),
+                                    const Color(0xFF10B981),
+                                  ),
+                                  _desktopTreasuryTotalLabel(
+                                    _desktopText(lang, 'السحب', 'Décaissements', 'Withdrawals'),
+                                    _formatCurrency(expense),
+                                    const Color(0xFFEF4444),
+                                  ),
+                                  _desktopTreasuryTotalLabel(
+                                    _desktopText(lang, 'الرصيد', 'Solde', 'Balance'),
+                                    _formatCurrency(balance),
+                                    const Color(0xFF0EA5A4),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopTreasuryTotalLabel(String label, String value, Color color) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontFamily: 'Cairo', fontSize: 10),
+        children: [
+          TextSpan(text: '$label: ', style: const TextStyle(color: Color(0xFF64748B))),
+          TextSpan(
+            text: value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopTableCell(
+    String text,
+    int flex,
+    Color color,
+    bool isHeader, {
+    Color? colorOverride,
+    FontWeight? fontWeight,
+  }) {
     return Expanded(
       flex: flex,
       child: Text(
@@ -1339,7 +2354,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
           color: colorOverride ?? color,
           fontFamily: 'Cairo',
           fontSize: isHeader ? 10 : 11,
-          fontWeight: fontWeight ?? (isHeader ? FontWeight.w700 : FontWeight.w600),
+          fontWeight:
+              fontWeight ?? (isHeader ? FontWeight.w700 : FontWeight.w600),
         ),
       ),
     );
@@ -1357,7 +2373,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final rate = total == 0 ? 0.0 : completed / total;
     return _desktopPanel(
       context: context,
-      title: _desktopText(lang, 'حالة سير العمل', 'État du travail', 'Work progress'),
+      title: _desktopText(
+        lang,
+        'حالة سير العمل',
+        'État du travail',
+        'Work progress',
+      ),
       icon: Icons.track_changes_rounded,
       color: const Color(0xFF0EA5E9),
       backgroundColor: cardColor,
@@ -1382,7 +2403,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   Center(
                     child: Text(
                       '${(rate * 100).round()}%',
-                      style: TextStyle(color: contentColor, fontWeight: FontWeight.w800, fontSize: 18),
+                      style: TextStyle(
+                        color: contentColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -1395,18 +2420,47 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _desktopText(lang, '$completed مكتملة', '$completed terminées', '$completed completed'),
-                    style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontWeight: FontWeight.w800, fontSize: 15),
+                    _desktopText(
+                      lang,
+                      '$completed مكتملة',
+                      '$completed terminées',
+                      '$completed completed',
+                    ),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      color: contentColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    _desktopText(lang, 'من أصل $total طلبية', 'sur $total commandes', 'out of $total orders'),
-                    style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11),
+                    _desktopText(
+                      lang,
+                      'من أصل $total طلبية',
+                      'sur $total commandes',
+                      'out of $total orders',
+                    ),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      color: mutedColor,
+                      fontSize: 11,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _desktopText(lang, '$_activeWorkersCount عامل نشط', '$_activeWorkersCount employés actifs', '$_activeWorkersCount active workers'),
-                    style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0EA5A4), fontSize: 11, fontWeight: FontWeight.w700),
+                    _desktopText(
+                      lang,
+                      '$_activeWorkersCount عامل نشط',
+                      '$_activeWorkersCount employés actifs',
+                      '$_activeWorkersCount active workers',
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      color: Color(0xFF0EA5A4),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -1424,10 +2478,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color mutedColor,
   ) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    final entries = _ordersByMonth.values.map((value) => value.toDouble()).toList();
+    final entries = _ordersByMonth.values
+        .map((value) => value.toDouble())
+        .toList();
     return _desktopPanel(
       context: context,
-      title: _desktopText(lang, 'نشاط الطلبيات', 'Activité des commandes', 'Order activity'),
+      title: _desktopText(
+        lang,
+        'نشاط الطلبيات',
+        'Activité des commandes',
+        'Order activity',
+      ),
       icon: Icons.show_chart_rounded,
       color: const Color(0xFF2563EB),
       backgroundColor: cardColor,
@@ -1438,11 +2499,26 @@ class _WelcomScreenState extends State<WelcomScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _DesktopSparkline(values: entries, color: const Color(0xFF2563EB), fill: true)),
+            Expanded(
+              child: _DesktopSparkline(
+                values: entries,
+                color: const Color(0xFF2563EB),
+                fill: true,
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
-              _desktopText(lang, 'الستة أشهر الأخيرة', 'Six derniers mois', 'Last six months'),
-              style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 10),
+              _desktopText(
+                lang,
+                'الستة أشهر الأخيرة',
+                'Six derniers mois',
+                'Last six months',
+              ),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                color: mutedColor,
+                fontSize: 10,
+              ),
             ),
           ],
         ),
@@ -1460,12 +2536,29 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final lang = settings.language;
     return _desktopPanel(
       context: context,
-      title: _desktopText(lang, 'تنبيهات المخزون', 'Alertes de stock', 'Inventory alerts'),
+      title: _desktopText(
+        lang,
+        'تنبيهات المخزون',
+        'Alertes de stock',
+        'Inventory alerts',
+      ),
       subtitle: _lowStockCount == 0
-          ? _desktopText(lang, 'المخزون ضمن الحدود الآمنة', 'Le stock est dans les limites sûres', 'Stock levels are within safe limits')
-          : _desktopText(lang, '$_lowStockCount عناصر تحتاج إلى متابعة', '$_lowStockCount éléments à suivre', '$_lowStockCount items need attention'),
+          ? _desktopText(
+              lang,
+              'المخزون ضمن الحدود الآمنة',
+              'Le stock est dans les limites sûres',
+              'Stock levels are within safe limits',
+            )
+          : _desktopText(
+              lang,
+              '$_lowStockCount عناصر تحتاج إلى متابعة',
+              '$_lowStockCount éléments à suivre',
+              '$_lowStockCount items need attention',
+            ),
       icon: Icons.inventory_2_rounded,
-      color: _lowStockCount == 0 ? const Color(0xFF10B981) : const Color(0xFFF97316),
+      color: _lowStockCount == 0
+          ? const Color(0xFF10B981)
+          : const Color(0xFFF97316),
       backgroundColor: cardColor,
       textColor: contentColor,
       mutedColor: mutedColor,
@@ -1478,7 +2571,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 screen: InventoryScreen(db: db),
               ),
               icon: const Icon(Icons.open_in_new_rounded, size: 15),
-              label: Text(_desktopText(lang, 'فتح المخزون', 'Ouvrir le stock', 'Open inventory'), style: const TextStyle(fontFamily: 'Cairo')),
+              label: Text(
+                _desktopText(
+                  lang,
+                  'فتح المخزون',
+                  'Ouvrir le stock',
+                  'Open inventory',
+                ),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
             )
           : null,
       child: _lowStockItems.isEmpty
@@ -1486,12 +2587,25 @@ class _WelcomScreenState extends State<WelcomScreen> {
               height: 68,
               child: Row(
                 children: [
-                  const Icon(Icons.verified_rounded, color: Color(0xFF10B981), size: 28),
+                  const Icon(
+                    Icons.verified_rounded,
+                    color: Color(0xFF10B981),
+                    size: 28,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _desktopText(lang, 'لا يوجد أي نقص في المواد ذات حد التنبيه.', 'Aucun manque dans les articles suivis.', 'No low-stock items need attention.'),
-                      style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 12),
+                      _desktopText(
+                        lang,
+                        'لا يوجد أي نقص في المواد ذات حد التنبيه.',
+                        'Aucun manque dans les articles suivis.',
+                        'No low-stock items need attention.',
+                      ),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        color: mutedColor,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ],
@@ -1500,9 +2614,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
           : LayoutBuilder(
               builder: (context, constraints) {
                 final items = _lowStockItems.take(4).toList();
-                final columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 540 ? 2 : 1;
+                final columns = constraints.maxWidth >= 900
+                    ? 4
+                    : constraints.maxWidth >= 540
+                    ? 2
+                    : 1;
                 const gap = 10.0;
-                final itemWidth = (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+                final itemWidth =
+                    (constraints.maxWidth - ((columns - 1) * gap)) / columns;
                 return Wrap(
                   spacing: gap,
                   runSpacing: gap,
@@ -1510,7 +2629,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     for (final item in items)
                       SizedBox(
                         width: itemWidth,
-                        child: _desktopStockItem(item, contentColor, mutedColor, lang),
+                        child: _desktopStockItem(
+                          item,
+                          contentColor,
+                          mutedColor,
+                          lang,
+                        ),
                       ),
                   ],
                 );
@@ -1519,10 +2643,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  Widget _desktopStockItem(Map<String, dynamic> item, Color contentColor, Color mutedColor, AppLanguage lang) {
+  Widget _desktopStockItem(
+    Map<String, dynamic> item,
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
     final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
     final minQuantity = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
-    final name = (item['item_name'] ?? item['name'] ?? _desktopText(lang, 'عنصر', 'Article', 'Item')).toString();
+    final name =
+        (item['item_name'] ??
+                item['name'] ??
+                _desktopText(lang, 'عنصر', 'Article', 'Item'))
+            .toString();
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1535,18 +2668,40 @@ class _WelcomScreenState extends State<WelcomScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.warning_amber_rounded, color: Color(0xFFF97316), size: 17),
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFF97316),
+                size: 17,
+              ),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(name, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800, color: contentColor, fontSize: 12)),
+                child: Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w800,
+                    color: contentColor,
+                    fontSize: 12,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            _desktopText(lang, 'الرصيد: ${_formatQuantity(quantity)} / الحد: ${_formatQuantity(minQuantity)}', 'Solde : ${_formatQuantity(quantity)} / min. : ${_formatQuantity(minQuantity)}', 'Stock: ${_formatQuantity(quantity)} / min: ${_formatQuantity(minQuantity)}'),
+            _desktopText(
+              lang,
+              'الرصيد: ${_formatQuantity(quantity)} / الحد: ${_formatQuantity(minQuantity)}',
+              'Solde : ${_formatQuantity(quantity)} / min. : ${_formatQuantity(minQuantity)}',
+              'Stock: ${_formatQuantity(quantity)} / min: ${_formatQuantity(minQuantity)}',
+            ),
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 10),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -1571,7 +2726,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE2E8F0)),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withOpacity(0.08)
+              : const Color(0xFFE2E8F0),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.18 : 0.055),
@@ -1587,7 +2746,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: Icon(icon, color: color, size: 19),
               ),
               const SizedBox(width: 9),
@@ -1595,9 +2757,26 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Cairo', color: textColor, fontSize: 14, fontWeight: FontWeight.w800)),
+                    Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        color: textColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     if (subtitle != null)
-                      Text(subtitle, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 10)),
+                      Text(
+                        subtitle,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          color: mutedColor,
+                          fontSize: 10,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1611,14 +2790,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  void _openOrders() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+  void _openOrders({bool openAddOrderOnStart = false}) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _markOrdersAsRead();
     openAdaptiveScreen(
       context,
       title: _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
       icon: Icons.receipt_long_rounded,
-      screen: const Commande(),
+      screen: Commande(openAddOrderOnStart: openAddOrderOnStart),
     );
   }
 
@@ -1633,7 +2815,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return '$sign${buffer.toString()} دج';
   }
 
-  String _formatQuantity(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toStringAsFixed(2);
+  String _formatQuantity(double value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(2);
 
   String _formatDate(dynamic raw) {
     final date = DateTime.tryParse((raw ?? '').toString());
@@ -1687,10 +2871,26 @@ class _WelcomScreenState extends State<WelcomScreen> {
       'new': ['جديدة', 'Nouvelle', 'New'],
       'confirmed': ['مؤكدة', 'Confirmée', 'Confirmed'],
       'in progress': ['قيد التنفيذ', 'En cours', 'In progress'],
-      'partial manufacturing': ['تصنيع جزئي', 'Fabrication partielle', 'Partial manufacturing'],
-      'full manufacturing': ['تم التصنيع', 'Fabrication terminée', 'Manufactured'],
-      'partial distribution': ['توزيع جزئي', 'Distribution partielle', 'Partial distribution'],
-      'full distribution': ['تم التوزيع', 'Distribution terminée', 'Distributed'],
+      'partial manufacturing': [
+        'تصنيع جزئي',
+        'Fabrication partielle',
+        'Partial manufacturing',
+      ],
+      'full manufacturing': [
+        'تم التصنيع',
+        'Fabrication terminée',
+        'Manufactured',
+      ],
+      'partial distribution': [
+        'توزيع جزئي',
+        'Distribution partielle',
+        'Partial distribution',
+      ],
+      'full distribution': [
+        'تم التوزيع',
+        'Distribution terminée',
+        'Distributed',
+      ],
       'installation': ['تركيب', 'Installation', 'Installation'],
       'reserve': ['تحفّظ', 'Réserve', 'Reserve'],
       'done': ['مكتملة', 'Terminée', 'Completed'],
@@ -1699,7 +2899,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     };
     final translated = values[normalized];
     if (translated == null) return status;
-    return lang == AppLanguage.arabic ? translated[0] : lang == AppLanguage.french ? translated[1] : translated[2];
+    return lang == AppLanguage.arabic
+        ? translated[0]
+        : lang == AppLanguage.french
+        ? translated[1]
+        : translated[2];
   }
 
   Widget _buildSliverHeader(BuildContext context) {
@@ -1726,7 +2930,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
                 ),
               )
             : IconButton(
@@ -1742,7 +2949,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 (_lowStockCount + _newOrdersCount) > 0
                     ? Icons.notifications_active_rounded
                     : Icons.notifications_none_rounded,
-                color: (_lowStockCount + _newOrdersCount) > 0 ? Colors.amberAccent : Colors.white,
+                color: (_lowStockCount + _newOrdersCount) > 0
+                    ? Colors.amberAccent
+                    : Colors.white,
               ),
               onPressed: () async {
                 await _markOrdersAsRead();
@@ -1785,7 +2994,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [Color(0xFF2563EB), Color(0xFF0EA5E9)], begin: Alignment.topLeft,
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? [Color(0xFF111827), Color(0xFF070E1D)]
+                  : [Color(0xFF2563EB), Color(0xFF0EA5E9)],
+              begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
           ),
@@ -1828,7 +3040,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       height: 56,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: Theme.of(context).brightness == Brightness.dark
+                          colors:
+                              Theme.of(context).brightness == Brightness.dark
                               ? [Color(0xFF111827), Color(0xFF070E1D)]
                               : [_blue, _cyan],
                           begin: Alignment.topLeft,
@@ -2032,12 +3245,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
         icon: Icons.warning_amber_rounded,
         label: lang == AppLanguage.arabic
             ? 'تنبيهات المخزون'
-            : (lang == AppLanguage.french ? 'Alertes de stock' : 'Stock alerts'),
+            : (lang == AppLanguage.french
+                  ? 'Alertes de stock'
+                  : 'Stock alerts'),
         value: _lowStockCount.toString(),
         color: _lowStockCount > 0 ? Colors.deepOrange : _green,
         trend: _lowStockCount > 0
             ? (lang == AppLanguage.arabic ? 'يحتاج متابعة' : 'Needs attention')
-            : (lang == AppLanguage.arabic ? 'المخزون مستقر' : 'Stock is stable'),
+            : (lang == AppLanguage.arabic
+                  ? 'المخزون مستقر'
+                  : 'Stock is stable'),
       );
 
       return LayoutBuilder(
@@ -2053,8 +3270,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             spacing: gap,
             runSpacing: gap,
             children: [
-              for (final card in cards)
-                SizedBox(width: cardWidth, child: card),
+              for (final card in cards) SizedBox(width: cardWidth, child: card),
             ],
           );
         },
@@ -2078,7 +3294,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
       return const SizedBox.shrink();
     }
     final lang = settings.language;
-    
+
     return Container(
       width: double.infinity,
       height: 90,
@@ -2148,7 +3364,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        Localization.translate('إدخال القياسات السريع بالكتابة أو بالصوت', lang),
+                        Localization.translate(
+                          'إدخال القياسات السريع بالكتابة أو بالصوت',
+                          lang,
+                        ),
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.85),
                           fontSize: 13,
@@ -2246,13 +3465,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
           icon: Icons.archive_rounded,
           label: lang == AppLanguage.arabic
               ? 'أرشيف التوزيع والمهام'
-              : (lang == AppLanguage.french ? 'Archives & Distribution' : 'Tasks & Distribution Archive'),
+              : (lang == AppLanguage.french
+                    ? 'Archives & Distribution'
+                    : 'Tasks & Distribution Archive'),
           color: const Color(0xFFEA580C), // Vivid Burnt Orange
           onTap: () => openAdaptiveScreen(
             context,
             title: lang == AppLanguage.arabic
                 ? 'أرشيف التوزيع والمهام'
-                : (lang == AppLanguage.french ? 'Archives & Distribution' : 'Tasks & Distribution Archive'),
+                : (lang == AppLanguage.french
+                      ? 'Archives & Distribution'
+                      : 'Tasks & Distribution Archive'),
             icon: Icons.archive_rounded,
             screen: WorkerArchiveScreen(db: db),
           ),
@@ -2334,13 +3557,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
           icon: Icons.engineering_rounded,
           label: lang == AppLanguage.arabic
               ? 'الأعمال والمهمات الخارجية'
-              : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations'),
+              : (lang == AppLanguage.french
+                    ? 'Opérations Externe'
+                    : 'External Operations'),
           color: const Color(0xFF0891B2), // Deep Ocean Cyan
           onTap: () => openAdaptiveScreen(
             context,
             title: lang == AppLanguage.arabic
                 ? 'الأعمال والمهمات الخارجية'
-                : (lang == AppLanguage.french ? 'Opérations Externe' : 'External Operations'),
+                : (lang == AppLanguage.french
+                      ? 'Opérations Externe'
+                      : 'External Operations'),
             icon: Icons.engineering_rounded,
             screen: ExternalOperationsHubScreen(db: db),
           ),
@@ -2361,17 +3588,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
             childAspectRatio: _isWindowsDesktop ? 1.65 : 1.05,
           ),
           itemCount: items.length,
-          itemBuilder: (_, i) => _NavCard(
-            item: items[i],
-            index: i,
-            dragNotifier: _dragNotifier,
-          ),
+          itemBuilder: (_, i) =>
+              _NavCard(item: items[i], index: i, dragNotifier: _dragNotifier),
         );
       },
     );
   }
-
-
 
   // ── helpers ───────────────────────────────────────────────────────────────
   Widget _sectionLabel(String text) {
@@ -2434,7 +3656,11 @@ class _DesktopMetricCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: backgroundColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE2E8F0)),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withOpacity(0.08)
+                  : const Color(0xFFE2E8F0),
+            ),
             boxShadow: [
               BoxShadow(
                 color: color.withOpacity(isDark ? 0.10 : 0.09),
@@ -2452,12 +3678,20 @@ class _DesktopMetricCard extends StatelessWidget {
                     child: Text(
                       title,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: mutedColor, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11,
+                        color: mutedColor,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
                     child: Icon(icon, size: 18, color: color),
                   ),
                 ],
@@ -2472,18 +3706,30 @@ class _DesktopMetricCard extends StatelessWidget {
                   child: Text(
                     value,
                     maxLines: 1,
-                    style: TextStyle(fontFamily: 'Cairo', fontSize: 23, color: textColor, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 23,
+                      color: textColor,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
               const Spacer(),
-              SizedBox(height: 20, child: _DesktopSparkline(values: values, color: color)),
+              SizedBox(
+                height: 20,
+                child: _DesktopSparkline(values: values, color: color),
+              ),
               const SizedBox(height: 4),
               Text(
                 caption,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: mutedColor),
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 10,
+                  color: mutedColor,
+                ),
               ),
             ],
           ),
@@ -2494,7 +3740,11 @@ class _DesktopMetricCard extends StatelessWidget {
 }
 
 class _DesktopSparkline extends StatelessWidget {
-  const _DesktopSparkline({required this.values, required this.color, this.fill = false});
+  const _DesktopSparkline({
+    required this.values,
+    required this.color,
+    this.fill = false,
+  });
 
   final List<double> values;
   final Color color;
@@ -2504,14 +3754,22 @@ class _DesktopSparkline extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox.expand(
       child: CustomPaint(
-        painter: _DesktopSparklinePainter(values: values, color: color, fill: fill),
+        painter: _DesktopSparklinePainter(
+          values: values,
+          color: color,
+          fill: fill,
+        ),
       ),
     );
   }
 }
 
 class _DesktopSparklinePainter extends CustomPainter {
-  const _DesktopSparklinePainter({required this.values, required this.color, required this.fill});
+  const _DesktopSparklinePainter({
+    required this.values,
+    required this.color,
+    required this.fill,
+  });
 
   final List<double> values;
   final Color color;
@@ -2526,7 +3784,10 @@ class _DesktopSparklinePainter extends CustomPainter {
     final path = Path();
     for (var index = 0; index < source.length; index++) {
       final x = size.width * index / (source.length - 1);
-      final y = size.height - ((source[index] - minValue) / range * (size.height - 5)) - 2;
+      final y =
+          size.height -
+          ((source[index] - minValue) / range * (size.height - 5)) -
+          2;
       if (index == 0) {
         path.moveTo(x, y);
       } else {
@@ -2553,7 +3814,9 @@ class _DesktopSparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DesktopSparklinePainter oldDelegate) =>
-      oldDelegate.values != values || oldDelegate.color != color || oldDelegate.fill != fill;
+      oldDelegate.values != values ||
+      oldDelegate.color != color ||
+      oldDelegate.fill != fill;
 }
 
 class _StatCard extends StatefulWidget {
@@ -2684,7 +3947,8 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
       final newWord = Localization.translate('جديدة', lang);
       displayTrend = displayTrend.replaceAll('(جديدة)', '($newWord)');
     }
-    final depthColor = Color.lerp(widget.color, Colors.black, 0.20) ?? widget.color;
+    final depthColor =
+        Color.lerp(widget.color, Colors.black, 0.20) ?? widget.color;
 
     return ScaleTransition(
       scale: _animation,
@@ -2706,10 +3970,7 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
               setState(() {
                 _dragOffset += details.delta * 0.85;
               });
-              widget.dragNotifier.value = {
-                'id': _myId,
-                'offset': _dragOffset,
-              };
+              widget.dragNotifier.value = {'id': _myId, 'offset': _dragOffset};
             },
             onPanEnd: (details) {
               widget.dragNotifier.value = null;
@@ -2748,7 +4009,10 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
                       decoration: BoxDecoration(
                         color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Theme.of(context).dividerColor, width: 1.2),
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                          width: 1.2,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: widget.color.withValues(alpha: 0.06),
@@ -2770,7 +4034,11 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
                                   color: widget.color.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(9),
                                 ),
-                                child: Icon(widget.icon, color: widget.color, size: 16),
+                                child: Icon(
+                                  widget.icon,
+                                  color: widget.color,
+                                  size: 16,
+                                ),
                               ),
                               const SizedBox(width: 4),
                               Expanded(
@@ -2974,10 +4242,7 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                 _dragOffset += details.delta * 0.85;
                 _pressed = false; // إلغاء تفعيل الضغط ثلاثي الأبعاد عند السحب
               });
-              widget.dragNotifier.value = {
-                'id': _myId,
-                'offset': _dragOffset,
-              };
+              widget.dragNotifier.value = {'id': _myId, 'offset': _dragOffset};
             },
             onPanEnd: (details) {
               widget.dragNotifier.value = null;
@@ -3010,7 +4275,9 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: color.withValues(alpha: isDark ? 0.28 : 0.16),
+                            color: color.withValues(
+                              alpha: isDark ? 0.28 : 0.16,
+                            ),
                             blurRadius: 6,
                             spreadRadius: -2,
                             offset: const Offset(0, 3),
@@ -3030,8 +4297,14 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                     child: Container(
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Color.alphaBlend(color.withValues(alpha: 0.12), const Color(0xFF1E293B))
-                            : Color.alphaBlend(color.withValues(alpha: 0.05), Colors.white),
+                            ? Color.alphaBlend(
+                                color.withValues(alpha: 0.12),
+                                const Color(0xFF1E293B),
+                              )
+                            : Color.alphaBlend(
+                                color.withValues(alpha: 0.05),
+                                Colors.white,
+                              ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: _pressed
@@ -3044,14 +4317,18 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                             : [
                                 // هالة خارجية ضيقة على الأطراف فقط
                                 BoxShadow(
-                                  color: color.withValues(alpha: isDark ? 0.55 : 0.38),
+                                  color: color.withValues(
+                                    alpha: isDark ? 0.55 : 0.38,
+                                  ),
                                   blurRadius: 7,
                                   spreadRadius: -3,
                                   offset: Offset.zero,
                                 ),
                                 // ظل سفلي خفيف
                                 BoxShadow(
-                                  color: color.withValues(alpha: isDark ? 0.18 : 0.10),
+                                  color: color.withValues(
+                                    alpha: isDark ? 0.18 : 0.10,
+                                  ),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -3065,7 +4342,9 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                             width: 42,
                             height: 42,
                             decoration: BoxDecoration(
-                              color: color.withValues(alpha: isDark ? 0.25 : 0.14),
+                              color: color.withValues(
+                                alpha: isDark ? 0.25 : 0.14,
+                              ),
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: color.withValues(alpha: 0.35),
@@ -3092,7 +4371,9 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
                               fontFamily: 'Cairo',
-                              color: isDark ? Colors.white : const Color(0xFF1E293B),
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF1E293B),
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -3131,33 +4412,33 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   int _selectedTab = 0; // 0 = Donut (حسب الحالة), 1 = Bar (شهري)
 
   static const _statusColors = {
-    'New':                   Color(0xFF546E7A), // رمادي مزرق
-    'Pending':               Color(0xFFE65100), // برتقالي محروق
-    'Confirmed':             Color(0xFF2E7D32), // أخضر داكن
-    'In Progress':           Color(0xFF1565C0), // أزرق داكن
+    'New': Color(0xFF546E7A), // رمادي مزرق
+    'Pending': Color(0xFFE65100), // برتقالي محروق
+    'Confirmed': Color(0xFF2E7D32), // أخضر داكن
+    'In Progress': Color(0xFF1565C0), // أزرق داكن
     'Partial Manufacturing': Color(0xFF0288D1), // أزرق فاتح
-    'Full Manufacturing':    Color(0xFF00796B), // تيل داكن
-    'Partial Distribution':  Color(0xFFF57C00), // برتقالي داكن
-    'Full Distribution':     Color(0xFF388E3C), // أخضر
-    'Installation':          Color(0xFF6A1B9A), // بنفسجي
-    'Reserve':               Color(0xFFD84315), // أحمر برتقالي - التحفظ
-    'Done':                  Color(0xFF00695C), // تيل/أخضر مائل
-    'Unknown':               Color(0xFF78909C), // رمادي
+    'Full Manufacturing': Color(0xFF00796B), // تيل داكن
+    'Partial Distribution': Color(0xFFF57C00), // برتقالي داكن
+    'Full Distribution': Color(0xFF388E3C), // أخضر
+    'Installation': Color(0xFF6A1B9A), // بنفسجي
+    'Reserve': Color(0xFFD84315), // أحمر برتقالي - التحفظ
+    'Done': Color(0xFF00695C), // تيل/أخضر مائل
+    'Unknown': Color(0xFF78909C), // رمادي
   };
 
   static const _statusAr = {
-    'New':                  'جديدة',
-    'Pending':              'قيد الانتظار',
-    'Confirmed':            'مؤكدة',
-    'In Progress':          'جارية',
-    'Partial Manufacturing':'تصنيع جزئي',
-    'Full Manufacturing':   'تصنيع كامل',
+    'New': 'جديدة',
+    'Pending': 'قيد الانتظار',
+    'Confirmed': 'مؤكدة',
+    'In Progress': 'جارية',
+    'Partial Manufacturing': 'تصنيع جزئي',
+    'Full Manufacturing': 'تصنيع كامل',
     'Partial Distribution': 'توزيع جزئي',
-    'Full Distribution':    'توزيع كامل',
-    'Installation':         'تركيب',
-    'Reserve':              'تحت التحفظ',
-    'Done':                 'منتهية',
-    'Unknown':              'أخرى',
+    'Full Distribution': 'توزيع كامل',
+    'Installation': 'تركيب',
+    'Reserve': 'تحت التحفظ',
+    'Done': 'منتهية',
+    'Unknown': 'أخرى',
   };
 
   @override
@@ -3207,7 +4488,10 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
             padding: EdgeInsets.fromLTRB(20, 18, 16, 14),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [Color(0xFF2563EB), Color(0xFF0EA5E9)], begin: Alignment.centerLeft,
+                colors: Theme.of(context).brightness == Brightness.dark
+                    ? [Color(0xFF111827), Color(0xFF070E1D)]
+                    : [Color(0xFF2563EB), Color(0xFF0EA5E9)],
+                begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
               borderRadius: BorderRadius.only(
@@ -3324,11 +4608,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                     ),
                     Text(
                       Localization.translate('إجمالي', lang),
-                      style: const TextStyle(
-                        fontSize: 11,
-
-                        fontFamily: 'Cairo',
-                      ),
+                      style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
                     ),
                   ],
                 ),
@@ -3341,8 +4621,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: widget.byStatus.entries.map((e) {
-                final color =
-                    _statusColors[e.key] ?? const Color(0xFF94A3B8);
+                final color = _statusColors[e.key] ?? const Color(0xFF94A3B8);
                 final pct = total > 0
                     ? (e.value / total * 100).toStringAsFixed(1)
                     : '0';
@@ -3361,7 +4640,10 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          Localization.translate(_statusAr[e.key] ?? e.key, lang),
+                          Localization.translate(
+                            _statusAr[e.key] ?? e.key,
+                            lang,
+                          ),
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFF334155),
@@ -3392,7 +4674,10 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
 
   // ── مخطط الأعمدة (شهري) ─────────────────────────────────────────────────
   Widget _buildBarView() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final entries = widget.byMonth.entries.toList();
     if (entries.isEmpty) return _emptyState();
     final maxVal = entries.map((e) => e.value).fold(0, (a, b) => a > b ? a : b);
@@ -3406,8 +4691,9 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: entries.map((e) {
-                final ratio =
-                    maxVal > 0 ? (e.value / maxVal) * _progress.value : 0.0;
+                final ratio = maxVal > 0
+                    ? (e.value / maxVal) * _progress.value
+                    : 0.0;
                 final isLast = entries.last == e;
                 return Expanded(
                   child: Padding(
@@ -3431,7 +4717,12 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                           height: 120 * ratio,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [Color(0xFF2563EB), Color(0xFF0EA5E9)], begin: Alignment.bottomCenter,
+                              colors:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? [Color(0xFF111827), Color(0xFF070E1D)]
+                                  : [Color(0xFF2563EB), Color(0xFF0EA5E9)],
+                              begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                             ),
                             borderRadius: const BorderRadius.only(
@@ -3440,8 +4731,9 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF2563EB)
-                                    .withValues(alpha: 0.25),
+                                color: const Color(
+                                  0xFF2563EB,
+                                ).withValues(alpha: 0.25),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
@@ -3476,13 +4768,14 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
               ),
               const SizedBox(width: 4),
               Text(
-                Localization.translate('آخر 6 أشهر: {count} طلبية', lang)
-                    .replaceAll('{count}', '${entries.fold(0, (s, e) => s + e.value)}'),
-                style: const TextStyle(
-                  fontSize: 11,
-
-                  fontFamily: 'Cairo',
+                Localization.translate(
+                  'آخر 6 أشهر: {count} طلبية',
+                  lang,
+                ).replaceAll(
+                  '{count}',
+                  '${entries.fold(0, (s, e) => s + e.value)}',
                 ),
+                style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
               ),
             ],
           ),
@@ -3492,7 +4785,10 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   }
 
   Widget _buildLineView() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final entries = widget.byMonth.entries.toList();
     if (entries.isEmpty) return _emptyState();
     final maxVal = entries.map((e) => e.value).fold(0, (a, b) => a > b ? a : b);
@@ -3526,13 +4822,14 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
               ),
               const SizedBox(width: 4),
               Text(
-                Localization.translate('آخر 6 أشهر: {count} طلبية', lang)
-                    .replaceAll('{count}', '${entries.fold(0, (s, e) => s + e.value)}'),
-                style: const TextStyle(
-                  fontSize: 11,
-
-                  fontFamily: 'Cairo',
+                Localization.translate(
+                  'آخر 6 أشهر: {count} طلبية',
+                  lang,
+                ).replaceAll(
+                  '{count}',
+                  '${entries.fold(0, (s, e) => s + e.value)}',
                 ),
+                style: const TextStyle(fontSize: 11, fontFamily: 'Cairo'),
               ),
             ],
           ),
@@ -3567,8 +4864,19 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
     final parts = key.split('/');
     if (parts.length != 2) return key;
     const months = [
-      '', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+      '',
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
     ];
     final m = int.tryParse(parts[0]) ?? 0;
     return m > 0 && m <= 12 ? Localization.translate(months[m], lang) : key;
@@ -3616,8 +4924,7 @@ class _TabBtn extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontFamily: 'Cairo',
-                fontWeight:
-                    selected ? FontWeight.w700 : FontWeight.w400,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                 color: selected
                     ? const Color(0xFF2563EB)
                     : Colors.white.withValues(alpha: 0.8),
@@ -3698,8 +5005,6 @@ class _DonutPainter extends CustomPainter {
       old.progress != progress || old.data != data;
 }
 
-
-
 class _LineChartPainter extends CustomPainter {
   final List<MapEntry<String, int>> entries;
   final int maxVal;
@@ -3727,7 +5032,8 @@ class _LineChartPainter extends CustomPainter {
     final List<Offset> points = [];
     for (int i = 0; i < entries.length; i++) {
       final double x = i * stepX;
-      final double y = height - (entries[i].value / maxValDouble * height * progress);
+      final double y =
+          height - (entries[i].value / maxValDouble * height * progress);
       points.add(Offset(x, y));
     }
 
@@ -3735,7 +5041,7 @@ class _LineChartPainter extends CustomPainter {
     final gridPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 1.0;
-    
+
     // Draw 3 horizontal grid lines
     for (int i = 0; i <= 3; i++) {
       final double y = (height / 3) * i;
@@ -3793,7 +5099,6 @@ class _LineChartPainter extends CustomPainter {
       final valSpan = TextSpan(
         text: entries[i].value.toString(),
         style: const TextStyle(
-
           fontSize: 10,
           fontWeight: FontWeight.bold,
           fontFamily: 'Cairo',
@@ -3809,10 +5114,7 @@ class _LineChartPainter extends CustomPainter {
       // Draw labels text below the line chart
       final labelSpan = TextSpan(
         text: _monthLabel(entries[i].key, lang),
-        style: const TextStyle(
-          fontSize: 9,
-          fontFamily: 'Cairo',
-        ),
+        style: const TextStyle(fontSize: 9, fontFamily: 'Cairo'),
       );
       final labelPainter = TextPainter(
         text: labelSpan,
@@ -3830,8 +5132,19 @@ class _LineChartPainter extends CustomPainter {
     final parts = key.split('/');
     if (parts.length != 2) return key;
     const months = [
-      '', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+      '',
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
     ];
     final m = int.tryParse(parts[0]) ?? 0;
     return m > 0 && m <= 12 ? Localization.translate(months[m], lang) : key;
@@ -3884,14 +5197,16 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
 
       final rand = math.Random();
       for (int i = 0; i < 16; i++) {
-        _bubbles.add(_Bubble(
-          xFraction: rand.nextDouble(),
-          yFraction: 0.3 + rand.nextDouble() * 0.7,
-          radius: 2.0 + rand.nextDouble() * 5.0,
-          speed: 0.05 + rand.nextDouble() * 0.05,
-          wobbleSpeed: 0.5 + rand.nextDouble() * 1.5,
-          wobbleScale: 0.01 + rand.nextDouble() * 0.02,
-        ));
+        _bubbles.add(
+          _Bubble(
+            xFraction: rand.nextDouble(),
+            yFraction: 0.3 + rand.nextDouble() * 0.7,
+            radius: 2.0 + rand.nextDouble() * 5.0,
+            speed: 0.05 + rand.nextDouble() * 0.05,
+            wobbleSpeed: 0.5 + rand.nextDouble() * 1.5,
+            wobbleScale: 0.01 + rand.nextDouble() * 0.02,
+          ),
+        );
       }
     }
   }
@@ -3928,7 +5243,9 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       : [
                           const Color(0xFFE0F2FE), // sky-100 (light top)
                           const Color(0xFFBAE6FD), // sky-200
-                          const Color(0xFFF1F5F9), // blends to normal background at the bottom
+                          const Color(
+                            0xFFF1F5F9,
+                          ), // blends to normal background at the bottom
                         ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
@@ -3955,11 +5272,15 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       progress: _controller!.value,
                       waveColor: isDark
                           ? const Color(0x1F1E293B) // soft dark slate wave
-                          : const Color(0x3338BDF8), // sky-400 with glowing highlight
+                          : const Color(
+                              0x3338BDF8,
+                            ), // sky-400 with glowing highlight
                       amplitude: 14,
                       frequency: 1.2,
                       phaseShift: 0.0,
-                      highlightColor: isDark ? Colors.white.withOpacity(0.08) : Colors.white.withOpacity(0.35),
+                      highlightColor: isDark
+                          ? Colors.white.withOpacity(0.08)
+                          : Colors.white.withOpacity(0.35),
                     ),
                   ),
                 ),
@@ -3980,7 +5301,9 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       amplitude: 18,
                       frequency: 0.8,
                       phaseShift: 2.2,
-                      highlightColor: isDark ? Colors.white.withOpacity(0.12) : Colors.white.withOpacity(0.45),
+                      highlightColor: isDark
+                          ? Colors.white.withOpacity(0.12)
+                          : Colors.white.withOpacity(0.45),
                     ),
                   ),
                 ),
@@ -4001,7 +5324,9 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       amplitude: 22,
                       frequency: 1.4,
                       phaseShift: 4.5,
-                      highlightColor: isDark ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.55),
+                      highlightColor: isDark
+                          ? Colors.white.withOpacity(0.15)
+                          : Colors.white.withOpacity(0.55),
                     ),
                   ),
                 ),
@@ -4035,7 +5360,7 @@ class _WavePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double waveCrestY = size.height * 0.6 - amplitude;
     final rect = Rect.fromLTRB(0, waveCrestY, size.width, size.height);
-    
+
     // Gradient shading (darker blue at the bottom, lighter cyan at the crest)
     final gradient = LinearGradient(
       colors: [
@@ -4062,7 +5387,8 @@ class _WavePainter extends CustomPainter {
 
     final double waveLength = size.width;
     for (double x = 0; x <= size.width; x++) {
-      final double angle = (x / waveLength) * 2 * math.pi * frequency +
+      final double angle =
+          (x / waveLength) * 2 * math.pi * frequency +
           (progress * 2 * math.pi) +
           phaseShift;
       final double y = size.height * 0.6 + amplitude * math.sin(angle);
@@ -4105,7 +5431,8 @@ class _BubblesPainter extends CustomPainter {
       double currentY = (bubble.yFraction - progress * bubble.speed) % 1.0;
       if (currentY < 0) currentY += 1.0;
 
-      double wobble = math.sin(progress * 2 * math.pi * bubble.wobbleSpeed) *
+      double wobble =
+          math.sin(progress * 2 * math.pi * bubble.wobbleSpeed) *
           bubble.wobbleScale *
           size.width;
 

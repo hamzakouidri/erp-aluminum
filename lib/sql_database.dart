@@ -70,9 +70,7 @@ class SqlDatabase {
 
   int createDistributedId() => _nextDistributedId();
 
-  static Map<String, dynamic> _withDistributedId(
-    Map<String, dynamic> values,
-  ) {
+  static Map<String, dynamic> _withDistributedId(Map<String, dynamic> values) {
     return <String, dynamic>{
       ...values,
       'id': values['id'] ?? _nextDistributedId(),
@@ -92,6 +90,27 @@ class SqlDatabase {
       return sqflite_common.databaseFactoryFfi;
     }
     return databaseFactory;
+  }
+
+  /// Returns a writable path for the SQLite database file.
+  /// On desktop platforms, getDatabasesPath() from sqflite_ffi can return the
+  /// app's installation directory (e.g. Program Files) which is read-only for
+  /// standard users. We use getApplicationSupportDirectory() from path_provider
+  /// instead, which always resolves to a writable location (%AppData% on Windows).
+  static Future<String> _getWritableDatabasesPath() async {
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      try {
+        final appSupportDir = await getApplicationSupportDirectory();
+        final dbDir = Directory(join(appSupportDir.path, 'databases'));
+        if (!await dbDir.exists()) await dbDir.create(recursive: true);
+        return dbDir.path;
+      } catch (_) {}
+    }
+    // Mobile platforms use sqflite's platform database directory. Calling
+    // this helper again here caused unbounded recursion (Stack Overflow), so
+    // Android could fail before opening or restoring its local database.
+    return await getDatabasesPath();
   }
 
   static const List<String> catalogTables = [
@@ -135,7 +154,7 @@ class SqlDatabase {
     // Delete SQLite file
     try {
       final dbName = 'test.db';
-      final dataPath = await _dbFactory.getDatabasesPath();
+      final dataPath = await _getWritableDatabasesPath();
       final path = join(dataPath, dbName);
       final file = File(path);
       if (await file.exists()) {
@@ -229,6 +248,13 @@ class SqlDatabase {
         "ALTER TABLE Glass ADD COLUMN height REAL NOT NULL DEFAULT 0.0;",
       );
     } catch (_) {}
+    try {
+      // Detail rows participate in cloud conflict resolution.  Older local
+      // databases need this column before an edited order is saved.
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN updated_at TEXT;",
+      );
+    } catch (_) {}
 
     // Migrations for Employees table
     try {
@@ -247,7 +273,7 @@ class SqlDatabase {
       await db.execute("ALTER TABLE Employees ADD COLUMN job_role TEXT;");
     } catch (_) {}
 
-    // ── جدول الحضور اليومي ─────────────────────────────────────────────
+    // â”€â”€ Ø¬Ø¯ÙˆÙ„ Ø§Ù„Ø­Ø¶ÙˆØ± Ø§Ù„ÙŠÙˆÙ…ÙŠ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try {
       await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerAttendance (
@@ -263,14 +289,14 @@ class SqlDatabase {
           ''');
     } catch (_) {}
 
-    // ── جدول الأعمال اليومية (عمل يومي) ──────────────────────────────────
+    // â”€â”€ Ø¬Ø¯ÙˆÙ„ Ø§Ù„Ø£Ø¹Ù…Ø§Ù„ Ø§Ù„ÙŠÙˆÙ…ÙŠØ© (Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try {
       await db.execute('''
             CREATE TABLE IF NOT EXISTS WorkerDailyJobs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               worker_uid TEXT NOT NULL,
               work_date TEXT NOT NULL,
-              title TEXT NOT NULL DEFAULT 'عمل يومي',
+              title TEXT NOT NULL DEFAULT 'Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ',
               note TEXT,
               price REAL NOT NULL DEFAULT 0.0,
               is_settled INTEGER NOT NULL DEFAULT 0,
@@ -367,7 +393,7 @@ class SqlDatabase {
       );
     } catch (_) {}
 
-    // Treasury: أعمدة الجهة والرصيد
+    // Treasury: Ø£Ø¹Ù…Ø¯Ø© Ø§Ù„Ø¬Ù‡Ø© ÙˆØ§Ù„Ø±ØµÙŠØ¯
     try {
       await db.execute("ALTER TABLE Treasury ADD COLUMN entity_type TEXT;");
     } catch (_) {}
@@ -639,44 +665,44 @@ class SqlDatabase {
     } catch (_) {}
 
     try {
-      // Migrate any existing 'بدون لون / اللون الخام' to 'خام'
+      // Migrate any existing 'Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…' to 'Ø®Ø§Ù…'
       await db.update(
         'Colors',
-        {'name': 'خام'},
+        {'name': 'Ø®Ø§Ù…'},
         where: "name = ?",
-        whereArgs: ['بدون لون / اللون الخام'],
+        whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
       );
       await db.update(
         'GlassColorPrices',
-        {'color_name': 'خام'},
+        {'color_name': 'Ø®Ø§Ù…'},
         where: "color_name = ?",
-        whereArgs: ['بدون لون / اللون الخام'],
+        whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
       );
       try {
         await db.update(
           'Commandes_details',
-          {'color': 'خام'},
+          {'color': 'Ø®Ø§Ù…'},
           where: "color = ?",
-          whereArgs: ['بدون لون / اللون الخام'],
+          whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
         );
       } catch (_) {}
       try {
         await db.update(
           'Glass',
-          {'color': 'خام'},
+          {'color': 'Ø®Ø§Ù…'},
           where: "color = ?",
-          whereArgs: ['بدون لون / اللون الخام'],
+          whereArgs: ['Ø¨Ø¯ÙˆÙ† Ù„ÙˆÙ† / Ø§Ù„Ù„ÙˆÙ† Ø§Ù„Ø®Ø§Ù…'],
         );
       } catch (_) {}
 
       final check = await db.query(
         'Colors',
         where: "name = ?",
-        whereArgs: ['خام'],
+        whereArgs: ['Ø®Ø§Ù…'],
       );
       if (check.isEmpty) {
         await db.insert('Colors', {
-          'name': 'خام',
+          'name': 'Ø®Ø§Ù…',
           'hex_code': '#E0E0E0',
           'type': 'Global',
           'is_active': 1,
@@ -814,16 +840,16 @@ class SqlDatabase {
         double defaultWeight = 0.0;
         if (subtype == 'extruded' ||
             nameLower.contains('extruded') ||
-            nameLower.contains('إكسترودي')) {
+            nameLower.contains('Ø¥ÙƒØ³ØªØ±ÙˆØ¯ÙŠ')) {
           defaultWeight = 12.0;
         } else if (nameLower.contains('55') ||
             currentMeas == '55' ||
             currentMeas == '550' ||
-            nameLower.contains('٥٥')) {
+            nameLower.contains('Ù¥Ù¥')) {
           defaultWeight = 4.0;
         } else if (nameLower.contains('lame') ||
-            nameLower.contains('شريح') ||
-            nameLower.contains('شريحة') ||
+            nameLower.contains('Ø´Ø±ÙŠØ­') ||
+            nameLower.contains('Ø´Ø±ÙŠØ­Ø©') ||
             nameLower.contains('final')) {
           defaultWeight = 3.0;
         }
@@ -952,7 +978,7 @@ class SqlDatabase {
             supplier_id INTEGER,
             location_id INTEGER,
             total_amount REAL NOT NULL,
-            status TEXT NOT NULL DEFAULT 'نشطة',
+            status TEXT NOT NULL DEFAULT 'Ù†Ø´Ø·Ø©',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (supplier_id) REFERENCES Suppliers(id) ON DELETE SET NULL,
@@ -995,7 +1021,7 @@ class SqlDatabase {
               qty_mode TEXT NOT NULL DEFAULT 'fixed',
               dimension TEXT,
               base_qty REAL NOT NULL DEFAULT 1,
-              unit TEXT NOT NULL DEFAULT 'قطعة',
+              unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
               sort_order INTEGER NOT NULL DEFAULT 0,
               FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
             )
@@ -1053,21 +1079,21 @@ class SqlDatabase {
     // Translate Arabic accessory types to French in the Accessories table
     try {
       final translationMap = {
-        'مفاصل': 'Paumelles',
-        'مقبض': 'Poignée Fenêtre',
-        'قفل': 'Serrure',
-        'قاش': 'Gâche',
-        'فيرو': 'Verrou',
-        'إسبانيوليت': 'Espagnolette',
-        'كانو': 'Canon',
-        'سيستم أو بي': 'System OB',
-        'ديمي سيستم أو بي': 'Demi System OB',
-        'فيرو سنترال': 'Verrou Central',
-        'كاش بورت': 'Gâche Porte',
-        'كاش كوليسون': 'Gâche Coulissante',
-        'كريمون': 'Crémone',
-        'بوشون بارك لوز': 'Bouchon Parclose',
-        'البراغي': 'Visse',
+        'Ù…ÙØ§ØµÙ„': 'Paumelles',
+        'Ù…Ù‚Ø¨Ø¶': 'PoignÃ©e FenÃªtre',
+        'Ù‚ÙÙ„': 'Serrure',
+        'Ù‚Ø§Ø´': 'GÃ¢che',
+        'ÙÙŠØ±Ùˆ': 'Verrou',
+        'Ø¥Ø³Ø¨Ø§Ù†ÙŠÙˆÙ„ÙŠØª': 'Espagnolette',
+        'ÙƒØ§Ù†Ùˆ': 'Canon',
+        'Ø³ÙŠØ³ØªÙ… Ø£Ùˆ Ø¨ÙŠ': 'System OB',
+        'Ø¯ÙŠÙ…ÙŠ Ø³ÙŠØ³ØªÙ… Ø£Ùˆ Ø¨ÙŠ': 'Demi System OB',
+        'ÙÙŠØ±Ùˆ Ø³Ù†ØªØ±Ø§Ù„': 'Verrou Central',
+        'ÙƒØ§Ø´ Ø¨ÙˆØ±Øª': 'GÃ¢che Porte',
+        'ÙƒØ§Ø´ ÙƒÙˆÙ„ÙŠØ³ÙˆÙ†': 'GÃ¢che Coulissante',
+        'ÙƒØ±ÙŠÙ…ÙˆÙ†': 'CrÃ©mone',
+        'Ø¨ÙˆØ´ÙˆÙ† Ø¨Ø§Ø±Ùƒ Ù„ÙˆØ²': 'Bouchon Parclose',
+        'Ø§Ù„Ø¨Ø±Ø§ØºÙŠ': 'Visse',
       };
       for (var entry in translationMap.entries) {
         await db.rawUpdate(
@@ -1184,39 +1210,51 @@ class SqlDatabase {
 
     // Replace CP437/CP1252/UTF-8 mojibake
     cleaned = cleaned
-        .replaceAll('├⌐', 'é')
-        .replaceAll('├¿', 'è')
-        .replaceAll('Ã©', 'é')
-        .replaceAll('Ã¨', 'è')
+        .replaceAll('â”œâŒ', 'Ã©')
+        .replaceAll('â”œÂ¿', 'Ã¨')
+        .replaceAll('ÃƒÂ©', 'Ã©')
+        .replaceAll('ÃƒÂ¨', 'Ã¨')
         // Replace corrupted Arabic names
-        .replaceAll('╪│╪¬╪º╪▒ ╪ú╪¿┘è╪╢', 'ستار أبيض')
-        .replaceAll('╪│╪¬╪º╪▒ ╪«╪┤╪¿┘è', 'ستار خشبي')
-        .replaceAll('╪│╪¬╪º╪▒ ╪¿┘å┘è/╪«╪┤╪¿┘è', 'ستار بني/خشبي')
-        .replaceAll('╪│╪¬╪º╪▒ ╪¿┘å┘è / ╪«╪┤╪¿┘è', 'ستار بني/خشبي')
-        .replaceAll('Injecte', 'Injectée')
-        .replaceAll('Extrude', 'Extrudée')
-        .replaceAll('Glissire', 'Glissière');
+        .replaceAll(
+          'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢',
+          'Ø³ØªØ§Ø± Ø£Ø¨ÙŠØ¶',
+        )
+        .replaceAll(
+          'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
+          'Ø³ØªØ§Ø± Ø®Ø´Ø¨ÙŠ',
+        )
+        .replaceAll(
+          'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ¿â”˜Ã¥â”˜Ã¨/â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
+          'Ø³ØªØ§Ø± Ø¨Ù†ÙŠ/Ø®Ø´Ø¨ÙŠ',
+        )
+        .replaceAll(
+          'â•ªâ”‚â•ªÂ¬â•ªÂºâ•ªâ–’ â•ªÂ¿â”˜Ã¥â”˜Ã¨ / â•ªÂ«â•ªâ”¤â•ªÂ¿â”˜Ã¨',
+          'Ø³ØªØ§Ø± Ø¨Ù†ÙŠ/Ø®Ø´Ø¨ÙŠ',
+        )
+        .replaceAll('Injecte', 'InjectÃ©e')
+        .replaceAll('Extrude', 'ExtrudÃ©e')
+        .replaceAll('Glissire', 'GlissiÃ¨re');
 
     // Ensure common variations are fully normalized
     if (cleaned.toLowerCase() == 'lame injectee' ||
-        cleaned.toLowerCase() == 'lame injectée') {
-      cleaned = 'Lame Injectée';
+        cleaned.toLowerCase() == 'lame injectÃ©e') {
+      cleaned = 'Lame InjectÃ©e';
     }
     if (cleaned.toLowerCase() == 'lame extrudee' ||
-        cleaned.toLowerCase() == 'lame extrudée') {
-      cleaned = 'Lame Extrudée';
+        cleaned.toLowerCase() == 'lame extrudÃ©e') {
+      cleaned = 'Lame ExtrudÃ©e';
     }
     if (cleaned.toLowerCase() == 'glissiere 25' ||
-        cleaned.toLowerCase() == 'glissière 25') {
-      cleaned = 'Glissière 25';
+        cleaned.toLowerCase() == 'glissiÃ¨re 25') {
+      cleaned = 'GlissiÃ¨re 25';
     }
     if (cleaned.toLowerCase() == 'glissiere 120' ||
-        cleaned.toLowerCase() == 'glissière 120') {
-      cleaned = 'Glissière 120';
+        cleaned.toLowerCase() == 'glissiÃ¨re 120') {
+      cleaned = 'GlissiÃ¨re 120';
     }
     if (cleaned.toLowerCase() == 'glissiere 100' ||
-        cleaned.toLowerCase() == 'glissière 100') {
-      cleaned = 'Glissière 100';
+        cleaned.toLowerCase() == 'glissiÃ¨re 100') {
+      cleaned = 'GlissiÃ¨re 100';
     }
     return cleaned;
   }
@@ -1320,21 +1358,21 @@ class SqlDatabase {
   Future<void> _ensureShutterComponentSeeds(DatabaseExecutor db) async {
     final List<Map<String, dynamic>> itemsToSeed = [
       {
-        'name': 'المحرك (Moteur)',
+        'name': 'Ø§Ù„Ù…Ø­Ø±Ùƒ (Moteur)',
         'component_type': 'Moteur',
         'price': 0.0,
         'unit': 'pcs',
         'is_active': 1,
       },
       {
-        'name': 'المانيفال (Manivelle)',
+        'name': 'Ø§Ù„Ù…Ø§Ù†ÙŠÙØ§Ù„ (Manivelle)',
         'component_type': 'Manivelle',
         'price': 0.0,
         'unit': 'pcs',
         'is_active': 1,
       },
       {
-        'name': 'السكك (Coulisses)',
+        'name': 'Ø§Ù„Ø³ÙƒÙƒ (Coulisses)',
         'component_type': 'Glissiere',
         'price': 0.0,
         'unit': 'pcs',
@@ -1383,14 +1421,14 @@ class SqlDatabase {
     if (kIsWeb) {
       path = dbName;
     } else {
-      String dataPath = await _dbFactory.getDatabasesPath();
+      String dataPath = await _getWritableDatabasesPath();
       path = join(dataPath, dbName);
     }
     final dbPassword = await _resolveDbPassword(dbName);
 
     if (!kIsWeb) {
       try {
-        final dataPath = await _dbFactory.getDatabasesPath();
+        final dataPath = await _getWritableDatabasesPath();
         final directory = Directory(dataPath);
         final activeFile = File(path);
         // A file marked as corrupt must never replace a newly created healthy
@@ -1493,9 +1531,7 @@ class SqlDatabase {
     _db = await initDb();
   }
 
-  Future<T> _retryAfterDatabaseMove<T>(
-    Future<T> Function() operation,
-  ) async {
+  Future<T> _retryAfterDatabaseMove<T>(Future<T> Function() operation) async {
     try {
       return await operation();
     } catch (error) {
@@ -2457,6 +2493,7 @@ class SqlDatabase {
     drawing_image_base64 TEXT,
     delivered_qty INTEGER DEFAULT 0,
     instances_json TEXT,
+    updated_at TEXT,
     FOREIGN KEY (id_commandes) REFERENCES Commandes(id) ON DELETE CASCADE
   )
 ''');
@@ -2722,7 +2759,7 @@ class SqlDatabase {
         qty_mode TEXT NOT NULL DEFAULT 'fixed',
         dimension TEXT,
         base_qty REAL NOT NULL DEFAULT 1,
-        unit TEXT NOT NULL DEFAULT 'قطعة',
+        unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
         sort_order INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
       )
@@ -3221,7 +3258,11 @@ class SqlDatabase {
     return res;
   }
 
-  Future<int> updateClientCoordinates(int id, double latitude, double longitude) async {
+  Future<int> updateClientCoordinates(
+    int id,
+    double latitude,
+    double longitude,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
     try {
@@ -3250,10 +3291,10 @@ class SqlDatabase {
     final user = FirebaseAuth.instance.currentUser;
     final email = user?.email ?? '';
     final platformStr = kIsWeb
-        ? 'ويب'
+        ? 'ÙˆÙŠØ¨'
         : (Platform.isWindows || Platform.isLinux || Platform.isMacOS
-            ? 'كمبيوتر'
-            : 'هاتف');
+              ? 'ÙƒÙ…Ø¨ÙŠÙˆØªØ±'
+              : 'Ù‡Ø§ØªÙ');
     if (email.isNotEmpty) {
       final namePart = email.split('@').first;
       return '$namePart ($platformStr)';
@@ -3519,7 +3560,11 @@ class SqlDatabase {
     return res;
   }
 
-  Future<void> _uploadOrderStatusToCloud(int orderId, String status, {int? clientId}) async {
+  Future<void> _uploadOrderStatusToCloud(
+    int orderId,
+    String status, {
+    int? clientId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -3577,7 +3622,8 @@ class SqlDatabase {
         );
         if (existing.isNotEmpty) {
           final currentStatus = existing.first['status']?.toString() ?? '';
-          final currentClientId = (existing.first['client_id'] as num?)?.toInt();
+          final currentClientId = (existing.first['client_id'] as num?)
+              ?.toInt();
           final updateMap = <String, dynamic>{};
 
           if (cloudStatus.isNotEmpty && currentStatus != cloudStatus) {
@@ -3732,46 +3778,46 @@ class SqlDatabase {
 
     final isMfgAll =
         sLower.contains('full manufacturing') ||
-        sLower.contains('تصنيع كلي') ||
-        sLower.contains('التصنيع الكلي') ||
+        sLower.contains('ØªØµÙ†ÙŠØ¹ ÙƒÙ„ÙŠ') ||
+        sLower.contains('Ø§Ù„ØªØµÙ†ÙŠØ¹ Ø§Ù„ÙƒÙ„ÙŠ') ||
         sLower.contains('fabrication totale') ||
         sLower.contains('full distribution') ||
-        sLower.contains('توزيع كلي') ||
-        sLower.contains('التوزيع الكلي') ||
+        sLower.contains('ØªÙˆØ²ÙŠØ¹ ÙƒÙ„ÙŠ') ||
+        sLower.contains('Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„ÙƒÙ„ÙŠ') ||
         sLower.contains('livraison totale') ||
-        sLower.contains('livré') ||
+        sLower.contains('livrÃ©') ||
         sLower.contains('installation') ||
-        sLower.contains('التركيب') ||
+        sLower.contains('Ø§Ù„ØªØ±ÙƒÙŠØ¨') ||
         sLower.contains('pose') ||
         sLower.contains('reserve') ||
-        sLower.contains('محجوزة') ||
+        sLower.contains('Ù…Ø­Ø¬ÙˆØ²Ø©') ||
         sLower.contains('done') ||
-        sLower.contains('منتهية') ||
-        sLower.contains('تمت');
+        sLower.contains('Ù…Ù†ØªÙ‡ÙŠØ©') ||
+        sLower.contains('ØªÙ…Øª');
 
     final isDistAll =
         sLower.contains('full distribution') ||
-        sLower.contains('توزيع كلي') ||
-        sLower.contains('التوزيع الكلي') ||
+        sLower.contains('ØªÙˆØ²ÙŠØ¹ ÙƒÙ„ÙŠ') ||
+        sLower.contains('Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„ÙƒÙ„ÙŠ') ||
         sLower.contains('livraison totale') ||
-        sLower.contains('livré') ||
+        sLower.contains('livrÃ©') ||
         sLower.contains('installation') ||
-        sLower.contains('التركيب') ||
+        sLower.contains('Ø§Ù„ØªØ±ÙƒÙŠØ¨') ||
         sLower.contains('pose') ||
         sLower.contains('reserve') ||
-        sLower.contains('محجوزة') ||
+        sLower.contains('Ù…Ø­Ø¬ÙˆØ²Ø©') ||
         sLower.contains('done') ||
-        sLower.contains('منتهية') ||
-        sLower.contains('تمت');
+        sLower.contains('Ù…Ù†ØªÙ‡ÙŠØ©') ||
+        sLower.contains('ØªÙ…Øª');
 
     final isMfgPartial =
         sLower.contains('partial manufacturing') ||
-        sLower.contains('تصنيع جزئي') ||
-        sLower.contains('التصنيع الجزئي');
+        sLower.contains('ØªØµÙ†ÙŠØ¹ Ø¬Ø²Ø¦ÙŠ') ||
+        sLower.contains('Ø§Ù„ØªØµÙ†ÙŠØ¹ Ø§Ù„Ø¬Ø²Ø¦ÙŠ');
     final isDistPartial =
         sLower.contains('partial distribution') ||
-        sLower.contains('توزيع جزئي') ||
-        sLower.contains('التوزيع الجزئي');
+        sLower.contains('ØªÙˆØ²ÙŠØ¹ Ø¬Ø²Ø¦ÙŠ') ||
+        sLower.contains('Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„Ø¬Ø²Ø¦ÙŠ');
 
     final isPreMfg =
         sLower == 'pending' ||
@@ -3780,9 +3826,9 @@ class SqlDatabase {
         sLower == 'confirmed' ||
         sLower == 'in progress' ||
         sLower.contains('attente') ||
-        sLower.contains('انتظار') ||
-        sLower.contains('مؤكد') ||
-        sLower.contains('قياسات');
+        sLower.contains('Ø§Ù†ØªØ¸Ø§Ø±') ||
+        sLower.contains('Ù…Ø¤ÙƒØ¯') ||
+        sLower.contains('Ù‚ÙŠØ§Ø³Ø§Øª');
 
     for (var i = 0; i < details.length; i++) {
       final detailId = (details[i]['id'] as num?)?.toInt() ?? 0;
@@ -3819,13 +3865,13 @@ class SqlDatabase {
           updates['reserve_at'] = null;
         } else if (isMfgAll || (isMfgPartial && i == 0 && j == 0)) {
           updates['is_manufactured'] = 1;
-          // ✅ Only set timestamp if not already recorded (preserve the exact button-press moment)
+          // âœ… Only set timestamp if not already recorded (preserve the exact button-press moment)
           if (current['manufactured_at'] == null ||
               current['manufactured_at'].toString().isEmpty) {
             updates['manufactured_at'] = nowStr;
           }
           updates['is_glass_installed'] = 1;
-          // ✅ Only set timestamp if not already recorded
+          // âœ… Only set timestamp if not already recorded
           if (current['glass_installed_at'] == null ||
               current['glass_installed_at'].toString().isEmpty) {
             updates['glass_installed_at'] = nowStr;
@@ -3834,7 +3880,7 @@ class SqlDatabase {
 
         if (isDistAll || (isDistPartial && i == 0 && j == 0)) {
           updates['is_distributed'] = 1;
-          // ✅ Only set timestamp if not already recorded
+          // âœ… Only set timestamp if not already recorded
           if (current['distributed_at'] == null ||
               current['distributed_at'].toString().isEmpty) {
             updates['distributed_at'] = nowStr;
@@ -3855,14 +3901,12 @@ class SqlDatabase {
 
     if (allocationIdsToUpload.isNotEmpty) {
       unawaited(
-        Future.wait(
-          allocationIdsToUpload.map(_uploadAllocationStatusToCloud),
-        ),
+        Future.wait(allocationIdsToUpload.map(_uploadAllocationStatusToCloud)),
       );
     }
   }
 
-  /// مزامنة آلية لجميع الإسنادات بناءً على حالات جميع الطلبيات المسجلة
+  /// Ù…Ø²Ø§Ù…Ù†Ø© Ø¢Ù„ÙŠØ© Ù„Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø¨Ù†Ø§Ø¡Ù‹ Ø¹Ù„Ù‰ Ø­Ø§Ù„Ø§Øª Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø·Ù„Ø¨ÙŠØ§Øª Ø§Ù„Ù…Ø³Ø¬Ù„Ø©
   Future<void> syncAllAllocationsFromAllOrderStatuses() async {
     try {
       Database? myDb = await db;
@@ -3888,7 +3932,7 @@ class SqlDatabase {
       FROM Commandes_details d
       JOIN Commandes c ON d.id_commandes = c.id
       WHERE c.id < ? 
-        AND c.status NOT IN ('En attente', 'في الانتظار', 'Pending', 'Draft', 'ملغاة')
+        AND c.status NOT IN ('En attente', 'ÙÙŠ Ø§Ù„Ø§Ù†ØªØ¸Ø§Ø±', 'Pending', 'Draft', 'Ù…Ù„ØºØ§Ø©')
     ''',
       [targetOrderId],
     );
@@ -3989,7 +4033,9 @@ class SqlDatabase {
     return rows.isEmpty ? null : rows.first;
   }
 
-  Future<List<Map<String, dynamic>>> readCommandeDetails(dynamic idCommande) async {
+  Future<List<Map<String, dynamic>>> readCommandeDetails(
+    dynamic idCommande,
+  ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     final parsedInt = idCommande is num
@@ -4012,7 +4058,7 @@ class SqlDatabase {
     );
   }
 
-  // ── WorkerAllocations Helpers ─────────────────────────────────────
+  // â”€â”€ WorkerAllocations Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<List<Map<String, dynamic>>> readWorkerAllocations(int detailId) async {
     Database? myDb = await db;
     return await myDb!.query(
@@ -4035,7 +4081,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
 
-    // 🛡️ 1. Hard constraint check: ensure total allocated quantity for this detail does not exceed detail.quantity
+    // ðŸ›¡ï¸ 1. Hard constraint check: ensure total allocated quantity for this detail does not exceed detail.quantity
     final details = await myDb.query(
       'Commandes_details',
       where: 'id = ?',
@@ -4060,12 +4106,12 @@ class SqlDatabase {
       int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
       if (currentAllocatedSum + quantity > maxAllowed) {
         throw Exception(
-          'الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}',
+          'Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø³Ù†Ø¯Ø© ØªØ¬Ø§ÙˆØ²Øª Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­ Ø¨Ù‡ ($maxAllowed Ù‚Ø·Ø¹Ø©). Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ Ù„Ù„Ø¥Ø³Ù†Ø§Ø¯: ${maxAllowed - currentAllocatedSum}',
         );
       }
     }
 
-    // 🛡️ 2. Clean slate initialization: reset all status flags for new allocation
+    // ðŸ›¡ï¸ 2. Clean slate initialization: reset all status flags for new allocation
     final Map<String, dynamic> row = {
       'commande_detail_id': detailId,
       'worker_uid': workerUid,
@@ -4088,10 +4134,7 @@ class SqlDatabase {
     if (unitWidth != null && unitWidth > 0) row['unit_width'] = unitWidth;
     if (unitHeight != null && unitHeight > 0) row['unit_height'] = unitHeight;
 
-    final res = await myDb.insert(
-      'WorkerAllocations',
-      _withDistributedId(row),
-    );
+    final res = await myDb.insert('WorkerAllocations', _withDistributedId(row));
     await _uploadAllocationStatusToCloud(res);
     CloudSyncService().notifyChange();
     return res;
@@ -4141,7 +4184,7 @@ class SqlDatabase {
           int maxAllowed = unitIndex != null ? 1 : totalAllowedQty;
           if (currentAllocatedSum + quantity > maxAllowed) {
             throw Exception(
-              'الكمية المسندة تجاوزت الحد المسموح به ($maxAllowed قطعة). المتبقي للإسناد: ${maxAllowed - currentAllocatedSum}',
+              'Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø³Ù†Ø¯Ø© ØªØ¬Ø§ÙˆØ²Øª Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­ Ø¨Ù‡ ($maxAllowed Ù‚Ø·Ø¹Ø©). Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ Ù„Ù„Ø¥Ø³Ù†Ø§Ø¯: ${maxAllowed - currentAllocatedSum}',
             );
           }
         }
@@ -4174,7 +4217,7 @@ class SqlDatabase {
             .collection('workshops')
             .doc(workshopId);
 
-        // 1. كتابة علامة حذف دائمة (tombstone) تمنع restore من إعادة الإسناد المحذوف
+        // 1. ÙƒØªØ§Ø¨Ø© Ø¹Ù„Ø§Ù…Ø© Ø­Ø°Ù Ø¯Ø§Ø¦Ù…Ø© (tombstone) ØªÙ…Ù†Ø¹ restore Ù…Ù† Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯ Ø§Ù„Ù…Ø­Ø°ÙˆÙ
         try {
           await workshopRef
               .collection('deleted_allocations')
@@ -4284,27 +4327,27 @@ class SqlDatabase {
       }
     } catch (_) {}
 
-    // 1. حذف من SQLite أولاً (فوري)
+    // 1. Ø­Ø°Ù Ù…Ù† SQLite Ø£ÙˆÙ„Ø§Ù‹ (ÙÙˆØ±ÙŠ)
     final res = await myDb.delete(
       'WorkerAllocations',
       where: 'id = ?',
       whereArgs: [allocationId],
     );
 
-    // 2. حذف من السحابة وتسجيل علامة الحذف الدائمة
+    // 2. Ø­Ø°Ù Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø© ÙˆØªØ³Ø¬ÙŠÙ„ Ø¹Ù„Ø§Ù…Ø© Ø§Ù„Ø­Ø°Ù Ø§Ù„Ø¯Ø§Ø¦Ù…Ø©
     await _deleteAllocationFromCloud(allocationId);
 
     if (orderId > 0) {
       await syncOrderAndAllocationsStatus(orderId);
     }
 
-    // ملاحظة: لا نستدعي backupToCloud() هنا لتجنب التأخر 20+ ثانية.
-    // notifyChange() يعمل بـ debounce 1 ثانية ويطلق _silentBackup() تلقائياً.
+    // Ù…Ù„Ø§Ø­Ø¸Ø©: Ù„Ø§ Ù†Ø³ØªØ¯Ø¹ÙŠ backupToCloud() Ù‡Ù†Ø§ Ù„ØªØ¬Ù†Ø¨ Ø§Ù„ØªØ£Ø®Ø± 20+ Ø«Ø§Ù†ÙŠØ©.
+    // notifyChange() ÙŠØ¹Ù…Ù„ Ø¨Ù€ debounce 1 Ø«Ø§Ù†ÙŠØ© ÙˆÙŠØ·Ù„Ù‚ _silentBackup() ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹.
     CloudSyncService().notifyChange();
     return res;
   }
 
-  /// حذف إسناد محلياً فقط (بدون أي اتصال سحابة) — يُستخدم عند تطبيق tombstones بعد الـ restore
+  /// Ø­Ø°Ù Ø¥Ø³Ù†Ø§Ø¯ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø· (Ø¨Ø¯ÙˆÙ† Ø£ÙŠ Ø§ØªØµØ§Ù„ Ø³Ø­Ø§Ø¨Ø©) â€” ÙŠÙØ³ØªØ®Ø¯Ù… Ø¹Ù†Ø¯ ØªØ·Ø¨ÙŠÙ‚ tombstones Ø¨Ø¹Ø¯ Ø§Ù„Ù€ restore
   Future<void> deleteWorkerAllocationLocalOnly(int allocationId) async {
     try {
       Database? myDb = await db;
@@ -4319,7 +4362,7 @@ class SqlDatabase {
     }
   }
 
-  /// حذف Achat وعناصره محلياً فقط (لا يُشغّل backup) — يُستخدم بعد restore
+  /// Ø­Ø°Ù Achat ÙˆØ¹Ù†Ø§ØµØ±Ù‡ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø· (Ù„Ø§ ÙŠÙØ´ØºÙ‘Ù„ backup) â€” ÙŠÙØ³ØªØ®Ø¯Ù… Ø¨Ø¹Ø¯ restore
   Future<void> deleteAchatLocalOnly(int id) async {
     try {
       Database? myDb = await db;
@@ -4331,7 +4374,7 @@ class SqlDatabase {
     }
   }
 
-  /// تعطيل سجل زجاج محلياً فقط (is_active=0) — يُستخدم بعد restore
+  /// ØªØ¹Ø·ÙŠÙ„ Ø³Ø¬Ù„ Ø²Ø¬Ø§Ø¬ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙÙ‚Ø· (is_active=0) â€” ÙŠÙØ³ØªØ®Ø¯Ù… Ø¨Ø¹Ø¯ restore
   Future<void> setGlassInactiveLocalOnly(int id) async {
     try {
       Database? myDb = await db;
@@ -4347,7 +4390,7 @@ class SqlDatabase {
     }
   }
 
-  /// 🧹 تصفير وحذف جميع المهام والإسنادات محلياً وفي السحابة للتطوير
+  /// ðŸ§¹ ØªØµÙÙŠØ± ÙˆØ­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ù…Ù‡Ø§Ù… ÙˆØ§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙÙŠ Ø§Ù„Ø³Ø­Ø§Ø¨Ø© Ù„Ù„ØªØ·ÙˆÙŠØ±
   Future<void> clearAllWorkerAllocationsFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
@@ -4449,11 +4492,11 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  /// 🧹 تصفير بيانات التركيبات والعمليات الخارجية محلياً وفي السحابة للتطوير
+  /// ðŸ§¹ ØªØµÙÙŠØ± Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª ÙˆØ§Ù„Ø¹Ù…Ù„ÙŠØ§Øª Ø§Ù„Ø®Ø§Ø±Ø¬ÙŠØ© Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙÙŠ Ø§Ù„Ø³Ø­Ø§Ø¨Ø© Ù„Ù„ØªØ·ÙˆÙŠØ±
   Future<void> clearAllInstallationDataFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
-      // 1. تصفير حالات التركيب والتحفظ والزجاج بالكامل في WorkerAllocations
+      // 1. ØªØµÙÙŠØ± Ø­Ø§Ù„Ø§Øª Ø§Ù„ØªØ±ÙƒÙŠØ¨ ÙˆØ§Ù„ØªØ­ÙØ¸ ÙˆØ§Ù„Ø²Ø¬Ø§Ø¬ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ ÙÙŠ WorkerAllocations
       await myDb.rawUpdate('''
         UPDATE WorkerAllocations 
         SET is_transferred_to_dist = 0, transferred_at = NULL,
@@ -4464,7 +4507,7 @@ class SqlDatabase {
             has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
       ''');
 
-      // 2. تصفير بيانات استلام الزجاج والمشتريات والنواقص في Commandes_details
+      // 2. ØªØµÙÙŠØ± Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ø³ØªÙ„Ø§Ù… Ø§Ù„Ø²Ø¬Ø§Ø¬ ÙˆØ§Ù„Ù…Ø´ØªØ±ÙŠØ§Øª ÙˆØ§Ù„Ù†ÙˆØ§Ù‚Øµ ÙÙŠ Commandes_details
       try {
         await myDb.rawUpdate('''
           UPDATE Commandes_details 
@@ -4473,7 +4516,7 @@ class SqlDatabase {
         ''');
       } catch (_) {}
 
-      // 3. حذف أي سجلات مستقلة للزجاج والمشتريات
+      // 3. Ø­Ø°Ù Ø£ÙŠ Ø³Ø¬Ù„Ø§Øª Ù…Ø³ØªÙ‚Ù„Ø© Ù„Ù„Ø²Ø¬Ø§Ø¬ ÙˆØ§Ù„Ù…Ø´ØªØ±ÙŠØ§Øª
       try {
         await myDb.rawDelete('DELETE FROM GlassOrders');
       } catch (_) {}
@@ -4564,7 +4607,7 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  /// 🧹 تصفير سجلات المحاسبة محلياً وفي السحابة للتطوير
+  /// ðŸ§¹ ØªØµÙÙŠØ± Ø³Ø¬Ù„Ø§Øª Ø§Ù„Ù…Ø­Ø§Ø³Ø¨Ø© Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙÙŠ Ø§Ù„Ø³Ø­Ø§Ø¨Ø© Ù„Ù„ØªØ·ÙˆÙŠØ±
   Future<void> clearAllWeeklySettlementsFromCloudAndLocal() async {
     Database? myDb = await db;
     if (myDb != null) {
@@ -4785,7 +4828,7 @@ class SqlDatabase {
     final cleanEmail = workerEmail.trim().toLowerCase();
     final cleanUid = workerUid.trim().toLowerCase();
 
-    // 1. استعلام دقيق يضمن فلترة وحصر الإسنادات المسندة لهذا العامل فقط بدون تسريب إسنادات غيره
+    // 1. Ø§Ø³ØªØ¹Ù„Ø§Ù… Ø¯Ù‚ÙŠÙ‚ ÙŠØ¶Ù…Ù† ÙÙ„ØªØ±Ø© ÙˆØ­ØµØ± Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø§Ù„Ù…Ø³Ù†Ø¯Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ø¹Ø§Ù…Ù„ ÙÙ‚Ø· Ø¨Ø¯ÙˆÙ† ØªØ³Ø±ÙŠØ¨ Ø¥Ø³Ù†Ø§Ø¯Ø§Øª ØºÙŠØ±Ù‡
     final List<Map<String, dynamic>> results;
     if (cleanEmail.isNotEmpty) {
       results = await myDb.rawQuery(
@@ -4842,7 +4885,7 @@ class SqlDatabase {
     return results;
   }
 
-  /// ربط إسنادات العامل بـ UID الصحيح بعد الاستعادة من السحابة
+  /// Ø±Ø¨Ø· Ø¥Ø³Ù†Ø§Ø¯Ø§Øª Ø§Ù„Ø¹Ø§Ù…Ù„ Ø¨Ù€ UID Ø§Ù„ØµØ­ÙŠØ­ Ø¨Ø¹Ø¯ Ø§Ù„Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø©
   Future<void> relinkCurrentWorkerAllocations() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -5438,14 +5481,14 @@ class SqlDatabase {
     if (myDb == null) return;
     final nowStr = DateTime.now().toIso8601String();
 
-    // ✔️ عند التحويل إلى التوزيع: نضبط حقل التحويل فقط → العنصر ينتقل لصفحة التركيبات الميدانية
-    // ✔️ عند الإلغاء (إرجاع من الأرشيف): نصفّر جميع حقول التركيب/الاكتمال حتى يمر العنصر بمرحلة التركيبات الميدانية مرة أخرى
+    // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„ØªØ­ÙˆÙŠÙ„ Ø¥Ù„Ù‰ Ø§Ù„ØªÙˆØ²ÙŠØ¹: Ù†Ø¶Ø¨Ø· Ø­Ù‚Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„ ÙÙ‚Ø· â†’ Ø§Ù„Ø¹Ù†ØµØ± ÙŠÙ†ØªÙ‚Ù„ Ù„ØµÙØ­Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ©
+    // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ù„ØºØ§Ø¡ (Ø¥Ø±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ø£Ø±Ø´ÙŠÙ): Ù†ØµÙÙ‘Ø± Ø¬Ù…ÙŠØ¹ Ø­Ù‚ÙˆÙ„ Ø§Ù„ØªØ±ÙƒÙŠØ¨/Ø§Ù„Ø§ÙƒØªÙ…Ø§Ù„ Ø­ØªÙ‰ ÙŠÙ…Ø± Ø§Ù„Ø¹Ù†ØµØ± Ø¨Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰
     final Map<String, dynamic> updateFields = isTransferred == 1
         ? {'is_transferred_to_dist': 1, 'transferred_at': nowStr}
         : {
             'is_transferred_to_dist': 0,
             'transferred_at': null,
-            // ✅ أساسي: عند الإرجاع من الأرشيف يجب مسح حالة التركيب والاكتمال ليعود للتركيبات الميدانية بعد ذلك
+            // âœ… Ø£Ø³Ø§Ø³ÙŠ: Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ø±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ø£Ø±Ø´ÙŠÙ ÙŠØ¬Ø¨ Ù…Ø³Ø­ Ø­Ø§Ù„Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨ ÙˆØ§Ù„Ø§ÙƒØªÙ…Ø§Ù„ Ù„ÙŠØ¹ÙˆØ¯ Ù„Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ø¨Ø¹Ø¯ Ø°Ù„Ùƒ
             'is_installed': 0,
             'installed_at': null,
             'is_completed': 0,
@@ -5460,7 +5503,7 @@ class SqlDatabase {
       whereArgs: [allocationId],
     );
 
-    // ⚡️ تشغيل syncOrder في الخلفية دون حظر الواجهة (تحسين السرعة)
+    // âš¡ï¸ ØªØ´ØºÙŠÙ„ syncOrder ÙÙŠ Ø§Ù„Ø®Ù„ÙÙŠØ© Ø¯ÙˆÙ† Ø­Ø¸Ø± Ø§Ù„ÙˆØ§Ø¬Ù‡Ø© (ØªØ­Ø³ÙŠÙ† Ø§Ù„Ø³Ø±Ø¹Ø©)
     () async {
       try {
         final allocRow = await myDb.query(
@@ -5781,7 +5824,7 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
-  // ── الحضور والغياب (WorkerAttendance) ──────────────────────────────────────────────
+  // â”€â”€ Ø§Ù„Ø­Ø¶ÙˆØ± ÙˆØ§Ù„ØºÙŠØ§Ø¨ (WorkerAttendance) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<List<Map<String, dynamic>>> readWorkerAttendance(
     String workerUid,
   ) async {
@@ -5810,7 +5853,7 @@ class SqlDatabase {
     if (myDb == null) return;
 
     if (checkIn == null && checkOut == null && (note == null || note.isEmpty)) {
-      // 🗑️ إذا كانت البيانات فارغة، احذف السجل لتصفير خيار الحضور والغياب (فارغ ⚪)
+      // ðŸ—‘ï¸ Ø¥Ø°Ø§ ÙƒØ§Ù†Øª Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ÙØ§Ø±ØºØ©ØŒ Ø§Ø­Ø°Ù Ø§Ù„Ø³Ø¬Ù„ Ù„ØªØµÙÙŠØ± Ø®ÙŠØ§Ø± Ø§Ù„Ø­Ø¶ÙˆØ± ÙˆØ§Ù„ØºÙŠØ§Ø¨ (ÙØ§Ø±Øº âšª)
       await myDb.delete(
         'WorkerAttendance',
         where: 'worker_uid = ? AND attendance_date = ?',
@@ -5834,18 +5877,21 @@ class SqlDatabase {
         whereArgs: [workerUid, date],
       );
     } else {
-      await myDb.insert('WorkerAttendance', _withDistributedId({
-        'worker_uid': workerUid,
-        'attendance_date': date,
-        'check_in': checkIn,
-        'check_out': checkOut,
-        'note': note,
-      }));
+      await myDb.insert(
+        'WorkerAttendance',
+        _withDistributedId({
+          'worker_uid': workerUid,
+          'attendance_date': date,
+          'check_in': checkIn,
+          'check_out': checkOut,
+          'note': note,
+        }),
+      );
     }
     CloudSyncService().notifyChange();
   }
 
-  // ── الأعمال اليومية (WorkerDailyJobs - عمل يومي) ──────────────────────────
+  // â”€â”€ Ø§Ù„Ø£Ø¹Ù…Ø§Ù„ Ø§Ù„ÙŠÙˆÙ…ÙŠØ© (WorkerDailyJobs - Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<List<Map<String, dynamic>>> readWorkerDailyJobs(
     String workerUid,
   ) async {
@@ -5890,14 +5936,17 @@ class SqlDatabase {
   }) async {
     Database? myDb = await db;
     if (myDb == null) return;
-    await myDb.insert('WorkerDailyJobs', _withDistributedId({
-      'worker_uid': workerUid,
-      'work_date': workDate,
-      'title': title.trim().isEmpty ? 'عمل يومي' : title.trim(),
-      'note': note,
-      'price': price,
-      'is_settled': 0,
-    }));
+    await myDb.insert(
+      'WorkerDailyJobs',
+      _withDistributedId({
+        'worker_uid': workerUid,
+        'work_date': workDate,
+        'title': title.trim().isEmpty ? 'Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ' : title.trim(),
+        'note': note,
+        'price': price,
+        'is_settled': 0,
+      }),
+    );
     CloudSyncService().notifyChange();
   }
 
@@ -5954,7 +6003,7 @@ class SqlDatabase {
     final double totalAllocEarned =
         (allocations.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // 1b. Calculate total earned from unsettled daily jobs (عمل يومي)
+    // 1b. Calculate total earned from unsettled daily jobs (Ø¹Ù…Ù„ ÙŠÙˆÙ…ÙŠ)
     final List<Map<String, dynamic>> dailyJobs = await myDb.rawQuery(
       "SELECT COALESCE(SUM(price), 0) as total FROM WorkerDailyJobs WHERE worker_uid IN ($placeholders) AND (is_settled = 0 OR is_settled IS NULL)",
       allKeys,
@@ -5996,26 +6045,29 @@ class SqlDatabase {
     final primaryKey = allKeys.first;
 
     // 5. Record the actual payment made in SQLite WorkerTransactions
-    await myDb.insert('WorkerTransactions', _withDistributedId({
-      'worker_uid': primaryKey,
-      'amount': paymentAmount,
-      'transaction_type': 'salary',
-      'note': 'تسوية أسبوعية - دفع أسبوعي',
-      'created_at': now,
-      'is_settled': 1,
-      'settled_at': now,
-    }));
+    await myDb.insert(
+      'WorkerTransactions',
+      _withDistributedId({
+        'worker_uid': primaryKey,
+        'amount': paymentAmount,
+        'transaction_type': 'salary',
+        'note': 'ØªØ³ÙˆÙŠØ© Ø£Ø³Ø¨ÙˆØ¹ÙŠØ© - Ø¯ÙØ¹ Ø£Ø³Ø¨ÙˆØ¹ÙŠ',
+        'created_at': now,
+        'is_settled': 1,
+        'settled_at': now,
+      }),
+    );
 
     // 6. Record in Treasury as Decaissement (ALWAYS record full payout in selected Caisse)
     if (paymentAmount != 0.0) {
       await insertTreasury(
-        'Décaissement',
+        'DÃ©caissement',
         paymentAmount.abs(),
-        'تسوية أسبوعية للعامل $workerName',
+        'ØªØ³ÙˆÙŠØ© Ø£Ø³Ø¨ÙˆØ¹ÙŠØ© Ù„Ù„Ø¹Ø§Ù…Ù„ $workerName',
         entityType: 'Worker',
         entityId: workerId > 0 ? workerId : null,
         recordedBy: recordedBy,
-        caisseName: caisseName ?? 'الصندوق الرئيسي',
+        caisseName: caisseName ?? 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
         referenceId: -1,
         createdAt: now,
       );
@@ -6024,14 +6076,17 @@ class SqlDatabase {
     // 7. Calculate carryover (the difference)
     final double carryover = paymentAmount - netDueBefore;
     if (carryover != 0.0) {
-      await myDb.insert('WorkerTransactions', _withDistributedId({
-        'worker_uid': primaryKey,
-        'amount': carryover,
-        'transaction_type': 'advance',
-        'note': 'رصيد مرحّل من الأسبوع السابق',
-        'created_at': now,
-        'is_settled': 0,
-      }));
+      await myDb.insert(
+        'WorkerTransactions',
+        _withDistributedId({
+          'worker_uid': primaryKey,
+          'amount': carryover,
+          'transaction_type': 'advance',
+          'note': 'Ø±ØµÙŠØ¯ Ù…Ø±Ø­Ù‘Ù„ Ù…Ù† Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹ Ø§Ù„Ø³Ø§Ø¨Ù‚',
+          'created_at': now,
+          'is_settled': 0,
+        }),
+      );
     }
 
     CloudSyncService().notifyChangeImmediate();
@@ -6075,21 +6130,31 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) {
-      throw StateError('قاعدة البيانات غير متاحة.');
+      throw StateError('Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…ØªØ§Ø­Ø©.');
     }
     if (details.isEmpty) {
-      throw StateError('لا يمكن حفظ طلبية بدون تفاصيل.');
+      throw StateError(
+        'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø­ÙØ¸ Ø·Ù„Ø¨ÙŠØ© Ø¨Ø¯ÙˆÙ† ØªÙØ§ØµÙŠÙ„.',
+      );
     }
     if (!total.isFinite || !netPayable.isFinite) {
-      throw StateError('مجموع الطلبية غير صالح.');
+      throw StateError('Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ø·Ù„Ø¨ÙŠØ© ØºÙŠØ± ØµØ§Ù„Ø­.');
     }
 
     // File access is intentionally completed before starting the transaction.
     // The SQL transaction then stays short and cannot leave half an order.
+    int? detailIdFrom(dynamic rawId) {
+      if (rawId is int) return rawId;
+      if (rawId is num) return rawId.toInt();
+      return int.tryParse(rawId?.toString() ?? '');
+    }
+
     final preparedDetails = await Future.wait(
       details.map((rawDetail) async {
+        // Keep the detail ID while editing.  It is the cloud-sync identity of
+        // this drawing; replacing it would allow an old copy (and its old
+        // colour) to be merged back into the order.
         final detail = Map<String, dynamic>.from(rawDetail)
-          ..remove('id')
           ..remove('id_commandes');
         final drawingPath = detail['drawing_image_path']?.toString() ?? '';
         if (drawingPath.isNotEmpty &&
@@ -6139,25 +6204,21 @@ class SqlDatabase {
           limit: 1,
         );
         if (existing.isEmpty) {
-          await txn.insert(
-            'Commandes',
-            {
-              'id': orderId,
-              'client_id': clientId,
-              'status': status,
-              'description': description,
-              'remise': remise,
-              'tva': tva,
-              'total': total,
-              'net_payable': netPayable,
-              'advance_payment': 0.0,
-              'payment_status': 'Unpaid',
-              'created_at': createdAt,
-              'updated_at': now,
-              'project_id': projectId,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+          await txn.insert('Commandes', {
+            'id': orderId,
+            'client_id': clientId,
+            'status': status,
+            'description': description,
+            'remise': remise,
+            'tva': tva,
+            'total': total,
+            'net_payable': netPayable,
+            'advance_payment': 0.0,
+            'payment_status': 'Unpaid',
+            'created_at': createdAt,
+            'updated_at': now,
+            'project_id': projectId,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
         } else {
           final advance =
               (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
@@ -6183,22 +6244,62 @@ class SqlDatabase {
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
         }
-        await txn.delete(
-          'Commandes_details',
-          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
-          whereArgs: [orderId, orderId.toString()],
-        );
       }
 
+      final existingDetails = await txn.query(
+        'Commandes_details',
+        columns: ['id'],
+        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        whereArgs: [orderId, orderId.toString()],
+      );
+      final existingDetailIds = <int>{
+        for (final row in existingDetails)
+          if (detailIdFrom(row['id']) != null) detailIdFrom(row['id'])!,
+      };
+      final retainedDetailIds = <int>{};
+
       for (final detail in preparedDetails) {
-        await txn.insert(
+        final existingDetailId = detailIdFrom(detail['id']);
+        final row = Map<String, dynamic>.from(detail)
+          ..remove('id')
+          ..remove('id_commandes')
+          ..['id_commandes'] = orderId
+          ..['updated_at'] = now;
+
+        if (existingDetailId != null &&
+            existingDetailIds.contains(existingDetailId)) {
+          await txn.update(
+            'Commandes_details',
+            row,
+            where: 'id = ? OR CAST(id AS TEXT) = ?',
+            whereArgs: [existingDetailId, existingDetailId.toString()],
+          );
+          retainedDetailIds.add(existingDetailId);
+        } else {
+          final newDetailId = _nextDistributedId();
+          await txn.insert('Commandes_details', {
+            ...row,
+            'id': newDetailId,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+          retainedDetailIds.add(newDetailId);
+        }
+      }
+
+      // Delete only drawings that the user actually removed.  This keeps a
+      // stable identity for the remaining drawings and produces tombstones
+      // only for genuine removals.
+      for (final existingDetailId in existingDetailIds) {
+        if (retainedDetailIds.contains(existingDetailId)) continue;
+        await txn.delete(
+          'WorkerAllocations',
+          where:
+              'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
+          whereArgs: [existingDetailId, existingDetailId.toString()],
+        );
+        await txn.delete(
           'Commandes_details',
-          {
-            ...detail,
-            'id': detail['id'] ?? _nextDistributedId(),
-            'id_commandes': orderId,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
+          where: 'id = ? OR CAST(id AS TEXT) = ?',
+          whereArgs: [existingDetailId, existingDetailId.toString()],
         );
       }
 
@@ -6207,12 +6308,11 @@ class SqlDatabase {
         'WHERE id_commandes = ?',
         [orderId],
       );
-      final savedDetails =
-          (countResult.first['count'] as num?)?.toInt() ?? 0;
+      final savedDetails = (countResult.first['count'] as num?)?.toInt() ?? 0;
       if (savedDetails != preparedDetails.length) {
         throw StateError(
-          'لم تُحفظ كل تفاصيل الطلبية '
-          '(${preparedDetails.length} مطلوبة، $savedDetails محفوظة).',
+          'Ù„Ù… ØªÙØ­ÙØ¸ ÙƒÙ„ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨ÙŠØ© '
+          '(${preparedDetails.length} Ù…Ø·Ù„ÙˆØ¨Ø©ØŒ $savedDetails Ù…Ø­ÙÙˆØ¸Ø©).',
         );
       }
       return orderId;
@@ -6352,7 +6452,8 @@ class SqlDatabase {
         if (detailId == null) continue;
         await txn.delete(
           'WorkerAllocations',
-          where: 'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
+          where:
+              'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
           whereArgs: [detailId, detailId.toString()],
         );
       }
@@ -6434,6 +6535,7 @@ class SqlDatabase {
       'partitions_json': partitionsJson,
       'drawing_image_path': drawingImagePath,
       if (base64Str != null) 'drawing_image_base64': base64Str,
+      'updated_at': DateTime.now().toIso8601String(),
     });
     CloudSyncService().notifyChange();
     return res;
@@ -6455,6 +6557,7 @@ class SqlDatabase {
       {
         'drawing_image_path': path,
         if (base64Str != null) 'drawing_image_base64': base64Str,
+        'updated_at': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [idDetail],
@@ -6470,7 +6573,10 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes_details',
-      {'delivered_qty': newDeliveredQty},
+      {
+        'delivered_qty': newDeliveredQty,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [idDetail],
     );
@@ -6482,7 +6588,10 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes_details',
-      {'delivered_qty': 0},
+      {
+        'delivered_qty': 0,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'id_commandes = ?',
       whereArgs: [idCommande],
     );
@@ -6504,27 +6613,30 @@ class SqlDatabase {
 
       final checkMain = await myDb.query(
         'Caisses',
-        where: "name = 'الصندوق الرئيسي'",
+        where: "name = 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ'",
       );
       if (checkMain.isEmpty)
         await myDb.insert(
           'Caisses',
-          _withDistributedId({'name': 'الصندوق الرئيسي'}),
+          _withDistributedId({'name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ'}),
         );
       final checkSecond = await myDb.query(
         'Caisses',
-        where: "name = 'الصندوق الثاني'",
+        where: "name = 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø«Ø§Ù†ÙŠ'",
       );
       if (checkSecond.isEmpty)
         await myDb.insert(
           'Caisses',
-          _withDistributedId({'name': 'الصندوق الثاني'}),
+          _withDistributedId({'name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø«Ø§Ù†ÙŠ'}),
         );
-      final checkBank = await myDb.query('Caisses', where: "name = 'البنك'");
+      final checkBank = await myDb.query(
+        'Caisses',
+        where: "name = 'Ø§Ù„Ø¨Ù†Ùƒ'",
+      );
       if (checkBank.isEmpty) {
         await myDb.insert(
           'Caisses',
-          _withDistributedId({'name': 'البنك'}),
+          _withDistributedId({'name': 'Ø§Ù„Ø¨Ù†Ùƒ'}),
         );
       }
 
@@ -6550,7 +6662,7 @@ class SqlDatabase {
 
         if (existing.isEmpty) {
           // Get client info to add to description
-          String clientDesc = 'دفعة لطلبية رقم $orderId';
+          String clientDesc = 'Ø¯ÙØ¹Ø© Ù„Ø·Ù„Ø¨ÙŠØ© Ø±Ù‚Ù… $orderId';
           if (clientId != null) {
             try {
               final clientRow = await myDb.query(
@@ -6562,25 +6674,28 @@ class SqlDatabase {
                 final fname = clientRow.first['firstname'] ?? '';
                 final lname = clientRow.first['lastname'] ?? '';
                 clientDesc =
-                    'دفعة لطلبية رقم $orderId من الزبون: $lname $fname';
+                    'Ø¯ÙØ¹Ø© Ù„Ø·Ù„Ø¨ÙŠØ© Ø±Ù‚Ù… $orderId Ù…Ù† Ø§Ù„Ø²Ø¨ÙˆÙ†: $lname $fname';
               }
             } catch (_) {}
           }
 
-          await myDb.insert('Treasury', _withDistributedId({
-            'transaction_type': 'Encaissement',
-            'amount': advance,
-            'description': clientDesc,
-            'reference_id': orderId,
-            'recorded_by': 'migration',
-            'entity_type': 'Client',
-            'entity_id': clientId,
-            'old_balance': 0.0,
-            'new_balance': 0.0,
-            'caisse_name': 'الصندوق الرئيسي',
-            'payment_method': 'نقداً / Espèce',
-            'created_at': createdAt,
-          }));
+          await myDb.insert(
+            'Treasury',
+            _withDistributedId({
+              'transaction_type': 'Encaissement',
+              'amount': advance,
+              'description': clientDesc,
+              'reference_id': orderId,
+              'recorded_by': 'migration',
+              'entity_type': 'Client',
+              'entity_id': clientId,
+              'old_balance': 0.0,
+              'new_balance': 0.0,
+              'caisse_name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
+              'payment_method': 'Ù†Ù‚Ø¯Ø§Ù‹ / EspÃ¨ce',
+              'created_at': createdAt,
+            }),
+          );
         }
       }
     } catch (_) {}
@@ -6656,13 +6771,16 @@ class SqlDatabase {
     double totalAmount,
   ) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Commandes_deliveries', _withDistributedId({
-      'id_commandes': idCommande,
-      'client_id': clientId,
-      'delivery_date': date,
-      'items_json': itemsJson,
-      'total_amount': totalAmount,
-    }));
+    var res = await myDb!.insert(
+      'Commandes_deliveries',
+      _withDistributedId({
+        'id_commandes': idCommande,
+        'client_id': clientId,
+        'delivery_date': date,
+        'items_json': itemsJson,
+        'total_amount': totalAmount,
+      }),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6741,22 +6859,25 @@ class SqlDatabase {
     );
     if (existing.isNotEmpty) {
       throw Exception(
-        '╪▒┘é┘à ╪º┘ä┘ü╪º╪¬┘ê╪▒╪⌐ ($invoiceNumber) ┘à╪│╪¬╪«╪»┘à ┘à╪│╪¿┘é╪º┘ï! ╪º┘ä╪▒╪¼╪º╪í ╪Ñ╪»╪«╪º┘ä ╪▒┘é┘à ┘ü╪▒┘è╪».',
+        'â•ªâ–’â”˜Ã©â”˜Ã  â•ªÂºâ”˜Ã¤â”˜Ã¼â•ªÂºâ•ªÂ¬â”˜Ãªâ•ªâ–’â•ªâŒ ($invoiceNumber) â”˜Ã â•ªâ”‚â•ªÂ¬â•ªÂ«â•ªÂ»â”˜Ã  â”˜Ã â•ªâ”‚â•ªÂ¿â”˜Ã©â•ªÂºâ”˜Ã¯! â•ªÂºâ”˜Ã¤â•ªâ–’â•ªÂ¼â•ªÂºâ•ªÃ­ â•ªÃ‘â•ªÂ»â•ªÂ«â•ªÂºâ”˜Ã¤ â•ªâ–’â”˜Ã©â”˜Ã  â”˜Ã¼â•ªâ–’â”˜Ã¨â•ªÂ».',
       );
     }
 
-    var res = await myDb.insert('Achats', _withDistributedId({
-      'invoice_number': invoiceNumber,
-      'supplier_name': supplierName,
-      'supplier_id': supplierId,
-      'location_id': locationId,
-      'status': 'Active',
-      'total': total,
-      'image_path': imagePath,
-      'pdf_path': pdfPath,
-      'created_at': DateTime.now().toIso8601String(),
-      'updated_at': DateTime.now().toIso8601String(),
-    }));
+    var res = await myDb.insert(
+      'Achats',
+      _withDistributedId({
+        'invoice_number': invoiceNumber,
+        'supplier_name': supplierName,
+        'supplier_id': supplierId,
+        'location_id': locationId,
+        'status': 'Active',
+        'total': total,
+        'image_path': imagePath,
+        'pdf_path': pdfPath,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      }),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6810,16 +6931,19 @@ class SqlDatabase {
       return 0;
     }
 
-    var res = await myDb!.insert('Achat_items', _withDistributedId({
-      'achat_id': achatId,
-      'item_code': itemCode,
-      'item_name': itemName,
-      'item_type': itemType,
-      'item_id': itemId,
-      'color_id': colorId,
-      'quantity': quantity,
-      'price': price,
-    }));
+    var res = await myDb!.insert(
+      'Achat_items',
+      _withDistributedId({
+        'achat_id': achatId,
+        'item_code': itemCode,
+        'item_name': itemName,
+        'item_type': itemType,
+        'item_id': itemId,
+        'color_id': colorId,
+        'quantity': quantity,
+        'price': price,
+      }),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -7169,20 +7293,24 @@ class SqlDatabase {
         supplierId = achatRes.first['supplier_id'] as int?;
       }
 
-      await myDb.insert('Treasury', _withDistributedId({
-        'transaction_type': 'Encaissement',
-        'amount': refundedAmount,
-        'description': 'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
-        'reference_id': achatId,
-        'entity_type': 'Supplier',
-        'entity_id': supplierId,
-        'recorded_by': 'system',
-        'created_at': DateTime.now().toIso8601String(),
-        'old_balance': 0.0,
-        'new_balance': 0.0,
-        'caisse_name': 'الصندوق الرئيسي',
-        'payment_method': 'نقداً / Espèce',
-      }));
+      await myDb.insert(
+        'Treasury',
+        _withDistributedId({
+          'transaction_type': 'Encaissement',
+          'amount': refundedAmount,
+          'description':
+              'Ø§Ø³ØªØ±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ù…ÙˆØ±Ø¯ - ÙØ§ØªÙˆØ±Ø© Ù…Ø´ØªØ±ÙŠØ§Øª Ø±Ù‚Ù… $achatId',
+          'reference_id': achatId,
+          'entity_type': 'Supplier',
+          'entity_id': supplierId,
+          'recorded_by': 'system',
+          'created_at': DateTime.now().toIso8601String(),
+          'old_balance': 0.0,
+          'new_balance': 0.0,
+          'caisse_name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
+          'payment_method': 'Ù†Ù‚Ø¯Ø§Ù‹ / EspÃ¨ce',
+        }),
+      );
     }
 
     final newItems = await myDb.query(
@@ -7247,9 +7375,9 @@ class SqlDatabase {
         itemType: item['item_type'] as String,
         colorId: item['color_id'] as int?,
         locationId: 1,
-        // ╪º┘ä┘à╪│╪¬┘ê╪»╪╣ ╪º┘ä╪▒╪ª┘è╪│┘è ┘â╪º┘ü╪¬╪▒╪º╪╢┘è
+        // â•ªÂºâ”˜Ã¤â”˜Ã â•ªâ”‚â•ªÂ¬â”˜Ãªâ•ªÂ»â•ªâ•£ â•ªÂºâ”˜Ã¤â•ªâ–’â•ªÂªâ”˜Ã¨â•ªâ”‚â”˜Ã¨ â”˜Ã¢â•ªÂºâ”˜Ã¼â•ªÂ¬â•ªâ–’â•ªÂºâ•ªâ•¢â”˜Ã¨
         quantityChange: -qty,
-        // ╪«╪╡┘à ╪º┘ä┘â┘à┘è╪⌐
+        // â•ªÂ«â•ªâ•¡â”˜Ã  â•ªÂºâ”˜Ã¤â”˜Ã¢â”˜Ã â”˜Ã¨â•ªâŒ
         transactionType: 'Purchase Item Deleted',
         referenceId: item['achat_id'] as int,
       );
@@ -7271,15 +7399,18 @@ class SqlDatabase {
 
   Future<int> insertSupplier(Map<String, dynamic> data) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Suppliers', _withDistributedId({
-      'name': data['name'] ?? '',
-      'phone': data['phone'] ?? '',
-      'email': data['email'] ?? '',
-      'notes': data['notes'] ?? '',
-      'latitude': data['latitude'],
-      'longitude': data['longitude'],
-      'created_at': DateTime.now().toIso8601String(),
-    }));
+    var res = await myDb!.insert(
+      'Suppliers',
+      _withDistributedId({
+        'name': data['name'] ?? '',
+        'phone': data['phone'] ?? '',
+        'email': data['email'] ?? '',
+        'notes': data['notes'] ?? '',
+        'latitude': data['latitude'],
+        'longitude': data['longitude'],
+        'created_at': DateTime.now().toIso8601String(),
+      }),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -7321,13 +7452,16 @@ class SqlDatabase {
     Database? myDb = await db;
     final now = DateTime.now().toIso8601String();
 
-    var res = await myDb!.insert('WorkerTransactions', _withDistributedId({
-      'worker_uid': workerUid,
-      'amount': amount,
-      'transaction_type': transactionType,
-      'note': note,
-      'created_at': now,
-    }));
+    var res = await myDb!.insert(
+      'WorkerTransactions',
+      _withDistributedId({
+        'worker_uid': workerUid,
+        'amount': amount,
+        'transaction_type': transactionType,
+        'note': note,
+        'created_at': now,
+      }),
+    );
 
     try {
       final List<Map<String, dynamic>> workers = await myDb.query(
@@ -7342,18 +7476,20 @@ class SqlDatabase {
         final workerName = worker['name']?.toString() ?? '';
 
         String desc =
-            (transactionType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') +
+            (transactionType == 'advance'
+                ? 'Ø³Ù„ÙØ© Ù„Ù„Ø¹Ø§Ù…Ù„ '
+                : 'Ø£Ø¬Ø±Ø© Ù„Ù„Ø¹Ø§Ù…Ù„ ') +
             workerName;
         if (note.isNotEmpty) desc += ' - $note';
 
         await insertTreasury(
-          'Décaissement',
+          'DÃ©caissement',
           amount,
           desc,
           entityType: 'Worker',
           entityId: workerId,
           recordedBy: recordedBy ?? 'system',
-          caisseName: caisseName ?? 'الصندوق الرئيسي',
+          caisseName: caisseName ?? 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
           createdAt: now,
         );
       }
@@ -7432,7 +7568,7 @@ class SqlDatabase {
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
       where:
-          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+          "transaction_type = 'DÃ©caissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
       whereArgs: [workerId, oldAmount],
       limit: 1,
     );
@@ -7440,7 +7576,10 @@ class SqlDatabase {
     if (records.isNotEmpty) {
       final treasuryId = records.first['id'] as int;
       String desc =
-          (newType == 'advance' ? 'سلفة للعامل ' : 'أجرة للعامل ') + workerName;
+          (newType == 'advance'
+              ? 'Ø³Ù„ÙØ© Ù„Ù„Ø¹Ø§Ù…Ù„ '
+              : 'Ø£Ø¬Ø±Ø© Ù„Ù„Ø¹Ø§Ù…Ù„ ') +
+          workerName;
       if (newNote.isNotEmpty) desc += ' - $newNote';
 
       await myDb.update(
@@ -7470,7 +7609,7 @@ class SqlDatabase {
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
       where:
-          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+          "transaction_type = 'DÃ©caissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
       whereArgs: [workerId, amount],
       limit: 1,
     );
@@ -7516,12 +7655,24 @@ class SqlDatabase {
       if (check.isNotEmpty) return;
 
       final defaults = [
-        {'name': '╪ú╪¿┘è╪╢', 'hex_code': '#FFFFFF', 'type': 'Global'},
-        {'name': '╪¿┘å┘è', 'hex_code': '#795548', 'type': 'Global'},
-        {'name': '╪▒┘à╪º╪»┘è', 'hex_code': '#9E9E9E', 'type': 'Global'},
-        {'name': '╪ú╪│┘ê╪»', 'hex_code': '#000000', 'type': 'Global'},
-        {'name': '╪¿┘è╪¼', 'hex_code': '#F5F5DC', 'type': 'Global'},
-        {'name': 'خام', 'hex_code': '#E0E0E0', 'type': 'Global'},
+        {
+          'name': 'â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢',
+          'hex_code': '#FFFFFF',
+          'type': 'Global',
+        },
+        {'name': 'â•ªÂ¿â”˜Ã¥â”˜Ã¨', 'hex_code': '#795548', 'type': 'Global'},
+        {
+          'name': 'â•ªâ–’â”˜Ã â•ªÂºâ•ªÂ»â”˜Ã¨',
+          'hex_code': '#9E9E9E',
+          'type': 'Global',
+        },
+        {
+          'name': 'â•ªÃºâ•ªâ”‚â”˜Ãªâ•ªÂ»',
+          'hex_code': '#000000',
+          'type': 'Global',
+        },
+        {'name': 'â•ªÂ¿â”˜Ã¨â•ªÂ¼', 'hex_code': '#F5F5DC', 'type': 'Global'},
+        {'name': 'Ø®Ø§Ù…', 'hex_code': '#E0E0E0', 'type': 'Global'},
       ];
       for (var c in defaults) {
         await myDb.insert('Colors', c);
@@ -7538,40 +7689,40 @@ class SqlDatabase {
     // --- ONE-TIME COLOR MIGRATION ---
     var white = await myDb.query(
       'Colors',
-      where: "name COLLATE NOCASE IN ('white', '┘ê╪º┘è╪¬')",
+      where: "name COLLATE NOCASE IN ('white', 'â”˜Ãªâ•ªÂºâ”˜Ã¨â•ªÂ¬')",
     );
     if (white.isNotEmpty) {
       var abiad = await myDb.query(
         'Colors',
         where: "name = ?",
-        whereArgs: ["╪ú╪¿┘è╪╢"],
+        whereArgs: ["â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢"],
       );
       if (abiad.isNotEmpty) {
-        // Rename old "╪ú╪¿┘è╪╢" (with wrong prices) to "╪┤╪º┘à╪¿╪º┘å"
+        // Rename old "â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢" (with wrong prices) to "â•ªâ”¤â•ªÂºâ”˜Ã â•ªÂ¿â•ªÂºâ”˜Ã¥"
         await myDb.update(
           'Colors',
-          {'name': '╪┤╪º┘à╪¿╪º┘å', 'hex_code': '#F5E6C8'},
+          {'name': 'â•ªâ”¤â•ªÂºâ”˜Ã â•ªÂ¿â•ªÂºâ”˜Ã¥', 'hex_code': '#F5E6C8'},
           where: "id = ?",
           whereArgs: [abiad.first['id']],
         );
       }
-      // Rename English "White" (with correct prices) to "╪ú╪¿┘è╪╢"
+      // Rename English "White" (with correct prices) to "â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢"
       await myDb.update(
         'Colors',
-        {'name': '╪ú╪¿┘è╪╢', 'hex_code': '#FFFFFF'},
+        {'name': 'â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢', 'hex_code': '#FFFFFF'},
         where: "id = ?",
         whereArgs: [white.first['id']],
       );
 
       // Fix Desert Oak & Antique hex codes
       await myDb.rawUpdate(
-        "UPDATE Colors SET hex_code = '#CD853F' WHERE name LIKE '%╪»┘è╪▓╪▒%' OR name LIKE '%desert%'",
+        "UPDATE Colors SET hex_code = '#CD853F' WHERE name LIKE '%â•ªÂ»â”˜Ã¨â•ªâ–“â•ªâ–’%' OR name LIKE '%desert%'",
       );
       await myDb.rawUpdate(
-        "UPDATE Colors SET hex_code = '#6E5D4F' WHERE name LIKE '%╪º┘å╪¬┘è┘â%' OR name LIKE '%antique%'",
+        "UPDATE Colors SET hex_code = '#6E5D4F' WHERE name LIKE '%â•ªÂºâ”˜Ã¥â•ªÂ¬â”˜Ã¨â”˜Ã¢%' OR name LIKE '%antique%'",
       );
       await myDb.rawUpdate(
-        "UPDATE Colors SET hex_code = '#4E2A14' WHERE name LIKE '%fonce%' OR name LIKE '%foncé%' OR name LIKE '%dark%' OR name LIKE '%╪»╪º┘â┘å%'",
+        "UPDATE Colors SET hex_code = '#4E2A14' WHERE name LIKE '%fonce%' OR name LIKE '%foncÃ©%' OR name LIKE '%dark%' OR name LIKE '%â•ªÂ»â•ªÂºâ”˜Ã¢â”˜Ã¥%'",
       );
     }
     // ----------------------------------
@@ -7622,12 +7773,12 @@ class SqlDatabase {
       var checkAntique = await myDb.query(
         'Colors',
         where:
-            "name LIKE '%antique%' OR name LIKE '%انتيك%' OR name LIKE '%╪º┘å╪¬┘è┘â%'",
+            "name LIKE '%antique%' OR name LIKE '%Ø§Ù†ØªÙŠÙƒ%' OR name LIKE '%â•ªÂºâ”˜Ã¥â•ªÂ¬â”˜Ã¨â”˜Ã¢%'",
       );
       int antiqueId;
       if (checkAntique.isEmpty) {
         antiqueId = await myDb.insert('Colors', {
-          'name': 'antique - انتيك',
+          'name': 'antique - Ø§Ù†ØªÙŠÙƒ',
           'hex_code': '#6E5D4F',
           'type': 'Global',
           'is_active': 1,
@@ -7639,12 +7790,12 @@ class SqlDatabase {
       var checkDesert = await myDb.query(
         'Colors',
         where:
-            "name LIKE '%desert%' OR name LIKE '%Oak%' OR name LIKE '%ديزرت%'",
+            "name LIKE '%desert%' OR name LIKE '%Oak%' OR name LIKE '%Ø¯ÙŠØ²Ø±Øª%'",
       );
       int desertId;
       if (checkDesert.isEmpty) {
         desertId = await myDb.insert('Colors', {
-          'name': 'desert oak - ديزرت اوك',
+          'name': 'desert oak - Ø¯ÙŠØ²Ø±Øª Ø§ÙˆÙƒ',
           'hex_code': '#CD853F',
           'type': 'Global',
           'is_active': 1,
@@ -7655,12 +7806,12 @@ class SqlDatabase {
 
       var checkGris9007 = await myDb.query(
         'Colors',
-        where: "name LIKE '%9007%' OR name LIKE '%رمادي 9007%'",
+        where: "name LIKE '%9007%' OR name LIKE '%Ø±Ù…Ø§Ø¯ÙŠ 9007%'",
       );
       int gris9007Id;
       if (checkGris9007.isEmpty) {
         gris9007Id = await myDb.insert('Colors', {
-          'name': 'Gris 9007 / رمادي 9007',
+          'name': 'Gris 9007 / Ø±Ù…Ø§Ø¯ÙŠ 9007',
           'hex_code': '#9E9E9E',
           'type': 'Global',
           'is_active': 1,
@@ -8325,17 +8476,20 @@ class SqlDatabase {
     String? jobRole,
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Employees', _withDistributedId({
-      'uid': uid,
-      'email': email,
-      'name': name,
-      'permissions_json': permissionsJson,
-      'salary_type': salaryType,
-      'base_salary': baseSalary,
-      'phone': phone,
-      'address': address,
-      'job_role': jobRole,
-    }));
+    var res = await myDb!.insert(
+      'Employees',
+      _withDistributedId({
+        'uid': uid,
+        'email': email,
+        'name': name,
+        'permissions_json': permissionsJson,
+        'salary_type': salaryType,
+        'base_salary': baseSalary,
+        'phone': phone,
+        'address': address,
+        'job_role': jobRole,
+      }),
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -8682,12 +8836,12 @@ class SqlDatabase {
     // 3. Delete salary payout transactions and carryover transactions created around settlement or with matching createdAt
     if (createdAt.isNotEmpty) {
       await myDb.rawDelete(
-        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%تسوية%')",
+        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%ØªØ³ÙˆÙŠØ©%')",
         [...allKeys, createdAt, amount],
       );
     } else {
       await myDb.rawDelete(
-        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%تسوية%')",
+        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%ØªØ³ÙˆÙŠØ©%')",
         allKeys,
       );
     }
@@ -8711,21 +8865,24 @@ class SqlDatabase {
     String? createdAt,
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Treasury', _withDistributedId({
-      'transaction_type': transactionType,
-      'amount': amount,
-      'description': description,
-      'reference_id': referenceId,
-      'recorded_by': recordedBy ?? 'system',
-      'entity_type': entityType,
-      'entity_id': entityId,
-      'phone': phone,
-      'old_balance': oldBalance ?? 0.0,
-      'new_balance': newBalance ?? 0.0,
-      'caisse_name': caisseName ?? 'الصندوق الرئيسي',
-      'payment_method': paymentMethod ?? 'نقداً / Espèce',
-      'created_at': createdAt ?? DateTime.now().toIso8601String(),
-    }));
+    var res = await myDb!.insert(
+      'Treasury',
+      _withDistributedId({
+        'transaction_type': transactionType,
+        'amount': amount,
+        'description': description,
+        'reference_id': referenceId,
+        'recorded_by': recordedBy ?? 'system',
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'phone': phone,
+        'old_balance': oldBalance ?? 0.0,
+        'new_balance': newBalance ?? 0.0,
+        'caisse_name': caisseName ?? 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
+        'payment_method': paymentMethod ?? 'Ù†Ù‚Ø¯Ø§Ù‹ / EspÃ¨ce',
+        'created_at': createdAt ?? DateTime.now().toIso8601String(),
+      }),
+    );
 
     if (entityType == 'Client' &&
         transactionType == 'Encaissement' &&
@@ -8733,12 +8890,12 @@ class SqlDatabase {
         referenceId == null) {
       await allocateClientPayment(entityId, amount);
     } else if (entityType == 'Supplier' &&
-        transactionType == 'Décaissement' &&
+        transactionType == 'DÃ©caissement' &&
         entityId != null &&
         referenceId == null) {
       await allocateSupplierPayment(entityId, amount);
     } else if (entityType == 'Worker' &&
-        transactionType == 'Décaissement' &&
+        transactionType == 'DÃ©caissement' &&
         entityId != null &&
         referenceId == null) {
       final workerRows = await myDb.query(
@@ -8758,14 +8915,17 @@ class SqlDatabase {
           whereArgs: [txTime, amount],
         );
         if (existingTxs.isEmpty) {
-          await myDb.insert('WorkerTransactions', _withDistributedId({
-            'worker_uid': workerUid,
-            'amount': amount,
-            'transaction_type': 'advance',
-            'note': description,
-            'created_at': txTime,
-            'is_settled': 0,
-          }));
+          await myDb.insert(
+            'WorkerTransactions',
+            _withDistributedId({
+              'worker_uid': workerUid,
+              'amount': amount,
+              'transaction_type': 'advance',
+              'note': description,
+              'created_at': txTime,
+              'is_settled': 0,
+            }),
+          );
         }
       }
     }
@@ -8798,7 +8958,7 @@ class SqlDatabase {
           entityId != null) {
         await deallocateClientPayment(entityId, amount);
       } else if (entityType == 'Supplier' &&
-          type == 'Décaissement' &&
+          type == 'DÃ©caissement' &&
           entityId != null) {
         await deallocateSupplierPayment(entityId, amount);
       } else if (entityType == 'Worker' && entityId != null) {
@@ -8860,7 +9020,7 @@ class SqlDatabase {
           await deallocateClientPayment(entityId, -delta);
         }
       } else if (entityType == 'Supplier' &&
-          type == 'Décaissement' &&
+          type == 'DÃ©caissement' &&
           entityId != null) {
         if (delta > 0) {
           await allocateSupplierPayment(entityId, delta);
@@ -8873,12 +9033,12 @@ class SqlDatabase {
     return res;
   }
 
-  /// حساب رصيد الزبون = مجموع net_payable - advance_payment - مدفوعات الخزينة
+  /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ø²Ø¨ÙˆÙ† = Ù…Ø¬Ù…ÙˆØ¹ net_payable - advance_payment - Ù…Ø¯ÙÙˆØ¹Ø§Øª Ø§Ù„Ø®Ø²ÙŠÙ†Ø©
   Future<double> getClientBalance(int clientId) async {
     final myDb = await db;
     if (myDb == null) return 0.0;
 
-    // إجمالي الفواتير: net_payable (أو total إذا كان 0) مطروحاً منه advance_payment
+    // Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„ÙÙˆØ§ØªÙŠØ±: net_payable (Ø£Ùˆ total Ø¥Ø°Ø§ ÙƒØ§Ù† 0) Ù…Ø·Ø±ÙˆØ­Ø§Ù‹ Ù…Ù†Ù‡ advance_payment
     final commandesRes = await myDb.rawQuery(
       '''
       SELECT
@@ -8895,7 +9055,7 @@ class SqlDatabase {
     final totalAdvances =
         (commandesRes.first['advances'] as num?)?.toDouble() ?? 0.0;
 
-    // إجمالي ما دُفع من خلال معاملات الخزينة المرتبطة بهذا الزبون
+    // Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ù…Ø§ Ø¯ÙÙØ¹ Ù…Ù† Ø®Ù„Ø§Ù„ Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø®Ø²ÙŠÙ†Ø© Ø§Ù„Ù…Ø±ØªØ¨Ø·Ø© Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø²Ø¨ÙˆÙ†
     final treasuryRes = await myDb.rawQuery(
       "SELECT COALESCE(SUM(amount), 0) as total FROM Treasury WHERE entity_type = 'Client' AND entity_id = ? AND transaction_type = 'Encaissement'",
       [clientId],
@@ -8903,11 +9063,11 @@ class SqlDatabase {
     final totalTreasuryPaid =
         (treasuryRes.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // الرصيد = (فواتير) - (سلفة) - (مدفوعات خزينة). موجب = الزبون مدين للمحل
+    // Ø§Ù„Ø±ØµÙŠØ¯ = (ÙÙˆØ§ØªÙŠØ±) - (Ø³Ù„ÙØ©) - (Ù…Ø¯ÙÙˆØ¹Ø§Øª Ø®Ø²ÙŠÙ†Ø©). Ù…ÙˆØ¬Ø¨ = Ø§Ù„Ø²Ø¨ÙˆÙ† Ù…Ø¯ÙŠÙ† Ù„Ù„Ù…Ø­Ù„
     return totalInvoices - totalAdvances - totalTreasuryPaid;
   }
 
-  /// حساب رصيد المورد = SUM(total) - SUM(paid_amount) من Achats
+  /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ù…ÙˆØ±Ø¯ = SUM(total) - SUM(paid_amount) Ù…Ù† Achats
   Future<double> getSupplierBalance(int supplierId) async {
     final myDb = await db;
     if (myDb == null) return 0.0;
@@ -8918,30 +9078,30 @@ class SqlDatabase {
     );
     final bought = (res.first['bought'] as num?)?.toDouble() ?? 0.0;
     final paid = (res.first['paid'] as num?)?.toDouble() ?? 0.0;
-    // موجب = نحن مدينون للمورد
+    // Ù…ÙˆØ¬Ø¨ = Ù†Ø­Ù† Ù…Ø¯ÙŠÙ†ÙˆÙ† Ù„Ù„Ù…ÙˆØ±Ø¯
     return bought - paid;
   }
 
-  /// حساب رصيد العامل = مجموع المستحقات - مجموع ما دُفع له
+  /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ø¹Ø§Ù…Ù„ = Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ù…Ø³ØªØ­Ù‚Ø§Øª - Ù…Ø¬Ù…ÙˆØ¹ Ù…Ø§ Ø¯ÙÙØ¹ Ù„Ù‡
   Future<double> getWorkerBalance(int workerId) async {
     final myDb = await db;
     if (myDb == null) return 0.0;
 
-    // مجموع ما دُفع للعامل من الخزينة
+    // Ù…Ø¬Ù…ÙˆØ¹ Ù…Ø§ Ø¯ÙÙØ¹ Ù„Ù„Ø¹Ø§Ù…Ù„ Ù…Ù† Ø§Ù„Ø®Ø²ÙŠÙ†Ø©
     final paidRes = await myDb.rawQuery(
       "SELECT COALESCE(SUM(amount), 0) as total FROM Treasury WHERE entity_type = 'Worker' AND entity_id = ?",
       [workerId],
     );
     final totalPaid = (paidRes.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // مجموع المستحقات من WorkerTransactions (أجور)
+    // Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ù…Ø³ØªØ­Ù‚Ø§Øª Ù…Ù† WorkerTransactions (Ø£Ø¬ÙˆØ±)
     final earnedRes = await myDb.rawQuery(
       "SELECT COALESCE(SUM(amount), 0) as total FROM WorkerTransactions WHERE worker_uid = ? AND transaction_type = 'salary'",
       [workerId.toString()],
     );
     final totalEarned = (earnedRes.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // موجب = المحل مدين للعامل
+    // Ù…ÙˆØ¬Ø¨ = Ø§Ù„Ù…Ø­Ù„ Ù…Ø¯ÙŠÙ† Ù„Ù„Ø¹Ø§Ù…Ù„
     return totalEarned - totalPaid;
   }
 
@@ -8950,11 +9110,9 @@ class SqlDatabase {
     if (myDb == null) return;
     await myDb.transaction((txn) async {
       await _ensureSyncTombstoneInfrastructure(txn);
-      await txn.update(
-        '_sync_runtime_flags',
-        {'suppress_tombstones': 1},
-        where: 'id = 1',
-      );
+      await txn.update('_sync_runtime_flags', {
+        'suppress_tombstones': 1,
+      }, where: 'id = 1');
       final tablesToClear = [
         'Client',
         'Commandes',
@@ -8971,17 +9129,13 @@ class SqlDatabase {
           await txn.delete(table);
         } catch (_) {}
       }
-      await txn.update(
-        '_sync_runtime_flags',
-        {'suppress_tombstones': 0},
-        where: 'id = 1',
-      );
+      await txn.update('_sync_runtime_flags', {
+        'suppress_tombstones': 0,
+      }, where: 'id = 1');
     });
   }
 
-  Future<void> _ensureSyncTombstoneInfrastructure(
-    DatabaseExecutor db,
-  ) async {
+  Future<void> _ensureSyncTombstoneInfrastructure(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS SyncTombstones (
         table_name TEXT NOT NULL,
@@ -8996,11 +9150,10 @@ class SqlDatabase {
         suppress_tombstones INTEGER NOT NULL DEFAULT 0
       )
     ''');
-    await db.insert(
-      '_sync_runtime_flags',
-      {'id': 1, 'suppress_tombstones': 0},
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('_sync_runtime_flags', {
+      'id': 1,
+      'suppress_tombstones': 0,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS _sync_change_log (
         table_name TEXT NOT NULL,
@@ -9300,9 +9453,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return false;
     await _ensureSyncTombstoneInfrastructure(myDb);
-    final rows = await myDb.rawQuery(
-      'SELECT 1 FROM _sync_change_log LIMIT 1',
-    );
+    final rows = await myDb.rawQuery('SELECT 1 FROM _sync_change_log LIMIT 1');
     return rows.isNotEmpty;
   }
 
@@ -9314,7 +9465,7 @@ class SqlDatabase {
     if (!await isDatabaseHealthy()) {
       throw StateError(
         'database image malformed (code 11): '
-        'قاعدة SQLite المحلية تالفة، وتم إيقاف الرفع لحماية النسخة السحابية.',
+        'Ù‚Ø§Ø¹Ø¯Ø© SQLite Ø§Ù„Ù…Ø­Ù„ÙŠØ© ØªØ§Ù„ÙØ©ØŒ ÙˆØªÙ… Ø¥ÙŠÙ‚Ø§Ù Ø§Ù„Ø±ÙØ¹ Ù„Ø­Ù…Ø§ÙŠØ© Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„Ø³Ø­Ø§Ø¨ÙŠØ©.',
       );
     }
 
@@ -9346,7 +9497,7 @@ class SqlDatabase {
     }
     if (failedTables.isNotEmpty) {
       throw StateError(
-        'تعذر قراءة جداول قاعدة البيانات التالية للنسخ السحابي: '
+        'ØªØ¹Ø°Ø± Ù‚Ø±Ø§Ø¡Ø© Ø¬Ø¯Ø§ÙˆÙ„ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ§Ù„ÙŠØ© Ù„Ù„Ù†Ø³Ø® Ø§Ù„Ø³Ø­Ø§Ø¨ÙŠ: '
         '${failedTables.join(', ')}',
       );
     }
@@ -9450,7 +9601,7 @@ class SqlDatabase {
     ''');
     await _ensureShutterColorTables(db);
 
-    // ShutterSqmPrices — سعر المتر المربع للستار حسب نوع الشفرة واللون
+    // ShutterSqmPrices â€” Ø³Ø¹Ø± Ø§Ù„Ù…ØªØ± Ø§Ù„Ù…Ø±Ø¨Ø¹ Ù„Ù„Ø³ØªØ§Ø± Ø­Ø³Ø¨ Ù†ÙˆØ¹ Ø§Ù„Ø´ÙØ±Ø© ÙˆØ§Ù„Ù„ÙˆÙ†
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ShutterSqmPrices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9461,7 +9612,7 @@ class SqlDatabase {
       )
     ''');
 
-    // Kit Bundle tables — exact schema matching _onUpgrade (v38)
+    // Kit Bundle tables â€” exact schema matching _onUpgrade (v38)
     await db.execute('''
       CREATE TABLE IF NOT EXISTS KitBundles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9480,7 +9631,7 @@ class SqlDatabase {
         qty_mode TEXT NOT NULL DEFAULT 'fixed',
         dimension TEXT,
         base_qty REAL NOT NULL DEFAULT 1,
-        unit TEXT NOT NULL DEFAULT 'قطعة',
+        unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
         sort_order INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
       )
@@ -9526,6 +9677,7 @@ class SqlDatabase {
       "ALTER TABLE Commandes_details ADD COLUMN drawing_image_path TEXT",
       "ALTER TABLE Commandes_details ADD COLUMN window_type TEXT",
       "ALTER TABLE Commandes_details ADD COLUMN partitions_json TEXT",
+      "ALTER TABLE Commandes_details ADD COLUMN updated_at TEXT",
       "ALTER TABLE Client ADD COLUMN creation_platform TEXT NOT NULL DEFAULT 'unknown'",
       "ALTER TABLE Accessories ADD COLUMN material_type TEXT NOT NULL DEFAULT 'Aluminium'",
       "ALTER TABLE Accessories ADD COLUMN scope TEXT NOT NULL DEFAULT 'Global'",
@@ -9655,15 +9807,11 @@ class SqlDatabase {
             continue;
           }
         }
-        await db.insert(
-          'SyncTombstones',
-          {
-            'table_name': table,
-            'row_id': rowId,
-            'deleted_at': deletedAt,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await db.insert('SyncTombstones', {
+          'table_name': table,
+          'row_id': rowId,
+          'deleted_at': deletedAt,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     }
 
@@ -9776,9 +9924,9 @@ class SqlDatabase {
       ),
     ];
 
-    // الجداول التي تحتوي على بيانات المستخدم الحساسة.
-    // لن يتم مسح هذه الجداول إذا كان الـ payload يعيدها فارغة تماماً،
-    // للحماية من حذف البيانات المحلية بسبب استعادة قاعدة بيانات فارغة من السحابة.
+    // Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ø§Ù„ØªÙŠ ØªØ­ØªÙˆÙŠ Ø¹Ù„Ù‰ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø­Ø³Ø§Ø³Ø©.
+    // Ù„Ù† ÙŠØªÙ… Ù…Ø³Ø­ Ù‡Ø°Ù‡ Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ø¥Ø°Ø§ ÙƒØ§Ù† Ø§Ù„Ù€ payload ÙŠØ¹ÙŠØ¯Ù‡Ø§ ÙØ§Ø±ØºØ© ØªÙ…Ø§Ù…Ø§Ù‹ØŒ
+    // Ù„Ù„Ø­Ù…Ø§ÙŠØ© Ù…Ù† Ø­Ø°Ù Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø¨Ø³Ø¨Ø¨ Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ù‚Ø§Ø¹Ø¯Ø© Ø¨ÙŠØ§Ù†Ø§Øª ÙØ§Ø±ØºØ© Ù…Ù† Ø§Ù„Ø³Ø­Ø§Ø¨Ø©.
     const sensitiveTransactionalTables = {
       'Client',
       'Projects',
@@ -9804,11 +9952,9 @@ class SqlDatabase {
     await myDb.transaction((txn) async {
       await txn.execute('PRAGMA foreign_keys = OFF');
       await _ensureSyncSchema(txn);
-      await txn.update(
-        '_sync_runtime_flags',
-        {'suppress_tombstones': 1},
-        where: 'id = 1',
-      );
+      await txn.update('_sync_runtime_flags', {
+        'suppress_tombstones': 1,
+      }, where: 'id = 1');
       final tombstoneKeys = await _mergeAndReadSyncTombstones(
         txn,
         data['SyncTombstones'],
@@ -9820,19 +9966,19 @@ class SqlDatabase {
         }
         final rows = data[table] as List<dynamic>? ?? [];
 
-        // حماية: إذا كان الجدول حساساً والـ payload يعيده فارغاً،
-        // احتفظ بالبيانات المحلية ولا تمسحها.
+        // Ø­Ù…Ø§ÙŠØ©: Ø¥Ø°Ø§ ÙƒØ§Ù† Ø§Ù„Ø¬Ø¯ÙˆÙ„ Ø­Ø³Ø§Ø³Ø§Ù‹ ÙˆØ§Ù„Ù€ payload ÙŠØ¹ÙŠØ¯Ù‡ ÙØ§Ø±ØºØ§Ù‹ØŒ
+        // Ø§Ø­ØªÙØ¸ Ø¨Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠØ© ÙˆÙ„Ø§ ØªÙ…Ø³Ø­Ù‡Ø§.
         if (!replaceAllData &&
             sensitiveTransactionalTables.contains(table) &&
             rows.isEmpty) {
           print(
-            'importAllData: Skipping wipe of "$table" — payload is empty, keeping local data.',
+            'importAllData: Skipping wipe of "$table" â€” payload is empty, keeping local data.',
           );
           continue;
         }
 
-        // 🛡️ حماية الجداول الحساسة (الصندوق، معاملات العمال، الإسنادات، الطلبيات، الزبائن، إلخ):
-        // لا نمسح هذه الجداول محلياً بـ txn.delete(table) بل نعتمد التدميج الذكي (upsert) للحفاظ على المعاملات المحلية الجديدة
+        // ðŸ›¡ï¸ Ø­Ù…Ø§ÙŠØ© Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ø§Ù„Ø­Ø³Ø§Ø³Ø© (Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ØŒ Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø¹Ù…Ø§Ù„ØŒ Ø§Ù„Ø¥Ø³Ù†Ø§Ø¯Ø§ØªØŒ Ø§Ù„Ø·Ù„Ø¨ÙŠØ§ØªØŒ Ø§Ù„Ø²Ø¨Ø§Ø¦Ù†ØŒ Ø¥Ù„Ø®):
+        // Ù„Ø§ Ù†Ù…Ø³Ø­ Ù‡Ø°Ù‡ Ø§Ù„Ø¬Ø¯Ø§ÙˆÙ„ Ù…Ø­Ù„ÙŠØ§Ù‹ Ø¨Ù€ txn.delete(table) Ø¨Ù„ Ù†Ø¹ØªÙ…Ø¯ Ø§Ù„ØªØ¯Ù…ÙŠØ¬ Ø§Ù„Ø°ÙƒÙŠ (upsert) Ù„Ù„Ø­ÙØ§Ø¸ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø©
         final shouldReplaceTable =
             replaceAllData ||
             (!mergeAllData && !sensitiveTransactionalTables.contains(table));
@@ -9878,11 +10024,9 @@ class SqlDatabase {
         }
       }
       await _applySyncTombstones(txn, tombstoneKeys);
-      await txn.update(
-        '_sync_runtime_flags',
-        {'suppress_tombstones': 0},
-        where: 'id = 1',
-      );
+      await txn.update('_sync_runtime_flags', {
+        'suppress_tombstones': 0,
+      }, where: 'id = 1');
       await txn.execute('PRAGMA foreign_keys = ON');
     });
   }
@@ -9903,7 +10047,7 @@ class SqlDatabase {
     }
     if (catalogData.isEmpty) {
       throw Exception(
-        '┘ä╪º ╪¬┘ê╪¼╪» ╪¿┘è╪º┘å╪º╪¬ ┘â╪¬╪º┘ä┘ê╪¼ ╪╡╪º┘ä╪¡╪⌐ ┘ä┘ä╪º╪│╪¬┘è╪▒╪º╪».',
+        'â”˜Ã¤â•ªÂº â•ªÂ¬â”˜Ãªâ•ªÂ¼â•ªÂ» â•ªÂ¿â”˜Ã¨â•ªÂºâ”˜Ã¥â•ªÂºâ•ªÂ¬ â”˜Ã¢â•ªÂ¬â•ªÂºâ”˜Ã¤â”˜Ãªâ•ªÂ¼ â•ªâ•¡â•ªÂºâ”˜Ã¤â•ªÂ¡â•ªâŒ â”˜Ã¤â”˜Ã¤â•ªÂºâ•ªâ”‚â•ªÂ¬â”˜Ã¨â•ªâ–’â•ªÂºâ•ªÂ».',
       );
     }
     await importAllData(catalogData);
@@ -9914,7 +10058,7 @@ class SqlDatabase {
     if (kIsWeb) {
       return dbName;
     } else {
-      String dataPath = await _dbFactory.getDatabasesPath();
+      String dataPath = await _getWritableDatabasesPath();
       return join(dataPath, dbName);
     }
   }
@@ -9923,13 +10067,15 @@ class SqlDatabase {
     try {
       if (kIsWeb) {
         throw Exception(
-          'النسخ الاحتياطي المباشر لملفات قاعدة البيانات غير مدعوم على الويب. يرجى استخدام تصدير JSON.',
+          'Ø§Ù„Ù†Ø³Ø® Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠ Ø§Ù„Ù…Ø¨Ø§Ø´Ø± Ù„Ù…Ù„ÙØ§Øª Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙˆÙŠØ¨. ÙŠØ±Ø¬Ù‰ Ø§Ø³ØªØ®Ø¯Ø§Ù… ØªØµØ¯ÙŠØ± JSON.',
         );
       }
       final dbPath = await getDatabaseFilePath();
       final dbFile = File(dbPath);
       if (!await dbFile.exists()) {
-        throw Exception('ملف قاعدة البيانات غير موجود.');
+        throw Exception(
+          'Ù…Ù„Ù Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.',
+        );
       }
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/al_erp_backup.db');
@@ -9942,7 +10088,7 @@ class SqlDatabase {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'تم تصدير ملف قاعدة البيانات بنجاح!',
+              'ØªÙ… ØªØµØ¯ÙŠØ± Ù…Ù„Ù Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ù†Ø¬Ø§Ø­!',
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
@@ -9954,7 +10100,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'فشل التصدير: $e',
+            'ÙØ´Ù„ Ø§Ù„ØªØµØ¯ÙŠØ±: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -9984,7 +10130,9 @@ class SqlDatabase {
       String? targetFolderPath;
       if (Platform.isAndroid) {
         // 1. Try Documents folder
-        final documentsDir = Directory('/storage/emulated/0/Documents/ورشتي');
+        final documentsDir = Directory(
+          '/storage/emulated/0/Documents/ÙˆØ±Ø´ØªÙŠ',
+        );
         try {
           if (!await documentsDir.exists()) {
             await documentsDir.create(recursive: true);
@@ -9992,7 +10140,9 @@ class SqlDatabase {
           targetFolderPath = documentsDir.path;
         } catch (_) {
           // 2. Try Download folder as fallback
-          final downloadDir = Directory('/storage/emulated/0/Download/ورشتي');
+          final downloadDir = Directory(
+            '/storage/emulated/0/Download/ÙˆØ±Ø´ØªÙŠ',
+          );
           try {
             if (!await downloadDir.exists()) {
               await downloadDir.create(recursive: true);
@@ -10002,7 +10152,7 @@ class SqlDatabase {
             // 3. Try app external storage files directory as ultimate fallback
             final extDir = await getExternalStorageDirectory();
             if (extDir != null) {
-              final appCustomDir = Directory('${extDir.path}/ورشتي');
+              final appCustomDir = Directory('${extDir.path}/ÙˆØ±Ø´ØªÙŠ');
               if (!await appCustomDir.exists()) {
                 await appCustomDir.create(recursive: true);
               }
@@ -10013,7 +10163,7 @@ class SqlDatabase {
       } else {
         // iOS or Desktop
         final docDir = await getApplicationDocumentsDirectory();
-        final customDir = Directory('${docDir.path}/ورشتي');
+        final customDir = Directory('${docDir.path}/ÙˆØ±Ø´ØªÙŠ');
         if (!await customDir.exists()) {
           await customDir.create(recursive: true);
         }
@@ -10037,7 +10187,7 @@ class SqlDatabase {
     try {
       if (kIsWeb) {
         throw Exception(
-          'استيراد ملف قاعدة البيانات المباشر غير مدعوم على الويب. يرجى استخدام استيراد JSON.',
+          'Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ù…Ù„Ù Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø¨Ø§Ø´Ø± ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙˆÙŠØ¨. ÙŠØ±Ø¬Ù‰ Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ø³ØªÙŠØ±Ø§Ø¯ JSON.',
         );
       }
       final params = const OpenFileDialogParams();
@@ -10055,7 +10205,7 @@ class SqlDatabase {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
+              'ØªÙ… Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ù†Ø¬Ø§Ø­! ÙŠØ±Ø¬Ù‰ Ø¥Ø¹Ø§Ø¯Ø© ØªØ´ØºÙŠÙ„ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ù„ØªØ­Ø¯ÙŠØ« ÙƒØ§ÙØ© Ø§Ù„Ø´Ø§Ø´Ø§Øª.',
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.green,
@@ -10067,7 +10217,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'فشل الاستيراد: $e',
+            'ÙØ´Ù„ Ø§Ù„Ø§Ø³ØªÙŠØ±Ø§Ø¯: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -10091,7 +10241,7 @@ class SqlDatabase {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'جاري بدء التحميل على المتصفح...',
+              'Ø¬Ø§Ø±ÙŠ Ø¨Ø¯Ø¡ Ø§Ù„ØªØ­Ù…ÙŠÙ„ Ø¹Ù„Ù‰ Ø§Ù„Ù…ØªØµÙØ­...',
               style: TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.blue,
@@ -10114,7 +10264,7 @@ class SqlDatabase {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'تم تصدير نسخة JSON الاحتياطية بنجاح!',
+                'ØªÙ… ØªØµØ¯ÙŠØ± Ù†Ø³Ø®Ø© JSON Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠØ© Ø¨Ù†Ø¬Ø§Ø­!',
                 style: TextStyle(fontFamily: 'Cairo'),
               ),
               backgroundColor: Colors.green,
@@ -10127,7 +10277,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'فشل تصدير JSON: $e',
+            'ÙØ´Ù„ ØªØµØ¯ÙŠØ± JSON: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -10139,7 +10289,9 @@ class SqlDatabase {
   Future<void> importJsonBackup(BuildContext context) async {
     try {
       if (kIsWeb) {
-        throw Exception('الرجاء القيام بالاستيراد عبر تطبيق الموبايل.');
+        throw Exception(
+          'Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø§Ù„Ù‚ÙŠØ§Ù… Ø¨Ø§Ù„Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ø¹Ø¨Ø± ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ù…ÙˆØ¨Ø§ÙŠÙ„.',
+        );
       } else {
         final params = const OpenFileDialogParams();
         final filePath = await FlutterFileDialog.pickFile(params: params);
@@ -10152,14 +10304,16 @@ class SqlDatabase {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
-                  'تم استيراد نسخة JSON الاحتياطية بنجاح! يرجى إعادة تشغيل التطبيق.',
+                  'ØªÙ… Ø§Ø³ØªÙŠØ±Ø§Ø¯ Ù†Ø³Ø®Ø© JSON Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠØ© Ø¨Ù†Ø¬Ø§Ø­! ÙŠØ±Ø¬Ù‰ Ø¥Ø¹Ø§Ø¯Ø© ØªØ´ØºÙŠÙ„ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚.',
                   style: TextStyle(fontFamily: 'Cairo'),
                 ),
                 backgroundColor: Colors.green,
               ),
             );
           } else {
-            throw Exception('تنسيق ملف النسخة الاحتياطية غير صالح.');
+            throw Exception(
+              'ØªÙ†Ø³ÙŠÙ‚ Ù…Ù„Ù Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„Ø§Ø­ØªÙŠØ§Ø·ÙŠØ© ØºÙŠØ± ØµØ§Ù„Ø­.',
+            );
           }
         }
       }
@@ -10168,7 +10322,7 @@ class SqlDatabase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'فشل استيراد JSON: $e',
+            'ÙØ´Ù„ Ø§Ø³ØªÙŠØ±Ø§Ø¯ JSON: $e',
             style: const TextStyle(fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.red,
@@ -10191,7 +10345,7 @@ class SqlDatabase {
       );
       for (var c in commandes) {
         activities.add({
-          'title': 'طلبية #${c['id']} - حالة: ${c['status']}',
+          'title': 'Ø·Ù„Ø¨ÙŠØ© #${c['id']} - Ø­Ø§Ù„Ø©: ${c['status']}',
           'date': c['created_at'],
           'type': 'commande',
         });
@@ -10207,7 +10361,7 @@ class SqlDatabase {
       for (var a in achats) {
         activities.add({
           'title':
-              'فاتورة مشتريات #${a['invoice_number']} - ${a['supplier_name']}',
+              'ÙØ§ØªÙˆØ±Ø© Ù…Ø´ØªØ±ÙŠØ§Øª #${a['invoice_number']} - ${a['supplier_name']}',
           'date': a['created_at'],
           'type': 'achat',
         });
@@ -10222,7 +10376,7 @@ class SqlDatabase {
       );
       for (var c in clients) {
         activities.add({
-          'title': 'زبون جديد: ${c['firstname']} ${c['lastname']}',
+          'title': 'Ø²Ø¨ÙˆÙ† Ø¬Ø¯ÙŠØ¯: ${c['firstname']} ${c['lastname']}',
           'date': c['created_at'],
           'type': 'client',
         });
@@ -10243,9 +10397,9 @@ class SqlDatabase {
     if (database == null) {
       return {
         'cmdCount': '0',
-        'cmdTrend': '—',
+        'cmdTrend': 'â€”',
         'cliCount': '0',
-        'cliTrend': '—',
+        'cliTrend': 'â€”',
       };
     }
 
@@ -10268,7 +10422,7 @@ class SqlDatabase {
         }
       }
 
-      String cmdTrend = '—';
+      String cmdTrend = 'â€”';
       if (cmdRecent > 0) {
         cmdTrend = '+$cmdRecent (new)';
       }
@@ -10288,7 +10442,7 @@ class SqlDatabase {
         }
       }
 
-      String cliTrend = '—';
+      String cliTrend = 'â€”';
       if (cliRecent > 0) {
         cliTrend = '+$cliRecent (new_client)';
       }
@@ -10303,9 +10457,9 @@ class SqlDatabase {
       print("Error getting stats: $e");
       return {
         'cmdCount': '0',
-        'cmdTrend': '—',
+        'cmdTrend': 'â€”',
         'cliCount': '0',
-        'cliTrend': '—',
+        'cliTrend': 'â€”',
       };
     }
   }
@@ -10319,9 +10473,9 @@ class SqlDatabase {
     try {
       final rows = await database.query('Commandes');
 
-      // ── حسب الحالة ─────────────────────────────────────────────────────────
+      // â”€â”€ Ø­Ø³Ø¨ Ø§Ù„Ø­Ø§Ù„Ø© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       final Map<String, int> byStatus = {};
-      // ── آخر 6 أشهر ─────────────────────────────────────────────────────────
+      // â”€â”€ Ø¢Ø®Ø± 6 Ø£Ø´Ù‡Ø± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       final Map<String, int> monthly = {};
       final now = DateTime.now();
       for (int i = 5; i >= 0; i--) {
@@ -10331,11 +10485,11 @@ class SqlDatabase {
       }
 
       for (final row in rows) {
-        // حسب الحالة
+        // Ø­Ø³Ø¨ Ø§Ù„Ø­Ø§Ù„Ø©
         final status = (row['status'] as String?) ?? 'Unknown';
         byStatus[status] = (byStatus[status] ?? 0) + 1;
 
-        // حسب الشهر
+        // Ø­Ø³Ø¨ Ø§Ù„Ø´Ù‡Ø±
         if (row['created_at'] != null) {
           try {
             final dt = DateTime.parse(row['created_at'].toString());
@@ -10397,9 +10551,9 @@ class SqlDatabase {
       }
     } catch (_) {}
 
-    if (lames.isEmpty) lames = ['Lame Injectée', 'Lame Extrudée'];
+    if (lames.isEmpty) lames = ['Lame InjectÃ©e', 'Lame ExtrudÃ©e'];
     if (glissieres.isEmpty)
-      glissieres = ['Glissière 25', 'Glissière 120', 'Glissière 100'];
+      glissieres = ['GlissiÃ¨re 25', 'GlissiÃ¨re 120', 'GlissiÃ¨re 100'];
 
     return {'lames': lames, 'glissieres': glissieres};
   }
@@ -10424,11 +10578,16 @@ class SqlDatabase {
     }
 
     if (locations.isEmpty) {
-      await myDb.insert('Locations', _withDistributedId({
-        'name': '╪º┘ä┘à╪«╪▓┘å ╪º┘ä╪▒╪ª┘è╪│┘è',
-        'type': '┘à╪│╪¬┘ê╪»╪╣ ╪▒╪ª┘è╪│┘è',
-        'is_active': 1,
-      }));
+      await myDb.insert(
+        'Locations',
+        _withDistributedId({
+          'name':
+              'â•ªÂºâ”˜Ã¤â”˜Ã â•ªÂ«â•ªâ–“â”˜Ã¥ â•ªÂºâ”˜Ã¤â•ªâ–’â•ªÂªâ”˜Ã¨â•ªâ”‚â”˜Ã¨',
+          'type':
+              'â”˜Ã â•ªâ”‚â•ªÂ¬â”˜Ãªâ•ªÂ»â•ªâ•£ â•ªâ–’â•ªÂªâ”˜Ã¨â•ªâ”‚â”˜Ã¨',
+          'is_active': 1,
+        }),
+      );
       locations = await myDb.query('Locations', orderBy: 'id ASC');
       CloudSyncService().notifyChange();
     }
@@ -10436,20 +10595,23 @@ class SqlDatabase {
       final name = location['name']?.toString() ?? '';
       final type = location['type']?.toString() ?? '';
       final hasBrokenEncoding =
-          name.contains('Ø') ||
-          name.contains('Ù') ||
-          name.contains('â') ||
-          name.contains('╪') ||
-          name.contains('┘') ||
-          type.contains('Ø') ||
-          type.contains('Ù') ||
-          type.contains('â') ||
-          type.contains('╪') ||
-          type.contains('┘');
+          name.contains('Ã˜') ||
+          name.contains('Ã™') ||
+          name.contains('Ã¢') ||
+          name.contains('â•ª') ||
+          name.contains('â”˜') ||
+          type.contains('Ã˜') ||
+          type.contains('Ã™') ||
+          type.contains('Ã¢') ||
+          type.contains('â•ª') ||
+          type.contains('â”˜');
       if (hasBrokenEncoding) {
         await myDb.update(
           'Locations',
-          {'name': 'المستودع الرئيسي', 'type': 'مستودع رئيسي'},
+          {
+            'name': 'Ø§Ù„Ù…Ø³ØªÙˆØ¯Ø¹ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
+            'type': 'Ù…Ø³ØªÙˆØ¯Ø¹ Ø±Ø¦ÙŠØ³ÙŠ',
+          },
           where: 'id = ?',
           whereArgs: [location['id']],
         );
@@ -10478,15 +10640,18 @@ class SqlDatabase {
 
     int res;
     if (stock.isEmpty) {
-      res = await myDb.insert('CurrentStock', _withDistributedId({
-        'item_type': itemType,
-        'item_id': itemId,
-        'color_id': colorId,
-        'location_id': locationId,
-        'quantity': 0.0,
-        'min_qty': minQty,
-        'updated_at': DateTime.now().toIso8601String(),
-      }));
+      res = await myDb.insert(
+        'CurrentStock',
+        _withDistributedId({
+          'item_type': itemType,
+          'item_id': itemId,
+          'color_id': colorId,
+          'location_id': locationId,
+          'quantity': 0.0,
+          'min_qty': minQty,
+          'updated_at': DateTime.now().toIso8601String(),
+        }),
+      );
     } else {
       res = await myDb.update(
         'CurrentStock',
@@ -10513,16 +10678,19 @@ class SqlDatabase {
 
     await myDb.transaction((txn) async {
       // 1. Record the transaction
-      await txn.insert('InventoryTransactions', _withDistributedId({
-        'item_id': itemId,
-        'item_type': itemType,
-        'color_id': colorId,
-        'location_id': locationId,
-        'quantity': quantityChange,
-        'transaction_type': transactionType,
-        'reference_id': referenceId,
-        'created_at': DateTime.now().toIso8601String(),
-      }));
+      await txn.insert(
+        'InventoryTransactions',
+        _withDistributedId({
+          'item_id': itemId,
+          'item_type': itemType,
+          'color_id': colorId,
+          'location_id': locationId,
+          'quantity': quantityChange,
+          'transaction_type': transactionType,
+          'reference_id': referenceId,
+          'created_at': DateTime.now().toIso8601String(),
+        }),
+      );
 
       // 2. Update current stock
       final String where;
@@ -10554,14 +10722,17 @@ class SqlDatabase {
           whereArgs: whereArgs,
         );
       } else {
-        await txn.insert('CurrentStock', _withDistributedId({
-          'item_id': itemId,
-          'item_type': itemType,
-          'color_id': colorId,
-          'location_id': locationId,
-          'quantity': quantityChange,
-          'updated_at': DateTime.now().toIso8601String(),
-        }));
+        await txn.insert(
+          'CurrentStock',
+          _withDistributedId({
+            'item_id': itemId,
+            'item_type': itemType,
+            'color_id': colorId,
+            'location_id': locationId,
+            'quantity': quantityChange,
+            'updated_at': DateTime.now().toIso8601String(),
+          }),
+        );
       }
     });
     CloudSyncService().notifyChange();
@@ -10814,7 +10985,7 @@ class SqlDatabase {
       final itemId = row['item_id'] as int;
       final colorId = row['color_id'] as int?;
 
-      String itemName = '┘à╪¼┘ç┘ê┘ä';
+      String itemName = 'â”˜Ã â•ªÂ¼â”˜Ã§â”˜Ãªâ”˜Ã¤';
       String colorName = '';
 
       if (colorId != null) {
@@ -10982,7 +11153,11 @@ class SqlDatabase {
           return;
         }
       }
-      await database.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+      await database.insert(
+        table,
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     } catch (e) {
       print('Error in insertOrUpdateSafeLegacy: $e');
     }
@@ -11142,7 +11317,7 @@ class SqlDatabase {
 
   // ========================= KIT BUNDLES CRUD =========================
 
-  /// قراءة كل الـ Kits
+  /// Ù‚Ø±Ø§Ø¡Ø© ÙƒÙ„ Ø§Ù„Ù€ Kits
   Future<List<Map<String, dynamic>>> readKitBundles() async {
     final database = await db;
     if (database == null) return [];
@@ -11153,7 +11328,7 @@ class SqlDatabase {
     );
   }
 
-  /// إضافة Kit جديد
+  /// Ø¥Ø¶Ø§ÙØ© Kit Ø¬Ø¯ÙŠØ¯
   Future<int> insertKitBundle({
     required String name,
     String? description,
@@ -11169,7 +11344,7 @@ class SqlDatabase {
     });
   }
 
-  /// تعديل Kit
+  /// ØªØ¹Ø¯ÙŠÙ„ Kit
   Future<void> updateKitBundle(
     int id, {
     required String name,
@@ -11186,7 +11361,7 @@ class SqlDatabase {
     );
   }
 
-  /// حذف Kit (ناعم)
+  /// Ø­Ø°Ù Kit (Ù†Ø§Ø¹Ù…)
   Future<void> deleteKitBundle(int id) async {
     final database = await db;
     if (database == null) return;
@@ -11200,7 +11375,7 @@ class SqlDatabase {
 
   // ========================= KIT BUNDLE ITEMS CRUD =========================
 
-  /// قراءة مركبات Kit محدد
+  /// Ù‚Ø±Ø§Ø¡Ø© Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø­Ø¯Ø¯
   Future<List<Map<String, dynamic>>> readKitBundleItems(int kitId) async {
     final database = await db;
     if (database == null) return [];
@@ -11212,14 +11387,14 @@ class SqlDatabase {
     );
   }
 
-  /// إضافة مركب لـ Kit
+  /// Ø¥Ø¶Ø§ÙØ© Ù…Ø±ÙƒØ¨ Ù„Ù€ Kit
   Future<int> insertKitBundleItem({
     required int kitId,
     required String componentType,
     required String qtyMode, // 'fixed' | 'by_range' | 'by_variant'
     String? dimension, // 'leaf_height' | 'leaf_width' | null
     double baseQty = 1,
-    String unit = 'قطعة',
+    String unit = 'Ù‚Ø·Ø¹Ø©',
     int sortOrder = 0,
   }) async {
     final database = await db;
@@ -11235,7 +11410,7 @@ class SqlDatabase {
     });
   }
 
-  /// تعديل مركب Kit
+  /// ØªØ¹Ø¯ÙŠÙ„ Ù…Ø±ÙƒØ¨ Kit
   Future<void> updateKitBundleItem(
     int id, {
     required String componentType,
@@ -11262,17 +11437,17 @@ class SqlDatabase {
     );
   }
 
-  /// حذف مركب Kit
+  /// Ø­Ø°Ù Ù…Ø±ÙƒØ¨ Kit
   Future<void> deleteKitBundleItem(int id) async {
     final database = await db;
     if (database == null) return;
     await database.delete('KitBundleItems', where: 'id = ?', whereArgs: [id]);
-    // تُحذف النطاقات والمتغيرات تلقائياً بسبب ON DELETE CASCADE
+    // ØªÙØ­Ø°Ù Ø§Ù„Ù†Ø·Ø§Ù‚Ø§Øª ÙˆØ§Ù„Ù…ØªØºÙŠØ±Ø§Øª ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ Ø¨Ø³Ø¨Ø¨ ON DELETE CASCADE
   }
 
   // ========================= KIT ITEM RANGES CRUD =========================
 
-  /// قراءة نطاقات مركب محدد
+  /// Ù‚Ø±Ø§Ø¡Ø© Ù†Ø·Ø§Ù‚Ø§Øª Ù…Ø±ÙƒØ¨ Ù…Ø­Ø¯Ø¯
   Future<List<Map<String, dynamic>>> readKitItemRanges(int itemId) async {
     final database = await db;
     if (database == null) return [];
@@ -11284,7 +11459,7 @@ class SqlDatabase {
     );
   }
 
-  /// إضافة نطاق
+  /// Ø¥Ø¶Ø§ÙØ© Ù†Ø·Ø§Ù‚
   Future<int> insertKitItemRange({
     required int itemId,
     required double minMm,
@@ -11305,7 +11480,7 @@ class SqlDatabase {
     });
   }
 
-  /// تعديل نطاق
+  /// ØªØ¹Ø¯ÙŠÙ„ Ù†Ø·Ø§Ù‚
   Future<void> updateKitItemRange(
     int id, {
     required double minMm,
@@ -11330,14 +11505,14 @@ class SqlDatabase {
     );
   }
 
-  /// حذف نطاق
+  /// Ø­Ø°Ù Ù†Ø·Ø§Ù‚
   Future<void> deleteKitItemRange(int id) async {
     final database = await db;
     if (database == null) return;
     await database.delete('KitItemRanges', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// البحث عن النطاق المناسب لقياس معين
+  /// Ø§Ù„Ø¨Ø­Ø« Ø¹Ù† Ø§Ù„Ù†Ø·Ø§Ù‚ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨ Ù„Ù‚ÙŠØ§Ø³ Ù…Ø¹ÙŠÙ†
   Future<Map<String, dynamic>?> findKitItemRangeForDimension(
     int itemId,
     double valueMm,
@@ -11355,7 +11530,7 @@ class SqlDatabase {
 
   // ========================= KIT ITEM VARIANTS CRUD =========================
 
-  /// قراءة متغيرات مركب محدد
+  /// Ù‚Ø±Ø§Ø¡Ø© Ù…ØªØºÙŠØ±Ø§Øª Ù…Ø±ÙƒØ¨ Ù…Ø­Ø¯Ø¯
   Future<List<Map<String, dynamic>>> readKitItemVariants(int itemId) async {
     final database = await db;
     if (database == null) return [];
@@ -11366,7 +11541,7 @@ class SqlDatabase {
     );
   }
 
-  /// إضافة متغير (simple/double ouvrant)
+  /// Ø¥Ø¶Ø§ÙØ© Ù…ØªØºÙŠØ± (simple/double ouvrant)
   Future<int> insertKitItemVariant({
     required int itemId,
     required String ouvrantType, // 'simple' | 'double'
@@ -11385,7 +11560,7 @@ class SqlDatabase {
     });
   }
 
-  /// تعديل متغير
+  /// ØªØ¹Ø¯ÙŠÙ„ Ù…ØªØºÙŠØ±
   Future<void> updateKitItemVariant(
     int id, {
     required String ouvrantType,
@@ -11408,14 +11583,14 @@ class SqlDatabase {
     );
   }
 
-  /// حذف متغير
+  /// Ø­Ø°Ù Ù…ØªØºÙŠØ±
   Future<void> deleteKitItemVariant(int id) async {
     final database = await db;
     if (database == null) return;
     await database.delete('KitItemVariants', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// قراءة كل مركبات Kit مع نطاقاتها ومتغيراتها — للحساب في BOM
+  /// Ù‚Ø±Ø§Ø¡Ø© ÙƒÙ„ Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø¹ Ù†Ø·Ø§Ù‚Ø§ØªÙ‡Ø§ ÙˆÙ…ØªØºÙŠØ±Ø§ØªÙ‡Ø§ â€” Ù„Ù„Ø­Ø³Ø§Ø¨ ÙÙŠ BOM
   Future<List<Map<String, dynamic>>> readKitBundleItemsWithDetails(
     int kitId,
   ) async {
@@ -11494,7 +11669,7 @@ class SqlDatabase {
     return res;
   }
 
-  // ── Caisson Tunnel Prices ─────────────────────────────────────────────────
+  // â”€â”€ Caisson Tunnel Prices â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<List<Map<String, dynamic>>> getCaissonTunnelPrices() async {
     final myDb = await db;
@@ -11552,7 +11727,7 @@ class SqlDatabase {
     return res;
   }
 
-  // ── Series Table Config ───────────────────────────────────────────────────
+  // â”€â”€ Series Table Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<Map<String, dynamic>?> getSeriesTableConfig(int seriesId) async {
     final myDb = await db;

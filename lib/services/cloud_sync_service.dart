@@ -47,6 +47,10 @@ class CloudSyncService {
   static const int _maxFirestoreDocumentBytes = 900000;
   static const int _largeFieldInlineBytes = 180000;
   static const int _largeFieldPartCharacters = 180000;
+  // Firestore sends a query result through Android's platform channel in one
+  // message. Downloading every chunk in one query can exceed the Android heap
+  // before Dart receives it, even though every individual chunk is small.
+  static const int _chunkDownloadPageSize = 8;
   static const String _largeFieldMarkerKey = '__cloudLargeField';
   static const String _largeFieldPartKind = 'large_field_part';
   static const Duration _chunkUploadTimeout = Duration(seconds: 60);
@@ -513,14 +517,51 @@ class CloudSyncService {
     ];
   }
 
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _fetchChunkPages(
+    CollectionReference<Map<String, dynamic>> chunkRef, {
+    Duration timeout = const Duration(seconds: 25),
+  }) async {
+    final chunks = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    DocumentSnapshot<Map<String, dynamic>>? lastDocument;
+
+    while (true) {
+      Query<Map<String, dynamic>> query = chunkRef
+          .orderBy(FieldPath.documentId)
+          .limit(_chunkDownloadPageSize);
+      if (lastDocument != null) {
+        query = query.startAfterDocument(lastDocument);
+      }
+
+      QuerySnapshot<Map<String, dynamic>> page;
+      try {
+        page = await query
+            .get(GetOptions(source: Source.server))
+            .timeout(timeout);
+      } catch (_) {
+        page = await query.get().timeout(timeout);
+      }
+
+      if (page.docs.isEmpty) break;
+      chunks.addAll(page.docs);
+      lastDocument = page.docs.last;
+      if (page.docs.length < _chunkDownloadPageSize) break;
+
+      // Let the UI and the platform channel release the previous page before
+      // requesting the next one on memory-constrained phones.
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    return chunks;
+  }
+
   Map<String, List<dynamic>> _assembleChunkedData(
-    QuerySnapshot<Map<String, dynamic>> snapshot, {
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> chunkDocs, {
     String? uploadId,
   }) {
     final largeFieldParts = <String, Map<int, String>>{};
     final normalChunks = <MapEntry<String, Map<String, dynamic>>>[];
 
-    for (final chunkDoc in snapshot.docs) {
+    for (final chunkDoc in chunkDocs) {
       final chunkData = chunkDoc.data();
       if (uploadId != null &&
           uploadId.isNotEmpty &&
@@ -696,7 +737,8 @@ class CloudSyncService {
           final storedWorkshopId = prefs.getString('workshop_code') ?? '';
           final role = rawRole;
           final isManagerDoc = role == 'manager' || wId == user.uid;
-          final isWorkshopMember = !isManagerDoc && (role == 'worker' || role == 'co_manager');
+          final isWorkshopMember =
+              !isManagerDoc && (role == 'worker' || role == 'co_manager');
 
           if (isWorkshopMember && (wId.isEmpty || wId == user.uid)) {
             // A worker must never upload to a personal workshop path. Use a
@@ -1138,10 +1180,10 @@ class CloudSyncService {
 
     _beginRestore();
     try {
-      final chunks = await document.reference
-          .collection('chunks')
-          .get(GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 30));
+      final chunks = await _fetchChunkPages(
+        document.reference.collection('chunks'),
+        timeout: const Duration(seconds: 30),
+      );
       final assembledData = _assembleChunkedData(chunks, uploadId: uploadId);
       final expectedCounts = payload['tableRowCounts'];
       if (expectedCounts is Map) {
@@ -1344,9 +1386,7 @@ class CloudSyncService {
     }
   }
 
-  Future<void> _applyGlobalCatalogUpdate(
-    Map<String, dynamic> payload,
-  ) async {
+  Future<void> _applyGlobalCatalogUpdate(Map<String, dynamic> payload) async {
     if (payload['status']?.toString() != 'completed') return;
     if (_isRestoring) {
       // The listener's first event can arrive while the yellow start screen is
@@ -1793,7 +1833,9 @@ class CloudSyncService {
             if (rawQueue is! Map || !rawQueue.containsKey(uploadId)) return;
             final queue = Map<String, dynamic>.from(rawQueue);
             queue.remove(uploadId);
-            transaction.set(latestDocRef, {'syncUploadQueue': queue}, SetOptions(merge: true));
+            transaction.set(latestDocRef, {
+              'syncUploadQueue': queue,
+            }, SetOptions(merge: true));
           })
           .timeout(const Duration(seconds: 10));
     } catch (error) {
@@ -2352,16 +2394,16 @@ class CloudSyncService {
   /// pull-to-refresh and the top refresh button can all request a recovery;
   /// allowing them to import SQLite tables concurrently can terminate the app
   /// on some devices.  Later callers wait for the active recovery instead.
-  Future<void> fullRecoverySync() {
+  Future<void> fullRecoverySync({bool initialRestore = false}) {
     final activeRecovery = _activeFullRecovery;
     if (activeRecovery != null) return activeRecovery;
 
-    final task = _runFullRecoverySync();
+    final task = _runFullRecoverySync(initialRestore: initialRestore);
     _activeFullRecovery = task;
     return task;
   }
 
-  Future<void> _runFullRecoverySync() async {
+  Future<void> _runFullRecoverySync({bool initialRestore = false}) async {
     _beginRestore();
     try {
       await init();
@@ -2370,18 +2412,20 @@ class CloudSyncService {
       // published as a verified full snapshot, then restored from that server
       // snapshot. This preserves phone-only records during a manual refresh.
       var hasPendingLocalChanges = false;
-      try {
-        hasPendingLocalChanges =
-            await _publishPendingTransactionsBeforeCloudRestore();
-      } catch (error) {
-        _sendSyncFeedback(
-          CloudSyncFeedbackType.uploadFailed,
-          'تم إيقاف التحديث لحماية البيانات المحلية غير المرفوعة.',
-          details:
-              '${_describeCloudWriteFailure(error)}\n'
-              'لن يتم تنزيل أي نسخة سحابية قبل تأكيد رفع بيانات هذا الجهاز.',
-        );
-        rethrow;
+      if (!initialRestore) {
+        try {
+          hasPendingLocalChanges =
+              await _publishPendingTransactionsBeforeCloudRestore();
+        } catch (error) {
+          _sendSyncFeedback(
+            CloudSyncFeedbackType.uploadFailed,
+            'تم إيقاف التحديث لحماية البيانات المحلية غير المرفوعة.',
+            details:
+                '${_describeCloudWriteFailure(error)}\n'
+                'لن يتم تنزيل أي نسخة سحابية قبل تأكيد رفع بيانات هذا الجهاز.',
+          );
+          rethrow;
+        }
       }
 
       // A remaining pending marker means that a new save happened while the
@@ -2428,11 +2472,11 @@ class CloudSyncService {
 
       // 3. استرجاع البيانات القديمة (الزبائن والطلبيات) فقط كإجراء احتياطي عند عدم نجاح الاسترجاع الرئيسي
       if (!restoreSuccess) {
-        await _legacySync();
-        // Legacy collections are only a migration fallback.  They must not
-        // make a failed current backup look like a successful manual refresh:
-        // otherwise the UI says “updated” while it still shows old data.
-        if (restoreError != null) {
+        final restoredFromLegacy = await _legacySync();
+        if (restoredFromLegacy) {
+          restoreSuccess = true;
+          lastRestoreSummary = 'تمت استعادة البيانات من النسخة السحابية السابقة.';
+        } else if (restoreError != null) {
           Error.throwWithStackTrace(restoreError, restoreStackTrace!);
         }
       }
@@ -2443,7 +2487,8 @@ class CloudSyncService {
     }
   }
 
-  Future<void> _legacySync() async {
+  Future<bool> _legacySync() async {
+    var restoredBusinessData = false;
     try {
       final user = _auth.currentUser;
       if (user != null) {
@@ -2453,6 +2498,7 @@ class CloudSyncService {
         final userDoc = _firestore.collection('users').doc(targetUid);
 
         var clientsSnapshot = await userDoc.collection('Client').get();
+        restoredBusinessData = restoredBusinessData || clientsSnapshot.docs.isNotEmpty;
         for (var doc in clientsSnapshot.docs) {
           try {
             final data = doc.data();
@@ -2463,6 +2509,7 @@ class CloudSyncService {
         }
 
         var cmdsSnapshot = await userDoc.collection('Commandes').get();
+        restoredBusinessData = restoredBusinessData || cmdsSnapshot.docs.isNotEmpty;
         for (var doc in cmdsSnapshot.docs) {
           try {
             final data = doc.data();
@@ -2583,6 +2630,7 @@ class CloudSyncService {
     } catch (e) {
       print('Legacy sync failed: $e');
     }
+    return restoredBusinessData;
   }
 
   Future<void> _importWorkshopSnapshot(
@@ -2653,17 +2701,18 @@ class CloudSyncService {
     if (activeRestore != null) return activeRestore;
 
     late final Future<void> task;
-    task = _runRestoreFromCloud(
-      preserveLocalChanges: preserveLocalChanges,
-      keepPendingChanges: keepPendingChanges,
-      publishPendingChangesFirst: publishPendingChangesFirst,
-    ).whenComplete(() {
-      // Failures before the SQLite import (for example a missing backup or a
-      // permission error) must also release the serialization slot.
-      if (identical(_activeRestore, task)) {
-        _activeRestore = null;
-      }
-    });
+    task =
+        _runRestoreFromCloud(
+          preserveLocalChanges: preserveLocalChanges,
+          keepPendingChanges: keepPendingChanges,
+          publishPendingChangesFirst: publishPendingChangesFirst,
+        ).whenComplete(() {
+          // Failures before the SQLite import (for example a missing backup or a
+          // permission error) must also release the serialization slot.
+          if (identical(_activeRestore, task)) {
+            _activeRestore = null;
+          }
+        });
     _activeRestore = task;
     return task;
   }
@@ -2708,9 +2757,7 @@ class CloudSyncService {
           .get(GetOptions(source: Source.server))
           .timeout(const Duration(seconds: 15));
     } catch (_) {
-      doc = await latestDocRef
-          .get()
-          .timeout(const Duration(seconds: 15));
+      doc = await latestDocRef.get().timeout(const Duration(seconds: 15));
     }
     print("--- CloudSyncService: backups/latest fetched! ---");
 
@@ -2744,8 +2791,8 @@ class CloudSyncService {
         // The active pointer selects an immutable, already-completed snapshot.
         // Headers created by older app versions have no pointer, so their
         // `latest/chunks` location remains a backwards-compatible fallback.
-        CollectionReference<Map<String, dynamic>> sourceChunkRef =
-            latestDocRef.collection('chunks');
+        CollectionReference<Map<String, dynamic>> sourceChunkRef = latestDocRef
+            .collection('chunks');
         if (activeSnapshotId.isNotEmpty) {
           final activeSnapshotRef = latestDocRef.parent.doc(activeSnapshotId);
           DocumentSnapshot<Map<String, dynamic>> activeSnapshot;
@@ -2754,9 +2801,9 @@ class CloudSyncService {
                 .get(GetOptions(source: Source.server))
                 .timeout(const Duration(seconds: 15));
           } catch (_) {
-            activeSnapshot = await activeSnapshotRef
-                .get()
-                .timeout(const Duration(seconds: 15));
+            activeSnapshot = await activeSnapshotRef.get().timeout(
+              const Duration(seconds: 15),
+            );
           }
           final activeData = activeSnapshot.data();
           if (!activeSnapshot.exists ||
@@ -2773,24 +2820,12 @@ class CloudSyncService {
 
         // النظام الجديد: جلب الأجزاء (Chunks) وتجميعها
         print("--- CloudSyncService: Fetching workshop backup chunks... ---");
-        QuerySnapshot<Map<String, dynamic>> snapshot;
-        try {
-          snapshot = await sourceChunkRef
-              .get(GetOptions(source: Source.server))
-              .timeout(const Duration(seconds: 25));
-        } catch (_) {
-          snapshot = await sourceChunkRef
-              .get()
-              .timeout(const Duration(seconds: 25));
-        }
+        final chunks = await _fetchChunkPages(sourceChunkRef);
         print(
-          "--- CloudSyncService: backup chunks fetched (${snapshot.docs.length}) ---",
+          "--- CloudSyncService: backup chunks fetched (${chunks.length}) ---",
         );
         final uploadId = payload['uploadId']?.toString();
-        final assembledData = _assembleChunkedData(
-          snapshot,
-          uploadId: uploadId,
-        );
+        final assembledData = _assembleChunkedData(chunks, uploadId: uploadId);
         final publishedTables = payload['tables'];
         if (publishedTables is List) {
           for (final table in publishedTables) {
@@ -3199,11 +3234,12 @@ class CloudSyncService {
         // New catalogues are read from the immutable version selected by the
         // completed `latest` pointer. Legacy uploads continue to use the old
         // chunks location until a manager publishes the next catalogue.
-        CollectionReference<Map<String, dynamic>> sourceChunkRef =
-            catalogRef.collection('chunks');
+        CollectionReference<Map<String, dynamic>> sourceChunkRef = catalogRef
+            .collection('chunks');
         if (activeCatalogVersionId.isNotEmpty) {
-          final activeCatalogVersionRef =
-              catalogRef.parent.doc(activeCatalogVersionId);
+          final activeCatalogVersionRef = catalogRef.parent.doc(
+            activeCatalogVersionId,
+          );
           final activeCatalogVersion = await activeCatalogVersionRef
               .get(GetOptions(source: Source.server))
               .timeout(const Duration(seconds: 15));
@@ -3221,18 +3257,17 @@ class CloudSyncService {
         }
 
         print("--- CloudSyncService: Fetching catalog chunks... ---");
-        var snapshot = await sourceChunkRef
-            .get(GetOptions(source: Source.server))
-            .timeout(const Duration(seconds: 30));
-        print(
-          "--- CloudSyncService: chunks fetched (${snapshot.docs.length}) ---",
+        final chunks = await _fetchChunkPages(
+          sourceChunkRef,
+          timeout: const Duration(seconds: 30),
         );
-        if (snapshot.docs.isEmpty) {
+        print("--- CloudSyncService: chunks fetched (${chunks.length}) ---");
+        if (chunks.isEmpty) {
           throw Exception('الكتالوج على السيرفر فارغ.');
         }
 
         final assembledData = _assembleChunkedData(
-          snapshot,
+          chunks,
           uploadId: payload['uploadId']?.toString(),
         );
 

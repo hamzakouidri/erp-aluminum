@@ -62,6 +62,9 @@ void main() async {
       await windowManager.ensureInitialized();
       final WindowOptions windowOptions = Platform.isWindows
           ? const WindowOptions(
+              size: Size(1280, 800),
+              minimumSize: Size(900, 600),
+              center: true,
               backgroundColor: Colors.transparent,
               skipTaskbar: false,
               titleBarStyle: TitleBarStyle.hidden,
@@ -75,6 +78,9 @@ void main() async {
         await windowManager.show();
         await windowManager.focus();
       });
+      // Safety guarantee: Ensure window is shown immediately on launch
+      await windowManager.show();
+      await windowManager.focus();
     }
   } catch (e) {
     debugPrint('Window Manager init error: $e');

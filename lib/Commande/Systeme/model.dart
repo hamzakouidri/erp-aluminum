@@ -932,9 +932,11 @@ class WindowSnapshot {
   final double width;
   final double height;
   final bool hasBottomFrame;
+  final Set<String> removedShutterSides;
   final bool hasFramePlintheBottom;
   final List<WindowZone> zones;
   final Map<String, MullionProfileType> mullionProfiles;
+  final Map<String, bool> groovedMullionCavityOnPositiveSide;
   final Map<String, Map<String, dynamic>> mullionSectionOverrides;
   final Map<String, dynamic>? selectedDbColor;
   final Map<String, dynamic> componentOverrides;
@@ -961,9 +963,11 @@ class WindowSnapshot {
     this.width,
     this.height,
     this.hasBottomFrame,
+    this.removedShutterSides,
     this.hasFramePlintheBottom,
     this.zones,
     this.mullionProfiles,
+    this.groovedMullionCavityOnPositiveSide,
     this.mullionSectionOverrides,
     this.selectedDbColor,
     this.componentOverrides,
@@ -1616,6 +1620,21 @@ class WindowModel extends ChangeNotifier {
     return mullionProfiles[key] == MullionProfileType.flat;
   }
 
+  bool isGroovedFrameMullionAt(bool isHorizontal, double position) =>
+      mullionProfiles[_mullionKey(isHorizontal, position)] ==
+      MullionProfileType.grooved;
+
+  /// For a grooved frame, false means the cavity faces left/top and true
+  /// means it faces right/bottom.
+  bool isGroovedMullionCavityOnPositiveSide(
+    bool isHorizontal,
+    double position,
+  ) =>
+      groovedMullionCavityOnPositiveSide[
+        _mullionKey(isHorizontal, position)
+      ] ??
+      false;
+
   double _sectionVisibleWidth(Map<String, dynamic>? section) {
     if (section == null) return 0.0;
     for (final field in const ['visible_width', 'thickness']) {
@@ -1900,9 +1919,13 @@ class WindowModel extends ChangeNotifier {
 
   set selectedDbColor(Map<String, dynamic>? colorData) {
     _saveSnapshot();
-    _selectedDbColor = colorData;
+    _selectedDbColor = colorData == null
+        ? null
+        : Map<String, dynamic>.from(colorData);
     for (var z in zones) {
-      z.selectedDbColor = colorData;
+      z.selectedDbColor = _selectedDbColor == null
+          ? null
+          : Map<String, dynamic>.from(_selectedDbColor!);
     }
     notifyListeners();
   }
@@ -1930,6 +1953,8 @@ class WindowModel extends ChangeNotifier {
 
   List<WindowZone> zones = [];
   Map<String, MullionProfileType> mullionProfiles = {};
+  // false = left/top side, true = right/bottom side.
+  Map<String, bool> groovedMullionCavityOnPositiveSide = {};
   Map<String, Map<String, dynamic>> mullionSectionOverrides = {};
   String? primaryMullionAxis;
   SelectionInfo selection = SelectionInfo.none;
@@ -1980,12 +2005,14 @@ class WindowModel extends ChangeNotifier {
             ?.toString()
             .toLowerCase()
             .trim();
-    availableColors = await db.getColorsForProfile(profileId);
+    availableColors = (await db.getColorsForProfile(
+      profileId,
+    )).map((color) => Map<String, dynamic>.from(color)).toList();
 
     Map<String, dynamic>? selectedColor;
     if (previousColorId != null) {
       for (final color in availableColors) {
-        if (color['id'] == previousColorId) {
+        if (color['id']?.toString() == previousColorId.toString()) {
           selectedColor = color;
           break;
         }
@@ -2015,9 +2042,13 @@ class WindowModel extends ChangeNotifier {
     // order in which the colours happen to be stored in the database.
     selectedColor ??= _defaultFrameColor();
 
-    _selectedDbColor = selectedColor;
+    _selectedDbColor = selectedColor == null
+        ? null
+        : Map<String, dynamic>.from(selectedColor);
     for (final zone in zones) {
-      zone.selectedDbColor = selectedColor;
+      zone.selectedDbColor = _selectedDbColor == null
+          ? null
+          : Map<String, dynamic>.from(_selectedDbColor!);
     }
   }
 
@@ -2039,7 +2070,10 @@ class WindowModel extends ChangeNotifier {
         return color;
       }
     }
-    return availableColors.isNotEmpty ? availableColors.first : null;
+    // A missing white price configuration must never make a new drawing look
+    // grey merely because grey happens to be the first database row.  The
+    // enum default stays white until the workshop configures a white color.
+    return null;
   }
 
   WindowModel({
@@ -3387,6 +3421,7 @@ class WindowModel extends ChangeNotifier {
       // mullion instead of retaining an incompatible old shape.
       if (affectsVisibleDivisions) {
         mullionProfiles.clear();
+        groovedMullionCavityOnPositiveSide.clear();
         mullionSectionOverrides.clear();
       }
 
@@ -4332,6 +4367,7 @@ class WindowModel extends ChangeNotifier {
 
       if (affectsVisibleDivisions) {
         mullionProfiles.clear();
+        groovedMullionCavityOnPositiveSide.clear();
         mullionSectionOverrides.clear();
       }
 
@@ -4937,9 +4973,11 @@ class WindowModel extends ChangeNotifier {
         width,
         height,
         hasBottomFrame,
+        Set<String>.from(removedShutterSides),
         hasFramePlintheBottom,
         zones.map((z) => z.clone()).toList(),
         Map.from(mullionProfiles),
+        Map.from(groovedMullionCavityOnPositiveSide),
         mullionSectionOverrides.map(
           (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
         ),
@@ -5371,9 +5409,11 @@ class WindowModel extends ChangeNotifier {
         width,
         height,
         hasBottomFrame,
+        Set<String>.from(removedShutterSides),
         hasFramePlintheBottom,
         zones.map((z) => z.clone()).toList(),
         Map.from(mullionProfiles),
+        Map.from(groovedMullionCavityOnPositiveSide),
         mullionSectionOverrides.map(
           (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
         ),
@@ -5405,9 +5445,13 @@ class WindowModel extends ChangeNotifier {
     width = snap.width;
     height = snap.height;
     hasBottomFrame = snap.hasBottomFrame;
+    removedShutterSides = Set<String>.from(snap.removedShutterSides);
     hasFramePlintheBottom = snap.hasFramePlintheBottom;
     zones = snap.zones;
     mullionProfiles = snap.mullionProfiles;
+    groovedMullionCavityOnPositiveSide = Map.from(
+      snap.groovedMullionCavityOnPositiveSide,
+    );
     mullionSectionOverrides = snap.mullionSectionOverrides.map(
       (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
     );
@@ -5446,9 +5490,11 @@ class WindowModel extends ChangeNotifier {
         width,
         height,
         hasBottomFrame,
+        Set<String>.from(removedShutterSides),
         hasFramePlintheBottom,
         zones.map((z) => z.clone()).toList(),
         Map.from(mullionProfiles),
+        Map.from(groovedMullionCavityOnPositiveSide),
         mullionSectionOverrides.map(
           (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
         ),
@@ -5480,9 +5526,13 @@ class WindowModel extends ChangeNotifier {
     width = snap.width;
     height = snap.height;
     hasBottomFrame = snap.hasBottomFrame;
+    removedShutterSides = Set<String>.from(snap.removedShutterSides);
     hasFramePlintheBottom = snap.hasFramePlintheBottom;
     zones = snap.zones;
     mullionProfiles = snap.mullionProfiles;
+    groovedMullionCavityOnPositiveSide = Map.from(
+      snap.groovedMullionCavityOnPositiveSide,
+    );
     mullionSectionOverrides = snap.mullionSectionOverrides.map(
       (key, value) => MapEntry(key, Map<String, dynamic>.from(value)),
     );
@@ -7561,6 +7611,7 @@ class WindowModel extends ChangeNotifier {
     }
     _saveSnapshot();
     hasBottomFrame = value;
+    _hideBottomCoverWhenBottomFrameIsMissing();
     if (hasBottomFrame) {
       hasFramePlintheBottom = false;
       for (var z in zones) {
@@ -7604,6 +7655,7 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
+    _hideBottomCoverWhenBottomFrameIsMissing();
     updateBottomZoneBoundaries();
 
     // Reset bottom zones content to fixedGlass if they contain sash
@@ -7641,6 +7693,7 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
+    _hideBottomCoverWhenBottomFrameIsMissing();
     updateBottomZoneBoundaries();
     notifyListeners();
   }
@@ -8270,12 +8323,24 @@ class WindowModel extends ChangeNotifier {
 
   void toggleShutterSide(String side) {
     _saveSnapshot();
+    if (side == 'bottom' && !hasBottomFrame) {
+      removedShutterSides.add('bottom');
+      notifyListeners();
+      return;
+    }
     if (removedShutterSides.contains(side)) {
       removedShutterSides.remove(side);
     } else {
       removedShutterSides.add(side);
     }
     notifyListeners();
+  }
+
+  /// A bottom side cover cannot exist without a bottom frame.
+  void _hideBottomCoverWhenBottomFrameIsMissing() {
+    if (!hasBottomFrame) {
+      removedShutterSides.add('bottom');
+    }
   }
 
   void setSlidingSashesCount(int count) {
@@ -10487,7 +10552,26 @@ class WindowModel extends ChangeNotifier {
     String key =
         "${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection.mullionPosition!.toStringAsFixed(1)}";
     mullionProfiles[key] = type;
+    if (type != MullionProfileType.grooved) {
+      groovedMullionCavityOnPositiveSide.remove(key);
+    }
     notifyListeners();
+  }
+
+  /// Reverses the cavity direction of a Cadre 140.  The direction is stored
+  /// per mullion, so it stays unchanged after saving or reopening the order.
+  bool toggleGroovedMullionCavity(
+    bool isHorizontal,
+    double position,
+  ) {
+    if (!isGroovedFrameMullionAt(isHorizontal, position)) return false;
+
+    _saveSnapshot();
+    final key = _mullionKey(isHorizontal, position);
+    groovedMullionCavityOnPositiveSide[key] =
+        !(groovedMullionCavityOnPositiveSide[key] ?? false);
+    notifyListeners();
+    return true;
   }
 
   void deleteSelectedMullion() {
@@ -10535,6 +10619,7 @@ class WindowModel extends ChangeNotifier {
     selection = SelectionInfo.none;
     String key = "${isH ? 'H' : 'V'}_${pos.toStringAsFixed(1)}";
     mullionProfiles.remove(key);
+    groovedMullionCavityOnPositiveSide.remove(key);
     mullionSectionOverrides.remove(key);
     updatePrimaryMullionAxis();
     notifyListeners();
@@ -10694,6 +10779,7 @@ class WindowModel extends ChangeNotifier {
     width = 0;
     height = 0;
     mullionProfiles.clear();
+    groovedMullionCavityOnPositiveSide.clear();
     mullionSectionOverrides.clear();
     primaryMullionAxis = null;
     selection = SelectionInfo.none;

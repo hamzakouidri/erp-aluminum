@@ -10,7 +10,11 @@ import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 
 class Customers extends StatefulWidget {
-  const Customers({super.key});
+  /// When this page is opened from the dashboard's "Add client" action,
+  /// display the existing client form as soon as the page is ready.
+  final bool openAddClientOnStart;
+
+  const Customers({super.key, this.openAddClientOnStart = false});
 
   @override
   State<Customers> createState() => _CustomersState();
@@ -117,7 +121,9 @@ class _CustomersState extends State<Customers> {
             if (!dt.contains(filterVal)) return false;
             break;
           case 'creator':
-            final cr = _formatCreatorDisplay(d['creation_platform']?.toString()).toLowerCase();
+            final cr = _formatCreatorDisplay(
+              d['creation_platform']?.toString(),
+            ).toLowerCase();
             if (!cr.contains(filterVal)) return false;
             break;
         }
@@ -136,8 +142,10 @@ class _CustomersState extends State<Customers> {
             cmp = idA.compareTo(idB);
             break;
           case 'name':
-            final nameA = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'.trim();
-            final nameB = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''}'.trim();
+            final nameA = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''}'
+                .trim();
+            final nameB = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''}'
+                .trim();
             cmp = nameA.compareTo(nameB);
             break;
           case 'phone':
@@ -161,8 +169,12 @@ class _CustomersState extends State<Customers> {
             cmp = dtA.compareTo(dtB);
             break;
           case 'creator':
-            final crA = _formatCreatorDisplay(a['creation_platform']?.toString());
-            final crB = _formatCreatorDisplay(b['creation_platform']?.toString());
+            final crA = _formatCreatorDisplay(
+              a['creation_platform']?.toString(),
+            );
+            final crB = _formatCreatorDisplay(
+              b['creation_platform']?.toString(),
+            );
             cmp = crA.compareTo(crB);
             break;
         }
@@ -216,14 +228,16 @@ class _CustomersState extends State<Customers> {
       if (match.start > start) {
         spans.add(TextSpan(text: text.substring(start, match.start)));
       }
-      spans.add(TextSpan(
-        text: match.group(0),
-        style: TextStyle(
-          color: Colors.blue,
-          fontWeight: FontWeight.bold,
-          backgroundColor: Colors.yellow.withValues(alpha: 0.3),
+      spans.add(
+        TextSpan(
+          text: match.group(0),
+          style: TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+            backgroundColor: Colors.yellow.withValues(alpha: 0.3),
+          ),
         ),
-      ));
+      );
       start = match.end;
     }
     if (start < text.length) {
@@ -238,6 +252,11 @@ class _CustomersState extends State<Customers> {
   void initState() {
     super.initState();
     _refreshData();
+    if (widget.openAddClientOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showAddClientDialog(context);
+      });
+    }
   }
 
   void _refreshData() {
@@ -303,7 +322,10 @@ class _CustomersState extends State<Customers> {
                 content: Text(
                   Localization.translate(
                     "Client added",
-                    Provider.of<AppSettingsProvider>(context, listen: false).language,
+                    Provider.of<AppSettingsProvider>(
+                      context,
+                      listen: false,
+                    ).language,
                   ),
                 ),
                 duration: const Duration(seconds: 3),
@@ -320,7 +342,10 @@ class _CustomersState extends State<Customers> {
     );
   }
 
-  void _showUpdateClientDialog(BuildContext context, Map<String, dynamic> client) {
+  void _showUpdateClientDialog(
+    BuildContext context,
+    Map<String, dynamic> client,
+  ) {
     final id = client['id'];
     showDialog(
       context: context,
@@ -356,16 +381,17 @@ class _CustomersState extends State<Customers> {
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final isDesktop = MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
+    final isDesktop =
+        MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(
-          Localization.translate("Customers", lang),
-        ),
+        title: Text(Localization.translate("Customers", lang)),
         centerTitle: !isDesktop,
-        backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.blue,
         actions: [
           if (isDesktop && settings.canCreateClients())
             Padding(
@@ -375,13 +401,19 @@ class _CustomersState extends State<Customers> {
                 icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
                 label: Text(
                   Localization.translate("Add Client", lang),
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: const Color(0xFF0EA5E9),
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),
@@ -457,7 +489,8 @@ class _CustomersState extends State<Customers> {
                     _cachedClients = snapshot.data;
                   }
 
-                  if (snapshot.connectionState == ConnectionState.waiting && _cachedClients == null) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      _cachedClients == null) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
@@ -483,7 +516,10 @@ class _CustomersState extends State<Customers> {
                               ),
                               const SizedBox(height: 25),
                               Text(
-                                Localization.translate("Error loading data", lang),
+                                Localization.translate(
+                                  "Error loading data",
+                                  lang,
+                                ),
                                 style: TextStyle(
                                   color: Colors.red.shade800,
                                   fontSize: 22,
@@ -496,7 +532,9 @@ class _CustomersState extends State<Customers> {
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(color: Colors.red.shade200),
+                                  border: Border.all(
+                                    color: Colors.red.shade200,
+                                  ),
                                 ),
                                 child: Text(
                                   Localization.translate(
@@ -522,13 +560,19 @@ class _CustomersState extends State<Customers> {
                                     vertical: 12,
                                   ),
                                   elevation: 0,
-                                  side: BorderSide(color: Colors.red.shade200, width: 1.5),
+                                  side: BorderSide(
+                                    color: Colors.red.shade200,
+                                    width: 1.5,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
                                   ),
                                 ),
                                 onPressed: _refreshData,
-                                icon: const Icon(Icons.refresh_rounded, size: 22),
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 22,
+                                ),
                                 label: Text(
                                   Localization.translate("Refresh", lang),
                                   style: const TextStyle(
@@ -544,7 +588,9 @@ class _CustomersState extends State<Customers> {
                     );
                   }
 
-                  final rawData = snapshot.hasData ? snapshot.data! : (_cachedClients ?? <Map<String, dynamic>>[]);
+                  final rawData = snapshot.hasData
+                      ? snapshot.data!
+                      : (_cachedClients ?? <Map<String, dynamic>>[]);
 
                   if (rawData.isEmpty) {
                     return Center(
@@ -580,15 +626,18 @@ class _CustomersState extends State<Customers> {
                                 lang,
                               ),
                               textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 15,
-                                height: 1.5,
-                              ),
+                              style: TextStyle(fontSize: 15, height: 1.5),
                             ),
                             SizedBox(height: 35),
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade600,
+                                backgroundColor:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Theme.of(
+                                        context,
+                                      ).appBarTheme.backgroundColor
+                                    : Colors.blue.shade600,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 30,
@@ -601,7 +650,10 @@ class _CustomersState extends State<Customers> {
                                 ),
                               ),
                               onPressed: () => _showAddClientDialog(context),
-                              icon: const Icon(Icons.person_add_outlined, size: 24),
+                              icon: const Icon(
+                                Icons.person_add_outlined,
+                                size: 24,
+                              ),
                               label: Text(
                                 Localization.translate("Add Client", lang),
                                 style: const TextStyle(
@@ -620,7 +672,9 @@ class _CustomersState extends State<Customers> {
                   final data = rawData.where((d) {
                     final q = _searchQuery.toLowerCase().trim();
                     if (q.isEmpty) return true;
-                    final first = (d['firstname'] ?? '').toString().toLowerCase();
+                    final first = (d['firstname'] ?? '')
+                        .toString()
+                        .toLowerCase();
                     final last = (d['lastname'] ?? '').toString().toLowerCase();
                     final phone = (d['phone1'] ?? '').toString().toLowerCase();
                     final full = '$first $last $phone';
@@ -636,12 +690,16 @@ class _CustomersState extends State<Customers> {
                     );
                   }
 
-                  if (MediaQuery.of(context).size.width >= 900 || Platform.isWindows) {
+                  if (MediaQuery.of(context).size.width >= 900 ||
+                      Platform.isWindows) {
                     return _buildDesktopClientsTableView(context, data, lang);
                   }
 
                   return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     itemCount: data.length,
                     itemBuilder: (context, index) {
                       final item = data[index];
@@ -654,7 +712,9 @@ class _CustomersState extends State<Customers> {
                       final createdAt = item['created_at'] ?? '';
 
                       final bool hasPhone2 =
-                          phone2.isNotEmpty && phone2 != '0' && phone2 != 'null';
+                          phone2.isNotEmpty &&
+                          phone2 != '0' &&
+                          phone2 != 'null';
 
                       return Card(
                         shape: RoundedRectangleBorder(
@@ -669,7 +729,8 @@ class _CustomersState extends State<Customers> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => ShowClient(clientId: id),
+                                      builder: (context) =>
+                                          ShowClient(clientId: id),
                                     ),
                                   ).then((_) => _refreshData());
                                 }
@@ -681,18 +742,20 @@ class _CustomersState extends State<Customers> {
                               : null,
                           leading: CircleAvatar(
                             radius: 25,
-                                  backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade100,
-                            child: const Icon(
-                              Icons.person,
-                              color: Colors.blue,
-                            ),
+                            backgroundColor:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Theme.of(context).appBarTheme.backgroundColor
+                                : Colors.blue.shade100,
+                            child: const Icon(Icons.person, color: Colors.blue),
                           ),
                           title: RichText(
                             text: TextSpan(
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
-                                color: Theme.of(context).brightness == Brightness.dark
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
                                     ? Colors.white
                                     : Colors.black87,
                               ),
@@ -710,7 +773,9 @@ class _CustomersState extends State<Customers> {
                                   text: TextSpan(
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: Theme.of(context).brightness == Brightness.dark
+                                      color:
+                                          Theme.of(context).brightness ==
+                                              Brightness.dark
                                           ? Colors.white70
                                           : Colors.black87,
                                     ),
@@ -719,7 +784,9 @@ class _CustomersState extends State<Customers> {
                                         child: Icon(
                                           Icons.phone,
                                           size: 14,
-                                          color: Theme.of(context).brightness == Brightness.dark
+                                          color:
+                                              Theme.of(context).brightness ==
+                                                  Brightness.dark
                                               ? Colors.white70
                                               : Colors.black54,
                                         ),
@@ -746,20 +813,29 @@ class _CustomersState extends State<Customers> {
                             children: [
                               if (settings.canEditClients())
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.blue,
+                                  ),
                                   onPressed: () {
                                     _showUpdateClientDialog(context, item);
                                   },
                                 ),
                               if (settings.canDeleteClients())
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                  ),
                                   onPressed: () async {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
                                         title: Text(
-                                          Localization.translate("Delete Client", lang),
+                                          Localization.translate(
+                                            "Delete Client",
+                                            lang,
+                                          ),
                                         ),
                                         content: Text(
                                           Localization.translate(
@@ -769,16 +845,26 @@ class _CustomersState extends State<Customers> {
                                         ),
                                         actions: [
                                           TextButton(
-                                            onPressed: () => Navigator.pop(ctx, false),
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
                                             child: Text(
-                                              Localization.translate("Cancel", lang),
+                                              Localization.translate(
+                                                "Cancel",
+                                                lang,
+                                              ),
                                             ),
                                           ),
                                           TextButton(
-                                            onPressed: () => Navigator.pop(ctx, true),
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
                                             child: Text(
-                                              Localization.translate("Delete", lang),
-                                              style: const TextStyle(color: Colors.red),
+                                              Localization.translate(
+                                                "Delete",
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                color: Colors.red,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -786,7 +872,8 @@ class _CustomersState extends State<Customers> {
                                     );
                                     if (confirm == true) {
                                       try {
-                                        final deletedRows = await db.deleteClient(id);
+                                        final deletedRows = await db
+                                            .deleteClient(id);
                                         if (!mounted) return;
                                         if (deletedRows == 0) {
                                           // A remote sync can remove the record just before
@@ -796,11 +883,13 @@ class _CustomersState extends State<Customers> {
                                           ScaffoldMessenger.of(context)
                                             ..hideCurrentSnackBar()
                                             ..showSnackBar(
-                                            const SnackBar(
-                                              content: Text('الزبون لم يعد موجوداً في قاعدة البيانات.'),
-                                              backgroundColor: Colors.orange,
-                                            ),
-                                          );
+                                              const SnackBar(
+                                                content: Text(
+                                                  'الزبون لم يعد موجوداً في قاعدة البيانات.',
+                                                ),
+                                                backgroundColor: Colors.orange,
+                                              ),
+                                            );
                                           return;
                                         }
                                         _removeClientFromView(id);
@@ -808,7 +897,9 @@ class _CustomersState extends State<Customers> {
                                           ..hideCurrentSnackBar()
                                           ..showSnackBar(
                                             const SnackBar(
-                                              content: Text('تم حذف الزبون بنجاح.'),
+                                              content: Text(
+                                                'تم حذف الزبون بنجاح.',
+                                              ),
                                               backgroundColor: Colors.green,
                                             ),
                                           );
@@ -817,11 +908,13 @@ class _CustomersState extends State<Customers> {
                                         ScaffoldMessenger.of(context)
                                           ..hideCurrentSnackBar()
                                           ..showSnackBar(
-                                          SnackBar(
-                                            content: Text('تعذر حذف الزبون: $error'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
+                                            SnackBar(
+                                              content: Text(
+                                                'تعذر حذف الزبون: $error',
+                                              ),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
                                       }
                                     }
                                   },
@@ -844,7 +937,10 @@ class _CustomersState extends State<Customers> {
               onPressed: () => _showAddClientDialog(context),
               backgroundColor: Theme.of(context).brightness == Brightness.dark
                   ? Colors.black
-                  : Theme.of(context).floatingActionButtonTheme.backgroundColor ?? Colors.blue,
+                  : Theme.of(
+                          context,
+                        ).floatingActionButtonTheme.backgroundColor ??
+                        Colors.blue,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -859,17 +955,31 @@ class _CustomersState extends State<Customers> {
   }
 
   Future<void> _deleteClient(dynamic id) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Localization.translate("Delete Client", lang)),
-        content: Text(Localization.translate("Are you sure you want to delete this client?", lang)),
+        content: Text(
+          Localization.translate(
+            "Are you sure you want to delete this client?",
+            lang,
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(Localization.translate("Cancel", lang))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate("Cancel", lang)),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(Localization.translate("Delete", lang), style: const TextStyle(color: Colors.red)),
+            child: Text(
+              Localization.translate("Delete", lang),
+              style: const TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -894,8 +1004,12 @@ class _CustomersState extends State<Customers> {
     }
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final emailName = user.email?.contains('@') == true ? user.email!.split('@').first : '';
-      final displayName = user.displayName?.trim().isNotEmpty == true ? user.displayName!.trim() : emailName;
+      final emailName = user.email?.contains('@') == true
+          ? user.email!.split('@').first
+          : '';
+      final displayName = user.displayName?.trim().isNotEmpty == true
+          ? user.displayName!.trim()
+          : emailName;
       if (displayName.isNotEmpty) {
         if (raw.isNotEmpty) {
           return '$displayName ($raw)';
@@ -952,7 +1066,9 @@ class _CustomersState extends State<Customers> {
               if (isSorted) ...[
                 const SizedBox(width: 2),
                 Icon(
-                  _clientSortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                  _clientSortAscending
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
                   size: 13,
                   color: const Color(0xFF0EA5E9),
                 ),
@@ -975,33 +1091,47 @@ class _CustomersState extends State<Customers> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: SizedBox(
-          height: 36,
+          height: 42,
           child: TextField(
             controller: controller,
             onChanged: (_) => setState(() {}),
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 13,
               fontFamily: 'Cairo',
               color: Theme.of(context).textTheme.bodyLarge?.color,
             ),
             decoration: InputDecoration(
               hintText: hintText,
-              hintStyle: TextStyle(fontSize: 10.5, color: Colors.grey.shade400, fontFamily: 'Cairo'),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              hintStyle: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade400,
+                fontFamily: 'Cairo',
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
               filled: true,
               fillColor: Theme.of(context).cardColor,
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.2),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF0EA5E9), width: 1.5),
+                borderSide: const BorderSide(
+                  color: Color(0xFF0EA5E9),
+                  width: 1.5,
+                ),
               ),
               suffixIcon: controller.text.isNotEmpty
                   ? InkWell(
@@ -1009,7 +1139,11 @@ class _CustomersState extends State<Customers> {
                         controller.clear();
                         setState(() {});
                       },
-                      child: const Icon(Icons.close, size: 14, color: Colors.red),
+                      child: const Icon(
+                        Icons.close,
+                        size: 17,
+                        color: Colors.red,
+                      ),
                     )
                   : null,
             ),
@@ -1025,8 +1159,10 @@ class _CustomersState extends State<Customers> {
     AppLanguage lang,
   ) {
     final cardColor = Theme.of(context).cardColor;
-    final contentColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
-    final mutedColor = Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
+    final contentColor =
+        Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
+    final mutedColor =
+        Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
 
     final data = _applyClientFiltersAndSort(rawData);
 
@@ -1056,21 +1192,69 @@ class _CustomersState extends State<Customers> {
               children: [
                 Row(
                   children: [
-                    _buildSortableHeaderCell(flex: 1, label: '#', colKey: 'id', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 3, label: Localization.translate('اسم الزبون', lang), colKey: 'name', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('رقم الهاتف', lang), colKey: 'phone', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('العنوان', lang), colKey: 'address', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('البريد الإلكتروني', lang), colKey: 'email', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 3, label: Localization.translate('البيانات الجبائية (NIF/RC)', lang), colKey: 'fiscal', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('تاريخ الإضافة', lang), colKey: 'date', mutedColor: mutedColor),
-                    _buildSortableHeaderCell(flex: 2, label: Localization.translate('العامل المُضيف', lang), colKey: 'creator', mutedColor: mutedColor),
+                    _buildSortableHeaderCell(
+                      flex: 1,
+                      label: '#',
+                      colKey: 'id',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 3,
+                      label: Localization.translate('اسم الزبون', lang),
+                      colKey: 'name',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('رقم الهاتف', lang),
+                      colKey: 'phone',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('العنوان', lang),
+                      colKey: 'address',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('البريد الإلكتروني', lang),
+                      colKey: 'email',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 3,
+                      label: Localization.translate(
+                        'البيانات الجبائية (NIF/RC)',
+                        lang,
+                      ),
+                      colKey: 'fiscal',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('تاريخ الإضافة', lang),
+                      colKey: 'date',
+                      mutedColor: mutedColor,
+                    ),
+                    _buildSortableHeaderCell(
+                      flex: 2,
+                      label: Localization.translate('العامل المُضيف', lang),
+                      colKey: 'creator',
+                      mutedColor: mutedColor,
+                    ),
                     Expanded(
                       flex: 2,
                       child: Row(
                         children: [
                           Text(
                             Localization.translate('إجراءات', lang),
-                            style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: mutedColor,
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           if (_hasActiveClientColumnFilters) ...[
                             const SizedBox(width: 4),
@@ -1078,7 +1262,10 @@ class _CustomersState extends State<Customers> {
                               onTap: _clearAllClientColumnFilters,
                               borderRadius: BorderRadius.circular(4),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.red.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(4),
@@ -1086,9 +1273,21 @@ class _CustomersState extends State<Customers> {
                                 child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.clear_all, size: 12, color: Colors.red),
+                                    Icon(
+                                      Icons.clear_all,
+                                      size: 12,
+                                      color: Colors.red,
+                                    ),
                                     SizedBox(width: 2),
-                                    Text('مسح', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+                                    Text(
+                                      'مسح',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'Cairo',
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1102,14 +1301,54 @@ class _CustomersState extends State<Customers> {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    _buildFilterInputCell(flex: 1, controller: _clientColumnControllers['id']!, hintText: 'بحث...', context: context),
-                    _buildFilterInputCell(flex: 3, controller: _clientColumnControllers['name']!, hintText: 'بحث بالاسم...', context: context),
-                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['phone']!, hintText: 'بحث بالهاتف...', context: context),
-                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['address']!, hintText: 'بحث بالعنوان...', context: context),
-                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['email']!, hintText: 'بحث بالبريد...', context: context),
-                    _buildFilterInputCell(flex: 3, controller: _clientColumnControllers['fiscal']!, hintText: 'NIF / NIS...', context: context),
-                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['date']!, hintText: 'سنة-شهر-يوم...', context: context),
-                    _buildFilterInputCell(flex: 2, controller: _clientColumnControllers['creator']!, hintText: 'المُضيف...', context: context),
+                    _buildFilterInputCell(
+                      flex: 1,
+                      controller: _clientColumnControllers['id']!,
+                      hintText: 'بحث...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 3,
+                      controller: _clientColumnControllers['name']!,
+                      hintText: 'بحث بالاسم...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 2,
+                      controller: _clientColumnControllers['phone']!,
+                      hintText: 'بحث بالهاتف...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 2,
+                      controller: _clientColumnControllers['address']!,
+                      hintText: 'بحث بالعنوان...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 2,
+                      controller: _clientColumnControllers['email']!,
+                      hintText: 'بحث بالبريد...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 3,
+                      controller: _clientColumnControllers['fiscal']!,
+                      hintText: 'NIF / NIS...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 2,
+                      controller: _clientColumnControllers['date']!,
+                      hintText: 'سنة-شهر-يوم...',
+                      context: context,
+                    ),
+                    _buildFilterInputCell(
+                      flex: 2,
+                      controller: _clientColumnControllers['creator']!,
+                      hintText: 'المُضيف...',
+                      context: context,
+                    ),
                     const Expanded(flex: 2, child: SizedBox.shrink()),
                   ],
                 ),
@@ -1123,18 +1362,29 @@ class _CustomersState extends State<Customers> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           Localization.translate("No matching results", lang),
-                          style: TextStyle(fontSize: 15, color: Colors.grey.shade600, fontFamily: 'Cairo'),
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey.shade600,
+                            fontFamily: 'Cairo',
+                          ),
                         ),
                         if (_hasActiveClientColumnFilters) ...[
                           const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: _clearAllClientColumnFilters,
                             icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('إعادة ضبط البحث والتصفية', style: TextStyle(fontFamily: 'Cairo')),
+                            label: const Text(
+                              'إعادة ضبط البحث والتصفية',
+                              style: TextStyle(fontFamily: 'Cairo'),
+                            ),
                           ),
                         ],
                       ],
@@ -1142,25 +1392,36 @@ class _CustomersState extends State<Customers> {
                   )
                 : ListView.separated(
                     itemCount: data.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: mutedColor.withValues(alpha: 0.12)),
+                    separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      color: mutedColor.withValues(alpha: 0.12),
+                    ),
                     itemBuilder: (context, index) {
                       final client = data[index];
                       final clientId = (client['id'] as num?)?.toInt() ?? 0;
-                      final firstName = (client['firstname'] ?? '').toString().trim();
-                      final lastName = (client['lastname'] ?? '').toString().trim();
+                      final firstName = (client['firstname'] ?? '')
+                          .toString()
+                          .trim();
+                      final lastName = (client['lastname'] ?? '')
+                          .toString()
+                          .trim();
                       final fullName = '$firstName $lastName'.trim();
 
                       final phone1 = (client['phone1'] ?? '').toString().trim();
                       final phone2 = (client['phone2'] ?? '').toString().trim();
                       final phoneDisplay = phone1.isNotEmpty
-                          ? (phone2.isNotEmpty && phone2 != '0' ? '$phone1 / $phone2' : phone1)
+                          ? (phone2.isNotEmpty && phone2 != '0'
+                                ? '$phone1 / $phone2'
+                                : phone1)
                           : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
 
-                      final addressDisplay = (client['address'] ?? '').toString().trim().isNotEmpty
+                      final addressDisplay =
+                          (client['address'] ?? '').toString().trim().isNotEmpty
                           ? client['address'].toString().trim()
                           : '—';
 
-                      final emailDisplay = (client['email'] ?? '').toString().trim().isNotEmpty
+                      final emailDisplay =
+                          (client['email'] ?? '').toString().trim().isNotEmpty
                           ? client['email'].toString().trim()
                           : '—';
 
@@ -1174,9 +1435,13 @@ class _CustomersState extends State<Customers> {
                       if (nis.isNotEmpty) taxParts.add('NIS: $nis');
                       if (rc.isNotEmpty) taxParts.add('RC: $rc');
                       if (ai.isNotEmpty) taxParts.add('AI: $ai');
-                      final taxDisplay = taxParts.isNotEmpty ? taxParts.join(' | ') : '—';
+                      final taxDisplay = taxParts.isNotEmpty
+                          ? taxParts.join(' | ')
+                          : '—';
 
-                      final addedBy = _formatCreatorDisplay(client['creation_platform']?.toString());
+                      final addedBy = _formatCreatorDisplay(
+                        client['creation_platform']?.toString(),
+                      );
                       final createdAt = formatDate(client['created_at'] ?? '');
 
                       return Container(
@@ -1184,27 +1449,133 @@ class _CustomersState extends State<Customers> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Row(
                           children: [
-                            Expanded(flex: 1, child: Text('#$clientId', style: const TextStyle(color: Color(0xFF0EA5E9), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold))),
-                            Expanded(flex: 3, child: Text(fullName.isEmpty ? 'زبون #$clientId' : fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF0EA5E9), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold))),
-                            Expanded(flex: 2, child: Text(phoneDisplay, overflow: TextOverflow.ellipsis, style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11))),
-                            Expanded(flex: 2, child: Text(addressDisplay, overflow: TextOverflow.ellipsis, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
-                            Expanded(flex: 2, child: Text(emailDisplay, overflow: TextOverflow.ellipsis, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
-                            Expanded(flex: 3, child: Text(taxDisplay, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF8B5CF6), fontFamily: 'Cairo', fontSize: 11))),
-                            Expanded(flex: 2, child: Text(createdAt, style: TextStyle(color: mutedColor, fontFamily: 'Cairo', fontSize: 11))),
-                            Expanded(flex: 2, child: Text(addedBy, overflow: TextOverflow.ellipsis, style: TextStyle(color: contentColor, fontFamily: 'Cairo', fontSize: 11))),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                '#$clientId',
+                                style: const TextStyle(
+                                  color: Color(0xFF0EA5E9),
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                fullName.isEmpty ? 'زبون #$clientId' : fullName,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF0EA5E9),
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                phoneDisplay,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: contentColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                addressDisplay,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: mutedColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                emailDisplay,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: mutedColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                taxDisplay,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF8B5CF6),
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                createdAt,
+                                style: TextStyle(
+                                  color: mutedColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                addedBy,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: contentColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
                             Expanded(
                               flex: 2,
                               child: Row(
                                 children: [
                                   IconButton(
-                                    icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.blue),
-                                    onPressed: () => _showUpdateClientDialog(context, client),
-                                    tooltip: Localization.translate('تعديل', lang),
+                                    icon: const Icon(
+                                      Icons.edit_rounded,
+                                      size: 18,
+                                      color: Colors.blue,
+                                    ),
+                                    onPressed: () => _showUpdateClientDialog(
+                                      context,
+                                      client,
+                                    ),
+                                    tooltip: Localization.translate(
+                                      'تعديل',
+                                      lang,
+                                    ),
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
-                                    onPressed: () => _deleteClient(client['id']),
-                                    tooltip: Localization.translate('حذف', lang),
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 18,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () =>
+                                        _deleteClient(client['id']),
+                                    tooltip: Localization.translate(
+                                      'حذف',
+                                      lang,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1252,15 +1623,19 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
     final c = widget.client ?? {};
     _firstnameController = TextEditingController(text: c['firstname'] ?? '');
     _lastnameController = TextEditingController(text: c['lastname'] ?? '');
-    _phone1Controller = TextEditingController(text: c['phone1']?.toString() ?? '');
-    _phone2Controller = TextEditingController(text: c['phone2']?.toString() ?? '');
+    _phone1Controller = TextEditingController(
+      text: c['phone1']?.toString() ?? '',
+    );
+    _phone2Controller = TextEditingController(
+      text: c['phone2']?.toString() ?? '',
+    );
     _emailController = TextEditingController(text: c['email'] ?? '');
     _addressController = TextEditingController(text: c['address'] ?? '');
     _nifController = TextEditingController(text: c['nif'] ?? '');
     _nisController = TextEditingController(text: c['nis'] ?? '');
     _rcController = TextEditingController(text: c['rc'] ?? '');
     _aiController = TextEditingController(text: c['ai'] ?? '');
-    
+
     if (widget.client != null ||
         _nifController.text.isNotEmpty ||
         _nisController.text.isNotEmpty ||
@@ -1287,7 +1662,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isEdit = widget.client != null;
 
     return AlertDialog(
@@ -1297,15 +1675,24 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
         children: [
           Expanded(
             child: Text(
-              isEdit ? Localization.translate("Update Client", lang) : Localization.translate("Add Client", lang),
-              style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+              isEdit
+                  ? Localization.translate("Update Client", lang)
+                  : Localization.translate("Add Client", lang),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           if (!isEdit) ...[
             const SizedBox(width: 8),
             TextButton.icon(
-              icon: Icon(_showCompanyDetails ? Icons.keyboard_arrow_up : Icons.business, size: 18),
+              icon: Icon(
+                _showCompanyDetails ? Icons.keyboard_arrow_up : Icons.business,
+                size: 18,
+              ),
               label: Text(
                 _showCompanyDetails ? 'إخفاء معلومات الشركة' : 'معلومات الشركة',
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
@@ -1331,18 +1718,29 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   controller: _firstnameController,
                   decoration: InputDecoration(
                     labelText: Localization.translate("First Name", lang),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
-                  validator: (value) => value == null || value.isEmpty ? Localization.translate("Please enter a first name", lang) : null,
+                  validator: (value) => value == null || value.isEmpty
+                      ? Localization.translate(
+                          "Please enter a first name",
+                          lang,
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _lastnameController,
                   decoration: InputDecoration(
                     labelText: Localization.translate("Last Name", lang),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
-                  validator: (value) => value == null || value.isEmpty ? Localization.translate("Please enter a last name", lang) : null,
+                  validator: (value) => value == null || value.isEmpty
+                      ? Localization.translate("Please enter a last name", lang)
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -1352,10 +1750,17 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
                     labelText: Localization.translate("Phone Number 1", lang),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     counterText: '',
                   ),
-                  validator: (value) => value == null || value.isEmpty ? Localization.translate("Please enter a phone number", lang) : null,
+                  validator: (value) => value == null || value.isEmpty
+                      ? Localization.translate(
+                          "Please enter a phone number",
+                          lang,
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -1365,7 +1770,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
                     labelText: Localization.translate("Phone Number 2", lang),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     counterText: '',
                   ),
                 ),
@@ -1374,7 +1781,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   controller: _emailController,
                   decoration: InputDecoration(
                     labelText: Localization.translate("Email", lang),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1382,10 +1791,12 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   controller: _addressController,
                   decoration: InputDecoration(
                     labelText: Localization.translate("Address", lang),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
-                
+
                 if (_showCompanyDetails) ...[
                   const SizedBox(height: 16),
                   Row(
@@ -1395,7 +1806,12 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Text(
                           'معلومات الشركة / Enterprise Info',
-                          style: TextStyle(fontSize: 12, color: Colors.blue[800], fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue[800],
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       const Expanded(child: Divider()),
@@ -1406,7 +1822,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     controller: _nifController,
                     decoration: InputDecoration(
                       labelText: 'الرقم التعريفي الجبائي / NIF',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1414,7 +1832,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     controller: _nisController,
                     decoration: InputDecoration(
                       labelText: 'الرقم التعريفي الإحصائي / NIS',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1422,7 +1842,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     controller: _rcController,
                     decoration: InputDecoration(
                       labelText: 'السجل التجاري / RC',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1430,7 +1852,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     controller: _aiController,
                     decoration: InputDecoration(
                       labelText: 'رقم المادة / AI',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ],
@@ -1461,7 +1885,11 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
               });
             }
           },
-          child: Text(isEdit ? Localization.translate("Update", lang) : Localization.translate("Add", lang)),
+          child: Text(
+            isEdit
+                ? Localization.translate("Update", lang)
+                : Localization.translate("Add", lang),
+          ),
         ),
       ],
     );

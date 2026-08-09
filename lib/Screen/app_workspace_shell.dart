@@ -597,6 +597,135 @@ class _WorkspaceHeader extends StatelessWidget {
   }
 }
 
+class _HomeTabBrandContent extends StatefulWidget {
+  final bool active;
+  const _HomeTabBrandContent({required this.active});
+
+  @override
+  State<_HomeTabBrandContent> createState() => _HomeTabBrandContentState();
+}
+
+class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
+  String _workshopName = 'ورشة الألمنيوم';
+  String? _logoUrl;
+  ImageProvider? _cachedLogo;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalProfile();
+  }
+
+  Future<void> _loadLocalProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('workshop_name');
+      final savedLogo = prefs.getString('workshop_logo_base64');
+      if (mounted) {
+        setState(() {
+          if (savedName != null && savedName.isNotEmpty) _workshopName = savedName;
+          if (savedLogo != null && savedLogo.isNotEmpty) {
+            _logoUrl = savedLogo;
+            _updateLogoProvider(savedLogo);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _updateLogoProvider(String? url) {
+    if (url == null || url.isEmpty) {
+      _cachedLogo = null;
+      return;
+    }
+    if (url.startsWith('http')) {
+      _cachedLogo = NetworkImage(url);
+    } else {
+      try {
+        final clean = url.contains(',') ? url.split(',').last : url;
+        final bytes = base64Decode(clean);
+        if (bytes.isNotEmpty) {
+          _cachedLogo = MemoryImage(bytes);
+        }
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    return StreamBuilder<DocumentSnapshot>(
+      stream: user == null
+          ? null
+          : FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data?.data() != null) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          final firestoreName = (data['workshopName'] as String?)?.trim();
+          final firestoreLogo = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+              ? data['workshopLogoUrl']
+              : data['logoUrl'];
+
+          if (firestoreName != null && firestoreName.isNotEmpty) {
+            _workshopName = firestoreName;
+          }
+          if (firestoreLogo != null && firestoreLogo.isNotEmpty) {
+            _logoUrl = firestoreLogo;
+            _updateLogoProvider(firestoreLogo);
+          }
+        }
+
+        Widget iconWidget;
+        if (_cachedLogo != null) {
+          iconWidget = Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              image: DecorationImage(
+                image: _cachedLogo!,
+                fit: BoxFit.cover,
+              ),
+              border: Border.all(
+                color: widget.active ? const Color(0xFF0F172A) : Colors.white,
+                width: 1,
+              ),
+            ),
+          );
+        } else {
+          iconWidget = Icon(
+            Icons.apps_rounded,
+            size: 18,
+            color: widget.active ? const Color(0xFF2563EB) : Colors.white,
+          );
+        }
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            iconWidget,
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 190),
+              child: Text(
+                _workshopName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Cairo',
+                  fontSize: 13,
+                  color: widget.active ? const Color(0xFF0F172A) : Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _HeaderWorkshopBrand extends StatefulWidget {
   const _HeaderWorkshopBrand();
 
@@ -786,17 +915,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                           ),
                         ),
                       ),
-                      if (isDesktop) ...[
-                        const SizedBox(width: 4),
-                        const _HeaderWorkshopBrand(),
-                        const SizedBox(width: 10),
-                        Container(
-                          height: 24,
-                          width: 1,
-                          color: Colors.white.withValues(alpha: 0.18),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
+                      const SizedBox(width: 4),
                       Expanded(
                         child: ListView.builder(
                           padding: EdgeInsetsDirectional.fromSTEB(
@@ -834,50 +953,52 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                                     width: active ? 1.5 : 1,
                                   ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      entry.icon,
-                                      size: 17,
-                                      color: active
-                                          ? const Color(0xFF0F172A)
-                                          : Colors.white,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 190),
-                                      child: Text(
-                                        Localization.translate(
-                                          entry.title,
-                                          Provider.of<AppSettingsProvider>(
-                                            context,
-                                          ).language,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: active
-                                              ? const Color(0xFF0F172A)
-                                              : Colors.white,
-                                        ),
+                                child: entry.id == 'home'
+                                    ? _HomeTabBrandContent(active: active)
+                                    : Row(
+                                        children: [
+                                          Icon(
+                                            entry.icon,
+                                            size: 17,
+                                            color: active
+                                                ? const Color(0xFF0F172A)
+                                                : Colors.white,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(maxWidth: 190),
+                                            child: Text(
+                                              Localization.translate(
+                                                entry.title,
+                                                Provider.of<AppSettingsProvider>(
+                                                  context,
+                                                ).language,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: active
+                                                    ? const Color(0xFF0F172A)
+                                                    : Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                          if (entry.id != 'home') ...[
+                                            const SizedBox(width: 10),
+                                            InkWell(
+                                              onTap: () => workspace.close(index),
+                                              child: Icon(
+                                                Icons.close_rounded,
+                                                size: 16,
+                                                color: active
+                                                    ? const Color(0xFF0F172A)
+                                                    : Colors.white,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
-                                    ),
-                                    if (entry.id != 'home') ...[
-                                      const SizedBox(width: 10),
-                                      InkWell(
-                                        onTap: () => workspace.close(index),
-                                        child: Icon(
-                                          Icons.close_rounded,
-                                          size: 16,
-                                          color: active
-                                              ? const Color(0xFF0F172A)
-                                              : Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
                               ),
                             );
                           },

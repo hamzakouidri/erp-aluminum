@@ -1,6 +1,60 @@
 import 'package:flutter/material.dart';
 import 'model.dart';
 
+/// Colors are saved with the order, then reconnected to the active series
+/// when the order is opened again.  Keep only stable, JSON-safe color fields
+/// so a database/Cloud map can never make the whole drawing fail to restore.
+Map<String, dynamic>? _colorSelectionFromRaw(
+  Object? raw, {
+  String? fallbackName,
+  String? fallbackHex,
+}) {
+  final result = <String, dynamic>{};
+  if (raw is Map) {
+    for (final key in const [
+      'id',
+      'name',
+      'color_name',
+      'hex_code',
+      'hex',
+      'type',
+    ]) {
+      final value = raw[key];
+      if (value is String || value is num || value is bool) {
+        result[key] = value;
+      }
+    }
+  } else if (raw is String && raw.trim().isNotEmpty) {
+    result['name'] = raw.trim();
+  } else if (raw is num) {
+    result['id'] = raw;
+  }
+
+  if ((result['name']?.toString().trim().isEmpty ?? true) &&
+      fallbackName != null &&
+      fallbackName.trim().isNotEmpty) {
+    result['name'] = fallbackName.trim();
+  }
+  if ((result['hex_code']?.toString().trim().isEmpty ?? true) &&
+      fallbackHex != null &&
+      fallbackHex.trim().isNotEmpty) {
+    result['hex_code'] = fallbackHex.trim();
+  }
+  return result.isEmpty ? null : result;
+}
+
+String? _savedColorName(Map<String, dynamic>? color) {
+  final name = color?['name'] ?? color?['color_name'];
+  final value = name?.toString().trim() ?? '';
+  return value.isEmpty ? null : value;
+}
+
+String? _savedColorHex(Map<String, dynamic>? color) {
+  final hex = color?['hex_code'] ?? color?['hex'];
+  final value = hex?.toString().trim() ?? '';
+  return value.isEmpty ? null : value;
+}
+
 // Extension for GlassSpecification
 extension GlassSpecificationSerialization on GlassSpecification {
   Map<String, dynamic> toMap() {
@@ -122,7 +176,7 @@ extension WindowZoneSerialization on WindowZone {
       'openAngle': openAngle,
       'openDirection': openDirection?.name,
       'sashColor': sashColor.name,
-      'selectedDbColor': selectedDbColor,
+      'selectedDbColor': _colorSelectionFromRaw(selectedDbColor),
       'isSash105': isSash105,
       'innerH': innerH,
       'innerV': innerV,
@@ -188,7 +242,7 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
       (e) => e.name == map['sashColor'],
       orElse: () => FrameColor.white,
     ),
-    selectedDbColor: map['selectedDbColor'],
+    selectedDbColor: _colorSelectionFromRaw(map['selectedDbColor']),
     isSash105: map['isSash105'] ?? false,
     useClassicHandle: map['useClassicHandle'] ?? false,
     useOctoHandle: map['useOctoHandle'] ?? false,
@@ -283,12 +337,20 @@ extension WindowModelSerialization on WindowModel {
       'width': width,
       'height': height,
       'systemMode': () {
-        final hasSliding = zones.any((z) => z.content == ZoneContent.slidingSash);
-        final hasFrench = zones.any((z) => z.content == ZoneContent.singleSash || z.content == ZoneContent.doubleSash);
+        final hasSliding = zones.any(
+          (z) => z.content == ZoneContent.slidingSash,
+        );
+        final hasFrench = zones.any(
+          (z) =>
+              z.content == ZoneContent.singleSash ||
+              z.content == ZoneContent.doubleSash,
+        );
         if (hasSliding && hasFrench) return 'mixed';
         if (hasSliding) return 'sliding';
         if (hasFrench) return 'french';
-        return (systemMode != null && systemMode!.isNotEmpty) ? systemMode : 'mixed';
+        return (systemMode != null && systemMode!.isNotEmpty)
+            ? systemMode
+            : 'mixed';
       }(),
       'totalCost': totalCost,
       'quantity': quantity,
@@ -337,11 +399,14 @@ extension WindowModelSerialization on WindowModel {
       'isShutterOnly': isShutterOnly,
       'removedShutterSides': removedShutterSides.toList(),
       'frameColor': frameColor.name,
-      'selectedDbColor': selectedDbColor,
-      'selectedAccessoryColor': selectedAccessoryColor,
+      'selectedDbColor': _colorSelectionFromRaw(selectedDbColor),
+      'selectedColorName': _savedColorName(selectedDbColor),
+      'selectedColorHex': _savedColorHex(selectedDbColor),
+      'selectedAccessoryColor': _colorSelectionFromRaw(selectedAccessoryColor),
       'primaryMullionAxis': primaryMullionAxis,
       'zones': zones.map((z) => z.toMap()).toList(),
       'mullionProfiles': mullionProfiles.map((k, v) => MapEntry(k, v.name)),
+      'groovedMullionCavityOnPositiveSide': groovedMullionCavityOnPositiveSide,
       'mullionSectionOverrides': mullionSectionOverrides,
       'componentOverrides': componentOverrides,
       'isReplaced': isReplaced,
@@ -458,6 +523,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   if (map['removedShutterSides'] != null) {
     model.removedShutterSides = Set<String>.from(map['removedShutterSides']);
   }
+  if (!model.hasBottomFrame) {
+    model.removedShutterSides.add('bottom');
+  }
 
   if (map['frameColor'] != null) {
     model.frameColor = FrameColor.values.firstWhere(
@@ -466,12 +534,16 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
     );
   }
 
-  model.selectedDbColor = map['selectedDbColor'] != null
-      ? Map<String, dynamic>.from(map['selectedDbColor'])
-      : null;
-  model.selectedAccessoryColor = map['selectedAccessoryColor'] != null
-      ? Map<String, dynamic>.from(map['selectedAccessoryColor'])
-      : null;
+  final savedDbColor = _colorSelectionFromRaw(
+    map['selectedDbColor'],
+    fallbackName: map['selectedColorName']?.toString(),
+    fallbackHex: map['selectedColorHex']?.toString(),
+  );
+  final savedAccessoryColor = _colorSelectionFromRaw(
+    map['selectedAccessoryColor'],
+  );
+  model.selectedDbColor = savedDbColor;
+  model.selectedAccessoryColor = savedAccessoryColor;
   model.loadedSeriesName =
       map['seriesName']?.toString() ?? map['profileName']?.toString();
   model.loadedSeriesId = (map['seriesId'] as num?)?.toInt();
@@ -514,6 +586,18 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
         .toList();
   }
 
+  // Older orders sometimes saved the color on individual zones only.  Reuse
+  // it as the product color so the frame, all sashes and price calculation
+  // reopen with the original finish instead of silently falling back to white.
+  final zoneColor = model.zones
+      .map((zone) => zone.selectedDbColor)
+      .firstWhere((color) => color != null, orElse: () => null);
+  if (savedDbColor != null) {
+    model.selectedDbColor = savedDbColor;
+  } else if (zoneColor != null) {
+    model.selectedDbColor = Map<String, dynamic>.from(zoneColor);
+  }
+
   if (map['mullionProfiles'] != null) {
     model.mullionProfiles = (map['mullionProfiles'] as Map<String, dynamic>)
         .map(
@@ -527,13 +611,21 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
         );
   }
 
-  if (map['mullionSectionOverrides'] is Map) {
-    model.mullionSectionOverrides =
-        (map['mullionSectionOverrides'] as Map).map(
+  model.groovedMullionCavityOnPositiveSide = {};
+  if (map['groovedMullionCavityOnPositiveSide'] is Map) {
+    model.groovedMullionCavityOnPositiveSide =
+        (map['groovedMullionCavityOnPositiveSide'] as Map).map(
       (key, value) => MapEntry(
         key.toString(),
-        Map<String, dynamic>.from(value as Map),
+        value is bool ? value : value.toString().toLowerCase() == 'true',
       ),
+    );
+  }
+
+  if (map['mullionSectionOverrides'] is Map) {
+    model.mullionSectionOverrides = (map['mullionSectionOverrides'] as Map).map(
+      (key, value) =>
+          MapEntry(key.toString(), Map<String, dynamic>.from(value as Map)),
     );
   }
 }

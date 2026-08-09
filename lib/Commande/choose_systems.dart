@@ -66,9 +66,6 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     );
     final s = widget.initialSettings;
     if (s != null) {
-      if (s['frameColor'] != null) m.frameColor = s['frameColor'];
-      if (s['selectedDbColor'] != null)
-        m.selectedDbColor = s['selectedDbColor'];
       if (s['selectedAccessoryColor'] != null)
         m.selectedAccessoryColor = s['selectedAccessoryColor'];
       if (s['hasShutter'] == true) m.hasShutter = true;
@@ -78,6 +75,11 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       if (s['shutterMechanism'] != null)
         m.shutterMechanism = s['shutterMechanism'];
     }
+
+    // A product opened from the system chooser is always a new drawing.
+    // Never inherit the colour of the previous product in the order.
+    m.frameColor = FrameColor.white;
+    m.selectedDbColor = null;
     return m;
   }
 

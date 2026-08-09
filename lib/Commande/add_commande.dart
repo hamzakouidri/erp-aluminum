@@ -69,6 +69,10 @@ class _CommandePageState extends State<CommandePage> {
 
   WindowModel? _highlightedProduct;
   final Map<WindowModel, GlobalKey> _cardKeys = {};
+  // Existing detail IDs must stay attached to their drawing while an order is
+  // edited. Recreating rows with new IDs makes cloud sync reintroduce an old
+  // copy of the same window (often with its former colour).
+  final Map<WindowModel, int> _persistedDetailIds = {};
   final ScrollController _scrollController = ScrollController();
 
   void _scrollToHighlightedProduct() {
@@ -91,10 +95,6 @@ class _CommandePageState extends State<CommandePage> {
   /// تحديث حفظ الخصائص من نموذج نافذة
   void _saveLastSettings(WindowModel m) {
     _lastUsedSettings = {
-      'frameColor': m.frameColor,
-      'selectedDbColor': m.selectedDbColor != null
-          ? Map<String, dynamic>.from(m.selectedDbColor!)
-          : null,
       'selectedAccessoryColor': m.selectedAccessoryColor != null
           ? Map<String, dynamic>.from(m.selectedAccessoryColor!)
           : null,
@@ -109,8 +109,6 @@ class _CommandePageState extends State<CommandePage> {
   void _applyLastSettings(WindowModel m) {
     final s = _lastUsedSettings;
     if (s == null) return;
-    if (s['frameColor'] != null) m.frameColor = s['frameColor'];
-    if (s['selectedDbColor'] != null) m.selectedDbColor = s['selectedDbColor'];
     if (s['selectedAccessoryColor'] != null)
       m.selectedAccessoryColor = s['selectedAccessoryColor'];
     if (s['hasShutter'] != null) m.hasShutter = s['hasShutter'];
@@ -127,7 +125,9 @@ class _CommandePageState extends State<CommandePage> {
     final rawItems = payload['items'];
     if (rawItems is! List) return const [];
     final models = <WindowModel>[];
-    final payloadId = payload['payloadId']?.toString() ?? 'payload_${DateTime.now().millisecondsSinceEpoch}';
+    final payloadId =
+        payload['payloadId']?.toString() ??
+        'payload_${DateTime.now().millisecondsSinceEpoch}';
     for (final rawItem in rawItems) {
       if (rawItem is! Map) continue;
       final item = Map<String, dynamic>.from(rawItem);
@@ -192,7 +192,9 @@ class _CommandePageState extends State<CommandePage> {
     final rawItems = payload['items'];
     if (rawItems is! List) return const [];
     final models = <WindowModel>[];
-    final payloadId = payload['payloadId']?.toString() ?? 'payload_${DateTime.now().millisecondsSinceEpoch}';
+    final payloadId =
+        payload['payloadId']?.toString() ??
+        'payload_${DateTime.now().millisecondsSinceEpoch}';
     for (final rawItem in rawItems) {
       if (rawItem is! Map) continue;
       final item = Map<String, dynamic>.from(rawItem);
@@ -257,14 +259,16 @@ class _CommandePageState extends State<CommandePage> {
 
     // Identify if adjacent models share the same payload group to replace them as a batch
     int replaceCount = 1;
-    final currentPayloadId = current.glassWorkPayload?['payloadId'] ??
+    final currentPayloadId =
+        current.glassWorkPayload?['payloadId'] ??
         current.moustiquairePayload?['payloadId'] ??
         current.caissonPayload?['payloadId'];
 
     if (currentPayloadId != null) {
       for (int i = currentIndex + 1; i < addedProducts.length; i++) {
         final p = addedProducts[i];
-        final pPayloadId = p.glassWorkPayload?['payloadId'] ??
+        final pPayloadId =
+            p.glassWorkPayload?['payloadId'] ??
             p.moustiquairePayload?['payloadId'] ??
             p.caissonPayload?['payloadId'];
         if (pPayloadId == currentPayloadId) {
@@ -275,7 +279,11 @@ class _CommandePageState extends State<CommandePage> {
       }
     }
 
-    addedProducts.replaceRange(currentIndex, currentIndex + replaceCount, models);
+    addedProducts.replaceRange(
+      currentIndex,
+      currentIndex + replaceCount,
+      models,
+    );
     _highlightedProduct = models.last;
   }
 
@@ -297,7 +305,8 @@ class _CommandePageState extends State<CommandePage> {
       _loadEditData();
     } else if (widget.projectId != null) {
       _loadInitialProject(widget.projectId!);
-    } else if (widget.initialProducts != null && widget.initialProducts!.isNotEmpty) {
+    } else if (widget.initialProducts != null &&
+        widget.initialProducts!.isNotEmpty) {
       addedProducts.addAll(widget.initialProducts!);
     }
   }
@@ -412,6 +421,7 @@ class _CommandePageState extends State<CommandePage> {
       if (!mounted) return;
       setState(() {
         addedProducts.clear();
+        _persistedDetailIds.clear();
       });
 
       double? readDouble(dynamic value) {
@@ -460,11 +470,15 @@ class _CommandePageState extends State<CommandePage> {
             }
           }
         }
-        // Restore color from DB if row['color'] is present
+        // The detail column is the durable visual fallback.  It must win over
+        // stale JSON from an earlier save, otherwise a former wood colour can
+        // overwrite the colour the user most recently saved for the order.
         final rowColor = row['color']?.toString().trim() ?? '';
-        if (rowColor.isNotEmpty && model.selectedDbColor == null) {
+        if (rowColor.isNotEmpty && !model.isGlassWork) {
           final matched = allDbColors.firstWhere(
-            (c) => c['name']?.toString().toLowerCase() == rowColor.toLowerCase(),
+            (c) =>
+                (c['name'] ?? c['color_name'])?.toString().toLowerCase() ==
+                rowColor.toLowerCase(),
             orElse: () => <String, dynamic>{},
           );
           if (matched.isNotEmpty) {
@@ -474,6 +488,7 @@ class _CommandePageState extends State<CommandePage> {
               (e) => e.name.toLowerCase() == rowColor.toLowerCase(),
               orElse: () => FrameColor.white,
             );
+            model.selectedDbColor = null;
             model.frameColor = enumMatch;
           }
         }
@@ -497,6 +512,10 @@ class _CommandePageState extends State<CommandePage> {
         final desc = row['description']?.toString().trim() ?? '';
         if (desc.isNotEmpty) {
           model.description = desc;
+        }
+        final detailId = readInt(row['id']);
+        if (detailId != null) {
+          _persistedDetailIds[model] = detailId;
         }
         loadedModels.add(model);
       }
@@ -730,9 +749,12 @@ class _CommandePageState extends State<CommandePage> {
         final clients = await widget.db.readClient();
         final match = clients.firstWhere(
           (c) =>
-              '${c['firstname']} ${c['lastname']}'.trim().toLowerCase() == inputName.toLowerCase() ||
-              '${c['lastname']} ${c['firstname']}'.trim().toLowerCase() == inputName.toLowerCase() ||
-              (c['firstname']?.toString().toLowerCase() == inputName.toLowerCase()),
+              '${c['firstname']} ${c['lastname']}'.trim().toLowerCase() ==
+                  inputName.toLowerCase() ||
+              '${c['lastname']} ${c['firstname']}'.trim().toLowerCase() ==
+                  inputName.toLowerCase() ||
+              (c['firstname']?.toString().toLowerCase() ==
+                  inputName.toLowerCase()),
           orElse: () => <String, dynamic>{},
         );
         if (match.isNotEmpty) {
@@ -749,11 +771,7 @@ class _CommandePageState extends State<CommandePage> {
             '',
             '',
           );
-          selectedClient = {
-            'id': newId,
-            'firstname': fname,
-            'lastname': lname,
-          };
+          selectedClient = {'id': newId, 'firstname': fname, 'lastname': lname};
         }
       } catch (e) {
         debugPrint('Error auto-resolving client: $e');
@@ -827,7 +845,15 @@ class _CommandePageState extends State<CommandePage> {
       final existingDetails = widget.editCommandeId == null
           ? <Map<String, dynamic>>[]
           : await widget.db.readCommandeDetails(widget.editCommandeId!);
-      
+      final existingDetailsById = <int, Map<String, dynamic>>{};
+      for (final detail in existingDetails) {
+        final rawId = detail['id'];
+        final detailId = rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '');
+        if (detailId != null) existingDetailsById[detailId] = detail;
+      }
+
       final imagePaths = await Future.wait(
         addedProducts.asMap().entries.map((entry) async {
           final index = entry.key;
@@ -841,7 +867,8 @@ class _CommandePageState extends State<CommandePage> {
               p.isGlassWork &&
               selectedGlassImagePath.isNotEmpty &&
               !File(selectedGlassImagePath).existsSync() &&
-              (previous?['drawing_image_base64']?.toString().isNotEmpty ?? false);
+              (previous?['drawing_image_base64']?.toString().isNotEmpty ??
+                  false);
           if (mustKeepSyncedGlassImage) return '';
           return saveWindowImageToDisk(p, maxSide: 600);
         }),
@@ -850,14 +877,16 @@ class _CommandePageState extends State<CommandePage> {
       final preparedDetails = <Map<String, dynamic>>[];
       for (var index = 0; index < addedProducts.length; index++) {
         final p = addedProducts[index];
-        final previous = index < existingDetails.length
-            ? existingDetails[index]
-            : null;
+        final persistedDetailId = _persistedDetailIds[p];
+        final previous = persistedDetailId == null
+            ? (index < existingDetails.length ? existingDetails[index] : null)
+            : existingDetailsById[persistedDetailId];
         final newImagePath = imagePaths[index];
         final drawingPath = newImagePath.isNotEmpty
             ? newImagePath
             : previous?['drawing_image_path']?.toString() ?? '';
         preparedDetails.add({
+          if (persistedDetailId != null) 'id': persistedDetailId,
           'largeur': p.width.toInt(),
           'hauteur': p.height.toInt(),
           'game': p.isShutterOnly
@@ -872,10 +901,12 @@ class _CommandePageState extends State<CommandePage> {
                     ? 'Double'
                     : 'Single'),
           'color': p.selectedDbColor != null
-              ? (p.selectedDbColor!['name']?.toString() ?? '')
+              ? (p.selectedDbColor!['name']?.toString() ??
+                    p.selectedDbColor!['color_name']?.toString() ??
+                    '')
               : (p.isGlassWork
-                  ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
-                  : p.frameColor.toString().split('.').last),
+                    ? (p.glassWorkPayload?['stickerLabel']?.toString() ?? '')
+                    : p.frameColor.toString().split('.').last),
           'volet': p.hasShutter ? 'Yes' : 'No',
           'accessories': '',
           'description': p.description ?? '',
@@ -916,7 +947,10 @@ class _CommandePageState extends State<CommandePage> {
 
       if (!mounted) return;
       if (dialogShown) {
-        Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).pop(); // close loading dialog
         dialogShown = false;
       }
 
@@ -936,7 +970,10 @@ class _CommandePageState extends State<CommandePage> {
       if (!mounted) return;
       if (dialogShown) {
         try {
-          Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
+          Navigator.of(
+            context,
+            rootNavigator: true,
+          ).pop(); // close loading dialog
         } catch (_) {}
       }
       ScaffoldMessenger.of(context).showSnackBar(
@@ -960,7 +997,9 @@ class _CommandePageState extends State<CommandePage> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: const Row(
             children: [
               Icon(Icons.palette, color: Colors.purple),
@@ -996,13 +1035,18 @@ class _CommandePageState extends State<CommandePage> {
                               child: Container(
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.grey.shade400),
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
                                 ),
                               ),
                             ),
                             title: Text(
                               colorName,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
                             ),
                             onTap: () {
                               Navigator.pop(ctx);
@@ -1013,10 +1057,13 @@ class _CommandePageState extends State<CommandePage> {
                         const Divider(),
                         ...colors.map((dbColor) {
                           final name = dbColor['name']?.toString() ?? '';
-                          final hex = dbColor['hex_code']?.toString() ?? '#9E9E9E';
+                          final hex =
+                              dbColor['hex_code']?.toString() ?? '#9E9E9E';
                           Color parsedColor = Colors.grey;
                           try {
-                            parsedColor = Color(int.parse(hex.replaceAll('#', '0xFF')));
+                            parsedColor = Color(
+                              int.parse(hex.replaceAll('#', '0xFF')),
+                            );
                           } catch (_) {}
                           return ListTile(
                             leading: CircleAvatar(
@@ -1025,13 +1072,18 @@ class _CommandePageState extends State<CommandePage> {
                               child: Container(
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.grey.shade400),
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
                                 ),
                               ),
                             ),
                             title: Text(
                               name,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
                             ),
                             onTap: () {
                               Navigator.pop(ctx);
@@ -1057,7 +1109,10 @@ class _CommandePageState extends State<CommandePage> {
     );
   }
 
-  void _applyColorToAllProducts({FrameColor? frameColor, Map<String, dynamic>? dbColor}) {
+  void _applyColorToAllProducts({
+    FrameColor? frameColor,
+    Map<String, dynamic>? dbColor,
+  }) {
     final colorName = dbColor != null
         ? (dbColor['name']?.toString() ?? '')
         : (frameColor != null ? _getBulkFrameColorName(frameColor) : '');
@@ -1084,27 +1139,43 @@ class _CommandePageState extends State<CommandePage> {
 
   String _getBulkFrameColorName(FrameColor c) {
     switch (c) {
-      case FrameColor.white: return 'أبيض (Blanc)';
-      case FrameColor.brown: return 'بني (Bronze)';
-      case FrameColor.gray: return 'رمادي غامق (Gris 7024)';
-      case FrameColor.black: return 'أسود (Noir)';
-      case FrameColor.beige: return 'بيج (Beige)';
-      case FrameColor.gris: return 'رمادي (Gris 9007)';
-      case FrameColor.antique: return 'أنتيك (Antique)';
-      case FrameColor.lightWood: return 'خشبي ديزرت أوك (Desert Oak)';
+      case FrameColor.white:
+        return 'أبيض (Blanc)';
+      case FrameColor.brown:
+        return 'بني (Bronze)';
+      case FrameColor.gray:
+        return 'رمادي غامق (Gris 7024)';
+      case FrameColor.black:
+        return 'أسود (Noir)';
+      case FrameColor.beige:
+        return 'بيج (Beige)';
+      case FrameColor.gris:
+        return 'رمادي (Gris 9007)';
+      case FrameColor.antique:
+        return 'أنتيك (Antique)';
+      case FrameColor.lightWood:
+        return 'خشبي ديزرت أوك (Desert Oak)';
     }
   }
 
   Color _getBulkFrameColorDisplay(FrameColor c) {
     switch (c) {
-      case FrameColor.white: return Colors.white;
-      case FrameColor.brown: return const Color(0xFF5D4037);
-      case FrameColor.gray: return const Color(0xFF565E70);
-      case FrameColor.black: return const Color(0xFF212121);
-      case FrameColor.beige: return const Color(0xFFDDC8A0);
-      case FrameColor.gris: return const Color(0xFF9E9E9E);
-      case FrameColor.antique: return const Color(0xFF6E5D4F);
-      case FrameColor.lightWood: return const Color(0xFFA8803E);
+      case FrameColor.white:
+        return Colors.white;
+      case FrameColor.brown:
+        return const Color(0xFF5D4037);
+      case FrameColor.gray:
+        return const Color(0xFF565E70);
+      case FrameColor.black:
+        return const Color(0xFF212121);
+      case FrameColor.beige:
+        return const Color(0xFFDDC8A0);
+      case FrameColor.gris:
+        return const Color(0xFF9E9E9E);
+      case FrameColor.antique:
+        return const Color(0xFF6E5D4F);
+      case FrameColor.lightWood:
+        return const Color(0xFFA8803E);
     }
   }
 
@@ -1449,7 +1520,10 @@ class _CommandePageState extends State<CommandePage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.purple.shade700,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 16,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
