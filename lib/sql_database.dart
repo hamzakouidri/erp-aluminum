@@ -3073,18 +3073,27 @@ class SqlDatabase {
     List<Map<String, dynamic>> result = [];
     for (var acc in rawAccessories) {
       int accId = acc['id'] as int;
-      double finalPrice = (acc['price'] as num).toDouble();
-
-      if (colorId != null) {
-        final List<Map<String, dynamic>> colorPriceRows = await myDb.query(
-          'AccessoryColorPrices',
-          columns: ['price'],
-          where: 'accessory_id = ? AND color_id = ?',
-          whereArgs: [accId, colorId],
-        );
-        if (colorPriceRows.isNotEmpty) {
-          finalPrice = (colorPriceRows.first['price'] as num).toDouble();
-        }
+      final List<Map<String, dynamic>> allColorPriceRows = await myDb.query(
+        'AccessoryColorPrices',
+        columns: ['color_id', 'price'],
+        where: 'accessory_id = ?',
+        whereArgs: [accId],
+      );
+      double finalPrice;
+      if (allColorPriceRows.isEmpty) {
+        finalPrice = (acc['price'] as num?)?.toDouble() ?? 0.0;
+      } else {
+        final matchingColorPrice = colorId == null
+            ? <Map<String, dynamic>>[]
+            : allColorPriceRows
+                  .where(
+                    (row) =>
+                        row['color_id']?.toString() == colorId.toString(),
+                  )
+                  .toList();
+        finalPrice = matchingColorPrice.isEmpty
+            ? 0.0
+            : (matchingColorPrice.first['price'] as num?)?.toDouble() ?? 0.0;
       }
 
       String scope = acc['scope'] ?? 'Global';
@@ -8450,7 +8459,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (!data.containsKey('screw_count')) data['screw_count'] = 0;
     var res = await myDb!.insert('Accessories', data);
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -8462,7 +8471,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -8474,7 +8483,7 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -8774,6 +8783,54 @@ class SqlDatabase {
     );
     CloudSyncService().notifyCatalogChange();
     return res;
+  }
+
+  /// Updates only the price from the price-management screen.  Keeping this
+  /// separate avoids replacing other component fields and marks the change as
+  /// a catalogue update, so an incoming catalogue cannot restore the old
+  /// price.
+  Future<int> updateShutterComponentPrice(int id, double price) async {
+    final myDb = await db;
+    if (!price.isFinite) {
+      throw ArgumentError.value(price, 'price', 'Price must be a finite number');
+    }
+
+    // Older local databases can contain the component table from before the
+    // standalone component-price column was introduced.  Ensure the column is
+    // present here as well, so saving a price never depends on which screen
+    // happened to open first.
+    try {
+      await myDb!.execute(
+        'ALTER TABLE ShutterComponents ADD COLUMN price REAL NOT NULL DEFAULT 0.0;',
+      );
+    } catch (_) {
+      // The column already exists on current databases.
+    }
+
+    final res = await myDb!.update(
+      'ShutterComponents',
+      {'price': price},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    // Some SQLite drivers report zero modified rows when the value is already
+    // the requested value.  Verify the record instead of showing a false
+    // "could not save" message in that valid case.
+    final savedRow = await myDb.query(
+      'ShutterComponents',
+      columns: const ['price'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (savedRow.isEmpty) return 0;
+
+    final stored = (savedRow.first['price'] as num?)?.toDouble();
+    if (stored == null || (stored - price).abs() > 0.000001) return 0;
+
+    CloudSyncService().notifyCatalogChange();
+    return res > 0 ? res : 1;
   }
 
   Future<int> deleteShutterComponent(int id) async {

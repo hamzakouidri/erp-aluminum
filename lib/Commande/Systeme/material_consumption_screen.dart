@@ -233,6 +233,73 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // الغرض: إيجاد "الشريحة النهائية" (Final Blade) الأقرب حجمًا لمقاس الشريحة
   // العادية المختارة (targetSize)، ضمن نفس الـ subtype، مع خطة بديلة أوسع.
   // ==========================================================================
+  bool _isX3dBlade(Map<String, dynamic>? blade) {
+    if (blade == null) return false;
+    final text = '${blade['name'] ?? ''} ${blade['shutter_subtype'] ?? ''}'
+        .toLowerCase();
+    return text.contains('x3d');
+  }
+
+  /// Finds a shutter axis after applying the same compatibility rules used by
+  /// the selector: blade relation first, then motor diameter.  Keeping this
+  /// here prevents an automatic replacement from bypassing the dialog rules.
+  Future<Map<String, dynamic>?> _findCompatibleShutterAxis({
+    Map<String, dynamic>? blade,
+    Map<String, dynamic>? motor,
+  }) async {
+    final dbInstance = await SqlDatabase().db;
+    if (dbInstance == null) return null;
+
+    final rows = await dbInstance.query(
+      'ShutterComponents',
+      where: '(is_active = 1 OR is_active IS NULL)',
+    );
+    var candidates = rows.where((row) {
+      final type = (row['component_type'] ?? '').toString().toLowerCase();
+      final name = (row['name'] ?? '').toString().toLowerCase();
+      return type == 'laxe' ||
+          type == 'axe' ||
+          type.contains('محور') ||
+          name.contains('axe') ||
+          name.contains('محور');
+    }).map(Map<String, dynamic>.from).toList();
+
+    final bladeName = (blade?['name'] ?? '').toString().trim().toLowerCase();
+    final bladeIsX3d = _isX3dBlade(blade);
+    candidates = candidates.where((axis) {
+      final text = '${axis['name'] ?? ''} ${axis['shutter_subtype'] ?? ''}'
+          .toLowerCase();
+      return bladeIsX3d ? text.contains('x3d') : !text.contains('x3d');
+    }).toList();
+
+    if (bladeName.isNotEmpty) {
+      final explicitlyLinked = candidates.where((axis) {
+        return (axis['shutter_subtype'] ?? '').toString().trim().toLowerCase() ==
+            bladeName;
+      }).toList();
+      if (explicitlyLinked.isNotEmpty) candidates = explicitlyLinked;
+    }
+
+    final motorDiameter = motor == null ? null : shutterComponentDiameter(motor);
+    if (motorDiameter != null && motorDiameter > 0) {
+      candidates = candidates.where((axis) {
+        final axisDiameter = shutterComponentDiameter(axis);
+        return axisDiameter != null && axisDiameter >= motorDiameter;
+      }).toList();
+    }
+
+    candidates.sort((a, b) {
+      final aDiameter = shutterComponentDiameter(a) ?? double.infinity;
+      final bDiameter = shutterComponentDiameter(b) ?? double.infinity;
+      return aDiameter.compareTo(bDiameter);
+    });
+    if (candidates.isEmpty) return null;
+
+    final axis = Map<String, dynamic>.from(candidates.first);
+    axis['calculated_price'] = _safeDouble(axis['price_dzd'] ?? axis['price']);
+    return axis;
+  }
+
   Future<Map<String, dynamic>?> _findClosestFinalBlade(
     Database dbInstance,
     double targetSize,
@@ -575,7 +642,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           }
 
           // محاذاة كل القطع المرتبطة بالشريحة (المحور، الأطاش، سيبور موتور، الامبو...)
-          await alignComponent('المحور (Axe)', 'laxe');
+          final compatibleAxis = await _findCompatibleShutterAxis(
+            blade: Map<String, dynamic>.from(lames),
+            motor: widget.model.componentOverrides['المحرك (Moteur)'],
+          );
+          if (compatibleAxis != null) {
+            widget.model.componentOverrides['المحور (Axe)'] = compatibleAxis;
+          }
           await alignComponent('أطاش (Attache)', 'attache');
           await alignComponent(
             'سيبور موتور (Support Moteur)',
@@ -682,56 +755,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 matchedMotor['price_dzd'] ?? matchedMotor['price'],
               );
               widget.model.componentOverrides['المحرك (Moteur)'] = matchedMotor;
-              // 3. إيجاد المحور (Axe) المطابق لقطر المحرك المختار
-              final motorDiameter = (matchedMotor['motor_diameter'] ?? '')
-                  .toString()
-                  .trim();
-              final motorName = matchedMotor['name'].toString();
-              String targetDia = motorDiameter;
-              if (targetDia.isEmpty) {
-                // إذا لم يوجد قطر مسجّل، حاول استخراجه من اسم المحرك (مثلاً "60mm")
-                final diaMatch = RegExp(
-                  r'(\d+)\s*(?:mm|ملم)',
-                ).firstMatch(motorName);
-                if (diaMatch != null) {
-                  targetDia = diaMatch.group(1)!;
-                } else {
-                  // fallback أخير: تخمين القطر من أرقام شائعة موجودة بالاسم
-                  if (motorName.contains('60')) {
-                    targetDia = '60';
-                  } else if (motorName.contains('40')) {
-                    targetDia = '40';
-                  }
-                }
-              }
-              if (targetDia.isNotEmpty) {
-                final axeRes = await dbInstance.query(
-                  'ShutterComponents',
-                  where:
-                      "(component_type = 'Axe' OR name LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
-                );
-                Map<String, dynamic>? selectedAxe;
-                for (final row in axeRes) {
-                  final axeName = row['name'].toString();
-                  final axeDiameter = (row['motor_diameter'] ?? '')
-                      .toString()
-                      .trim();
-                  // تطابق حسب حقل القطر أو ورود الرقم داخل الاسم
-                  if (axeDiameter == targetDia || axeName.contains(targetDia)) {
-                    selectedAxe = row;
-                    break;
-                  }
-                }
-                if (selectedAxe == null && axeRes.isNotEmpty) {
-                  selectedAxe = axeRes.first; // fallback: أول محور متاح
-                }
-                if (selectedAxe != null) {
-                  final matchedAxe = Map<String, dynamic>.from(selectedAxe);
-                  matchedAxe['calculated_price'] = _safeDouble(
-                    matchedAxe['price_dzd'] ?? matchedAxe['price'],
-                  );
-                  widget.model.componentOverrides['المحور (Axe)'] = matchedAxe;
-                }
+              // 3. The blade relation is applied first; only then can a
+              // motor's diameter remove axes that are too small.
+              final matchedAxe = await _findCompatibleShutterAxis(
+                blade: Map<String, dynamic>.from(lames),
+                motor: matchedMotor,
+              );
+              if (matchedAxe != null) {
+                widget.model.componentOverrides['المحور (Axe)'] = matchedAxe;
               }
             }
           }
@@ -807,12 +838,43 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           if (id != null && colorId != null) {
             final mutable = Map<String, dynamic>.from(override);
             // محاولة 1: جدول أسعار الإكسسوارات حسب اللون
+            // IDs are local to each table. Resolve an accessory first so a
+            // missing price cannot be borrowed from a shutter or section.
+            final accessoryRows = await dbInstance.query(
+              'Accessories',
+              where: 'id = ?',
+              whereArgs: [id],
+              limit: 1,
+            );
+            if (accessoryRows.isNotEmpty) {
+              final accessoryColorPrices = await dbInstance.query(
+                'AccessoryColorPrices',
+                where: 'accessory_id = ?',
+                whereArgs: [id],
+              );
+              if (accessoryColorPrices.isEmpty) {
+                mutable['calculated_price'] = _safeDouble(
+                  accessoryRows.first['price_dzd'] ??
+                      accessoryRows.first['price'],
+                );
+              } else {
+                final selectedPrice = accessoryColorPrices.where(
+                  (row) => row['color_id']?.toString() == colorId.toString(),
+                );
+                mutable['calculated_price'] = selectedPrice.isEmpty
+                    ? 0.0
+                    : _safeDouble(selectedPrice.first['price']);
+              }
+              widget.model.componentOverrides[key] = mutable;
+              continue;
+            }
+
             final accPrice = await dbInstance.query(
               'AccessoryColorPrices',
               where: 'accessory_id = ? AND color_id = ?',
               whereArgs: [id, colorId],
             );
-            if (accPrice.isNotEmpty) {
+            if (accessoryRows.isNotEmpty && accPrice.isNotEmpty) {
               final double p = _safeDouble(accPrice.first['price']);
               if (p > 0) {
                 mutable['calculated_price'] = p;
@@ -1643,9 +1705,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       where: 'accessory_id = ? AND color_id = ?',
                       whereArgs: [selectedEsp['id'], colorId],
                     );
-                    if (colorPriceRes.isNotEmpty &&
-                        _safeDouble(colorPriceRes.first['price']) > 0) {
+                    final allColorPrices = await dbInstance.query(
+                      'AccessoryColorPrices',
+                      columns: ['id'],
+                      where: 'accessory_id = ?',
+                      whereArgs: [selectedEsp['id']],
+                      limit: 1,
+                    );
+                    if (colorPriceRes.isNotEmpty) {
                       price = _safeDouble(colorPriceRes.first['price']);
+                    } else if (allColorPrices.isNotEmpty) {
+                      price = 0.0;
                     } else {
                       price = _safeDouble(
                         selectedEsp['price_dzd'] ?? selectedEsp['price'],
@@ -2417,8 +2487,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     where: 'accessory_id = ? AND color_id = ?',
                     whereArgs: [res.first['id'], colorId],
                   );
-                  if (colorPriceRes.isNotEmpty &&
-                      _safeDouble(colorPriceRes.first['price']) > 0) {
+                  final accessoryHasColorPrices = await dbInstance.query(
+                    'AccessoryColorPrices',
+                    columns: ['id'],
+                    where: 'accessory_id = ?',
+                    whereArgs: [res.first['id']],
+                    limit: 1,
+                  );
+                  if (accessoryHasColorPrices.isNotEmpty &&
+                      colorPriceRes.isEmpty) {
+                    price = 0.0;
+                  } else if (colorPriceRes.isNotEmpty) {
                     price = _safeDouble(colorPriceRes.first['price']);
                   } else {
                     price = _safeDouble(
@@ -5592,14 +5671,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                   Text(
                                     namePart,
                                     style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: item.category == 'glass'
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
+                                      fontSize: item.category == 'glass'
+                                          ? 9.0
+                                          : 10,
+                                      fontWeight: FontWeight.normal,
                                       color: item.category == 'glass'
                                           ? (isDark
-                                                ? Colors.white70
-                                                : Colors.black87)
+                                                ? Colors.grey.shade400
+                                                : Colors.grey.shade600)
                                           : (isDark
                                                 ? Colors.white54
                                                 : Colors.grey.shade700),
@@ -6185,6 +6264,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // إذا كانت الشريحة (Lames) مختارة، نمرر معرّفها (bladeId) لنافذة الاختيار لفلترة الخيارات المتوافقة معها
     final bladeObj = widget.model.componentOverrides['الشرائح (Lames)'];
     final int? bladeId = bladeObj != null ? bladeObj['id'] as int? : null;
+    final selectedBladeName = bladeObj?['name']?.toString();
+    final selectedBladeIsX3d =
+        '${bladeObj?['name'] ?? ''} ${bladeObj?['shutter_subtype'] ?? ''}'
+            .toLowerCase()
+            .contains('x3d');
+    final selectedMotor = widget.model.componentOverrides['المحرك (Moteur)'];
+    final motorDiameter = selectedMotor == null
+        ? null
+        : shutterComponentDiameter(selectedMotor);
     final accessoryDrawingMode = _accessoryDrawingModeForItem(item);
     // فتح نافذة الاختيار العامة بالمعطيات المحسوبة أعلاه
     final selected = await showDialog<Map<String, dynamic>>(
@@ -6201,6 +6289,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             ? maxEspagnoletteLength
             : null,
         bladeId: bladeId,
+        selectedBladeName: selectedBladeName,
+        selectedBladeIsX3d: selectedBladeIsX3d,
+        motorDiameter: motorDiameter,
       ),
     );
     if (selected != null && mounted) {
@@ -6478,7 +6569,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         if (item.originalName == 'الشرائح (Lames)') {
           final targetSubtype =
               mutableSelected['shutter_subtype']?.toString() ?? 'normal';
-          companionAxe = await _findShutterComponent('laxe', targetSubtype);
+          companionAxe = await _findCompatibleShutterAxis(
+            blade: mutableSelected,
+            motor: widget.model.componentOverrides['المحرك (Moteur)'],
+          );
           if (companionFinale == null) {
             companionFinale = await _findShutterComponent(
               'final_blade',
@@ -6510,50 +6604,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             targetSubtype,
           );
         }
-        // إذا تم تغيير "المحرك" تحديدًا، أعد إيجاد المحور المطابق لقطر المحرك الجديد
+        // Changing the motor can change which axis is compatible.  The blade
+        // relation remains the first filter, before the motor diameter.
         if (item.originalName == 'المحرك (Moteur)') {
-          final motorDiameter = (mutableSelected['motor_diameter'] ?? '')
-              .toString()
-              .trim();
-          final motorName = mutableSelected['name']?.toString() ?? '';
-          String targetDia = motorDiameter;
-          if (targetDia.isEmpty) {
-            final diaMatch = RegExp(
-              r'(\d+)\s*(?:mm|ملم)',
-            ).firstMatch(motorName);
-            if (diaMatch != null) {
-              targetDia = diaMatch.group(1)!;
-            } else {
-              if (motorName.contains('60')) {
-                targetDia = '60';
-              } else if (motorName.contains('40')) {
-                targetDia = '40';
-              }
-            }
-          }
-          if (targetDia.isNotEmpty) {
-            final dbInstance = await db.db;
-            if (dbInstance != null) {
-              final axeRes = await dbInstance.query(
-                'ShutterComponents',
-                where:
-                    "(component_type = 'Axe' OR name LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
-              );
-              for (final row in axeRes) {
-                final axeName = row['name'].toString();
-                final axeDiameter = (row['motor_diameter'] ?? '')
-                    .toString()
-                    .trim();
-                if (axeDiameter == targetDia || axeName.contains(targetDia)) {
-                  companionAxe = Map<String, dynamic>.from(row);
-                  companionAxe['calculated_price'] = _safeDouble(
-                    companionAxe['price_dzd'] ?? companionAxe['price'],
-                  );
-                  break;
-                }
-              }
-            }
-          }
+          companionAxe = await _findCompatibleShutterAxis(
+            blade: widget.model.componentOverrides['الشرائح (Lames)'],
+            motor: mutableSelected,
+          );
         }
         // ---- تطبيق كل التغييرات: إما مسار الكيت (معالجة خاصة) أو المسار العام لتحديث componentOverrides ----
         if (isKitItem) {

@@ -99,6 +99,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     };
 
     String selectedSubtype = 'normal';
+    String? selectedLinkedBlade;
 
     showDialog(
       context: context,
@@ -149,6 +150,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   onChanged: (val) {
                     setStateDialog(() {
                       selectedType = val!;
+                      if (!['laxe', 'bouchon_lame', 'rouleau', 'tulip']
+                          .contains(selectedType)) {
+                        selectedLinkedBlade = null;
+                      }
                       if (selectedType == 'kit') {
                         selectedUnit = 'piece';
                       }
@@ -196,7 +201,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 ],
                 if ([
                   'blade',
-                  'laxe',
                   'final_blade',
                   'attache',
                   'support_moteur',
@@ -233,7 +237,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     },
                   ),
                 ],
-                if (selectedType == 'bouchon_lame' || selectedType == 'rouleau' || selectedType == 'tulip') ...[
+                if (selectedType == 'laxe' || selectedType == 'bouchon_lame' || selectedType == 'rouleau' || selectedType == 'tulip') ...[
                   SizedBox(height: 10),
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: SqlDatabase().db.then(
@@ -250,11 +254,14 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         return const Center(child: CircularProgressIndicator());
                       final blades = snapshot.data!;
                       return DropdownButtonFormField<String>(
-                        value: blades.any((b) => b['name'] == selectedSubtype)
-                            ? selectedSubtype
-                            : (blades.isNotEmpty
-                                  ? blades.first['name'].toString()
-                                  : null),
+                        value: blades.any(
+                          (b) => b['name'] == selectedLinkedBlade,
+                        )
+                            ? selectedLinkedBlade
+                            : null,
+                        hint: Text(
+                          Localization.translate('اختر الشفرة المرتبطة', lang),
+                        ),
                         decoration: InputDecoration(
                           labelText: Localization.translate(
                             'الشفرة المرتبطة (Blade)',
@@ -272,7 +279,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                             .toList(),
                         onChanged: (val) {
                           setStateDialog(() {
-                            selectedSubtype = val ?? 'normal';
+                            selectedLinkedBlade = val;
                           });
                         },
                       );
@@ -293,6 +300,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       labelText: Localization.translate(
                         selectedType == 'motor'
                             ? 'قياس المحرك (مثال: 10Nm أو 20Nm)'
+                            : selectedType == 'laxe'
+                            ? 'قطر المحور (مثال: 40 أو 60 مم)'
                             : 'القياس (مثال: 185 أو 55)',
                         lang,
                       ),
@@ -341,6 +350,19 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
+                  if (selectedType == 'laxe' && selectedLinkedBlade == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          Localization.translate(
+                            'اختر الشفرة المرتبطة بالمحور قبل الحفظ',
+                            lang,
+                          ),
+                        ),
+                      ),
+                    );
+                    return;
+                  }
                   try {
                     await widget.db.insertShutterComponent(
                       nameCtrl.text,
@@ -350,7 +372,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       barLengthM: double.tryParse(barLengthCtrl.text) ?? 0.0,
                       measurement:
                           [
-                            'laxe',
                             'attache',
                             'support_roulement',
                             'tandem',
@@ -360,7 +381,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           : (measurementCtrl.text.trim().isEmpty
                                 ? null
                                 : measurementCtrl.text.trim()),
-                      shutterSubtype: selectedSubtype,
+                      shutterSubtype: selectedLinkedBlade ?? selectedSubtype,
                       motorDiameter: selectedType == 'motor'
                           ? (motorDiameterCtrl.text.trim().isEmpty
                                 ? null
@@ -447,6 +468,11 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     };
 
     String selectedSubtype = item['shutter_subtype']?.toString() ?? 'normal';
+    String? selectedLinkedBlade =
+        ['laxe', 'bouchon_lame', 'rouleau', 'tulip'].contains(selectedType) &&
+            !['normal', 'extruded'].contains(selectedSubtype.toLowerCase())
+        ? selectedSubtype
+        : null;
 
     showDialog(
       context: context,
@@ -491,6 +517,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   onChanged: (val) {
                     setStateDialog(() {
                       selectedType = val!;
+                      if (!['laxe', 'bouchon_lame', 'rouleau', 'tulip']
+                          .contains(selectedType)) {
+                        selectedLinkedBlade = null;
+                      }
                       if (selectedType == 'kit') {
                         selectedUnit = 'piece';
                       }
@@ -544,7 +574,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 ],
                 if ([
                   'blade',
-                  'laxe',
                   'final_blade',
                   'attache',
                   'support_moteur',
@@ -581,7 +610,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     },
                   ),
                 ],
-                if (selectedType == 'bouchon_lame' || selectedType == 'rouleau' || selectedType == 'tulip') ...[
+                if (selectedType == 'laxe' || selectedType == 'bouchon_lame' || selectedType == 'rouleau' || selectedType == 'tulip') ...[
                   SizedBox(height: 10),
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: SqlDatabase().db.then(
@@ -598,11 +627,14 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         return const Center(child: CircularProgressIndicator());
                       final blades = snapshot.data!;
                       return DropdownButtonFormField<String>(
-                        value: blades.any((b) => b['name'] == selectedSubtype)
-                            ? selectedSubtype
-                            : (blades.isNotEmpty
-                                  ? blades.first['name'].toString()
-                                  : null),
+                        value: blades.any(
+                          (b) => b['name'] == selectedLinkedBlade,
+                        )
+                            ? selectedLinkedBlade
+                            : null,
+                        hint: Text(
+                          Localization.translate('اختر الشفرة المرتبطة', lang),
+                        ),
                         decoration: InputDecoration(
                           labelText: Localization.translate(
                             'الشفرة المرتبطة (Blade)',
@@ -620,7 +652,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                             .toList(),
                         onChanged: (val) {
                           setStateDialog(() {
-                            selectedSubtype = val ?? 'normal';
+                            selectedLinkedBlade = val;
                           });
                         },
                       );
@@ -628,7 +660,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   ),
                 ],
                 if (![
-                  'laxe',
                   'attache',
                   'support_roulement',
                   'tandem',
@@ -641,6 +672,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       labelText: Localization.translate(
                         selectedType == 'motor'
                             ? 'قياس المحرك (مثال: 10Nm أو 20Nm)'
+                            : selectedType == 'laxe'
+                            ? 'قطر المحور (مثال: 40 أو 60 مم)'
                             : 'القياس (مثال: 185 أو 55)',
                         lang,
                       ),
@@ -688,6 +721,19 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
+                  if (selectedType == 'laxe' && selectedLinkedBlade == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          Localization.translate(
+                            'اختر الشفرة المرتبطة بالمحور قبل الحفظ',
+                            lang,
+                          ),
+                        ),
+                      ),
+                    );
+                    return;
+                  }
                   try {
                     await widget.db.updateShutterComponent(
                       item['id'],
@@ -698,7 +744,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       barLengthM: double.tryParse(barLengthCtrl.text) ?? 0.0,
                       measurement:
                           [
-                            'laxe',
                             'attache',
                             'support_roulement',
                             'tandem',
@@ -708,7 +753,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           : (measurementCtrl.text.trim().isEmpty
                                 ? null
                                 : measurementCtrl.text.trim()),
-                      shutterSubtype: selectedSubtype,
+                      shutterSubtype: selectedLinkedBlade ?? selectedSubtype,
                       motorDiameter: selectedType == 'motor'
                           ? (motorDiameterCtrl.text.trim().isEmpty
                                 ? null
@@ -973,7 +1018,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
           'tulip',
         ].contains(item['component_type'])) {
           final sub = item['shutter_subtype']?.toString() ?? 'normal';
-          if (['bouchon_lame', 'rouleau', 'tulip'].contains(item['component_type'])) {
+          if (['laxe', 'bouchon_lame', 'rouleau', 'tulip'].contains(item['component_type'])) {
             subtypeStr = ' - ${Localization.translate("مرتبط بـ:", lang)} $sub';
           } else {
             subtypeStr =

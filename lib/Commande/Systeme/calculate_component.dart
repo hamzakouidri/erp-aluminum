@@ -708,14 +708,145 @@ class ComponentCalculator {
     // غير مدمج: hasSideCovers = true لكن الإطار بدون couvreJoint مدمج
     bool frameHasIntegratedSideCover =
         window.isIntegratedFrame && window.isSideCoverAllowed;
-    bool hasIntegratedSideCover =
-        window.hasSideCovers &&
-        window.isSideCoverAllowed &&
-        frameHasIntegratedSideCover;
+    // In PVC an integrated cover belongs to the selected frame itself.  It is
+    // therefore present even when the separate-cover switch is off.
+    bool hasIntegratedSideCover = isOuterFramePvc
+        ? frameHasIntegratedSideCover
+        : window.hasSideCovers &&
+              window.isSideCoverAllowed &&
+              frameHasIntegratedSideCover;
     bool hasNonIntegratedSideCover =
         window.hasSideCovers &&
         window.isSideCoverAllowed &&
         !hasIntegratedSideCover;
+
+    // A separate couvre-joint must always be read from the exact section that
+    // was selected for this series.  Do not reuse the width of an integrated
+    // cover on the frame: the two profiles can have different widths and
+    // thicknesses even in the same PVC series.
+    AluminumSection? resolveSelectedSeparateSideCover() {
+      final series = window.activeFrameSeries ?? window.activeSeries;
+      if (series == null) return window.selectedSideCover;
+
+      AluminumSection? findInSeries({
+        int? id,
+        String? code,
+        String? name,
+      }) {
+        if (id != null) {
+          for (final section in series.sections) {
+            if (section.id == id) return section;
+          }
+        }
+        if (code != null && code.trim().isNotEmpty) {
+          for (final section in series.sections) {
+            if (section.code.trim().toLowerCase() ==
+                code.trim().toLowerCase()) {
+              return section;
+            }
+          }
+        }
+        if (name != null && name.trim().isNotEmpty) {
+          for (final section in series.sections) {
+            if (section.name.trim().toLowerCase() ==
+                name.trim().toLowerCase()) {
+              return section;
+            }
+          }
+        }
+        return null;
+      }
+
+      final selected = window.selectedSideCover;
+      final fromSelected = findInSeries(
+        id: selected?.id,
+        code: selected?.code,
+        name: selected?.name,
+      );
+      if (fromSelected != null) return fromSelected;
+
+      final override = window.sideCoverOverride;
+      if (override != null) {
+        final rawId = override['id'];
+        final id = rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '');
+        final fromOverride = findInSeries(
+          id: id,
+          code: override['code']?.toString(),
+          name: override['name']?.toString(),
+        );
+        if (fromOverride != null) return fromOverride;
+      }
+
+      return selected;
+    }
+
+    final selectedSeparateSideCover = hasNonIntegratedSideCover
+        ? resolveSelectedSeparateSideCover()
+        : null;
+
+    double selectedSeparateCoverWidth() {
+      final cover = selectedSeparateSideCover;
+      if (cover != null) {
+        final primary = window.sideCoverUseSecondWidth
+            ? cover.visibleWidth
+            : cover.couvreJointWidth;
+        final secondary = window.sideCoverUseSecondWidth
+            ? cover.couvreJointWidth
+            : cover.visibleWidth;
+        if (primary > 0) return primary;
+        if (secondary > 0) return secondary;
+      }
+
+      final override = window.sideCoverOverride;
+      if (override != null) {
+        double read(String key) {
+          final value = override[key];
+          return value is num
+              ? value.toDouble()
+              : double.tryParse(value?.toString() ?? '') ?? 0.0;
+        }
+
+        final primary = window.sideCoverUseSecondWidth
+            ? read('visible_width')
+            : read('couvre_joint_width');
+        final secondary = window.sideCoverUseSecondWidth
+            ? read('couvre_joint_width')
+            : read('visible_width');
+        if (primary > 0) return primary;
+        if (secondary > 0) return secondary;
+      }
+
+      return 0.0;
+    }
+
+    double selectedSeparateCoverThickness() {
+      final cover = selectedSeparateSideCover;
+      if (cover != null) return cover.couvreJointThickness;
+      final value = window.sideCoverOverride?['couvre_joint_thickness'];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    final separateCoverWidth = selectedSeparateCoverWidth();
+    final separateCoverThickness = selectedSeparateCoverThickness();
+    Map<String, dynamic>? selectedSeparateCoverMap;
+    if (selectedSeparateSideCover != null) {
+      selectedSeparateCoverMap = selectedSeparateSideCover.toMap();
+      final savedCover = window.sideCoverOverride;
+      if (savedCover != null &&
+          savedCover['id']?.toString() ==
+              selectedSeparateSideCover.id.toString()) {
+        selectedSeparateCoverMap['calculated_price'] =
+            savedCover['calculated_price'] ??
+            savedCover['price_dzd'] ??
+            savedCover['price'];
+      }
+    } else {
+      selectedSeparateCoverMap = window.sideCoverOverride;
+    }
 
     // حساب netHeight: الارتفاع الصافي قبل حساب الإطار
     double netHeight;
@@ -820,13 +951,20 @@ class ComponentCalculator {
             windowDoubleSashCount++;
           }
 
+          // A double sash has one active handle by default.  The second
+          // handle is counted only when the user explicitly enables it in
+          // the drawing ("two handles").
+          final int handleCount = zone.content == ZoneContent.doubleSash
+              ? (zone.doubleSashHasTwoHandles ? 2 : 1)
+              : 1;
+
           if (zone.content == ZoneContent.doubleSash) {
             if (zone.usePvcHandleOnAlu) {
-              pvcHandlesOnAlu += 2;
+              pvcHandlesOnAlu += handleCount;
             } else if (zone.useOctoHandle) {
-              octoHandles += 2;
+              octoHandles += handleCount;
             } else {
-              totalHandles += 2;
+              totalHandles += handleCount;
             }
           } else {
             if (zone.lockType == LockType.point) {
@@ -1053,7 +1191,7 @@ class ComponentCalculator {
     }
 
     final double weldVal = isOuterFramePvc ? 5.0 : 0.0;
-    final double noBottomWeldVal = isOuterFramePvc ? 3.0 : 0.0;
+    final double noBottomWeldVal = isOuterFramePvc ? 5.0 : 0.0;
 
     double frameWidth;
     double frameNetHeight;
@@ -1064,32 +1202,19 @@ class ComponentCalculator {
       // العرض: نضيف العرض الظاهر مرتين (لليمين واليسار) + تلحيم
       frameWidth = window.width + (2 * sideCoverVisibleWidth) + weldVal;
 
-      // الارتفاع: نضيف العرض الظاهر مرتين (للأعلى والأسفل) إذا كان هناك إطار سفلي، أو مرة واحدة (للأعلى) إذا لم يكن هناك إطار سفلي + تلحيم
-      if (window.hasBottomFrame) {
-        frameNetHeight = netHeight + (2 * sideCoverVisibleWidth) + weldVal;
-      } else {
-        frameNetHeight = netHeight + sideCoverVisibleWidth + noBottomWeldVal;
-      }
+      // The integrated cover always extends on both ends of each cut. The
+      // vertical and horizontal frame pieces follow the same formula.
+      frameNetHeight = netHeight + (2 * sideCoverVisibleWidth) + weldVal;
     } else if (hasNonIntegratedSideCover) {
       // ======= حالة 2: إطار بدون غطاء مدمج (غطاء منفصل) =======
       // نخصم سُمك الـ couvre-joint من العرض والارتفاع + نضيف 5 مم تلحيم
-      double couvreJointThickness =
-          window.selectedSideCover?.couvreJointThickness ?? 0.0;
-
       // العرض: نخصم السُمك من اليمين واليسار + تلحيم
-      frameWidth = window.width - (couvreJointThickness * 2) + weldVal;
+      frameWidth = window.width - (separateCoverThickness * 2) + weldVal;
 
-      // الارتفاع: نخصم السُمك (مع احترام hasBottomFrame) + تلحيم
-      // netHeight = الارتفاع الكامل - الصندوق (إذا shutter) — تم حسابه أعلاه
+      // The separate cover is assembled around the frame, so remove its
+      // actual thickness on both ends before adding the 5 mm weld allowance.
       frameNetHeight =
-          netHeight -
-          couvreJointThickness // خصم السُمك من الأعلى دائماً
-          -
-          (window.hasBottomFrame
-              ? couvreJointThickness
-              : 0.0) // خصم من الأسفل فقط إذا hasBottomFrame
-          +
-          weldVal; // تلحيم
+          netHeight - (separateCoverThickness * 2) + weldVal;
     } else {
       // ======= حالة 3: بدون غطاء جانبي =======
       frameWidth = window.width + weldVal;
@@ -1133,28 +1258,24 @@ class ComponentCalculator {
       }
     }
 
-    final bool hasL = !window.removedShutterSides.contains('left');
-    final bool hasR = !window.removedShutterSides.contains('right');
-    final bool hasT = !window.removedShutterSides.contains('top');
-    final bool hasB =
-        !window.removedShutterSides.contains('bottom') && window.hasBottomFrame;
-
     for (final r in frameRects) {
-      double fWidth = r.width + weldVal;
-      double fHeight =
-          r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+      // A complete window is cut from the real drawing dimensions.  For a
+      // multi-frame drawing, retain each group's own dimensions while using
+      // the same cover formula.
+      final isCompleteFrame = frameRects.length == 1;
+      double fWidth = isCompleteFrame ? frameWidth : r.width + weldVal;
+      double fHeight = isCompleteFrame
+          ? frameNetHeight
+          : r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
 
-      if (window.isIntegratedFrame) {
-        fWidth =
-            r.width +
-            (hasL ? integratedCoverW : 0.0) +
-            (hasR ? integratedCoverW : 0.0) +
-            weldVal;
-        fHeight =
-            r.height +
-            (hasT ? integratedCoverW : 0.0) +
-            (hasB ? integratedCoverW : 0.0) +
-            (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+      if (!isCompleteFrame && hasIntegratedSideCover) {
+        // Integrated PVC covers always count twice in both directions; they
+        // are part of the selected frame, not optional shutter-side pieces.
+        fWidth = r.width + (2 * integratedCoverW) + weldVal;
+        fHeight = r.height + (2 * integratedCoverW) + weldVal;
+      } else if (!isCompleteFrame && hasNonIntegratedSideCover) {
+        fWidth = r.width - (2 * separateCoverThickness) + weldVal;
+        fHeight = r.height - (2 * separateCoverThickness) + weldVal;
       }
 
       double hPiece = fHeight / 1000.0;
@@ -1232,16 +1353,19 @@ class ComponentCalculator {
       );
     }
 
-    bool showSideCover = !window.isIntegratedFrame;
+    // Only a separately selected cover gets its own table row. An integrated
+    // PVC cover is already included in the frame profile above.
+    bool showSideCover = hasNonIntegratedSideCover;
 
     if (showSideCover) {
-      double w = window.sideCoverWidth; // cover visible width in mm
-      final double weldAllowance = window.isPVC
-          ? 5.0
-          : 0.0; // 5 مم تلحيم (لحيم / تفخيم) لكل قطعة في PVC فقط
+      final double w = separateCoverWidth;
+      // The standalone PVC couvre-joint is welded as a complete surround.
+      // Its cut length is reduced by 6 cm in each direction for the weld.
+      final double weldCutDeduction = isOuterFramePvc ? 60.0 : 0.0;
 
-      final checkShutterRemoval =
-          window.hasShutter && window.removedShutterSides.isNotEmpty;
+      // The side selector is also available without a shutter, so its active
+      // sides must always determine how many separate cover pieces are cut.
+      final checkShutterRemoval = window.removedShutterSides.isNotEmpty;
       final hasL =
           !checkShutterRemoval || !window.removedShutterSides.contains('left');
       final hasR =
@@ -1253,12 +1377,10 @@ class ComponentCalculator {
               !window.removedShutterSides.contains('bottom')) &&
           window.hasBottomFrame;
 
-      // الطول الرأسي: ارتفاع النافذة + عرض الغطاء العلوي/السفلي (إذا موجود) + 5 مم لحيم
-      double verticalLen =
-          window.height + (hasT ? w : 0.0) + (hasB ? w : 0.0) + weldAllowance;
-      // الطول الأفقي: عرض النافذة + عرض الغطاء الأيسر/الأيمن (إذا موجود) + 5 مم لحيم
-      double horizontalLen =
-          window.width + (hasL ? w : 0.0) + (hasR ? w : 0.0) + weldAllowance;
+      // Each separate cover uses its own selected width: the actual window
+      // dimension plus both cover widths, less the 6 cm welding deduction.
+      double verticalLen = window.height + (2 * w) - weldCutDeduction;
+      double horizontalLen = window.width + (2 * w) - weldCutDeduction;
 
       List<double> sideCoverPieces = [];
       if (hasL) sideCoverPieces.add(verticalLen / 1000.0);
@@ -1266,25 +1388,18 @@ class ComponentCalculator {
       if (hasT) sideCoverPieces.add(horizontalLen / 1000.0);
       if (hasB) sideCoverPieces.add(horizontalLen / 1000.0);
 
-      // ضمان عدم خلو قطع الغطاء الجانبي إطلاقاً
-      if (sideCoverPieces.isEmpty) {
-        sideCoverPieces = [
-          (window.height + weldAllowance) / 1000.0,
-          (window.height + weldAllowance) / 1000.0,
-          (window.width + weldAllowance) / 1000.0,
-          if (window.hasBottomFrame) (window.width + weldAllowance) / 1000.0,
-        ];
+      if (sideCoverPieces.isNotEmpty) {
+        items.add(
+          createProfile(
+            'الغطاء الجانبي (Side Cover)',
+            colorName,
+            pieces: sideCoverPieces,
+            unit: 'قطاع',
+            overrideMap: selectedSeparateCoverMap,
+            preferOverrideMap: true,
+          ),
+        );
       }
-
-      items.add(
-        createProfile(
-          'الغطاء الجانبي (Side Cover)',
-          colorName,
-          pieces: sideCoverPieces,
-          unit: 'قطاع',
-          overrideMap: window.sideCoverOverride,
-        ),
-      );
     }
 
     if (hasSingleSash || hasDoubleSash || hasSlidingSash) {
@@ -2003,13 +2118,12 @@ class ComponentCalculator {
     }
 
     if (hasSingleSash || hasDoubleSash || hasSlidingSash) {
-      bool isEspagnoletteActive = true;
-      int activeObCount = (isSystemObActive ? 1 : 0) + (isDemiObActive ? 1 : 0);
-      int espagnoletteQty = totalHandles - activeObCount;
-      if (isSystemObActive || isDemiObActive) {
-        isEspagnoletteActive = false;
-        espagnoletteQty = totalHandles;
-      }
+      // Every normal window handle requires one espagnolette.  OB/Demi-OB
+      // only changes whether the ordinary espagnolette is active; it must
+      // never silently reduce its quantity.
+      final bool isEspagnoletteActive =
+          !isSystemObActive && !isDemiObActive;
+      final int espagnoletteQty = totalHandles;
 
       if (espagnoletteQty > 0 && window.isPVC) {
         double heightCm = window.height / 10.0;
@@ -4098,18 +4212,18 @@ class ComponentCalculator {
             String glassName;
             if (cellGlass.structure == GlassStructure.double) {
               glassName =
-                  '${prefix}- Face extérieure / الوجه الخارجي: ${layerDescription(isOuter: true)}\n'
-                  '  ${outerPrice.toStringAsFixed(2)} دج/م²\n'
-                  '- Face intérieure / الوجه الداخلي: ${layerDescription(isOuter: false)}\n'
-                  '  ${innerPrice.toStringAsFixed(2)} دج/م²\n'
-                  '- Intercalaire / الفاصل: ${cellGlass.intercallThickness} مم\n'
-                  '  ${intercallPrice.toStringAsFixed(2)} دج/م²'
-                  '${cellGlass.hasGas ? '\n- Gaz / الغاز\n  ${gasPrice.toStringAsFixed(2)} دج/م²' : ''}'
+                  '${prefix}- Face extérieure / الوجه الخارجي: ${layerDescription(isOuter: true)} '
+                  '(${outerPrice.toStringAsFixed(2)} دج/م²)\n'
+                  '- Face intérieure / الوجه الداخلي: ${layerDescription(isOuter: false)} '
+                  '(${innerPrice.toStringAsFixed(2)} دج/م²)\n'
+                  '- Intercalaire / الفاصل: ${cellGlass.intercallThickness} مم '
+                  '(${intercallPrice.toStringAsFixed(2)} دج/م²)'
+                  '${cellGlass.hasGas ? '\n- Gaz / الغاز (${gasPrice.toStringAsFixed(2)} دج/م²)' : ''}'
                   '\n- Dimensions / القياس: $dimensions';
             } else {
               glassName =
-                  '${prefix}- Face extérieure / الوجه الخارجي: ${layerDescription(isOuter: true)}\n'
-                  '  ${outerPrice.toStringAsFixed(2)} دج/م²\n'
+                  '${prefix}- Face extérieure / الوجه الخارجي: ${layerDescription(isOuter: true)} '
+                  '(${outerPrice.toStringAsFixed(2)} دج/م²)\n'
                   '- Dimensions / القياس: $dimensions';
             }
 
@@ -4862,7 +4976,7 @@ class ComponentCalculator {
     final totalT = glass.totalThickness(window.allGlassCache);
     // مطابقة سمك الزجاج مع الباكيت المناسب
     // نستخدم max_glass_thickness من DB مباشرة دون عتبة ثابتة.
-    final isDouble = totalT > 10.0;
+    final isDouble = glass.structure == GlassStructure.double;
     Map<String, dynamic>? matchingParclose;
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
     final activeSeries = window.activeSeries;
@@ -4924,6 +5038,13 @@ class ComponentCalculator {
       matchingParclose = chosenParclose;
     }
 
+    // An explicitly selected parclose is the source of truth for both the
+    // displayed thickness and its warning. Do not silently compare against a
+    // different catalogue parclose just because it looks more suitable.
+    if (chosenParclose != null) {
+      matchingParclose = chosenParclose;
+    }
+
     if (matchingParclose != null) {
       final double maxG =
           (matchingParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
@@ -4933,7 +5054,7 @@ class ComponentCalculator {
         if (totalT > maxG) {
           result +=
               '\n⚠️ تنبيه: سمك $label ($totalT مم) أكبر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
-        } else if (totalT < maxG - 2.0) {
+        } else if (totalT < maxG - 0.01) {
           result +=
               '\n⚠️ تنبيه: سمك $label ($totalT مم) أصغر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
         }

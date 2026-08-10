@@ -459,6 +459,51 @@ class GlassSpecification {
     jointTwoSides: jointTwoSides ?? this.jointTwoSides,
   );
 
+  /// Compares all visible choices from the glass drawer, including panel and
+  /// decorative details.  The drawer can therefore safely preselect a value
+  /// only when every glass cell uses the same configuration.
+  bool hasSameConfigurationAs(GlassSpecification other) {
+    return structure == other.structure &&
+        finishOuter == other.finishOuter &&
+        finishInner == other.finishInner &&
+        colorOuter == other.colorOuter &&
+        colorInner == other.colorInner &&
+        processingOuter == other.processingOuter &&
+        processingInner == other.processingInner &&
+        temperedOuter == other.temperedOuter &&
+        temperedInner == other.temperedInner &&
+        colorP == other.colorP &&
+        hasGas == other.hasGas &&
+        intercallThickness == other.intercallThickness &&
+        decorH == other.decorH &&
+        decorV == other.decorV &&
+        _sameDoubleList(decorHPositions, other.decorHPositions) &&
+        _sameDoubleList(decorVPositions, other.decorVPositions) &&
+        thicknessOuter == other.thicknessOuter &&
+        thicknessInner == other.thicknessInner &&
+        laminatedColorOuter == other.laminatedColorOuter &&
+        laminatedColorInner == other.laminatedColorInner &&
+        decorColor == other.decorColor &&
+        decorThickness == other.decorThickness &&
+        hasRosettes == other.hasRosettes &&
+        panneauSubtype == other.panneauSubtype &&
+        panneauColor == other.panneauColor &&
+        decorBaguetteId == other.decorBaguetteId &&
+        decorRosetteId == other.decorRosetteId &&
+        isVerticalBardage == other.isVerticalBardage &&
+        panneauProductId == other.panneauProductId &&
+        rosetteShape == other.rosetteShape &&
+        jointTwoSides == other.jointTwoSides;
+  }
+
+  static bool _sameDoubleList(List<double> first, List<double> second) {
+    if (first.length != second.length) return false;
+    for (var index = 0; index < first.length; index++) {
+      if (first[index] != second[index]) return false;
+    }
+    return true;
+  }
+
   String get displayName {
     if (structure == GlassStructure.closed) return '';
     if (structure == GlassStructure.double) {
@@ -1394,6 +1439,62 @@ class WindowModel extends ChangeNotifier {
   PlacedFrame? selectedFrame;
   String? selectedFrameCode;
   Map<String, dynamic> componentOverrides = {};
+
+  bool _isX3dShutterComponent(Map<String, dynamic> component) {
+    final text =
+        '${component['name'] ?? ''} ${component['shutter_subtype'] ?? ''}'
+            .toLowerCase();
+    return text.contains('x3d');
+  }
+
+  double? _shutterComponentDiameter(Map<String, dynamic> component) {
+    for (final field in const ['motor_diameter', 'measurement', 'name']) {
+      final value = (component[field] ?? '').toString().trim();
+      final match = RegExp(r'(?<!\d)(\d{2,3}(?:[.,]\d+)?)').firstMatch(value);
+      if (match != null) {
+        return double.tryParse(match.group(1)!.replaceAll(',', '.'));
+      }
+    }
+    return null;
+  }
+
+  /// Chooses only an axis that belongs to the selected blade.  X3D is the
+  /// first decision; a motor's diameter then removes axes that are too small.
+  Map<String, dynamic>? _selectCompatibleShutterAxis(
+    Iterable<Map<String, dynamic>> rows,
+  ) {
+    final blade = componentOverrides['الشرائح (Lames)'];
+    final bladeName = (blade?['name'] ?? '').toString().trim().toLowerCase();
+    final bladeIsX3d = blade != null && _isX3dShutterComponent(blade);
+    var candidates = rows.where((axis) {
+      final axisIsX3d = _isX3dShutterComponent(axis);
+      return bladeIsX3d ? axisIsX3d : !axisIsX3d;
+    }).map(Map<String, dynamic>.from).toList();
+
+    if (bladeName.isNotEmpty) {
+      final explicitlyLinked = candidates.where((axis) {
+        return (axis['shutter_subtype'] ?? '').toString().trim().toLowerCase() ==
+            bladeName;
+      }).toList();
+      if (explicitlyLinked.isNotEmpty) candidates = explicitlyLinked;
+    }
+
+    final motor = componentOverrides['المحرك (Moteur)'];
+    final motorDiameter = motor == null ? null : _shutterComponentDiameter(motor);
+    if (motorDiameter != null && motorDiameter > 0) {
+      candidates = candidates.where((axis) {
+        final axisDiameter = _shutterComponentDiameter(axis);
+        return axisDiameter != null && axisDiameter >= motorDiameter;
+      }).toList();
+    }
+
+    candidates.sort((a, b) {
+      final aDiameter = _shutterComponentDiameter(a) ?? double.infinity;
+      final bDiameter = _shutterComponentDiameter(b) ?? double.infinity;
+      return aDiameter.compareTo(bDiameter);
+    });
+    return candidates.isEmpty ? null : candidates.first;
+  }
   Map<String, dynamic>? frameOverride;
   Map<String, dynamic>? sideCoverOverride;
   Map<String, dynamic>? sashOverride;
@@ -4081,37 +4182,7 @@ class WindowModel extends ChangeNotifier {
                 }
               } else if (overrideName == 'المحور (Axe)' ||
                   overrideName.contains('محور')) {
-                // Determine target diameter
-                final bool isMotor = shutterMechanism == 'محرك';
-                String targetDiam = '60'; // Default manual axle is 60
-                if (isMotor) {
-                  final motorComp = componentOverrides['المحرك (Moteur)'];
-                  final motorDiamRaw =
-                      motorComp?['motor_diameter']?.toString() ?? '';
-                  if (motorDiamRaw.isNotEmpty) {
-                    final match = RegExp(r'(\d+)').firstMatch(motorDiamRaw);
-                    if (match != null) {
-                      targetDiam = match.group(1)!;
-                    }
-                  } else {
-                    targetDiam = '40'; // standard motor axle fallback
-                  }
-                }
-
-                for (var row in res) {
-                  final name = row['name'].toString().toLowerCase();
-                  final motorDiamField =
-                      row['motor_diameter']?.toString() ?? '';
-                  final nameMatch = RegExp(r'(\d+)').firstMatch(name);
-                  final nameDiam = nameMatch != null ? nameMatch.group(1) : '';
-
-                  if (motorDiamField == targetDiam ||
-                      nameDiam == targetDiam ||
-                      name.contains(targetDiam)) {
-                    bestMatch = row;
-                    break;
-                  }
-                }
+                bestMatch = _selectCompatibleShutterAxis(res);
               } else if (overrideName == 'الصندوق (Caisson)' ||
                   overrideName.contains('Kit') ||
                   overrideName.contains('كيت')) {
@@ -4159,9 +4230,13 @@ class WindowModel extends ChangeNotifier {
                 }
               }
 
-              componentOverrides[overrideName] = Map<String, dynamic>.from(
-                bestMatch ?? res.first,
-              );
+              final isAxis =
+                  overrideName == 'المحور (Axe)' || overrideName.contains('محور');
+              if (!isAxis || bestMatch != null) {
+                componentOverrides[overrideName] = Map<String, dynamic>.from(
+                  bestMatch ?? res.first,
+                );
+              }
             }
           } catch (e) {
             print('Error assigning shutter default for $overrideName: $e');
@@ -4831,36 +4906,7 @@ class WindowModel extends ChangeNotifier {
               }
             } else if (overrideName == 'المحور (Axe)' ||
                 overrideName.contains('محور')) {
-              // Determine target diameter
-              final bool isMotor = shutterMechanism == 'محرك';
-              String targetDiam = '60'; // Default manual axle is 60
-              if (isMotor) {
-                final motorComp = componentOverrides['المحرك (Moteur)'];
-                final motorDiamRaw =
-                    motorComp?['motor_diameter']?.toString() ?? '';
-                if (motorDiamRaw.isNotEmpty) {
-                  final match = RegExp(r'(\d+)').firstMatch(motorDiamRaw);
-                  if (match != null) {
-                    targetDiam = match.group(1)!;
-                  }
-                } else {
-                  targetDiam = '40'; // standard motor axle fallback
-                }
-              }
-
-              for (var row in res) {
-                final name = row['name'].toString().toLowerCase();
-                final motorDiamField = row['motor_diameter']?.toString() ?? '';
-                final nameMatch = RegExp(r'(\d+)').firstMatch(name);
-                final nameDiam = nameMatch != null ? nameMatch.group(1) : '';
-
-                if (motorDiamField == targetDiam ||
-                    nameDiam == targetDiam ||
-                    name.contains(targetDiam)) {
-                  bestMatch = row;
-                  break;
-                }
-              }
+              bestMatch = _selectCompatibleShutterAxis(res);
             } else if (overrideName == 'الصندوق (Caisson)' ||
                 overrideName.contains('Kit') ||
                 overrideName.contains('كيت')) {
@@ -4880,9 +4926,13 @@ class WindowModel extends ChangeNotifier {
               }
             }
 
-            componentOverrides[overrideName] = Map<String, dynamic>.from(
-              bestMatch ?? res.first,
-            );
+            final isAxis =
+                overrideName == 'المحور (Axe)' || overrideName.contains('محور');
+            if (!isAxis || bestMatch != null) {
+              componentOverrides[overrideName] = Map<String, dynamic>.from(
+                bestMatch ?? res.first,
+              );
+            }
           }
         } catch (e) {
           print('Error updating shutter default for $overrideName: $e');
@@ -4953,37 +5003,26 @@ class WindowModel extends ChangeNotifier {
         ]);
       }
 
-      // Check if Axe needs to be updated due to mechanism change (e.g. manual 60 vs motor 40/45)
-      bool axeMismatch = false;
+      // Keep the automatic axis in sync with the selected blade first, then
+      // with the motor diameter.  The old 60/40 equality rule could select an
+      // incompatible X3D axis or a tube smaller than its motor.
+      final axisRows = await myDb.query(
+        'ShutterComponents',
+        where:
+            "(LOWER(component_type) IN ('laxe', 'axe') OR LOWER(name) LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
+      );
+      final preferredAxis = _selectCompatibleShutterAxis(axisRows);
       final currentAxe = componentOverrides['المحور (Axe)'];
-      if (currentAxe != null) {
-        final name = currentAxe['name']?.toString()?.toLowerCase() ?? '';
-        final motorDiamField = currentAxe['motor_diameter']?.toString() ?? '';
-        final nameMatch = RegExp(r'(\d+)').firstMatch(name);
-        final nameDiam = nameMatch != null ? nameMatch.group(1) : '';
-
-        final bool isMotor = shutterMechanism == 'محرك';
-        if (isMotor) {
-          // If motorized, axle should NOT be 60mm
-          if (nameDiam == '60' ||
-              name.contains('60') ||
-              motorDiamField == '60') {
-            axeMismatch = true;
-          }
-        } else {
-          // If manual, axle SHOULD be 60mm
-          if (nameDiam != '60' &&
-              !name.contains('60') &&
-              motorDiamField != '60') {
-            axeMismatch = true;
-          }
-        }
+      if (preferredAxis == null) {
+        // Do not retain a known-incompatible axis when the catalogue has no
+        // matching one for the blade/motor combination.
+        componentOverrides.remove('المحور (Axe)');
       } else {
-        axeMismatch = true;
-      }
-
-      if (axeMismatch) {
-        await assignShutterDefault('المحور (Axe)', ['laxe', 'axe', 'محور']);
+        final currentId = (currentAxe?['id'] as num?)?.toInt();
+        final preferredId = (preferredAxis['id'] as num?)?.toInt();
+        if (currentId != preferredId) {
+          await assignShutterDefault('المحور (Axe)', ['laxe', 'axe', 'محور']);
+        }
       }
 
       notifyListeners();
@@ -4997,6 +5036,166 @@ class WindowModel extends ChangeNotifier {
       } catch (_) {}
     }
     return null;
+  }
+
+  /// The selected parclose defines the usable thickness of the glazing pack.
+  /// If the user has not selected one explicitly, the first double-glazing
+  /// parclose configured for the active frame series is the catalogue
+  /// default.  This keeps the glass drawer and the material calculation on
+  /// the same default profile.
+  double? get selectedParcloseMaxGlassThickness {
+    double? capacityOf(Map<String, dynamic> parclose) {
+      final rawValue = parclose['max_glass_thickness'];
+      final maximum = rawValue is num
+          ? rawValue.toDouble()
+          : double.tryParse(rawValue?.toString() ?? '');
+      return maximum != null && maximum > 0 ? maximum : null;
+    }
+
+    // An override such as "Bouchon Parclose" also contains the word
+    // parclose, but it is an accessory and has no glazing capacity.  Keep
+    // looking until a real parclose capacity is found.
+    for (final entry in componentOverrides.entries) {
+      if (entry.key.toLowerCase().contains('parclose') && entry.value is Map) {
+        final capacity = capacityOf(
+          Map<String, dynamic>.from(entry.value as Map),
+        );
+        if (capacity != null) return capacity;
+      }
+    }
+
+    // No explicit choice: use the same default double parclose used by the
+    // bill of materials.  A double parclose is the first usable one whose
+    // capacity is greater than a single pane pack.
+    final series = activeFrameSeries ?? activeSeries;
+    if (series == null) return null;
+    for (final section in series.sections) {
+      final type = section.type.toLowerCase();
+      final name = section.name.toLowerCase();
+      final isParclose =
+          type.contains('parclose') ||
+          name.contains('parclose') ||
+          section.name.contains('باكيت');
+      if (isParclose && section.maxGlassThickness > 10.0) {
+        return section.maxGlassThickness;
+      }
+    }
+    return null;
+  }
+
+  /// Calculates the spacer that makes a double-glazing pack fit the selected
+  /// parclose exactly. It intentionally returns null when the two panes alone
+  /// already fill or exceed the capacity, so an impossible spacer is never
+  /// written silently.
+  int? suggestedIntercallThicknessForDoubleGlass({
+    required double thicknessOuter,
+    required double thicknessInner,
+  }) {
+    final maximum = selectedParcloseMaxGlassThickness;
+    if (maximum == null) return null;
+
+    final remaining = maximum - thicknessOuter - thicknessInner;
+    if (remaining <= 0) return null;
+    return remaining.floor();
+  }
+
+  /// Recalculates each double-glazing spacer after the user selects another
+  /// parclose. Manual spacer choices remain editable afterwards; this only
+  /// runs at the moment the parclose changes.
+  void fitDoubleGlassIntercallsToSelectedParclose() {
+    if (selectedParcloseMaxGlassThickness == null) return;
+    var changed = false;
+
+    GlassSpecification fit(GlassSpecification specification) {
+      if (specification.structure != GlassStructure.double) {
+        return specification;
+      }
+      final suggested = suggestedIntercallThicknessForDoubleGlass(
+        thicknessOuter: specification.thicknessOuter ?? 4.0,
+        thicknessInner: specification.thicknessInner ?? 4.0,
+      );
+      if (suggested == null || suggested == specification.intercallThickness) {
+        return specification;
+      }
+      changed = true;
+      return specification.copyWith(intercallThickness: suggested);
+    }
+
+    for (final zone in zones) {
+      zone.glass = fit(zone.glass);
+      if (zone.cellGlassSpec.isNotEmpty) {
+        zone.cellGlassSpec = zone.cellGlassSpec.map(
+          (key, value) => MapEntry(key, fit(value)),
+        );
+      }
+    }
+
+    if (changed) notifyListeners();
+  }
+
+  /// Returns the configuration to preselect in the glass drawer.
+  ///
+  /// This checks the effective glass of every visible cell, including per-cell
+  /// overrides. A null result means the drawing has different glass types (or
+  /// no glass), so the drawer must remain at its neutral default state.
+  GlassSpecification? getUniformGlassSpecification() {
+    GlassSpecification? firstSpecification;
+
+    for (final zone in zones) {
+      if (zone.content == ZoneContent.empty) continue;
+
+      for (final specification in _effectiveGlassSpecificationsForZone(zone)) {
+        if (firstSpecification == null) {
+          firstSpecification = specification;
+        } else if (!firstSpecification.hasSameConfigurationAs(specification)) {
+          return null;
+        }
+      }
+    }
+
+    return firstSpecification?.clone();
+  }
+
+  List<GlassSpecification> _effectiveGlassSpecificationsForZone(
+    WindowZone zone,
+  ) {
+    final cellKeys = <String>[];
+
+    if (zone.content == ZoneContent.slidingSash) {
+      final sashCount = zone.slidingSashesCount.clamp(2, 4).toInt();
+      for (var sashIndex = 0; sashIndex < sashCount; sashIndex++) {
+        cellKeys.add('main_cell_0_$sashIndex');
+      }
+    } else if (zone.content == ZoneContent.doubleSash) {
+      for (var row = 0; row <= zone.innerH; row++) {
+        for (var column = 0; column <= zone.innerV; column++) {
+          cellKeys.add('left_cell_${row}_$column');
+        }
+      }
+      for (var row = 0; row <= zone.rightInnerH; row++) {
+        for (var column = 0; column <= zone.rightInnerV; column++) {
+          cellKeys.add('right_cell_${row}_$column');
+        }
+      }
+    } else {
+      for (var row = 0; row <= zone.innerH; row++) {
+        for (var column = 0; column <= zone.innerV; column++) {
+          cellKeys.add('main_cell_${row}_$column');
+        }
+      }
+    }
+
+    return cellKeys.map((cellKey) {
+      final specification = zone.getGlassForCell(cellKey);
+      // Older drawings can mark a cell as a panel separately from its glass
+      // specification. Treat that marker as a closed/panel choice here too,
+      // so it never appears in the drawer as ordinary glass.
+      if (zone.cellIsPanel[cellKey] == true &&
+          specification.structure != GlassStructure.closed) {
+        return specification.copyWith(structure: GlassStructure.closed);
+      }
+      return specification;
+    }).toList(growable: false);
   }
 
   void _saveSnapshot() {
@@ -8628,6 +8827,30 @@ class WindowModel extends ChangeNotifier {
           );
     }
 
+    // A glass or structure change gets a spacer that fills the currently
+    // selected parclose. Choosing a spacer explicitly remains a manual
+    // override and is never replaced by this automatic step.
+    final changesGlassThickness =
+        structure != null ||
+        finishOuter != null ||
+        finishInner != null ||
+        colorOuter != null ||
+        colorInner != null ||
+        thicknessOuter != null ||
+        thicknessInner != null;
+    int? resolvedIntercallThickness = intercallThickness;
+    if (targetStructure == GlassStructure.double &&
+        intercallThickness == null &&
+        changesGlassThickness) {
+      final suggested = suggestedIntercallThicknessForDoubleGlass(
+        thicknessOuter: resolvedThicknessOuter ?? 4.0,
+        thicknessInner: resolvedThicknessInner ?? 4.0,
+      );
+      if (suggested != null) {
+        resolvedIntercallThickness = suggested;
+      }
+    }
+
     if (targetCellKey != null && targetCellKey.isNotEmpty) {
       final GlassSpecification updatedSpec = baseSpec.copyWith(
         structure: structure,
@@ -8641,7 +8864,7 @@ class WindowModel extends ChangeNotifier {
         temperedInner: temperedInner,
         colorP: colorP,
         hasGas: hasGas,
-        intercallThickness: intercallThickness,
+        intercallThickness: resolvedIntercallThickness,
         panneauSubtype: panneauSubtype,
         panneauColor: panneauColor,
         isVerticalBardage: isVerticalBardage,
@@ -8669,7 +8892,7 @@ class WindowModel extends ChangeNotifier {
         temperedInner: temperedInner,
         colorP: colorP,
         hasGas: hasGas,
-        intercallThickness: intercallThickness,
+        intercallThickness: resolvedIntercallThickness,
         panneauSubtype: panneauSubtype,
         panneauColor: panneauColor,
         isVerticalBardage: isVerticalBardage,
@@ -8694,7 +8917,7 @@ class WindowModel extends ChangeNotifier {
             temperedInner: temperedInner,
             colorP: colorP,
             hasGas: hasGas,
-            intercallThickness: intercallThickness,
+            intercallThickness: resolvedIntercallThickness,
             panneauSubtype: panneauSubtype,
             panneauColor: panneauColor,
             isVerticalBardage: isVerticalBardage,
@@ -8978,6 +9201,49 @@ class WindowModel extends ChangeNotifier {
         sName.contains('tpr') ||
         sName.contains('tpi') ||
         sName.contains('67000');
+
+    double readPrice(dynamic value) {
+      final price = value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+      return price.isFinite && price >= 0 ? price : 0.0;
+    }
+
+    // An accessory either uses its raw/base price or a color-price list.
+    // Once color prices exist, only the selected color is valid: there must
+    // be no fallback to the base price or to another color's price.
+    Future<double> resolveAccessoryPrice(
+      Map<String, dynamic> accessory,
+    ) async {
+      final accessoryId = accessory['id'];
+      if (accessoryId == null) return 0.0;
+
+      try {
+        final colorPrices = await d.query(
+          'AccessoryColorPrices',
+          columns: ['color_id', 'price'],
+          where: 'accessory_id = ?',
+          whereArgs: [accessoryId],
+        );
+        if (colorPrices.isEmpty) {
+          return readPrice(accessory['price_dzd'] ?? accessory['price']);
+        }
+
+        final selectedColorId = selectedDbColor?['id'];
+        if (selectedColorId == null) return 0.0;
+        for (final colorPrice in colorPrices) {
+          if (colorPrice['color_id']?.toString() ==
+              selectedColorId.toString()) {
+            return readPrice(colorPrice['price']);
+          }
+        }
+        return 0.0;
+      } catch (_) {
+        // Preserve the base price only for legacy databases where the
+        // color-price table is not available yet.
+        return readPrice(accessory['price_dzd'] ?? accessory['price']);
+      }
+    }
 
     Future<void> loadAccessory(String key, List<String> searchPatterns) async {
       if (componentOverrides.containsKey(key)) return;
@@ -9365,8 +9631,7 @@ class WindowModel extends ChangeNotifier {
           if (compatible.isNotEmpty) selected = compatible.first;
         }
         final m = Map<String, dynamic>.from(selected);
-        m['calculated_price'] = (m['price_dzd'] ?? m['price'] ?? 0.0)
-            .toDouble();
+        m['calculated_price'] = await resolveAccessoryPrice(m);
         componentOverrides[key] = m;
       }
     }

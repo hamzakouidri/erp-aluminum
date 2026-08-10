@@ -344,7 +344,7 @@ class ConsumptionManager {
         totalHandles += 1;
       } else if (zone.content == ZoneContent.doubleSash) {
         totalHinges += 4;
-        totalHandles += 1;
+        totalHandles += zone.doubleSashHasTwoHandles ? 2 : 1;
         totalFlushBolts += 1;
       }
     }

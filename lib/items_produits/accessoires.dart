@@ -281,6 +281,12 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
   bool _databaseFlag(dynamic value) =>
       value == true || value == 1 || value?.toString().trim() == '1';
 
+  int? _databaseId(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '');
+  }
+
 
 
   @override
@@ -653,7 +659,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                   ),
 
-                  if (accessoryCategory == 'البراغي') ...[
+                  if (_isScrewCategory(accessoryCategory)) ...[
 
                     const SizedBox(height: 10),
 
@@ -813,7 +819,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                     builder: (context) {
 
-                      final isGacheCategory = accessoryCategory == 'قاش';
+                      final isGacheCategory =
+                          _isGacheCategory(accessoryCategory);
 
                       if (!isGacheCategory) return const SizedBox.shrink();
 
@@ -1215,11 +1222,12 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                 }
 
-                if (nameCtrl.text.isNotEmpty) {
+                final trimmedName = nameCtrl.text.trim();
+                if (trimmedName.isNotEmpty) {
 
-                  String finalName = "${nameCtrl.text} ($quality)";
+                  String finalName = "$trimmedName ($quality)";
 
-                  String finalType = accessoryCategory == 'البراغي'
+                  String finalType = _isScrewCategory(accessoryCategory)
 
                       ? "$accessoryCategory|$quality|$screwUsage"
 
@@ -1273,49 +1281,97 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                       'price': 0.0,
 
-                      'screw_count': accessoryCategory == 'البراغي'
+                      'screw_count': _isScrewCategory(accessoryCategory)
 
                           ? 0
 
                           : (int.tryParse(screwCountCtrl.text) ?? 0),
 
-                      'is_moteur_screw': isMoteurScrew ? 1 : 0,
+                      'is_moteur_screw':
+                          _isScrewCategory(accessoryCategory) && isMoteurScrew
+                          ? 1
+                          : 0,
 
-                      'is_caisson_screw': isCaissonScrew ? 1 : 0,
+                      'is_caisson_screw':
+                          _isScrewCategory(accessoryCategory) && isCaissonScrew
+                          ? 1
+                          : 0,
 
-                      'is_batmo_screw': isBatmoScrew ? 1 : 0,
+                      'is_batmo_screw':
+                          _isScrewCategory(accessoryCategory) && isBatmoScrew
+                          ? 1
+                          : 0,
 
-                      'is_bouchon_batmo_screw': isBouchonBatmoScrew ? 1 : 0,
+                      'is_bouchon_batmo_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isBouchonBatmoScrew
+                          ? 1
+                          : 0,
 
-                      'is_renfort_screw': isRenfortScrew ? 1 : 0,
+                      'is_renfort_screw':
+                          _isScrewCategory(accessoryCategory) && isRenfortScrew
+                          ? 1
+                          : 0,
 
-                      'is_manivelle_screw': isManivelleScrew ? 1 : 0,
+                      'is_manivelle_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isManivelleScrew
+                          ? 1
+                          : 0,
 
                       'is_gache_simple':
 
-                          (accessoryCategory == 'Gache simple ouvrant' ||
-
-                              isGacheSimple)
+                          (_isGacheCategory(accessoryCategory) &&
+                              (accessoryCategory == 'Gâche simple' ||
+                                  isGacheSimple))
 
                           ? 1
 
                           : 0,
 
-                      'is_gache_double': isGacheDouble ? 1 : 0,
+                      'is_gache_double':
+                          _isGacheCategory(accessoryCategory) && isGacheDouble
+                          ? 1
+                          : 0,
 
-                      'is_gache_porte': isGachePorte ? 1 : 0,
+                      'is_gache_porte':
+                          _isGacheCategory(accessoryCategory) && isGachePorte
+                          ? 1
+                          : 0,
 
-                      'is_lock_clef': isLockClef ? 1 : 0,
+                      'is_lock_clef':
+                          _isGacheCategory(accessoryCategory) && isLockClef
+                          ? 1
+                          : 0,
 
-                      'is_lock_condamnation': isLockCondamnation ? 1 : 0,
+                      'is_lock_condamnation':
+                          _isGacheCategory(accessoryCategory) &&
+                              isLockCondamnation
+                          ? 1
+                          : 0,
 
-                      'is_assembly_screw': isAssemblyScrew ? 1 : 0,
+                      'is_assembly_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isAssemblyScrew
+                          ? 1
+                          : 0,
 
-                      'is_accessory_screw': isAccessoryScrew ? 1 : 0,
+                      'is_accessory_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isAccessoryScrew
+                          ? 1
+                          : 0,
 
-                      'is_installation_screw': isInstallationScrew ? 1 : 0,
+                      'is_installation_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isInstallationScrew
+                          ? 1
+                          : 0,
 
-                      'is_kit_screw': isKitScrew ? 1 : 0,
+                      'is_kit_screw':
+                          _isScrewCategory(accessoryCategory) && isKitScrew
+                          ? 1
+                          : 0,
 
                     });
 
@@ -1431,35 +1487,35 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
 
 
-    bool isMoteurScrew = item['is_moteur_screw'] == 1;
+    bool isMoteurScrew = _databaseFlag(item['is_moteur_screw']);
 
-    bool isCaissonScrew = item['is_caisson_screw'] == 1;
+    bool isCaissonScrew = _databaseFlag(item['is_caisson_screw']);
 
-    bool isBatmoScrew = item['is_batmo_screw'] == 1;
+    bool isBatmoScrew = _databaseFlag(item['is_batmo_screw']);
 
-    bool isBouchonBatmoScrew = item['is_bouchon_batmo_screw'] == 1;
+    bool isBouchonBatmoScrew = _databaseFlag(item['is_bouchon_batmo_screw']);
 
-    bool isRenfortScrew = item['is_renfort_screw'] == 1;
+    bool isRenfortScrew = _databaseFlag(item['is_renfort_screw']);
 
-    bool isManivelleScrew = item['is_manivelle_screw'] == 1;
+    bool isManivelleScrew = _databaseFlag(item['is_manivelle_screw']);
 
-    bool isGacheSimple = item['is_gache_simple'] == 1;
+    bool isGacheSimple = _databaseFlag(item['is_gache_simple']);
 
-    bool isGacheDouble = item['is_gache_double'] == 1;
+    bool isGacheDouble = _databaseFlag(item['is_gache_double']);
 
-    bool isGachePorte = item['is_gache_porte'] == 1;
+    bool isGachePorte = _databaseFlag(item['is_gache_porte']);
 
-    bool isLockClef = item['is_lock_clef'] == 1;
+    bool isLockClef = _databaseFlag(item['is_lock_clef']);
 
-    bool isLockCondamnation = item['is_lock_condamnation'] == 1;
+    bool isLockCondamnation = _databaseFlag(item['is_lock_condamnation']);
 
-    bool isAssemblyScrew = item['is_assembly_screw'] == 1;
+    bool isAssemblyScrew = _databaseFlag(item['is_assembly_screw']);
 
-    bool isAccessoryScrew = item['is_accessory_screw'] == 1;
+    bool isAccessoryScrew = _databaseFlag(item['is_accessory_screw']);
 
-    bool isInstallationScrew = item['is_installation_screw'] == 1;
+    bool isInstallationScrew = _databaseFlag(item['is_installation_screw']);
 
-    bool isKitScrew = item['is_kit_screw'] == 1;
+    bool isKitScrew = _databaseFlag(item['is_kit_screw']);
 
     // Decode Type and Quality
 
@@ -1731,7 +1787,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                 const SizedBox(height: 10),
 
-                if (accessoryCategory != 'البراغي') ...[
+                if (!_isScrewCategory(accessoryCategory)) ...[
 
                   TextField(
 
@@ -2338,9 +2394,23 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                 }
 
-                if (nameCtrl.text.isNotEmpty) {
+                final accessoryId = _databaseId(item['id']);
+                if (accessoryId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'تعذر حفظ الإكسسوار: المعرّف غير صالح.',
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
 
-                  String finalName = "${nameCtrl.text} ($quality)";
+                final trimmedName = nameCtrl.text.trim();
+                if (trimmedName.isNotEmpty) {
+
+                  String finalName = "$trimmedName ($quality)";
 
                   String finalType = _isScrewCategory(accessoryCategory)
 
@@ -2380,7 +2450,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
 
 
-                    await widget.db.updateAccessory(item['id'] as int, {
+                    final updatedRows = await widget.db.updateAccessory(accessoryId, {
 
                       'name': finalName,
 
@@ -2400,47 +2470,99 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                           : (int.tryParse(screwCountCtrl.text) ?? 0),
 
-                      'is_moteur_screw': isMoteurScrew ? 1 : 0,
+                      'is_moteur_screw':
+                          _isScrewCategory(accessoryCategory) && isMoteurScrew
+                          ? 1
+                          : 0,
 
-                      'is_caisson_screw': isCaissonScrew ? 1 : 0,
+                      'is_caisson_screw':
+                          _isScrewCategory(accessoryCategory) && isCaissonScrew
+                          ? 1
+                          : 0,
 
-                      'is_batmo_screw': isBatmoScrew ? 1 : 0,
+                      'is_batmo_screw':
+                          _isScrewCategory(accessoryCategory) && isBatmoScrew
+                          ? 1
+                          : 0,
 
-                      'is_bouchon_batmo_screw': isBouchonBatmoScrew ? 1 : 0,
+                      'is_bouchon_batmo_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isBouchonBatmoScrew
+                          ? 1
+                          : 0,
 
-                      'is_renfort_screw': isRenfortScrew ? 1 : 0,
+                      'is_renfort_screw':
+                          _isScrewCategory(accessoryCategory) && isRenfortScrew
+                          ? 1
+                          : 0,
 
-                      'is_manivelle_screw': isManivelleScrew ? 1 : 0,
+                      'is_manivelle_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isManivelleScrew
+                          ? 1
+                          : 0,
 
                       'is_gache_simple':
 
-                          (accessoryCategory == 'Gâche simple' ||
-
-                              isGacheSimple)
+                          (_isGacheCategory(accessoryCategory) &&
+                              (accessoryCategory == 'Gâche simple' ||
+                                  isGacheSimple))
 
                           ? 1
 
                           : 0,
 
-                      'is_gache_double': isGacheDouble ? 1 : 0,
+                      'is_gache_double':
+                          _isGacheCategory(accessoryCategory) && isGacheDouble
+                          ? 1
+                          : 0,
 
-                      'is_gache_porte': isGachePorte ? 1 : 0,
+                      'is_gache_porte':
+                          _isGacheCategory(accessoryCategory) && isGachePorte
+                          ? 1
+                          : 0,
 
-                      'is_lock_clef': isLockClef ? 1 : 0,
+                      'is_lock_clef':
+                          _isGacheCategory(accessoryCategory) && isLockClef
+                          ? 1
+                          : 0,
 
-                      'is_lock_condamnation': isLockCondamnation ? 1 : 0,
+                      'is_lock_condamnation':
+                          _isGacheCategory(accessoryCategory) &&
+                              isLockCondamnation
+                          ? 1
+                          : 0,
 
-                      'is_assembly_screw': isAssemblyScrew ? 1 : 0,
+                      'is_assembly_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isAssemblyScrew
+                          ? 1
+                          : 0,
 
-                      'is_accessory_screw': isAccessoryScrew ? 1 : 0,
+                      'is_accessory_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isAccessoryScrew
+                          ? 1
+                          : 0,
 
-                      'is_installation_screw': isInstallationScrew ? 1 : 0,
+                      'is_installation_screw':
+                          _isScrewCategory(accessoryCategory) &&
+                              isInstallationScrew
+                          ? 1
+                          : 0,
 
-                      'is_kit_screw': isKitScrew ? 1 : 0,
+                      'is_kit_screw':
+                          _isScrewCategory(accessoryCategory) && isKitScrew
+                          ? 1
+                          : 0,
 
                     });
 
-                    _loadItems();
+                    if (updatedRows == 0) {
+                      throw StateError('لم يتم العثور على الإكسسوار عند الحفظ.');
+                    }
+
+                    await _loadItems();
 
                     if (context.mounted) Navigator.pop(context);
 

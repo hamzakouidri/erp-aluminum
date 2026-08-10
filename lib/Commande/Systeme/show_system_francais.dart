@@ -435,14 +435,21 @@ class _WindowViewState extends State<WindowView> {
       _previousSelectedZoneId = currentZoneId;
     }
 
-    if (widget.model.selectedZone != null) {
-      _tempGlassSpec = widget.model.selectedZone!.glass;
-    }
+    _syncDrawerGlassFromDrawing();
 
     if (activeSeriesForSystem?.id != _loadedSeriesId) {
       _loadAvailableProfiles();
     }
     setState(() {});
+  }
+
+  /// Synchronise the left glass drawer with the drawing being edited. A
+  /// drawing with different glass specifications deliberately keeps the
+  /// controls neutral, instead of borrowing an arbitrary selected cell.
+  void _syncDrawerGlassFromDrawing() {
+    _tempGlassSpec =
+        widget.model.getUniformGlassSpecification() ??
+        const GlassSpecification();
   }
 
   // ── تحميل خيارات الستار من قاعدة البيانات ──
@@ -971,9 +978,7 @@ class _WindowViewState extends State<WindowView> {
     _positionCtrl = TextEditingController(text: widget.model.position ?? '');
     widget.model.loadCatalogData(widget.systemMode);
     widget.model.addListener(_onModelChanged);
-    if (widget.model.zones.isNotEmpty) {
-      _tempGlassSpec = widget.model.zones.first.glass;
-    }
+    _syncDrawerGlassFromDrawing();
     if (activeSeriesForSystem != null) {
       _loadAvailableProfiles();
     }
@@ -3342,12 +3347,101 @@ class _WindowViewState extends State<WindowView> {
             );
           }
 
-          final GlassSpecification spec = zone != null
-              ? (widget.model.activeSubZone != null
-                    ? zone.getGlassForCell(widget.model.activeSubZone)
-                    : zone.glass)
-              : _tempGlassSpec;
+          // This value reflects the whole drawing, not merely the last cell
+          // selected by the user. Mixed glass drawings intentionally show
+          // the neutral default state.
+          final GlassSpecification spec = _tempGlassSpec;
           final structure = spec.structure;
+
+          GlassSpecification fitDoubleGlassToParclose(
+            GlassSpecification candidate,
+          ) {
+            if (candidate.structure != GlassStructure.double) {
+              return candidate;
+            }
+            final suggested = widget.model.suggestedIntercallThicknessForDoubleGlass(
+              thicknessOuter: candidate.thicknessOuter ?? 4.0,
+              thicknessInner: candidate.thicknessInner ?? 4.0,
+            );
+            return suggested == null
+                ? candidate
+                : candidate.copyWith(intercallThickness: suggested);
+          }
+
+          Widget? buildParcloseThicknessInfo() {
+            final maximum = widget.model.selectedParcloseMaxGlassThickness;
+            if (maximum == null || spec.structure == GlassStructure.closed) {
+              return null;
+            }
+
+            final total = spec.totalThickness(widget.model.allGlassCache);
+            final difference = total - maximum;
+            final isExact = difference.abs() < 0.01;
+            final isAbove = difference > 0;
+            final color = isExact
+                ? Colors.green.shade700
+                : (isAbove ? Colors.red.shade700 : Colors.orange.shade800);
+            final icon = isExact
+                ? Icons.check_circle_outline_rounded
+                : Icons.warning_amber_rounded;
+            final message = isExact
+                ? 'سُمك الزجاج مطابق لسعة البيركلوز: ${total.toStringAsFixed(0)} مم'
+                : isAbove
+                ? 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
+                : 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
+
+            return Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final parcloseThicknessInfo = buildParcloseThicknessInfo();
+          final fallbackIntercallChoices = <Map<String, dynamic>>[
+            {'thickness': 6, 'name': '6 مم'},
+            {'thickness': 8, 'name': '8 مم'},
+            {'thickness': 10, 'name': '10 مم'},
+            {'thickness': 12, 'name': '12 مم'},
+            {'thickness': 14, 'name': '14 مم'},
+            {'thickness': 16, 'name': '16 مم'},
+          ];
+          final intercallChoices = List<Map<String, dynamic>>.from(
+            widget.model.availableIntercalls.isNotEmpty
+                ? widget.model.availableIntercalls
+                : fallbackIntercallChoices,
+          );
+          if (!intercallChoices.any(
+            (item) => (item['thickness'] as num?)?.toInt() == spec.intercallThickness,
+          )) {
+            // The exact automatic value can legitimately be absent from the
+            // catalogue list (for example 9 mm for a 19 mm parclose). Keep it
+            // visible and selected so the user may still change it manually.
+            intercallChoices.add({
+              'thickness': spec.intercallThickness,
+              'name': '${spec.intercallThickness} مم',
+            });
+          }
 
           Widget buildProcessingChip(
             String label,
@@ -3539,13 +3633,17 @@ class _WindowViewState extends State<WindowView> {
                                         );
                                     if (defThick == 0.0) defThick = 5.0;
 
-                                    final newSpec = spec.copyWith(
-                                      finishOuter: isOuter ? f : null,
-                                      finishInner: !isOuter ? f : null,
-                                      thicknessOuter: isOuter ? defThick : null,
-                                      thicknessInner: !isOuter
-                                          ? defThick
-                                          : null,
+                                    final newSpec = fitDoubleGlassToParclose(
+                                      spec.copyWith(
+                                        finishOuter: isOuter ? f : null,
+                                        finishInner: !isOuter ? f : null,
+                                        thicknessOuter: isOuter
+                                            ? defThick
+                                            : null,
+                                        thicknessInner: !isOuter
+                                            ? defThick
+                                            : null,
+                                      ),
                                     );
                                     if (zone != null) {
                                       widget.model.updateSelectedZoneGlass(
@@ -3616,16 +3714,19 @@ class _WindowViewState extends State<WindowView> {
                                           ? 5.0
                                           : defThick;
 
-                                      final newSpec = spec.copyWith(
-                                        colorOuter: isOuter ? c : null,
-                                        colorInner: !isOuter ? c : null,
-                                        thicknessOuter: isOuter
-                                            ? resolvedThick
-                                            : null,
-                                        thicknessInner: !isOuter
-                                            ? resolvedThick
-                                            : null,
-                                      );
+                                      final newSpec =
+                                          fitDoubleGlassToParclose(
+                                            spec.copyWith(
+                                              colorOuter: isOuter ? c : null,
+                                              colorInner: !isOuter ? c : null,
+                                              thicknessOuter: isOuter
+                                                  ? resolvedThick
+                                                  : null,
+                                              thicknessInner: !isOuter
+                                                  ? resolvedThick
+                                                  : null,
+                                            ),
+                                          );
                                       if (zone != null) {
                                         widget.model.updateSelectedZoneGlass(
                                           colorOuter: isOuter ? c : null,
@@ -3724,9 +3825,11 @@ class _WindowViewState extends State<WindowView> {
                               icon: Icons.line_weight_rounded,
                               selected: isSelected,
                               onPressed: () {
-                                final newSpec = spec.copyWith(
-                                  thicknessOuter: isOuter ? thickVal : null,
-                                  thicknessInner: !isOuter ? thickVal : null,
+                                final newSpec = fitDoubleGlassToParclose(
+                                  spec.copyWith(
+                                    thicknessOuter: isOuter ? thickVal : null,
+                                    thicknessInner: !isOuter ? thickVal : null,
+                                  ),
                                 );
                                 if (zone != null) {
                                   widget.model.updateSelectedZoneGlass(
@@ -3775,6 +3878,7 @@ class _WindowViewState extends State<WindowView> {
                 ],
               ),
               const Divider(),
+              if (parcloseThicknessInfo != null) parcloseThicknessInfo,
               if (targetZone != null &&
                   targetZone.content == ZoneContent.doubleSash) ...[
                 Row(
@@ -4232,12 +4336,14 @@ class _WindowViewState extends State<WindowView> {
                                   defaultThickOuter = 5.0;
                               }
 
-                              final newSpec = spec.copyWith(
-                                structure: s,
-                                panneauSubtype: defaultSubtype,
-                                panneauColor: defaultColor,
-                                thicknessOuter: defaultThickOuter,
-                                thicknessInner: defaultThickInner,
+                              final newSpec = fitDoubleGlassToParclose(
+                                spec.copyWith(
+                                  structure: s,
+                                  panneauSubtype: defaultSubtype,
+                                  panneauColor: defaultColor,
+                                  thicknessOuter: defaultThickOuter,
+                                  thicknessInner: defaultThickInner,
+                                ),
                               );
                               if (zone != null) {
                                 widget.model.updateSelectedZoneGlass(
@@ -4965,18 +5071,7 @@ class _WindowViewState extends State<WindowView> {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children:
-                        (widget.model.availableIntercalls.isNotEmpty
-                                ? widget.model.availableIntercalls
-                                : [
-                                    {'thickness': 6, 'name': '6 مم'},
-                                    {'thickness': 8, 'name': '8 مم'},
-                                    {'thickness': 10, 'name': '10 مم'},
-                                    {'thickness': 12, 'name': '12 مم'},
-                                    {'thickness': 14, 'name': '14 مم'},
-                                    {'thickness': 16, 'name': '16 مم'},
-                                  ])
-                            .map((g) {
+                    children: intercallChoices.map((g) {
                               int val = (g['thickness'] as num?)?.toInt() ?? 0;
                               return Padding(
                                 padding: const EdgeInsets.only(right: 6.0),
@@ -11362,6 +11457,9 @@ class _WindowViewState extends State<WindowView> {
                                     .componentOverrides['باكيت الزجاج (Parclose)'] =
                                 mutableItem;
                           });
+                          widget
+                              .model
+                              .fitDoubleGlassIntercallsToSelectedParclose();
                           await widget.model.updateGlassGasket();
                           widget.model.refreshUI();
                           if (context.mounted) Navigator.pop(context);

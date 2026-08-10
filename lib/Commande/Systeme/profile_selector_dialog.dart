@@ -121,6 +121,27 @@ bool accessoryMatchesDrawingMode(
   return drawingMode != AccessoryDrawingMode.sliding || !isOpeningOnly;
 }
 
+bool _isX3dShutterComponent(Map<String, dynamic> component) {
+  final text =
+      '${component['name'] ?? ''} ${component['shutter_subtype'] ?? ''}'
+          .toLowerCase();
+  return text.contains('x3d');
+}
+
+/// Axes created before the dedicated diameter field was available often keep
+/// their diameter in the name (for example: "Axe 60 mm").  Prefer the
+/// structured fields, then use that legacy value as a fallback.
+double? shutterComponentDiameter(Map<String, dynamic> component) {
+  for (final field in const ['motor_diameter', 'measurement', 'name']) {
+    final value = (component[field] ?? '').toString().trim();
+    final match = RegExp(r'(?<!\d)(\d{2,3}(?:[.,]\d+)?)').firstMatch(value);
+    if (match != null) {
+      return double.tryParse(match.group(1)!.replaceAll(',', '.'));
+    }
+  }
+  return null;
+}
+
 class ProfileSelectorDialog extends StatefulWidget {
   final String profileType; // مثلاً 'Cadre'
   final String category; // 'profile', 'accessory', 'shutter'
@@ -135,6 +156,12 @@ class ProfileSelectorDialog extends StatefulWidget {
   /// supplied by the BOM row and is more reliable than a series label.
   final AccessoryDrawingMode? accessoryDrawingMode;
   final int? bladeId;
+  /// The currently selected blade.  Axes are explicitly linked to it through
+  /// their shutter_subtype value in the shutter catalogue.
+  final String? selectedBladeName;
+  final bool? selectedBladeIsX3d;
+  /// A selected motor cannot fit inside an axis with a smaller diameter.
+  final double? motorDiameter;
 
   const ProfileSelectorDialog({
     super.key,
@@ -147,6 +174,9 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.maxAccessoryLength,
     this.accessoryDrawingMode,
     this.bladeId,
+    this.selectedBladeName,
+    this.selectedBladeIsX3d,
+    this.motorDiameter,
   });
 
   @override
@@ -1059,6 +1089,60 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                   .toList();
             }
           }
+        }
+
+        // The axis is not a generic shutter component.  Its blade relation
+        // has priority: an X3D blade may only use X3D axes, while a normal
+        // blade must never receive an X3D axis.  Only after that relation is
+        // respected do we apply the motor-diameter constraint.
+        final isAxisSelector =
+            t.contains('axe') || t.contains('axis') || t.contains('laxe') ||
+            t.contains('محور');
+        if (isAxisSelector) {
+          final selectedBlade = (widget.selectedBladeName ?? '').toLowerCase();
+          final selectedBladeIsX3d =
+              widget.selectedBladeIsX3d ?? selectedBlade.contains('x3d');
+
+          initialFiltered = initialFiltered.where((component) {
+            final axisIsX3d = _isX3dShutterComponent(component);
+            return selectedBladeIsX3d ? axisIsX3d : !axisIsX3d;
+          }).toList();
+
+          // New catalogue entries store the exact blade name in
+          // shutter_subtype.  Prefer that explicit relationship whenever it
+          // exists, while retaining the X3D/normal fallback for older data
+          // that only stored a generic subtype.
+          if (selectedBlade.isNotEmpty) {
+            final explicitlyLinked = initialFiltered.where((component) {
+              return (component['shutter_subtype'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase() ==
+                  selectedBlade;
+            }).toList();
+            if (explicitlyLinked.isNotEmpty) {
+              initialFiltered = explicitlyLinked;
+            }
+          }
+
+          final requiredMotorDiameter = widget.motorDiameter;
+          if (requiredMotorDiameter != null && requiredMotorDiameter > 0) {
+            initialFiltered = initialFiltered.where((component) {
+              final axisDiameter = shutterComponentDiameter(component);
+              // With a motor selected, an axis with no known diameter is not
+              // safe to propose: it cannot be proven compatible.
+              return axisDiameter != null &&
+                  axisDiameter >= requiredMotorDiameter;
+            }).toList();
+          }
+
+          // When several axes fit, offer the smallest compatible diameter
+          // first.  This keeps the default choice deterministic as well.
+          initialFiltered.sort((a, b) {
+            final aDiameter = shutterComponentDiameter(a) ?? double.infinity;
+            final bDiameter = shutterComponentDiameter(b) ?? double.infinity;
+            return aDiameter.compareTo(bDiameter);
+          });
         }
 
         if (widget.targetSize != null) {

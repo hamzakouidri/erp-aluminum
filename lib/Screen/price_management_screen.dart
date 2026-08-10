@@ -20,6 +20,13 @@ class GlassDisplayItem {
   });
 }
 
+class _PendingShutterPrice {
+  final double price;
+  final Future<void> Function(double price) save;
+
+  const _PendingShutterPrice({required this.price, required this.save});
+}
+
 class PriceManagementScreen extends StatefulWidget {
   final int initialIndex;
 
@@ -65,6 +72,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   int _accessoryPricingMode =
       0; // 0: standard/color prices, 1: included in selling price
   String _shutterSearchQuery = '';
+  final Map<String, _PendingShutterPrice> _pendingShutterPrices = {};
+  bool _isSavingAllShutterPrices = false;
   String _jointSearchQuery = '';
 
   bool isLoading = true;
@@ -78,6 +87,13 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   Timer? _reloadDebounce;
   final PageStorageBucket _scrollStorage = PageStorageBucket();
   int _loadRequestId = 0;
+  static const String _selectedTabStorageKey =
+      'price-management-selected-tab';
+  static const String _shutterModeStorageKey =
+      'price-management-shutter-mode';
+  static int? _sessionSelectedTab;
+  static int? _sessionShutterMode;
+  bool _restoredPageState = false;
 
   @override
   void initState() {
@@ -85,17 +101,78 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     _tabController = TabController(
       length: 9,
       vsync: this,
-      initialIndex: widget.initialIndex,
+      initialIndex: _sessionSelectedTab ?? widget.initialIndex,
     );
+    _tabController.addListener(_persistSelectedTab);
     _loadAllData();
-    _dbSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+    _dbSubscription = CloudSyncService().dbUpdateStream.listen((event) {
+      // Price lists must not rebuild for order, measurement, or generic
+      // database events. Those events are frequent and were resetting the
+      // scroll position while the user was entering a price.
+      if (event != 'catalog_downloaded') {
+        return;
+      }
       _scheduleDataReload();
     });
   }
 
-  /// A catalogue import can emit many database-change events in a short time.
-  /// Reloading the whole screen for every one rebuilt the price lists while the
-  /// user was scrolling and made them appear to jump back to the first item.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_restoredPageState) return;
+    _restoredPageState = true;
+
+    final bucket = PageStorage.maybeOf(context);
+    final savedTab = bucket?.readState(
+      context,
+      identifier: _selectedTabStorageKey,
+    );
+    final restoredTab = savedTab is int ? savedTab : _sessionSelectedTab;
+    if (restoredTab != null &&
+        restoredTab >= 0 &&
+        restoredTab < _tabController.length) {
+      _tabController.index = restoredTab;
+      _sessionSelectedTab = restoredTab;
+    }
+
+    final savedShutterMode = bucket?.readState(
+      context,
+      identifier: _shutterModeStorageKey,
+    );
+    final restoredShutterMode =
+        savedShutterMode is int ? savedShutterMode : _sessionShutterMode;
+    if (restoredShutterMode != null &&
+        restoredShutterMode >= 0 &&
+        restoredShutterMode <= 1) {
+      _shutterPricingMode = restoredShutterMode;
+      _sessionShutterMode = restoredShutterMode;
+    }
+  }
+
+  void _persistSelectedTab() {
+    if (!_tabController.indexIsChanging) {
+      _sessionSelectedTab = _tabController.index;
+      PageStorage.maybeOf(context)?.writeState(
+        context,
+        _tabController.index,
+        identifier: _selectedTabStorageKey,
+      );
+    }
+  }
+
+  void _setShutterPricingMode(int mode) {
+    if (_shutterPricingMode == mode) return;
+    setState(() => _shutterPricingMode = mode);
+    _sessionShutterMode = mode;
+    PageStorage.maybeOf(context)?.writeState(
+      context,
+      mode,
+      identifier: _shutterModeStorageKey,
+    );
+  }
+
+  /// A catalogue import can emit more than one catalogue event in a short
+  /// time. Reload only once, without reacting to unrelated application data.
   void _scheduleDataReload() {
     if (!mounted) return;
     _reloadDebounce?.cancel();
@@ -602,6 +679,108 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     _loadAllData();
   }
 
+  void _queueShutterPrice({
+    required String key,
+    required double price,
+    required double currentPrice,
+    required Future<void> Function(double price) save,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      if ((price - currentPrice).abs() < 0.000001) {
+        _pendingShutterPrices.remove(key);
+      } else {
+        _pendingShutterPrices[key] = _PendingShutterPrice(
+          price: price,
+          save: save,
+        );
+      }
+    });
+  }
+
+  void _removeQueuedShutterPrice(String key) {
+    if (!mounted || !_pendingShutterPrices.containsKey(key)) return;
+    setState(() => _pendingShutterPrices.remove(key));
+  }
+
+  Future<void> _saveAllShutterPrices() async {
+    if (_isSavingAllShutterPrices || _pendingShutterPrices.isEmpty) return;
+
+    final pending = Map<String, _PendingShutterPrice>.from(
+      _pendingShutterPrices,
+    );
+    setState(() => _isSavingAllShutterPrices = true);
+
+    final savedKeys = <String>[];
+    var failedCount = 0;
+    for (final entry in pending.entries) {
+      try {
+        await entry.value.save(entry.value.price);
+        savedKeys.add(entry.key);
+      } catch (_) {
+        failedCount++;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      for (final key in savedKeys) {
+        _pendingShutterPrices.remove(key);
+      }
+      _isSavingAllShutterPrices = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failedCount == 0
+              ? 'تم حفظ ${savedKeys.length} سعراً بنجاح.'
+              : 'تم حفظ ${savedKeys.length} سعراً، وتعذر حفظ $failedCount.',
+        ),
+        backgroundColor: failedCount == 0 ? Colors.green : Colors.orange,
+      ),
+    );
+  }
+
+  Future<void> _updateShutterComponentPrice(
+    int id,
+    double price, {
+    bool showConfirmation = true,
+  }) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final updatedRows = await db.updateShutterComponentPrice(id, price);
+    if (!mounted) return;
+    if (updatedRows == 0) {
+      if (showConfirmation) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر حفظ سعر مكوّن الستارة.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      throw StateError('Shutter component price was not updated.');
+    }
+
+    setState(() {
+      final index = shutterList.indexWhere((item) => item['id'] == id);
+      if (index >= 0) {
+        shutterList[index] = {...shutterList[index], 'price': price};
+      }
+    });
+    if (showConfirmation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
   Future<void> _updateSeriesColorPrice(
     int seriesId,
     int colorId,
@@ -780,7 +959,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               children: [
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _shutterPricingMode = 0),
+                    onTap: () => _setShutterPricingMode(0),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
@@ -804,7 +983,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 ),
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _shutterPricingMode = 1),
+                    onTap: () => _setShutterPricingMode(1),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
@@ -850,6 +1029,44 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   _shutterSearchQuery = val;
                 });
               },
+            ),
+          ),
+        if (_shutterPricingMode == 0 && canChangePrices)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _pendingShutterPrices.isEmpty
+                        ? 'لا توجد أسعار معدّلة بانتظار الحفظ.'
+                        : '${_pendingShutterPrices.length} أسعار جاهزة للحفظ.',
+                    style: TextStyle(
+                      color: _pendingShutterPrices.isEmpty
+                          ? Colors.grey.shade600
+                          : Colors.deepPurple,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed:
+                      _pendingShutterPrices.isEmpty || _isSavingAllShutterPrices
+                      ? null
+                      : _saveAllShutterPrices,
+                  icon: _isSavingAllShutterPrices
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(
+                    _isSavingAllShutterPrices ? 'جارٍ الحفظ...' : 'حفظ الكل',
+                  ),
+                ),
+              ],
             ),
           ),
         Expanded(
@@ -963,7 +1180,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       child: Text(
                         hasColorPrices
                             ? Localization.translate('الألوان', lang)
-                            : Localization.translate('سعر موحد', lang),
+                            : Localization.translate('خام', lang),
                         style: TextStyle(
                           fontSize: 11,
                           color: hasColorPrices
@@ -987,6 +1204,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   );
                   final cName = colorMap['name'].toString();
                   final currentPrice = sColors[cId] ?? 0.0;
+                  final pendingKey = 'shutter-color-$shutterId-$cId';
 
                   return Column(
                     children: [
@@ -995,9 +1213,27 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         titleIcon: _buildColorCircle(colorMap, size: 24),
                         currentPrice: currentPrice,
                         canChangePrices: canChangePrices,
-                        onSave: (parsed) {
-                          _updateShutterColorPrice(shutterId, cId, parsed);
+                        onSave: (parsed) =>
+                            _updateShutterColorPrice(shutterId, cId, parsed),
+                        onPriceChanged: (parsed) {
+                          if (parsed == null) {
+                            _removeQueuedShutterPrice(pendingKey);
+                            return;
+                          }
+                          _queueShutterPrice(
+                            key: pendingKey,
+                            price: parsed,
+                            currentPrice: currentPrice,
+                            save: (price) => _updateShutterColorPrice(
+                              shutterId,
+                              cId,
+                              price,
+                              showConfirmation: false,
+                            ),
+                          );
                         },
+                        onSaveCompleted: () =>
+                            _removeQueuedShutterPrice(pendingKey),
                       ),
                       if (colorIdx < sColors.length - 1)
                         Divider(
@@ -1021,14 +1257,28 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   ),
                   currentPrice: singlePrice,
                   canChangePrices: canChangePrices,
-                  onSave: (parsed) {
-                    _updatePrice(
-                      'ShutterComponents',
-                      shutterId,
-                      'price',
-                      parsed,
+                  onSave: (parsed) =>
+                      _updateShutterComponentPrice(shutterId, parsed),
+                  onPriceChanged: (parsed) {
+                    const pendingKeyPrefix = 'shutter-component-';
+                    final pendingKey = '$pendingKeyPrefix$shutterId';
+                    if (parsed == null) {
+                      _removeQueuedShutterPrice(pendingKey);
+                      return;
+                    }
+                    _queueShutterPrice(
+                      key: pendingKey,
+                      price: parsed,
+                      currentPrice: singlePrice,
+                      save: (price) => _updateShutterComponentPrice(
+                        shutterId,
+                        price,
+                        showConfirmation: false,
+                      ),
                     );
                   },
+                  onSaveCompleted: () =>
+                      _removeQueuedShutterPrice('shutter-component-$shutterId'),
                 ),
               ],
               const SizedBox(height: 4),
@@ -1705,8 +1955,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   Future<void> _updateShutterColorPrice(
     int shutterId,
     int colorId,
-    double price,
-  ) async {
+    double price, {
+    bool showConfirmation = true,
+  }) async {
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
@@ -1717,7 +1968,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       enabled: true,
       price: price,
     );
-    if (context.mounted) {
+    if (!mounted) return;
+    setState(() {
+      shutterColorPrices.putIfAbsent(shutterId, () => {})[colorId] = price;
+    });
+    if (showConfirmation) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
@@ -1725,7 +1980,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ),
       );
     }
-    _loadAllData();
   }
 
   Widget _buildAccessoryColorTab(BuildContext context) {
@@ -1912,7 +2166,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       child: Text(
                         hasColorPrices
                             ? Localization.translate('بالألوان', lang)
-                            : Localization.translate('سعر واحد', lang),
+                            : Localization.translate('خام', lang),
                         style: TextStyle(
                           fontSize: 11,
                           color: hasColorPrices
@@ -3717,6 +3971,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   @override
   void dispose() {
+    _tabController.removeListener(_persistSelectedTab);
     _reloadDebounce?.cancel();
     _tabController.dispose();
     _dbSubscription?.cancel();
@@ -3731,6 +3986,8 @@ class PriceEditRow extends StatefulWidget {
   final bool canChangePrices;
   final Function(double) onSave;
   final Widget? titleIcon;
+  final ValueChanged<double?>? onPriceChanged;
+  final VoidCallback? onSaveCompleted;
 
   const PriceEditRow({
     Key? key,
@@ -3740,6 +3997,8 @@ class PriceEditRow extends StatefulWidget {
     required this.canChangePrices,
     required this.onSave,
     this.titleIcon,
+    this.onPriceChanged,
+    this.onSaveCompleted,
   }) : super(key: key);
 
   @override
@@ -3749,6 +4008,8 @@ class PriceEditRow extends StatefulWidget {
 class _PriceEditRowState extends State<PriceEditRow> {
   late TextEditingController _ctrl;
   bool _isEditing = false;
+  bool _isSaving = false;
+  bool _showSaved = false;
 
   @override
   void initState() {
@@ -3819,6 +4080,15 @@ class _PriceEditRowState extends State<PriceEditRow> {
             child: TextField(
               controller: _ctrl,
               readOnly: !_isEditing || !widget.canChangePrices,
+              onChanged: (value) {
+                if (!_isEditing) return;
+                final normalizedPrice = value
+                    .trim()
+                    .replaceAll(',', '.')
+                    .replaceAll('٫', '.');
+                final parsed = double.tryParse(normalizedPrice);
+                widget.onPriceChanged?.call(parsed);
+              },
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -3873,38 +4143,76 @@ class _PriceEditRowState extends State<PriceEditRow> {
               decoration: BoxDecoration(
                 color: _isEditing
                     ? Colors.green.withValues(alpha: 0.1)
-                    : Colors.blue.withValues(alpha: 0.1),
+                    : (_showSaved
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.blue.withValues(alpha: 0.1)),
                 shape: BoxShape.circle,
               ),
               child: IconButton(
                 icon: Icon(
-                  _isEditing ? Icons.save : Icons.edit,
-                  color: _isEditing ? Colors.green : Colors.blue,
+                  _isSaving
+                      ? Icons.hourglass_top
+                      : (_isEditing
+                            ? Icons.save
+                            : (_showSaved ? Icons.check_circle : Icons.edit)),
+                  color: _isEditing || _showSaved ? Colors.green : Colors.blue,
                 ),
-                onPressed: () async {
-                  if (_isEditing) {
-                    final normalizedPrice = _ctrl.text
-                        .trim()
-                        .replaceAll(',', '.')
-                        .replaceAll('٫', '.');
-                    double? parsed = double.tryParse(normalizedPrice);
-                    if (parsed != null) {
-                      final result = widget.onSave(parsed);
-                      if (result is Future) {
-                        await result;
-                      }
-                    }
-                    if (mounted) {
-                      setState(() {
-                        _isEditing = false;
-                      });
-                    }
-                  } else {
-                    setState(() {
-                      _isEditing = true;
-                    });
-                  }
-                },
+                onPressed: _isSaving
+                    ? null
+                    : () async {
+                        if (_isEditing) {
+                          final normalizedPrice = _ctrl.text
+                              .trim()
+                              .replaceAll(',', '.')
+                              .replaceAll('٫', '.');
+                          double? parsed = double.tryParse(normalizedPrice);
+                          if (parsed == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('أدخل سعراً رقمياً صحيحاً.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+                          setState(() => _isSaving = true);
+                          try {
+                            final result = widget.onSave(parsed);
+                            if (result is Future) {
+                              await result;
+                            }
+                            if (!mounted) return;
+                            setState(() {
+                              _isEditing = false;
+                              _isSaving = false;
+                              _showSaved = true;
+                            });
+                            widget.onSaveCompleted?.call();
+                            Future<void>.delayed(
+                              const Duration(seconds: 2),
+                              () {
+                                if (mounted && !_isEditing) {
+                                  setState(() => _showSaved = false);
+                                }
+                              },
+                            );
+                          } catch (_) {
+                            if (!mounted) return;
+                            setState(() => _isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('تعذر حفظ السعر. حاول مرة أخرى.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        } else {
+                          setState(() {
+                            _isEditing = true;
+                            _showSaved = false;
+                          });
+                        }
+                      },
               ),
             ),
         ],

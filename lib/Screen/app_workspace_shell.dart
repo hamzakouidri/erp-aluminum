@@ -312,7 +312,9 @@ void openAdaptiveScreen(
 }
 
 /// Keeps the current route open but recreates its data screen after a complete
-/// cloud restore. Local edits emit other events and never reset the page.
+/// cloud restore.  A catalogue download is handled by the screen itself: it
+/// must refresh its data without resetting its current tab, form, or scroll
+/// position.
 class _CloudDataRefreshBoundary extends StatefulWidget {
   const _CloudDataRefreshBoundary({required this.child});
 
@@ -332,7 +334,7 @@ class _CloudDataRefreshBoundaryState extends State<_CloudDataRefreshBoundary> {
   void initState() {
     super.initState();
     _subscription = CloudSyncService().dbUpdateStream.listen((event) {
-      if (event != 'cloud_restored' && event != 'catalog_downloaded') return;
+      if (event != 'cloud_restored') return;
       _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: 80), () {
         if (!mounted) return;
