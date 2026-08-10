@@ -79,6 +79,10 @@ flutter:
     - assets/fonts/Cairo.ttf
     - assets/fonts/Arial-Regular.ttf
     - assets/sections/
+    # SQLite runtime used by the persistent web database. Keeping it as a
+    # Flutter asset guarantees that Firebase Hosting receives it on every
+    # web build.
+    - web/sqlite3.wasm
     - Icon/
     - images/
 

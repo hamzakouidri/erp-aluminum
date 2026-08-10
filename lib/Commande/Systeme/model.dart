@@ -590,6 +590,10 @@ class WindowZone {
   Map<String, bool> slidingMontantReinforced;
   double middleHingeDragOffset;
   double doubleSashRatio;
+
+  /// Whether the exceptional two-handle configuration is enabled.
+  /// A double sash normally has a handle only on its active leaf.
+  bool doubleSashHasTwoHandles;
   Map<String, bool> disabledVerticalDivisions;
   Map<String, bool> disabledHorizontalDivisions;
   String? primaryDivisionAxis;
@@ -654,6 +658,7 @@ class WindowZone {
     Map<String, bool>? slidingMontantReinforced,
     this.middleHingeDragOffset = 0.0,
     this.doubleSashRatio = 0.5,
+    this.doubleSashHasTwoHandles = false,
     this.disabledVerticalDivisions = const {},
     this.disabledHorizontalDivisions = const {},
     this.primaryDivisionAxis,
@@ -714,6 +719,7 @@ class WindowZone {
     slidingMontantReinforced: Map.from(slidingMontantReinforced),
     middleHingeDragOffset: middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio,
+    doubleSashHasTwoHandles: doubleSashHasTwoHandles,
     disabledVerticalDivisions: Map.from(disabledVerticalDivisions),
     disabledHorizontalDivisions: Map.from(disabledHorizontalDivisions),
     primaryDivisionAxis: primaryDivisionAxis,
@@ -757,6 +763,7 @@ class WindowZone {
     Map<String, bool>? slidingMontantReinforced,
     double? middleHingeDragOffset,
     double? doubleSashRatio,
+    bool? doubleSashHasTwoHandles,
     Map<String, bool>? disabledVerticalDivisions,
     Map<String, bool>? disabledHorizontalDivisions,
     String? primaryDivisionAxis,
@@ -804,6 +811,8 @@ class WindowZone {
         slidingMontantReinforced ?? Map.from(this.slidingMontantReinforced),
     middleHingeDragOffset: middleHingeDragOffset ?? this.middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio ?? this.doubleSashRatio,
+    doubleSashHasTwoHandles:
+        doubleSashHasTwoHandles ?? this.doubleSashHasTwoHandles,
     disabledVerticalDivisions:
         disabledVerticalDivisions ?? Map.from(this.disabledVerticalDivisions),
     disabledHorizontalDivisions:
@@ -1410,24 +1419,7 @@ class WindowModel extends ChangeNotifier {
   String? loadedSlidingSeriesName;
   int? loadedSeriesId;
   int? loadedSlidingSeriesId;
-  Map<String, dynamic>? seriesTableConfig;
-
-  Future<void> loadSeriesTableConfig() async {
-    final myDb = db;
-    if (myDb == null) return;
-    final sId =
-        loadedSlidingSeriesId ??
-        loadedSeriesId ??
-        activeSlidingSeries?.id ??
-        activeSeries?.id;
-    if (sId != null) {
-      try {
-        seriesTableConfig = await myDb.getSeriesTableConfig(sId);
-      } catch (e) {
-        debugPrint('Error loading seriesTableConfig: $e');
-      }
-    }
-  }
+  Map<String, dynamic>? seriesDesignConfig;
 
   double archHeight = 0.0;
   double topSlantLeftY = 0.0;
@@ -1630,9 +1622,7 @@ class WindowModel extends ChangeNotifier {
     bool isHorizontal,
     double position,
   ) =>
-      groovedMullionCavityOnPositiveSide[
-        _mullionKey(isHorizontal, position)
-      ] ??
+      groovedMullionCavityOnPositiveSide[_mullionKey(isHorizontal, position)] ??
       false;
 
   double _sectionVisibleWidth(Map<String, dynamic>? section) {
@@ -3393,6 +3383,19 @@ class WindowModel extends ChangeNotifier {
             loadedSeriesId != null &&
             loadedSeriesId != series.id);
     activeSeries = series;
+    seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
+    final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
+    List<AluminumSection> configuredSectionsFor(Iterable<String> roleKeys) {
+      final ids = configuredRoleRows
+          .where((row) => roleKeys.contains(row['role_key']))
+          .map((row) => (row['section_id'] as num?)?.toInt())
+          .whereType<int>()
+          .toSet();
+      if (ids.isEmpty) return <AluminumSection>[];
+      return series.sections
+          .where((section) => ids.contains(section.id))
+          .toList();
+    }
 
     if (systemMode == 'sliding' && activeSlidingSeries == null) {
       activeSlidingSeries = series;
@@ -3500,13 +3503,15 @@ class WindowModel extends ChangeNotifier {
 
     // Set default frame and sash if they are null
     if (frameOverride == null) {
-      var frames = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        return t.contains('frame') ||
-            t.contains('cadre') ||
-            t.contains('إطار') ||
-            t.contains('فريم');
-      }).toList();
+      var frames = configuredSectionsFor(const ['frame', 'frame_extension']);
+      if (frames.isEmpty)
+        frames = series.sections.where((s) {
+          final t = s.type.toLowerCase().trim();
+          return t.contains('frame') ||
+              t.contains('cadre') ||
+              t.contains('إطار') ||
+              t.contains('فريم');
+        }).toList();
 
       if (frames.isNotEmpty) {
         final match40 = frames.firstWhere(
@@ -3518,13 +3523,15 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (sashOverride == null) {
-      var sashes = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        return t.contains('sash') ||
-            t.contains('ouvrant') ||
-            t.contains('ضلفة') ||
-            t.contains('ساش');
-      }).toList();
+      var sashes = configuredSectionsFor(const ['sash', 'sash_extension']);
+      if (sashes.isEmpty)
+        sashes = series.sections.where((s) {
+          final t = s.type.toLowerCase().trim();
+          return t.contains('sash') ||
+              t.contains('ouvrant') ||
+              t.contains('ضلفة') ||
+              t.contains('ساش');
+        }).toList();
 
       if (sashes.isNotEmpty) {
         sashOverride = sashes.first.toMap();
@@ -3532,10 +3539,12 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (sideCoverOverride == null) {
-      var sideCovers = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        return t.contains('side_cover');
-      }).toList();
+      var sideCovers = configuredSectionsFor(const ['side_cover']);
+      if (sideCovers.isEmpty)
+        sideCovers = series.sections.where((s) {
+          final t = s.type.toLowerCase().trim();
+          return t.contains('side_cover');
+        }).toList();
 
       if (sideCovers.isNotEmpty) {
         sideCoverOverride = sideCovers.first.toMap();
@@ -4338,9 +4347,11 @@ class WindowModel extends ChangeNotifier {
     await _loadColorsForProfile(series.profileId);
     availableAccessoryColors = await db.readAccessoryColors();
 
-    // فلترة أي اكسسوارات متبقية تنتمي إلى سلسلة أخرى
-    if (seriesChanged && d != null) {
+    // فلترة أي إكسسوار متبقٍ غير مربوط بهذه السلسلة حتى عند فتح طلب قديم.
+    if (d != null) {
       await _filterComponentsByActiveSeries(series, d);
+      // إعادة ملء ما أزيل بالاختيار الافتراضي المفلتر للسلسلة نفسها.
+      await _loadAccessoryDefaults(d, series.id);
     }
 
     notifyListeners();
@@ -4358,6 +4369,19 @@ class WindowModel extends ChangeNotifier {
             loadedSlidingSeriesId != null &&
             loadedSlidingSeriesId != series.id);
     activeSlidingSeries = series;
+    seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
+    final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
+    List<AluminumSection> configuredSectionsFor(Iterable<String> roleKeys) {
+      final ids = configuredRoleRows
+          .where((row) => roleKeys.contains(row['role_key']))
+          .map((row) => (row['section_id'] as num?)?.toInt())
+          .whereType<int>()
+          .toSet();
+      if (ids.isEmpty) return <AluminumSection>[];
+      return series.sections
+          .where((section) => ids.contains(section.id))
+          .toList();
+    }
 
     if (seriesChanged) {
       slidingFrameOverride = null;
@@ -4437,13 +4461,15 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (slidingFrameOverride == null) {
-      var frames = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        return t.contains('frame') ||
-            t.contains('cadre') ||
-            t.contains('إطار') ||
-            t.contains('فريم');
-      }).toList();
+      var frames = configuredSectionsFor(const ['frame', 'frame_extension']);
+      if (frames.isEmpty)
+        frames = series.sections.where((s) {
+          final t = s.type.toLowerCase().trim();
+          return t.contains('frame') ||
+              t.contains('cadre') ||
+              t.contains('إطار') ||
+              t.contains('فريم');
+        }).toList();
 
       if (frames.isNotEmpty) {
         slidingFrameOverride = frames.first.toMap();
@@ -4451,28 +4477,32 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (slidingSashOverride == null) {
-      var sashes = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        return t.contains('sash') ||
-            t.contains('ouvrant') ||
-            t.contains('ضلفة') ||
-            t.contains('ساش');
-      }).toList();
+      var sashes = configuredSectionsFor(const ['sash', 'sash_extension']);
+      if (sashes.isEmpty)
+        sashes = series.sections.where((s) {
+          final t = s.type.toLowerCase().trim();
+          return t.contains('sash') ||
+              t.contains('ouvrant') ||
+              t.contains('ضلفة') ||
+              t.contains('ساش');
+        }).toList();
 
       if (sashes.isNotEmpty) {
         slidingSashOverride = sashes.first.toMap();
       }
     }
 
-    var rails = series.sections.where((s) {
-      final t = s.type.toLowerCase().trim();
-      return t == 'rail' ||
-          t.contains('rail') ||
-          t == 'الري' ||
-          t.contains('الري') ||
-          t == 'راي' ||
-          t.contains('راي');
-    }).toList();
+    var rails = configuredSectionsFor(const ['rail']);
+    if (rails.isEmpty)
+      rails = series.sections.where((s) {
+        final t = s.type.toLowerCase().trim();
+        return t == 'rail' ||
+            t.contains('rail') ||
+            t == 'الري' ||
+            t.contains('الري') ||
+            t == 'راي' ||
+            t.contains('راي');
+      }).toList();
     if (rails.isNotEmpty && !componentOverrides.containsKey('الري (Rail)')) {
       final rMap = Map<String, dynamic>.from(rails.first.toMap());
       final rId = rMap['id'] as int;
@@ -4485,14 +4515,16 @@ class WindowModel extends ChangeNotifier {
       componentOverrides['الري (Rail)'] = rMap;
     }
 
-    var chicanes = series.sections.where((s) {
-      final t = s.type.toLowerCase().trim();
-      final n = s.name.toLowerCase().trim();
-      return t.contains('chicane') ||
-          n.contains('chicane') ||
-          t.contains('شيكان') ||
-          n.contains('شيكان');
-    }).toList();
+    var chicanes = configuredSectionsFor(const ['chicane']);
+    if (chicanes.isEmpty)
+      chicanes = series.sections.where((s) {
+        final t = s.type.toLowerCase().trim();
+        final n = s.name.toLowerCase().trim();
+        return t.contains('chicane') ||
+            n.contains('chicane') ||
+            t.contains('شيكان') ||
+            n.contains('شيكان');
+      }).toList();
     if (chicanes.isNotEmpty &&
         !componentOverrides.containsKey('الشيكان (Chicane)')) {
       final rMap = Map<String, dynamic>.from(chicanes.first.toMap());
@@ -5036,48 +5068,63 @@ class WindowModel extends ChangeNotifier {
       }
 
       // Swing Sashes (singleSash or doubleSash)
+      // A sash can be made thick from the profile selector, including inside
+      // a divided cell.  Do not rely only on the legacy `isSash105` flag here:
+      // it may still be false while the selected profile is already a door
+      // sash.  Otherwise a notify immediately removes the key/bathroom/
+      // Marechal choice that the user has just selected.
+      final isDoorSash = _zoneUsesSash105(zone);
       if (isPVC) {
         zone.usePvcHandleOnAlu = false;
         zone.useClassicHandle = false;
 
-        if (zone.content == ZoneContent.doubleSash) {
-          // Double sash PVC window: only none/window handle allowed
-          zone.lockType = LockType.none;
+        if (isDoorSash) {
+          // PVC door, whether it has one sash or two: a double door still
+          // supports the key, bathroom and Maréchal handle choices.  The old
+          // double-sash branch reset every lock to `none` during notify(), so
+          // the user could press the button but never see the selected handle.
+          if (hasShutter == true &&
+              (zone.lockType == LockType.clef ||
+                  zone.lockType == LockType.condamnation)) {
+            zone.lockType = LockType.none;
+          }
+
+          if (zone.lockType == LockType.rouleau ||
+              zone.lockType == LockType.rouleau2000) {
+            final doorHeight = zone.boundary.height;
+            if (hasBottomFrame == true ||
+                hasShutter == true ||
+                doorHeight < 1250.0) {
+              zone.lockType = LockType.none;
+            } else if (doorHeight <= 2000.0 &&
+                zone.lockType == LockType.rouleau2000) {
+              zone.lockType = LockType.rouleau;
+            }
+          }
+
+          if (zone.lockType != LockType.none &&
+              zone.lockType != LockType.clef &&
+              zone.lockType != LockType.condamnation &&
+              zone.lockType != LockType.rouleau &&
+              zone.lockType != LockType.rouleau2000) {
+            zone.lockType = LockType.none;
+          }
           zone.useOctoHandle = false;
         } else {
-          // Single sash PVC window
-          if (zone.isSash105) {
-            // PVC Door: clef, condamnation, rouleau
-            // Forbid clef and condamnation if shutter is present
-            if (hasShutter == true) {
-              if (zone.lockType == LockType.clef ||
-                  zone.lockType == LockType.condamnation) {
-                zone.lockType = LockType.none;
-              }
-            }
-            if (zone.lockType == LockType.rouleau &&
-                (hasBottomFrame == true || hasShutter == true)) {
-              zone.lockType = LockType.none;
-            }
-            if (zone.lockType != LockType.none &&
-                zone.lockType != LockType.clef &&
-                zone.lockType != LockType.condamnation &&
-                zone.lockType != LockType.rouleau) {
-              zone.lockType = LockType.none;
-            }
+          // PVC window: a double sash has the normal window handle only;
+          // a single sash may also use the Octo handle.
+          if (zone.lockType != LockType.none) {
+            zone.lockType = LockType.none;
+          }
+          if (zone.content == ZoneContent.doubleSash) {
             zone.useOctoHandle = false;
-          } else {
-            // PVC Window: none or Octo
-            if (zone.lockType != LockType.none) {
-              zone.lockType = LockType.none;
-            }
           }
         }
       } else {
         // Aluminium swing sashes
         zone.useClassicHandle = false;
 
-        if (zone.isSash105) {
+        if (isDoorSash) {
           // Thick sash (Door)
           if (zone.content == ZoneContent.doubleSash) {
             // Double sash door: Cremone (none), Key, Bathroom, Maréchal, PVC on Alu
@@ -5127,10 +5174,11 @@ class WindowModel extends ChangeNotifier {
         } else {
           // Thin sash (Window)
           if (zone.content == ZoneContent.doubleSash) {
-            // Double sash thin: ONLY Cremone (none)
+            // Double sash thin: Cremone or the selected window handle.  The
+            // latter is still drawn on only one leaf unless the explicit
+            // two-handle option is enabled.
             zone.lockType = LockType.none;
             zone.useOctoHandle = false;
-            zone.usePvcHandleOnAlu = false;
           } else {
             // Single sash thin: Cremone (none), Octo (useOctoHandle), Point Lock (point)
             zone.usePvcHandleOnAlu = false;
@@ -8039,91 +8087,105 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _determineIsSash105FromSashOverride() {
-    if (sashOverride == null) return false;
+  /// Returns an explicit 104/105 classification from catalogue metadata.
+  /// A null result means that this series uses neutral names and must be
+  /// classified from its visible dimensions.
+  bool? _explicitSash105FromProfile(Map<String, dynamic>? profile) {
+    if (profile == null) return null;
+    final code = profile['code']?.toString().toLowerCase() ?? '';
+    final name = profile['name']?.toString().toLowerCase() ?? '';
+    final type = profile['type']?.toString().toLowerCase() ?? '';
+    final description = '$code $name $type';
 
-    // If it's PVC, fallback to standard name checks because PVC uses different series naming logic
-    if (isPVC) {
-      final code = sashOverride!['code']?.toString().toLowerCase() ?? '';
-      final name = sashOverride!['name']?.toString().toLowerCase() ?? '';
-      if (code.contains('104') || name.contains('104')) {
-        return false;
-      }
-      if (code.contains('105') ||
-          code.contains('porte') ||
-          code.contains('ouvr') ||
-          name.contains('105') ||
-          name.contains('porte') ||
-          name.contains('ouvr') ||
-          name.contains('بورت')) {
-        return true;
-      }
+    if (description.contains('104') ||
+        description.contains('fenetre') ||
+        description.contains('window')) {
       return false;
     }
+    if (description.contains('105') ||
+        description.contains('porte') ||
+        description.contains('door')) {
+      return true;
+    }
+    return null;
+  }
 
-    // For Aluminium: Compare visible widths of all sashes in the active series
+  /// Determines whether a selected sash profile is a 105/door sash.  The
+  /// profile controls, the handle controls and the validator all use this
+  /// same rule so that they never disagree after a profile is selected.
+  bool _isSash105Profile(
+    Map<String, dynamic>? profile, {
+    double fallbackWidth = 0.0,
+  }) {
+    if (profile == null) return false;
+
+    final explicit = _explicitSash105FromProfile(profile);
+    if (explicit != null) return explicit;
+
     final double currentWidth =
-        (sashOverride!['visible_width'] as num?)?.toDouble() ?? 0.0;
-
+        (profile['visible_width'] as num?)?.toDouble() ??
+        (profile['thickness'] as num?)?.toDouble() ??
+        fallbackWidth;
     final series = activeSeries;
     if (series != null) {
-      // Find all sash/ouvrant sections in this series
-      final sashSections = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        final n = s.name.toLowerCase().trim();
-        return t.contains('sash') ||
-            t.contains('ouvrant') ||
-            t.contains('ضلفة') ||
-            t.contains('ساش') ||
-            n.contains('sash') ||
-            n.contains('ouvrant') ||
-            n.contains('ضلفة') ||
-            n.contains('ساش');
+      final sashSections = series.sections.where((section) {
+        final type = section.type.toLowerCase().trim();
+        final name = section.name.toLowerCase().trim();
+        return type.contains('sash') ||
+            type.contains('ouvrant') ||
+            type.contains('ضلفة') ||
+            type.contains('ساش') ||
+            name.contains('sash') ||
+            name.contains('ouvrant') ||
+            name.contains('ضلفة') ||
+            name.contains('ساش');
       }).toList();
 
       if (sashSections.isNotEmpty) {
-        double maxVisibleWidth = 0.0;
-        double minVisibleWidth = 999999.0;
-        for (var s in sashSections) {
-          final w = (s.visibleWidth as num?)?.toDouble() ?? 0.0;
-          if (w > maxVisibleWidth) maxVisibleWidth = w;
-          if (w < minVisibleWidth) minVisibleWidth = w;
-        }
-
-        // If we have a range of widths:
-        if (maxVisibleWidth > minVisibleWidth) {
-          // If the selected sash's width is closer to the max width, it is the thick sash
-          if ((currentWidth - maxVisibleWidth).abs() <
-              (currentWidth - minVisibleWidth).abs()) {
-            return true;
-          } else {
-            return false;
+        final widths = sashSections
+            .map((section) => section.visibleWidth)
+            .where((width) => width > 0)
+            .toList();
+        if (widths.length > 1) {
+          final maxWidth = widths.reduce(math.max);
+          final minWidth = widths.reduce(math.min);
+          if (maxWidth > minWidth) {
+            return (currentWidth - maxWidth).abs() <
+                (currentWidth - minWidth).abs();
           }
         }
       }
     }
 
-    // Fallback: If no other sashes found or widths are same, use name check or absolute threshold
-    if (currentWidth >= 90.0) {
-      return true;
+    // Single-entry catalogues often have neither 104 nor 105 in their name.
+    // This is the same practical width rule used by the renderer.
+    return currentWidth > (isPVC ? 60.0 : 50.0);
+  }
+
+  bool _zoneUsesSash105(WindowZone zone) {
+    if (zone.isSash105) return true;
+
+    // A divided sash may have its own profile.  Handle state is stored on its
+    // parent zone, so keep door-handle options available when such a cell is
+    // thick even if the parent was created as a normal window sash.
+    for (final cellProfile in zone.cellSashOverrides.values) {
+      if (_isSash105Profile(cellProfile)) return true;
     }
 
-    // Fallback to name check
-    final code = sashOverride!['code']?.toString().toLowerCase() ?? '';
-    final name = sashOverride!['name']?.toString().toLowerCase() ?? '';
-    if (code.contains('104') || name.contains('104')) {
-      return false;
-    }
-    if (code.contains('105') ||
-        code.contains('porte') ||
-        code.contains('ouvr') ||
-        name.contains('105') ||
-        name.contains('porte') ||
-        name.contains('ouvr') ||
-        name.contains('بورت')) {
-      return true;
-    }
-    return false;
+    return _isSash105Profile(
+      sashOverride,
+      fallbackWidth: zone.sashThickness ?? 0.0,
+    );
+  }
+
+  /// Whether the current selection effectively uses a thick/door sash.
+  bool get selectedZoneUsesSash105 {
+    final zone = selectedZone;
+    return zone != null && _zoneUsesSash105(zone);
+  }
+
+  bool _determineIsSash105FromSashOverride() {
+    return _isSash105Profile(sashOverride);
   }
 
   void updateAllSashThicknesses() {
@@ -8405,6 +8467,9 @@ class WindowModel extends ChangeNotifier {
     if (selectedZone == null) return;
     _saveSnapshot();
     selectedZone!.content = content;
+    if (content != ZoneContent.doubleSash) {
+      selectedZone!.doubleSashHasTwoHandles = false;
+    }
     selectedZone!.innerH = 0;
     selectedZone!.innerV = 0;
     selectedZone!.rightInnerH = 0;
@@ -8797,8 +8862,8 @@ class WindowModel extends ChangeNotifier {
     componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
   }
 
-  /// فلترة الاكسسوارات والبروفيلات بناءً على السلسلة الحالية
-  /// تقوم بحذف أي اكسسوار أو بروفيل لا ينتمي إلى السلسلة الحالية أو ليس له scope = "Global"
+  /// فلترة الإكسسوارات حسب السلسلة الحالية.
+  /// تحذف أي إكسسوار غير مربوط صراحةً بالسلسلة ولا تمس البروفيلات أو الستار.
   Future<void> _filterComponentsByActiveSeries(
     AluminumSeries series,
     dynamic db,
@@ -8815,11 +8880,14 @@ class WindowModel extends ChangeNotifier {
       // تجاهل المكونات التي تأتي من البيانات المحلية وليست من قاعدة البيانات
       if (component['id'] == null) continue;
 
-      // تجاهل الأقسام (Sections)، نتعامل فقط مع الاكسسوارات
-      final tableToCheck =
-          component.containsKey('series_id') ||
-              component.containsKey('series_ids') ||
-              component.containsKey('scope')
+      // تجاهل الأقسام، مكونات الستار، والجوانات. الحقول المتشابهة بين الجداول
+      // كانت تجعل القسم يُفحص خطأً داخل Accessories ثم يُحذف.
+      final isSection = component.containsKey('code');
+      final isShutter = component.containsKey('component_type');
+      final isJoint = component.containsKey('gasket_type');
+      final isAccessory = component.containsKey('material_type') ||
+          component.containsKey('screw_count');
+      final tableToCheck = isAccessory && !isSection && !isShutter && !isJoint
           ? 'Accessories'
           : null;
 
@@ -8840,19 +8908,24 @@ class WindowModel extends ChangeNotifier {
 
           final dbComponent = result.first;
           final componentSeriesId = dbComponent['series_id'];
-          final componentScope = dbComponent['scope']?.toString() ?? '';
           final componentSeriesIds =
               dbComponent['series_ids']?.toString() ?? '';
+          final materialType =
+              (dbComponent['material_type'] ?? '').toString().trim().toLowerCase();
+          final seriesIsPvc = _isPvcSeries(series);
+          final materialMatches = seriesIsPvc
+              ? (materialType == 'pvc' || materialType == 'both')
+              : (materialType == 'aluminium' ||
+                  materialType == 'aluminum' ||
+                  materialType == 'both' ||
+                  materialType.isEmpty);
 
-          // التحقق من أن المكون ينتمي إلى السلسلة الحالية أو له scope = "Global"
+          // المكوّن المخصص يحتاج سلسلة مطابقة. المكوّن العام مسموح فقط
+          // بعد اجتياز فلتر المادة (PVC / Aluminium / Both).
           bool belongsToCurrentSeries = false;
 
           // إذا كان series_id متطابقاً
           if (componentSeriesId == seriesId) {
-            belongsToCurrentSeries = true;
-          }
-          // أو إذا كان scope = "Global"
-          else if (componentScope == 'Global') {
             belongsToCurrentSeries = true;
           }
           // أو إذا كان series_ids يحتوي على series_id الحالي
@@ -8866,8 +8939,13 @@ class WindowModel extends ChangeNotifier {
               belongsToCurrentSeries = true;
             }
           }
+          // الإكسسوار العام بلا أي ربط سلسلة متاح لكل سلسلة متوافقة بالمادة.
+          else if ((componentSeriesId == null || componentSeriesId == 0) &&
+              componentSeriesIds.trim().isEmpty) {
+            belongsToCurrentSeries = materialMatches;
+          }
 
-          if (!belongsToCurrentSeries) {
+          if (!materialMatches || !belongsToCurrentSeries) {
             componentOverrides.remove(key);
           }
         } catch (e) {
@@ -9072,6 +9150,41 @@ class WindowModel extends ChangeNotifier {
         if (isKitKey && hasClampName) return false;
         if (isClampKey && hasKitName) return false;
 
+        // المقابض العادية للنوافذ لا تقبل مقابض الأبواب أو المقابض الخاصة.
+        // الفلتر النصي العام كان يلتقط Rotax وCalimaster رغم عدم صلاحيتهما
+        // لنافذة PVC عادية.
+        final isWindowHandleKey =
+            key == 'المقبض (Handle)' || key == 'مقبض نافذة (Poignée Fenêtre)';
+        if (isWindowHandleKey) {
+          final hasHandle = n.contains('poignée') ||
+              ty.contains('poignée') ||
+              n.contains('poignee') ||
+              ty.contains('poignee') ||
+              n.contains('handle') ||
+              ty.contains('handle') ||
+              n.contains('مقبض') ||
+              ty.contains('مقبض');
+          final isDoorOrSpecial = n.contains('porte') ||
+              ty.contains('porte') ||
+              n.contains('door') ||
+              ty.contains('door') ||
+              n.contains('clé') ||
+              ty.contains('clé') ||
+              n.contains('clef') ||
+              ty.contains('clef') ||
+              n.contains('condamnation') ||
+              ty.contains('condamnation') ||
+              n.contains('rotax') ||
+              ty.contains('rotax') ||
+              n.contains('calimaster') ||
+              ty.contains('calimaster') ||
+              n.contains('maréchal') ||
+              ty.contains('maréchal') ||
+              n.contains('marechal') ||
+              ty.contains('marechal');
+          if (!hasHandle || isDoorOrSpecial) return false;
+        }
+
         return true;
       }
 
@@ -9112,12 +9225,12 @@ class WindowModel extends ChangeNotifier {
       String seriesFilter =
           ' AND ('
           'series_id = ? '
-          'OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) '
-          'OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\'))'
+          'OR (series_ids IS NOT NULL AND TRIM(series_ids) != \'\' AND \',\' || REPLACE(series_ids, \' \', \'\') || \',\' LIKE ?)'
+          'OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = \'\'))'
           ')';
 
       final String orderBy =
-          'CASE WHEN series_id = $seriesId OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE \'%,$seriesId,%\') THEN 0 ELSE 1 END ASC, id ASC';
+          'CASE WHEN series_id = $seriesId OR (series_ids IS NOT NULL AND TRIM(series_ids) != \'\' AND \',\' || REPLACE(series_ids, \' \', \'\') || \',\' LIKE \'%,$seriesId,%\') THEN 0 ELSE 1 END ASC, id ASC';
 
       List<Map<String, dynamic>> res = [];
 
@@ -9217,7 +9330,41 @@ class WindowModel extends ChangeNotifier {
       }
 
       if (res.isNotEmpty) {
-        final m = Map<String, dynamic>.from(res.first);
+        Map<String, dynamic> selected = res.first;
+        if (key == 'إسبانيوليت (Espagnolette)' ||
+            key == 'اسبانيولات المنزلق (Espagnolette)') {
+          // اختَر أطول إسبانيوليت لا تتجاوز الطول المطلوب، لا أول نتيجة في
+          // الجدول. هذا هو نفس قانون نافذة «تغيير».
+          final heightCm = height / 10.0;
+          final targetHeight = hasShutter ? heightCm - 35.0 : heightCm - 20.0;
+          final requiredLength = targetHeight >= 180
+              ? 180.0
+              : targetHeight >= 140
+              ? 140.0
+              : targetHeight >= 100
+              ? 100.0
+              : targetHeight >= 60
+              ? 60.0
+              : 30.0;
+          double? getLength(Map<String, dynamic> accessory) {
+            final measurement = (accessory['measurement'] ?? '').toString();
+            final source = measurement.isNotEmpty
+                ? measurement
+                : '${accessory['name'] ?? ''} ${accessory['type'] ?? ''}';
+            final match = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(source);
+            return match == null
+                ? null
+                : double.tryParse(match.group(1)!.replaceAll(',', '.'));
+          }
+
+          final compatible = res.where((accessory) {
+            final length = getLength(accessory);
+            return length != null && length <= requiredLength;
+          }).toList()
+            ..sort((a, b) => getLength(b)!.compareTo(getLength(a)!));
+          if (compatible.isNotEmpty) selected = compatible.first;
+        }
+        final m = Map<String, dynamic>.from(selected);
         m['calculated_price'] = (m['price_dzd'] ?? m['price'] ?? 0.0)
             .toDouble();
         componentOverrides[key] = m;
@@ -9234,7 +9381,12 @@ class WindowModel extends ChangeNotifier {
       '%espagnolette%',
     ]);
     await loadAccessory('المفاصل (Hinges)', ['%مفاصل%', '%paumelle%']);
-    await loadAccessory('الفيرو (Verrou)', ['%فيرو%', '%verrou%']);
+    await loadAccessory('الفيرو (Verrou)', [
+      '%فيرو%',
+      '%verrou%',
+      '%verro%',
+      '%viro%',
+    ]);
     await loadAccessory('المقبض (Handle)', [
       '%مقبض%',
       '%poignée fenêtre%',
@@ -9571,6 +9723,47 @@ class WindowModel extends ChangeNotifier {
     if (selectedZone == null) return;
     _saveSnapshot();
     selectedZone!.lockType = lock;
+    notifyListeners();
+  }
+
+  /// Applies one complete handle choice in a single update.  Previously the
+  /// interface changed the lock then each handle flag separately; every step
+  /// notified listeners and the validation layer could restore the preceding
+  /// choice before the new one was fully applied.
+  void setSelectedZoneHandle({
+    LockType lockType = LockType.none,
+    bool useOctoHandle = false,
+    bool usePvcHandleOnAlu = false,
+    bool useClassicHandle = false,
+  }) {
+    final zone = selectedZone;
+    if (zone == null) return;
+    _saveSnapshot();
+    // Choosing a door-specific handle is an explicit confirmation that the
+    // selected sash is the thick/door variant.  Persist it on the zone too so
+    // reopening a saved drawing cannot make the selection disappear before
+    // its profile metadata is loaded.
+    if (lockType == LockType.clef ||
+        lockType == LockType.condamnation ||
+        lockType == LockType.rouleau ||
+        lockType == LockType.rouleau2000) {
+      zone.isSash105 = true;
+    }
+    zone.lockType = lockType;
+    zone.useOctoHandle = useOctoHandle;
+    zone.usePvcHandleOnAlu = usePvcHandleOnAlu;
+    zone.useClassicHandle = useClassicHandle;
+    notifyListeners();
+  }
+
+  /// A double sash uses one handle by default.  This option is reserved for
+  /// the rare case where the customer explicitly requests a handle on both
+  /// leaves.
+  void setSelectedZoneDoubleHandles(bool enabled) {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.doubleSash) return;
+    _saveSnapshot();
+    zone.doubleSashHasTwoHandles = enabled;
     notifyListeners();
   }
 
@@ -10560,10 +10753,7 @@ class WindowModel extends ChangeNotifier {
 
   /// Reverses the cavity direction of a Cadre 140.  The direction is stored
   /// per mullion, so it stays unchanged after saving or reopening the order.
-  bool toggleGroovedMullionCavity(
-    bool isHorizontal,
-    double position,
-  ) {
+  bool toggleGroovedMullionCavity(bool isHorizontal, double position) {
     if (!isGroovedFrameMullionAt(isHorizontal, position)) return false;
 
     _saveSnapshot();

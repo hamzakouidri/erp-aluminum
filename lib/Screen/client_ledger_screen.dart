@@ -193,9 +193,12 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                   Localization.translate('طباعة الوصل', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ReceiptPdfService.printReceipt(treasuryItem);
+                  await ReceiptPdfService.printReceiptWithFeedback(
+                    treasuryItem,
+                    context,
+                  );
                 },
               ),
               ListTile(
@@ -204,9 +207,12 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                   Localization.translate('حفظ', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ReceiptPdfService.saveReceipt(treasuryItem, context);
+                  await ReceiptPdfService.saveReceiptWithFeedback(
+                    treasuryItem,
+                    context,
+                  );
                 },
               ),
               ListTile(
@@ -215,9 +221,12 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                   Localization.translate('مشاركة', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ReceiptPdfService.shareReceipt(treasuryItem);
+                  await ReceiptPdfService.shareReceiptWithFeedback(
+                    treasuryItem,
+                    context,
+                  );
                 },
               ),
             ],

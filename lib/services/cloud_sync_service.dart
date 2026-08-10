@@ -955,8 +955,10 @@ class CloudSyncService {
         .listen((snapshot) async {
           if (_isRestoring) return;
           try {
-            await _db.syncOrdersStatusFromCloud();
-            _dbUpdateController.add('order_status_updated');
+            final didChange = await _db.syncOrdersStatusFromCloud();
+            if (didChange) {
+              _dbUpdateController.add('order_status_updated');
+            }
             // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
           } catch (e) {
             print('Error syncing order status real-time: $e');

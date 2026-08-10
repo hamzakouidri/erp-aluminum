@@ -169,7 +169,7 @@ class _WindowViewState extends State<WindowView> {
       whereArgs: [seriesId],
     );
 
-    final frames = allSections.where((s) {
+    final legacyFrames = allSections.where((s) {
       final ty = s['type'].toString().toLowerCase().trim();
       return ty.contains('frame') ||
           ty.contains('cadre') ||
@@ -177,13 +177,26 @@ class _WindowViewState extends State<WindowView> {
           ty.contains('فريم');
     }).toList();
 
-    final sashes = allSections.where((s) {
+    final legacySashes = allSections.where((s) {
       final ty = s['type'].toString().toLowerCase().trim();
       return ty.contains('sash') ||
           ty.contains('ouvrant') ||
           ty.contains('ضلفة') ||
           ty.contains('ساش');
     }).toList();
+
+    // New series definitions make the mapping explicit.  Until a manager
+    // configures a legacy series we retain the previous type-name fallback.
+    final configuredFrames = await db.getDesignSectionsForRoles(
+      seriesId,
+      const ['frame', 'frame_extension'],
+    );
+    final configuredSashes = await db.getDesignSectionsForRoles(
+      seriesId,
+      const ['sash', 'sash_extension'],
+    );
+    final frames = configuredFrames.isEmpty ? legacyFrames : configuredFrames;
+    final sashes = configuredSashes.isEmpty ? legacySashes : configuredSashes;
 
     if (mounted) {
       setState(() {
@@ -465,17 +478,79 @@ class _WindowViewState extends State<WindowView> {
         orderBy: 'name ASC',
       );
 
+      final seriesId = activeSeriesForSystem?.id;
+      final designConfig = seriesId == null
+          ? null
+          : await db.getSeriesDesignConfig(seriesId);
+      final shutterRules = seriesId == null
+          ? <Map<String, dynamic>>[]
+          : await db.getSeriesShutterRules(seriesId);
+
+      List<Map<String, dynamic>> configuredOptions(
+        List<Map<String, Object?>> source,
+        String role,
+      ) {
+        final rows = source
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+        if (designConfig == null) return rows;
+        if (designConfig['supports_shutter'] != 1) {
+          return <Map<String, dynamic>>[];
+        }
+        final candidates = shutterRules.where((rule) {
+          if (rule['component_role'] != role) return false;
+          final mode = rule['selection_mode']?.toString() ?? 'always';
+          final mechanism = widget.model.shutterMechanism;
+          if (mode == 'motor' && mechanism != 'محرك') return false;
+          if (mode == 'manual' &&
+              !(mechanism.contains('مان') || mechanism.contains('منا'))) {
+            return false;
+          }
+          final width = widget.model.width;
+          final height = widget.model.height;
+          final minW = (rule['min_width_mm'] as num?)?.toDouble();
+          final maxW = (rule['max_width_mm'] as num?)?.toDouble();
+          final minH = (rule['min_height_mm'] as num?)?.toDouble();
+          final maxH = (rule['max_height_mm'] as num?)?.toDouble();
+          if (width > 0 &&
+              ((minW != null && width < minW) ||
+                  (maxW != null && width > maxW))) {
+            return false;
+          }
+          if (height > 0 &&
+              ((minH != null && height < minH) ||
+                  (maxH != null && height > maxH))) {
+            return false;
+          }
+          return true;
+        });
+        final ids = candidates
+            .map((rule) => (rule['component_id'] as num?)?.toInt())
+            .whereType<int>()
+            .toSet();
+        if (ids.isEmpty) return <Map<String, dynamic>>[];
+        return rows
+            .where((row) => ids.contains((row['id'] as num?)?.toInt()))
+            .toList();
+      }
+
+      // The shutter is independent from the drawing series.  Do not apply
+      // any series-specific profile rules to its catalogue choices.
+      final configuredLames = lames
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      final configuredCoulisses = coulisses
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      final configuredCaissons = caissonRes
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+
       if (mounted) {
         setState(() {
-          _shutterLamesOptions = lames
-              .map((r) => Map<String, dynamic>.from(r))
-              .toList();
-          _shutterCoulisseOptions = coulisses
-              .map((r) => Map<String, dynamic>.from(r))
-              .toList();
-          _shutterCaissonOptions = caissonRes
-              .map((r) => Map<String, dynamic>.from(r))
-              .toList();
+          _shutterLamesOptions = configuredLames;
+          _shutterCoulisseOptions = configuredCoulisses;
+          _shutterCaissonOptions = configuredCaissons;
           _loadingShutterOptions = false;
         });
       }
@@ -913,6 +988,8 @@ class _WindowViewState extends State<WindowView> {
       _catalogReloadDebounce = Timer(const Duration(milliseconds: 250), () {
         if (!mounted) return;
         unawaited(widget.model.loadCatalogData(widget.systemMode));
+        _loadedSeriesId = null;
+        unawaited(_loadAvailableProfiles());
         _loadShutterOptions();
       });
     });
@@ -1728,8 +1805,8 @@ class _WindowViewState extends State<WindowView> {
                                           modelPos.dx <= overlapRight &&
                                           (modelPos.dy - yCenter).abs() <
                                               hitSlop) {
-                                        final distance =
-                                            (modelPos.dy - yCenter).abs();
+                                        final distance = (modelPos.dy - yCenter)
+                                            .abs();
                                         if (distance < nearestMullionDistance) {
                                           tappedMullion = true;
                                           tappedMullionIsHorizontal = true;
@@ -1760,8 +1837,8 @@ class _WindowViewState extends State<WindowView> {
                                           modelPos.dy <= overlapBottom &&
                                           (modelPos.dx - xCenter).abs() <
                                               hitSlop) {
-                                        final distance =
-                                            (modelPos.dx - xCenter).abs();
+                                        final distance = (modelPos.dx - xCenter)
+                                            .abs();
                                         if (distance < nearestMullionDistance) {
                                           tappedMullion = true;
                                           tappedMullionIsHorizontal = false;
@@ -1843,7 +1920,9 @@ class _WindowViewState extends State<WindowView> {
                                           tappedMullionPosition,
                                         );
                                     if (didReverse) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
                                           content: Text(
                                             'تم عكس اتجاه تجويف Cadre 140',
@@ -10121,22 +10200,16 @@ class _WindowViewState extends State<WindowView> {
               btnIcon = Icons.door_back_door_rounded;
               btnSelected = true;
             } else if (zone.usePvcHandleOnAlu) {
-              btnLabel = zone.content == ZoneContent.doubleSash
-                  ? Localization.translate('مقبض نافذة بي في سي (قطعتين)', lang)
-                  : Localization.translate('مقبض نافذة بي في سي', lang);
+              btnLabel = Localization.translate('مقبض نافذة بي في سي', lang);
               btnIcon = Icons.door_back_door_rounded;
               btnSelected = true;
             } else if (zone.useOctoHandle) {
-              btnLabel = zone.content == ZoneContent.doubleSash
-                  ? Localization.translate('مقبض أوكتو (قطعتين)', lang)
-                  : Localization.translate('مقبض أوكتو', lang);
+              btnLabel = Localization.translate('مقبض أوكتو', lang);
               btnIcon = Icons.radio_button_checked_rounded;
               btnSelected = true;
             } else {
               // Default is Cremone on door
-              btnLabel = zone.content == ZoneContent.doubleSash
-                  ? Localization.translate('مقبض كريمون (قطعتين)', lang)
-                  : Localization.translate('مقبض كريمون', lang);
+              btnLabel = Localization.translate('مقبض كريمون', lang);
               btnIcon = Icons.door_back_door_rounded;
               btnSelected = true;
             }
@@ -10147,15 +10220,13 @@ class _WindowViewState extends State<WindowView> {
               btnIcon = Icons.adjust;
               btnSelected = true;
             } else if (zone.useOctoHandle) {
-              btnLabel = zone.content == ZoneContent.doubleSash
-                  ? Localization.translate('مقبض أوكتو (قطعتين)', lang)
-                  : Localization.translate('مقبض أوكتو', lang);
+              btnLabel = Localization.translate('مقبض أوكتو', lang);
               btnIcon = Icons.radio_button_checked_rounded;
               btnSelected = true;
             } else {
-              btnLabel = zone.content == ZoneContent.doubleSash
-                  ? Localization.translate('Poignée fenêtre (2 pcs)', lang)
-                  : Localization.translate('Poignée fenêtre', lang);
+              btnLabel = (widget.model.isPVC || zone.usePvcHandleOnAlu)
+                  ? Localization.translate('Poignée fenêtre', lang)
+                  : Localization.translate('مقبض كريمون', lang);
               btnIcon = Icons.window_rounded;
               btnSelected = true;
             }
@@ -10590,6 +10661,11 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else {
+          // The selected profile is the source of truth.  A thick profile can
+          // be selected inside a divided double sash before the old zone flag
+          // is refreshed, so checking only `zone.isSash105` hid all door
+          // handle buttons and left only the optional two-handle button.
+          final isDoorSash = widget.model.selectedZoneUsesSash105;
           if (zone.content == ZoneContent.slidingSash) {
             if (!widget.model.isPVC) {
               // 1. Entrematique handle
@@ -10603,11 +10679,7 @@ class _WindowViewState extends State<WindowView> {
                   selected: zone.useClassicHandle != true,
                   onPressed: () {
                     setState(() {
-                      widget.model.setSelectedZoneLockType(LockType.none);
-                      zone.useOctoHandle = false;
-                      widget.model.setSelectedZonePvcHandleOnAlu(false);
-                      widget.model.setSelectedZoneClassicHandle(false);
-                      widget.model.refreshUI();
+                      widget.model.setSelectedZoneHandle();
                     });
                   },
                 ),
@@ -10625,11 +10697,9 @@ class _WindowViewState extends State<WindowView> {
                   selected: zone.useClassicHandle == true,
                   onPressed: () {
                     setState(() {
-                      widget.model.setSelectedZoneLockType(LockType.none);
-                      zone.useOctoHandle = false;
-                      widget.model.setSelectedZonePvcHandleOnAlu(false);
-                      widget.model.setSelectedZoneClassicHandle(true);
-                      widget.model.refreshUI();
+                      widget.model.setSelectedZoneHandle(
+                        useClassicHandle: true,
+                      );
                     });
                   },
                 ),
@@ -10646,7 +10716,7 @@ class _WindowViewState extends State<WindowView> {
               );
             }
           } else if (widget.model.isPVC) {
-            if (zone.isSash105) {
+            if (isDoorSash) {
               // PVC Door sashes
               // 1. Key handle (hidden when shutter present)
               if (widget.model.hasShutter == false) {
@@ -10657,11 +10727,9 @@ class _WindowViewState extends State<WindowView> {
                     selected: zone.lockType == LockType.clef,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.clef);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle(
+                          lockType: LockType.clef,
+                        );
                       });
                     },
                   ),
@@ -10678,13 +10746,9 @@ class _WindowViewState extends State<WindowView> {
                     selected: zone.lockType == LockType.condamnation,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(
-                          LockType.condamnation,
+                        widget.model.setSelectedZoneHandle(
+                          lockType: LockType.condamnation,
                         );
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
                       });
                     },
                   ),
@@ -10707,13 +10771,9 @@ class _WindowViewState extends State<WindowView> {
                       selected: zone.lockType == LockType.rouleau,
                       onPressed: () {
                         setState(() {
-                          widget.model.setSelectedZoneLockType(
-                            LockType.rouleau,
+                          widget.model.setSelectedZoneHandle(
+                            lockType: LockType.rouleau,
                           );
-                          zone.useOctoHandle = false;
-                          widget.model.setSelectedZonePvcHandleOnAlu(false);
-                          widget.model.setSelectedZoneClassicHandle(false);
-                          widget.model.refreshUI();
                         });
                       },
                     ),
@@ -10731,13 +10791,9 @@ class _WindowViewState extends State<WindowView> {
                         selected: zone.lockType == LockType.rouleau2000,
                         onPressed: () {
                           setState(() {
-                            widget.model.setSelectedZoneLockType(
-                              LockType.rouleau2000,
+                            widget.model.setSelectedZoneHandle(
+                              lockType: LockType.rouleau2000,
                             );
-                            zone.useOctoHandle = false;
-                            widget.model.setSelectedZonePvcHandleOnAlu(false);
-                            widget.model.setSelectedZoneClassicHandle(false);
-                            widget.model.refreshUI();
                           });
                         },
                       ),
@@ -10751,18 +10807,14 @@ class _WindowViewState extends State<WindowView> {
                 // Double sash PVC window: only window handle (x2)
                 children.add(
                   _ContentButton(
-                    label: Localization.translate('مقبض نافذة (قطعتين)', lang),
+                    label: Localization.translate('مقبض نافذة', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
                         zone.lockType == LockType.none &&
                         zone.useOctoHandle != true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle();
                       });
                     },
                   ),
@@ -10778,11 +10830,7 @@ class _WindowViewState extends State<WindowView> {
                         zone.useOctoHandle != true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle();
                       });
                     },
                   ),
@@ -10798,11 +10846,7 @@ class _WindowViewState extends State<WindowView> {
                         zone.useOctoHandle == true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = true;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle(useOctoHandle: true);
                       });
                     },
                   ),
@@ -10811,14 +10855,14 @@ class _WindowViewState extends State<WindowView> {
             }
           } else {
             // Aluminium Swing Sashes
-            if (zone.isSash105) {
+            if (isDoorSash) {
               // Door sashes (Thick Sash / الظلفة الغليظة)
 
               // 1. Cremone handle (مقبض كريمون)
               children.add(
                 _ContentButton(
                   label: zone.content == ZoneContent.doubleSash
-                      ? Localization.translate('مقبض كريمون (قطعتين)', lang)
+                      ? Localization.translate('مقبض كريمون', lang)
                       : Localization.translate('مقبض كريمون', lang),
                   icon: Icons.door_back_door_rounded,
                   selected:
@@ -10827,11 +10871,7 @@ class _WindowViewState extends State<WindowView> {
                       zone.usePvcHandleOnAlu != true,
                   onPressed: () {
                     setState(() {
-                      widget.model.setSelectedZoneLockType(LockType.none);
-                      zone.useOctoHandle = false;
-                      widget.model.setSelectedZonePvcHandleOnAlu(false);
-                      widget.model.setSelectedZoneClassicHandle(false);
-                      widget.model.refreshUI();
+                      widget.model.setSelectedZoneHandle();
                     });
                   },
                 ),
@@ -10847,11 +10887,9 @@ class _WindowViewState extends State<WindowView> {
                     selected: zone.lockType == LockType.clef,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.clef);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle(
+                          lockType: LockType.clef,
+                        );
                       });
                     },
                   ),
@@ -10868,13 +10906,9 @@ class _WindowViewState extends State<WindowView> {
                     selected: zone.lockType == LockType.condamnation,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(
-                          LockType.condamnation,
+                        widget.model.setSelectedZoneHandle(
+                          lockType: LockType.condamnation,
                         );
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
                       });
                     },
                   ),
@@ -10893,11 +10927,7 @@ class _WindowViewState extends State<WindowView> {
                         zone.useOctoHandle == true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = true;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle(useOctoHandle: true);
                       });
                     },
                   ),
@@ -10920,13 +10950,9 @@ class _WindowViewState extends State<WindowView> {
                       selected: zone.lockType == LockType.rouleau,
                       onPressed: () {
                         setState(() {
-                          widget.model.setSelectedZoneLockType(
-                            LockType.rouleau,
+                          widget.model.setSelectedZoneHandle(
+                            lockType: LockType.rouleau,
                           );
-                          zone.useOctoHandle = false;
-                          widget.model.setSelectedZonePvcHandleOnAlu(false);
-                          widget.model.setSelectedZoneClassicHandle(false);
-                          widget.model.refreshUI();
                         });
                       },
                     ),
@@ -10944,13 +10970,9 @@ class _WindowViewState extends State<WindowView> {
                         selected: zone.lockType == LockType.rouleau2000,
                         onPressed: () {
                           setState(() {
-                            widget.model.setSelectedZoneLockType(
-                              LockType.rouleau2000,
+                            widget.model.setSelectedZoneHandle(
+                              lockType: LockType.rouleau2000,
                             );
-                            zone.useOctoHandle = false;
-                            widget.model.setSelectedZonePvcHandleOnAlu(false);
-                            widget.model.setSelectedZoneClassicHandle(false);
-                            widget.model.refreshUI();
                           });
                         },
                       ),
@@ -10964,7 +10986,7 @@ class _WindowViewState extends State<WindowView> {
               children.add(
                 _ContentButton(
                   label: zone.content == ZoneContent.doubleSash
-                      ? Localization.translate('Poignée fenêtre (2 pcs)', lang)
+                      ? Localization.translate('Poignée fenêtre', lang)
                       : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
@@ -10973,11 +10995,9 @@ class _WindowViewState extends State<WindowView> {
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
                     setState(() {
-                      widget.model.setSelectedZoneLockType(LockType.none);
-                      zone.useOctoHandle = false;
-                      widget.model.setSelectedZonePvcHandleOnAlu(true);
-                      widget.model.setSelectedZoneClassicHandle(false);
-                      widget.model.refreshUI();
+                      widget.model.setSelectedZoneHandle(
+                        usePvcHandleOnAlu: true,
+                      );
                     });
                   },
                 ),
@@ -10988,19 +11008,18 @@ class _WindowViewState extends State<WindowView> {
               children.add(
                 _ContentButton(
                   label: zone.content == ZoneContent.doubleSash
-                      ? Localization.translate('Poignée fenêtre (2 pcs)', lang)
+                      ? Localization.translate('Poignée fenêtre', lang)
                       : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
                       zone.lockType == LockType.none &&
-                      zone.useOctoHandle != true,
+                      zone.useOctoHandle != true &&
+                      zone.usePvcHandleOnAlu == true,
                   onPressed: () {
                     setState(() {
-                      widget.model.setSelectedZoneLockType(LockType.none);
-                      zone.useOctoHandle = false;
-                      widget.model.setSelectedZonePvcHandleOnAlu(true);
-                      widget.model.setSelectedZoneClassicHandle(false);
-                      widget.model.refreshUI();
+                      widget.model.setSelectedZoneHandle(
+                        usePvcHandleOnAlu: true,
+                      );
                     });
                   },
                 ),
@@ -11011,7 +11030,7 @@ class _WindowViewState extends State<WindowView> {
                 // Cremone x2
                 children.add(
                   _ContentButton(
-                    label: Localization.translate('مقبض كريمون (قطعتين)', lang),
+                    label: Localization.translate('مقبض كريمون', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
                         zone.lockType == LockType.none &&
@@ -11019,11 +11038,7 @@ class _WindowViewState extends State<WindowView> {
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle();
                       });
                     },
                   ),
@@ -11040,11 +11055,7 @@ class _WindowViewState extends State<WindowView> {
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle();
                       });
                     },
                   ),
@@ -11062,11 +11073,7 @@ class _WindowViewState extends State<WindowView> {
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.none);
-                        zone.useOctoHandle = true;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle(useOctoHandle: true);
                       });
                     },
                   ),
@@ -11081,11 +11088,9 @@ class _WindowViewState extends State<WindowView> {
                     selected: zone.lockType == LockType.point,
                     onPressed: () {
                       setState(() {
-                        widget.model.setSelectedZoneLockType(LockType.point);
-                        zone.useOctoHandle = false;
-                        widget.model.setSelectedZonePvcHandleOnAlu(false);
-                        widget.model.setSelectedZoneClassicHandle(false);
-                        widget.model.refreshUI();
+                        widget.model.setSelectedZoneHandle(
+                          lockType: LockType.point,
+                        );
                       });
                     },
                   ),
@@ -11093,6 +11098,28 @@ class _WindowViewState extends State<WindowView> {
               }
             }
           }
+        }
+        if (zone.content == ZoneContent.doubleSash) {
+          children.add(const SizedBox(width: 8));
+          final twoHandlesLabel = switch (lang) {
+            AppLanguage.arabic => 'إضافة مقبضين',
+            AppLanguage.french => 'Ajouter deux poignées',
+            AppLanguage.english => 'Add two handles',
+          };
+          children.add(
+            _ContentButton(
+              label: twoHandlesLabel,
+              icon: Icons.pan_tool_alt_rounded,
+              selected: zone.doubleSashHasTwoHandles,
+              onPressed: () {
+                setState(() {
+                  widget.model.setSelectedZoneDoubleHandles(
+                    !zone.doubleSashHasTwoHandles,
+                  );
+                });
+              },
+            ),
+          );
         }
         break;
     }

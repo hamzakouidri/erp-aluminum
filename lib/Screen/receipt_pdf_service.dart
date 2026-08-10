@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
@@ -88,9 +89,9 @@ class ReceiptPdfService {
         (transaction['old_balance'] as num?)?.toDouble() ?? 0.0;
     final newBalance =
         (transaction['new_balance'] as num?)?.toDouble() ?? 0.0;
-    final entityType = transaction['entity_type'] ?? '';
-    final description = transaction['description'] ?? '';
-    final phone = transaction['phone'] ?? '';
+    final entityType = _readableText(transaction['entity_type']);
+    final description = _readableText(transaction['description']);
+    final phone = _readableText(transaction['phone']);
     final receiptId = formatReceiptNumber(transaction);
     final createdAt = transaction['created_at'] ?? '';
 
@@ -445,6 +446,149 @@ class ReceiptPdfService {
     }
   }
 
+
+  static String _readableText(dynamic value) {
+    final text = value?.toString() ?? '';
+    if (text.isEmpty ||
+        (!text.contains('Ø') &&
+            !text.contains('Ã') &&
+            !text.contains('Â'))) {
+      return text;
+    }
+    try {
+      final repaired = utf8.decode(latin1.encode(text));
+      return repaired.contains('�') ? text : repaired;
+    } catch (_) {
+      return text;
+    }
+  }
+
+  static void _showReceiptError(BuildContext context, Object error) {
+    debugPrint('Receipt PDF error: $error');
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'تعذر تنفيذ عملية الوصل: $error',
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  static Future<void> printReceiptWithFeedback(
+    Map<String, dynamic> transaction,
+    BuildContext context,
+  ) async {
+    try {
+      final bytes = await generateReceiptPdfBytes(transaction);
+      final receiptId = transaction['id']?.toString() ?? '-';
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: 'receipt_$receiptId.pdf',
+      );
+    } catch (error) {
+      _showReceiptError(context, error);
+    }
+  }
+
+  static Future<void> shareReceiptWithFeedback(
+    Map<String, dynamic> transaction,
+    BuildContext context,
+  ) async {
+    try {
+      final bytes = await generateReceiptPdfBytes(transaction);
+      final receiptId = transaction['id']?.toString() ?? '-';
+      final filename = 'receipt_$receiptId.pdf';
+      try {
+        await Share.shareXFiles(
+          [
+            XFile.fromData(
+              bytes,
+              mimeType: 'application/pdf',
+              name: filename,
+            ),
+          ],
+          fileNameOverrides: [filename],
+          text: 'وصل معاملة الصندوق رقم $receiptId',
+        );
+      } catch (_) {
+        final shared = await Printing.sharePdf(
+          bytes: bytes,
+          filename: filename,
+        );
+        if (!shared) {
+          throw StateError('لا تتوفر خدمة المشاركة على هذا الجهاز.');
+        }
+      }
+    } catch (error) {
+      _showReceiptError(context, error);
+    }
+  }
+
+  static Future<void> saveReceiptWithFeedback(
+    Map<String, dynamic> transaction,
+    BuildContext context,
+  ) async {
+    try {
+      final bytes = await generateReceiptPdfBytes(transaction);
+      final receiptId = transaction['id']?.toString() ?? '-';
+      final filename = 'receipt_$receiptId.pdf';
+      String? savedPath;
+
+      if (kIsWeb) {
+        final downloaded = await Printing.sharePdf(
+          bytes: bytes,
+          filename: filename,
+        );
+        if (!downloaded) {
+          throw StateError('المتصفح لم يسمح بتنزيل ملف الوصل.');
+        }
+        savedPath = filename;
+      } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        final picked = await FilePicker.saveFile(
+          dialogTitle: 'حفظ الوصل PDF',
+          fileName: filename,
+          type: FileType.custom,
+          allowedExtensions: ['pdf'],
+        );
+        if (picked != null) {
+          await File(picked).writeAsBytes(bytes);
+          savedPath = picked;
+        }
+      } else {
+        try {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/$filename');
+          await tempFile.writeAsBytes(bytes);
+          savedPath = await FlutterFileDialog.saveFile(
+            params: SaveFileDialogParams(sourceFilePath: tempFile.path),
+          );
+        } catch (_) {
+          final shared = await Printing.sharePdf(
+            bytes: bytes,
+            filename: filename,
+          );
+          if (!shared) rethrow;
+          savedPath = filename;
+        }
+      }
+
+      if (savedPath != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تم حفظ الوصل بنجاح',
+              style: TextStyle(fontFamily: 'Cairo'),
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      _showReceiptError(context, error);
+    }
+  }
 
   static pw.Widget _buildRow(
     String label,

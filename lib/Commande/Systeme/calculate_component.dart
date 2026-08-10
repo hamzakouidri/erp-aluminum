@@ -3,21 +3,21 @@ import 'package:database_data/Commande/Systeme/model.dart';
 import 'dart:math' as math;
 
 class BomItem {
-  final String  category;
-  final String  originalName;
+  final String category;
+  final String originalName;
   final String? profileCode;
-  final String  name;
+  final String name;
   final String? imagePath;
   final String? colorName;
   final double? length;
   final double? glassHeight;
-  final double  quantity;
-  final String  unit;
-  final double  unitPrice;
-  final bool    isMissing;
+  final double quantity;
+  final String unit;
+  final double unitPrice;
+  final bool isMissing;
 
-  final bool    isInteractive;
-  final bool    isActive;
+  final bool isInteractive;
+  final bool isActive;
   final String? exclusionGroup;
   final List<double>? pieces;
   final String? cuttingList;
@@ -69,25 +69,47 @@ class BomItem {
   String getLocalizedName(String lang) {
     final original = originalName;
     if (lang == 'fr') {
-      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') return 'Sash Latéral Renforcé';
-      if (original == 'قائم وسطي معزز (Sash Central Renforcé)') return 'Sash Central Renforcé';
-      if (original == 'حديد التقسيم (Renfort Mullion)') return 'Renfort Traverse / Montant';
-      if (original == 'حديد الباطمو (Renfort Batmo)') return 'Renfort Battement';
+      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)')
+        return 'Sash Latéral Renforcé';
+      if (original == 'قائم وسطي معزز (Sash Central Renforcé)')
+        return 'Sash Central Renforcé';
+      if (original == 'حديد التقسيم (Renfort Mullion)')
+        return 'Renfort Traverse / Montant';
+      if (original == 'حديد الباطمو (Renfort Batmo)')
+        return 'Renfort Battement';
       if (original == 'الزجاج') return 'Vitrage';
-      if (original.contains('إطار') || original.contains('Frame') || original.contains('Cadre') || original.contains('Dormant')) {
-        return original.replaceAll('إطار', 'Dormant').replaceAll('Frame', 'Dormant').replaceAll('Cadre', 'Dormant');
+      if (original.contains('إطار') ||
+          original.contains('Frame') ||
+          original.contains('Cadre') ||
+          original.contains('Dormant')) {
+        return original
+            .replaceAll('إطار', 'Dormant')
+            .replaceAll('Frame', 'Dormant')
+            .replaceAll('Cadre', 'Dormant');
       }
-      if (original.contains('الظلفة') || original.contains('Sash') || original.contains('Ouvrant')) {
-        return original.replaceAll('الظلفة', 'Ouvrant').replaceAll('Sash', 'Ouvrant');
+      if (original.contains('الظلفة') ||
+          original.contains('Sash') ||
+          original.contains('Ouvrant')) {
+        return original
+            .replaceAll('الظلفة', 'Ouvrant')
+            .replaceAll('Sash', 'Ouvrant');
       }
       if (original.contains('عرضي') || original.contains('Traverse')) {
         return original.replaceAll('عرضي', 'Traverse');
       }
-      if (original.contains('قائم جانبي') || original.contains('Sash Lateral') || original.contains('Lateral')) {
-        return original.replaceAll('قائم جانبي', 'Sash Latéral').replaceAll('Sash Lateral', 'Sash Latéral');
+      if (original.contains('قائم جانبي') ||
+          original.contains('Sash Lateral') ||
+          original.contains('Lateral')) {
+        return original
+            .replaceAll('قائم جانبي', 'Sash Latéral')
+            .replaceAll('Sash Lateral', 'Sash Latéral');
       }
-      if (original.contains('قائم وسطي') || original.contains('Sash Central') || original.contains('Central')) {
-        return original.replaceAll('قائم وسطي', 'Sash Central').replaceAll('Sash Central', 'Sash Central');
+      if (original.contains('قائم وسطي') ||
+          original.contains('Sash Central') ||
+          original.contains('Central')) {
+        return original
+            .replaceAll('قائم وسطي', 'Sash Central')
+            .replaceAll('Sash Central', 'Sash Central');
       }
       if (original.contains('الشيكان') || original.contains('Chicane')) {
         return original.replaceAll('الشيكان', 'Chicane');
@@ -95,23 +117,36 @@ class BomItem {
       if (original.contains('الري') || original.contains('Rail')) {
         return original.replaceAll('الري', 'Rail');
       }
-      if (original.contains('سكة الظلفة') || original.contains('Sash Traverse')) {
-        return original.replaceAll('سكة الظلفة', 'Traverse Ouvrant').replaceAll('Sash Traverse', 'Traverse Ouvrant');
+      if (original.contains('سكة الظلفة') ||
+          original.contains('Sash Traverse')) {
+        return original
+            .replaceAll('سكة الظلفة', 'Traverse Ouvrant')
+            .replaceAll('Sash Traverse', 'Traverse Ouvrant');
       }
-      if (original.contains('بلانت الظلفة') || original.contains('Plinthe Sash')) {
-        return original.replaceAll('بلانت الظلفة', 'Plinthe Ouvrant').replaceAll('Plinthe Sash', 'Plinthe Ouvrant');
+      if (original.contains('بلانت الظلفة') ||
+          original.contains('Plinthe Sash')) {
+        return original
+            .replaceAll('بلانت الظلفة', 'Plinthe Ouvrant')
+            .replaceAll('Plinthe Sash', 'Plinthe Ouvrant');
       }
       if (original.contains('الباتمو') || original.contains('Batmo')) {
         return original.replaceAll('الباتمو', 'Meneau');
       }
-      if (original.contains('بوشون باتمو') || original.contains('Bouchon Batmo')) {
+      if (original.contains('بوشون باتمو') ||
+          original.contains('Bouchon Batmo')) {
         return original.replaceAll('بوشون باتمو', 'Bouchon Meneau');
       }
-      if (original.contains('حديد الإطار') || original.contains('Renfort Frame')) {
-        return original.replaceAll('حديد الإطار', 'Renfort Dormant').replaceAll('Renfort Frame', 'Renfort Dormant');
+      if (original.contains('حديد الإطار') ||
+          original.contains('Renfort Frame')) {
+        return original
+            .replaceAll('حديد الإطار', 'Renfort Dormant')
+            .replaceAll('Renfort Frame', 'Renfort Dormant');
       }
-      if (original.contains('حديد الظلفة') || original.contains('Renfort Sash')) {
-        return original.replaceAll('حديد الظلفة', 'Renfort Ouvrant').replaceAll('Renfort Sash', 'Renfort Ouvrant');
+      if (original.contains('حديد الظلفة') ||
+          original.contains('Renfort Sash')) {
+        return original
+            .replaceAll('حديد الظلفة', 'Renfort Ouvrant')
+            .replaceAll('Renfort Sash', 'Renfort Ouvrant');
       }
       if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
         return 'Renfort Ouvrant (Paumelles)';
@@ -132,39 +167,63 @@ class BomItem {
       if (original == 'Verrou Central') return 'Verrou Central';
       if (original == 'System OB') return 'Système OB';
       if (original == 'Demi System OB') return 'Demi Système OB';
-      if (original.contains('إسبانيوليت') || original.contains('Espagnolette')) return 'Espagnolette';
+      if (original.contains('إسبانيوليت') || original.contains('Espagnolette'))
+        return 'Espagnolette';
       if (original == 'المقبض (Handle)') return 'Poignée Fenêtre';
-      if (original == 'مقبض الباب (Poignée Porte à Clé)') return 'Poignée Porte à Clé';
+      if (original == 'مقبض منزلق (Poignée Coulissante)')
+        return 'Poignée Coulissante';
+      if (original == 'مقبض الباب (Poignée Porte à Clé)')
+        return 'Poignée Porte à Clé';
       if (original == 'قفل الباب (Serrure)') return 'Serrure';
       if (original == 'الأسطوانة (Canon)') return 'Canon';
       if (original == 'قاش بورت (Gache Porte)') return 'Gâche Porte';
       if (original == 'المفاصل (Hinges)') return 'Paumelles';
       if (original == 'عجلات المنزلق (Roulettes)') return 'Roulettes';
-      if (original == 'اسبانيولات المنزلق (Espagnolette)') return 'Espagnolette Coulissant';
-      if (original == 'كاش كوليسون (Gache coulissant)') return 'Gâche Coulissante';
+      if (original == 'اسبانيولات المنزلق (Espagnolette)')
+        return 'Espagnolette Coulissant';
+      if (original == 'كاش كوليسون (Gache coulissant)')
+        return 'Gâche Coulissante';
       if (original == 'Gâche coulissant TPR') return 'Gâche Coulissante TPR';
       if (original == 'كريمون (Cremone)') return 'Crémone';
-      if (original == 'بوشون بارك لوز (Bouchon Parclose)') return 'Bouchon Parclose';
+      if (original == 'بوشون بارك لوز (Bouchon Parclose)')
+        return 'Bouchon Parclose';
       if (original == 'قفل نقطة') return 'Serrure à point';
     } else if (lang == 'en') {
-      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') return 'Sash Lateral Reinforced';
-      if (original == 'قائم وسطي معزز (Sash Central Renforcé)') return 'Sash Central Reinforced';
-      if (original == 'حديد التقسيم (Renfort Mullion)') return 'Renfort Mullion';
+      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)')
+        return 'Sash Lateral Reinforced';
+      if (original == 'قائم وسطي معزز (Sash Central Renforcé)')
+        return 'Sash Central Reinforced';
+      if (original == 'حديد التقسيم (Renfort Mullion)')
+        return 'Renfort Mullion';
       if (original == 'حديد الباطمو (Renfort Batmo)') return 'Renfort Batmo';
       if (original == 'الزجاج') return 'Glass';
-      if (original.contains('إطار') || original.contains('Frame') || original.contains('Cadre') || original.contains('Dormant')) {
-        return original.replaceAll('إطار', 'Frame').replaceAll('Cadre', 'Frame').replaceAll('Dormant', 'Frame');
+      if (original.contains('إطار') ||
+          original.contains('Frame') ||
+          original.contains('Cadre') ||
+          original.contains('Dormant')) {
+        return original
+            .replaceAll('إطار', 'Frame')
+            .replaceAll('Cadre', 'Frame')
+            .replaceAll('Dormant', 'Frame');
       }
-      if (original.contains('الظلفة') || original.contains('Sash') || original.contains('Ouvrant')) {
-        return original.replaceAll('الظلفة', 'Sash').replaceAll('Ouvrant', 'Sash');
+      if (original.contains('الظلفة') ||
+          original.contains('Sash') ||
+          original.contains('Ouvrant')) {
+        return original
+            .replaceAll('الظلفة', 'Sash')
+            .replaceAll('Ouvrant', 'Sash');
       }
       if (original.contains('عرضي') || original.contains('Traverse')) {
         return original.replaceAll('عرضي', 'Traverse');
       }
-      if (original.contains('قائم جانبي') || original.contains('Sash Lateral') || original.contains('Lateral')) {
+      if (original.contains('قائم جانبي') ||
+          original.contains('Sash Lateral') ||
+          original.contains('Lateral')) {
         return original.replaceAll('قائم جانبي', 'Sash Lateral');
       }
-      if (original.contains('قائم وسطي') || original.contains('Sash Central') || original.contains('Central')) {
+      if (original.contains('قائم وسطي') ||
+          original.contains('Sash Central') ||
+          original.contains('Central')) {
         return original.replaceAll('قائم وسطي', 'Sash Central');
       }
       if (original.contains('الشيكان') || original.contains('Chicane')) {
@@ -173,22 +232,27 @@ class BomItem {
       if (original.contains('الري') || original.contains('Rail')) {
         return 'Rail';
       }
-      if (original.contains('سكة الظلفة') || original.contains('Sash Traverse')) {
+      if (original.contains('سكة الظلفة') ||
+          original.contains('Sash Traverse')) {
         return 'Sash Traverse';
       }
-      if (original.contains('بلانت الظلفة') || original.contains('Plinthe Sash')) {
+      if (original.contains('بلانت الظلفة') ||
+          original.contains('Plinthe Sash')) {
         return 'Plinthe Sash';
       }
       if (original.contains('الباتمو') || original.contains('Batmo')) {
         return 'Batmo';
       }
-      if (original.contains('بوشون باتمو') || original.contains('Bouchon Batmo')) {
+      if (original.contains('بوشون باتمو') ||
+          original.contains('Bouchon Batmo')) {
         return 'Bouchon Batmo';
       }
-      if (original.contains('حديد الإطار') || original.contains('Renfort Frame')) {
+      if (original.contains('حديد الإطار') ||
+          original.contains('Renfort Frame')) {
         return 'Renfort Frame';
       }
-      if (original.contains('حديد الظلفة') || original.contains('Renfort Sash')) {
+      if (original.contains('حديد الظلفة') ||
+          original.contains('Renfort Sash')) {
         return 'Renfort Sash';
       }
       if (original.contains('حديد الظلفة الخاص بالمفاصل')) {
@@ -210,19 +274,24 @@ class BomItem {
       if (original == 'Verrou Central') return 'Verrou Central';
       if (original == 'System OB') return 'System OB';
       if (original == 'Demi System OB') return 'Demi System OB';
-      if (original.contains('إسبانيوليت') || original.contains('Espagnolette')) return 'Espagnolette';
+      if (original.contains('إسبانيوليت') || original.contains('Espagnolette'))
+        return 'Espagnolette';
       if (original == 'المقبض (Handle)') return 'Window Handle';
+      if (original == 'مقبض منزلق (Poignée Coulissante)')
+        return 'Sliding Window Handle';
       if (original == 'مقبض الباب (Poignée Porte à Clé)') return 'Door Handle';
       if (original == 'قفل الباب (Serrure)') return 'Serrure (Lock)';
       if (original == 'الأسطوانة (Canon)') return 'Cylinder (Canon)';
       if (original == 'قاش بورت (Gache Porte)') return 'Door Strike Plate';
       if (original == 'المفاصل (Hinges)') return 'Hinges';
       if (original == 'عجلات المنزلق (Roulettes)') return 'Roulettes';
-      if (original == 'اسبانيولات المنزلق (Espagnolette)') return 'Espagnolette';
+      if (original == 'اسبانيولات المنزلق (Espagnolette)')
+        return 'Espagnolette';
       if (original == 'كاش كوليسون (Gache coulissant)') return 'Strike Plate';
       if (original == 'Gâche coulissant TPR') return 'Strike Plate TPR';
       if (original == 'كريمون (Cremone)') return 'Cremone';
-      if (original == 'بوشون بارك لوز (Bouchon Parclose)') return 'Bouchon Parclose';
+      if (original == 'بوشون بارك لوز (Bouchon Parclose)')
+        return 'Bouchon Parclose';
       if (original == 'قفل نقطة') return 'Point lock';
     }
     return originalName;
@@ -322,21 +391,29 @@ class ComponentCalculator {
     Map<String, bool> kitPerLeafMap = const {},
   }) {
     Map<String, dynamic>? getSlidingFrameSection() {
-      if (window.slidingFrameOverride != null) return window.slidingFrameOverride;
+      if (window.slidingFrameOverride != null)
+        return window.slidingFrameOverride;
       final series = window.activeSlidingSeries ?? window.activeSeries;
       if (series == null) return null;
       var slidingFrames = series.sections.where((s) {
         final name = s.name.toLowerCase();
         final type = s.type.toLowerCase();
-        return (name.contains('coulissant') || name.contains('منزلق') || name.contains('sliding') ||
-                type.contains('coulissant') || type.contains('sliding')) &&
-               (type.contains('frame') || type.contains('cadre') || type.contains('إطار'));
+        return (name.contains('coulissant') ||
+                name.contains('منزلق') ||
+                name.contains('sliding') ||
+                type.contains('coulissant') ||
+                type.contains('sliding')) &&
+            (type.contains('frame') ||
+                type.contains('cadre') ||
+                type.contains('إطار'));
       }).toList();
       if (slidingFrames.isNotEmpty) return slidingFrames.first.toMap();
-      
+
       var anyFrames = series.sections.where((s) {
         final type = s.type.toLowerCase();
-        return type.contains('frame') || type.contains('cadre') || type.contains('إطار');
+        return type.contains('frame') ||
+            type.contains('cadre') ||
+            type.contains('إطار');
       }).toList();
       if (anyFrames.isNotEmpty) return anyFrames.first.toMap();
       return null;
@@ -586,17 +663,59 @@ class ComponentCalculator {
     bool hasSingleSash = singleSashCount > 0;
     bool hasSlidingSash = slidingSashCount > 0;
     bool hasShutter = window.hasShutter;
-    final outerFrameOverride = window.activeFrameOverride;
+    // كل رسم يحتاج إلى إطار، حتى الرسومات القديمة التي لم تحفظ اختيار
+    // القطاع ضمن `frameOverride`. نأخذ أول إطار/ظلفة صالح من السلسلة
+    // الفعلية حتى يظهر البروفيل في جدول الكمية والتكلفة.
+    Map<String, dynamic>? defaultProfileFromSeries(
+      AluminumSeries? series,
+      bool Function(AluminumSection section) matches,
+    ) {
+      if (series == null) return null;
+      for (final section in series.sections) {
+        if (matches(section)) return section.toMap();
+      }
+      return null;
+    }
+
+    final outerFrameOverride =
+        window.activeFrameOverride ??
+        defaultProfileFromSeries(window.activeFrameSeries, (section) {
+          final type = section.type.toLowerCase();
+          final name = section.name.toLowerCase();
+          return section.isFrame ||
+              type.contains('frame') ||
+              type.contains('cadre') ||
+              name.contains('frame') ||
+              name.contains('cadre') ||
+              name.contains('إطار');
+        });
+    final openingSashOverride =
+        window.sashOverride ??
+        defaultProfileFromSeries(window.activeSeries, (section) {
+          final type = section.type.toLowerCase();
+          final name = section.name.toLowerCase();
+          return section.isSash ||
+              type.contains('sash') ||
+              type.contains('ouvrant') ||
+              name.contains('sash') ||
+              name.contains('ouvrant') ||
+              name.contains('ظلفة');
+        });
     final isOuterFramePvc = window.isFramePVC;
 
     // تحديد نوع الغطاء الجانبي:
     // مدمج: مقطع الإطار نفسه فيه couvreJointWidth > 0
     // غير مدمج: hasSideCovers = true لكن الإطار بدون couvreJoint مدمج
-    bool frameHasIntegratedSideCover = window.isIntegratedFrame && window.isSideCoverAllowed;
+    bool frameHasIntegratedSideCover =
+        window.isIntegratedFrame && window.isSideCoverAllowed;
     bool hasIntegratedSideCover =
-        window.hasSideCovers && window.isSideCoverAllowed && frameHasIntegratedSideCover;
+        window.hasSideCovers &&
+        window.isSideCoverAllowed &&
+        frameHasIntegratedSideCover;
     bool hasNonIntegratedSideCover =
-        window.hasSideCovers && window.isSideCoverAllowed && !hasIntegratedSideCover;
+        window.hasSideCovers &&
+        window.isSideCoverAllowed &&
+        !hasIntegratedSideCover;
 
     // حساب netHeight: الارتفاع الصافي قبل حساب الإطار
     double netHeight;
@@ -652,13 +771,15 @@ class ComponentCalculator {
         final seriesName = window.activeSeries?.name.toLowerCase() ?? '';
         final isTPR = seriesName.contains('tpr');
         final isThinSash = !zone.isSash105;
-        final hasAllowedLock = (zone.lockType == LockType.clef ||
+        final hasAllowedLock =
+            (zone.lockType == LockType.clef ||
                 zone.lockType == LockType.condamnation ||
                 zone.lockType == LockType.rouleau ||
                 zone.lockType == LockType.rouleau2000) &&
             !(isTPR && isThinSash);
 
-        final bool isDoor = (zone.isSash105 || hasAllowedLock) &&
+        final bool isDoor =
+            (zone.isSash105 || hasAllowedLock) &&
             zone.lockType != LockType.none &&
             zone.useOctoHandle != true &&
             zone.usePvcHandleOnAlu != true;
@@ -668,10 +789,13 @@ class ComponentCalculator {
           } else {
             doorDoubleSashCount++;
           }
-          final bool isCondamnation = zone.lockType == LockType.condamnation && !(isTPR && isThinSash);
-          final bool isMarechal125 = zone.lockType == LockType.rouleau && !(isTPR && isThinSash);
-          final bool isMarechal2m = zone.lockType == LockType.rouleau2000 && !(isTPR && isThinSash);
-          
+          final bool isCondamnation =
+              zone.lockType == LockType.condamnation && !(isTPR && isThinSash);
+          final bool isMarechal125 =
+              zone.lockType == LockType.rouleau && !(isTPR && isThinSash);
+          final bool isMarechal2m =
+              zone.lockType == LockType.rouleau2000 && !(isTPR && isThinSash);
+
           if (isMarechal125) {
             marechal125Handles += 1;
             rollerLocks += 1;
@@ -695,7 +819,7 @@ class ComponentCalculator {
           } else {
             windowDoubleSashCount++;
           }
-          
+
           if (zone.content == ZoneContent.doubleSash) {
             if (zone.usePvcHandleOnAlu) {
               pvcHandlesOnAlu += 2;
@@ -716,7 +840,9 @@ class ComponentCalculator {
             }
           }
 
-          final isVerticalOpen = zone.openDirection == OpenDirection.top || zone.openDirection == OpenDirection.bottom;
+          final isVerticalOpen =
+              zone.openDirection == OpenDirection.top ||
+              zone.openDirection == OpenDirection.bottom;
           final isNotPano = zone.glass.structure != GlassStructure.closed;
           if (zone.useOctoHandle && isVerticalOpen && isNotPano) {
             totalCompas += (zone.content == ZoneContent.doubleSash) ? 2 : 1;
@@ -771,7 +897,10 @@ class ComponentCalculator {
       }
     }
 
-    final bool useCremone = !window.isPVC && window.systemMode != 'sliding' && window.hasBottomFrame;
+    final bool useCremone =
+        !window.isPVC &&
+        window.systemMode != 'sliding' &&
+        window.hasBottomFrame;
     int cremoneQty = 0;
     if (useCremone) {
       cremoneQty = totalHandles + keyHandles + condamnationHandles;
@@ -964,10 +1093,14 @@ class ComponentCalculator {
     } else {
       // ======= حالة 3: بدون غطاء جانبي =======
       frameWidth = window.width + weldVal;
-      frameNetHeight = netHeight + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+      frameNetHeight =
+          netHeight + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
     }
 
-    final String sName = window.activeSlidingSeries?.name.toLowerCase() ?? window.activeSeries?.name.toLowerCase() ?? '';
+    final String sName =
+        window.activeSlidingSeries?.name.toLowerCase() ??
+        window.activeSeries?.name.toLowerCase() ??
+        '';
     final bool isTPRSeries = sName.contains('tpr');
 
     final frameRects = window.getFrameRects();
@@ -984,29 +1117,46 @@ class ComponentCalculator {
 
     double integratedCoverW = window.sideCoverWidth;
     if (integratedCoverW <= 0 && outerFrameOverride != null) {
-      integratedCoverW = ((outerFrameOverride['couvre_joint_width'] ?? outerFrameOverride['visible_width']) as num?)?.toDouble() ?? 0.0;
+      integratedCoverW =
+          ((outerFrameOverride['couvre_joint_width'] ??
+                      outerFrameOverride['visible_width'])
+                  as num?)
+              ?.toDouble() ??
+          0.0;
     }
     if (integratedCoverW <= 0) {
       final sec = window.getSectionByType('frame');
       if (sec != null) {
-        integratedCoverW = sec.couvreJointWidth > 0 ? sec.couvreJointWidth : (sec.visibleWidth ?? 0.0);
+        integratedCoverW = sec.couvreJointWidth > 0
+            ? sec.couvreJointWidth
+            : (sec.visibleWidth ?? 0.0);
       }
     }
 
     final bool hasL = !window.removedShutterSides.contains('left');
     final bool hasR = !window.removedShutterSides.contains('right');
     final bool hasT = !window.removedShutterSides.contains('top');
-    final bool hasB = !window.removedShutterSides.contains('bottom') && window.hasBottomFrame;
+    final bool hasB =
+        !window.removedShutterSides.contains('bottom') && window.hasBottomFrame;
 
     for (final r in frameRects) {
       double fWidth = r.width + weldVal;
-      double fHeight = r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+      double fHeight =
+          r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
 
       if (window.isIntegratedFrame) {
-        fWidth = r.width + (hasL ? integratedCoverW : 0.0) + (hasR ? integratedCoverW : 0.0) + weldVal;
-        fHeight = r.height + (hasT ? integratedCoverW : 0.0) + (hasB ? integratedCoverW : 0.0) + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+        fWidth =
+            r.width +
+            (hasL ? integratedCoverW : 0.0) +
+            (hasR ? integratedCoverW : 0.0) +
+            weldVal;
+        fHeight =
+            r.height +
+            (hasT ? integratedCoverW : 0.0) +
+            (hasB ? integratedCoverW : 0.0) +
+            (window.hasBottomFrame ? weldVal : noBottomWeldVal);
       }
-      
+
       double hPiece = fHeight / 1000.0;
       double wPiece = fWidth / 1000.0;
 
@@ -1017,7 +1167,12 @@ class ComponentCalculator {
         if (window.hasFramePlintheBottom) {
           double fThickness = window.profileThickness;
           if (outerFrameOverride != null) {
-            fThickness = ((outerFrameOverride['visible_width'] ?? outerFrameOverride['thickness']) as num?)?.toDouble() ?? window.profileThickness;
+            fThickness =
+                ((outerFrameOverride['visible_width'] ??
+                            outerFrameOverride['thickness'])
+                        as num?)
+                    ?.toDouble() ??
+                window.profileThickness;
           }
           framePlinthePieces.add((fWidth - (2 * fThickness)) / 1000.0);
         }
@@ -1030,7 +1185,12 @@ class ComponentCalculator {
         if (rh < 0.0) rh = 0.0;
 
         if (window.hasBottomFrame) {
-          renfortFramePieces.addAll([rw / 1000.0, rw / 1000.0, rh / 1000.0, rh / 1000.0]);
+          renfortFramePieces.addAll([
+            rw / 1000.0,
+            rw / 1000.0,
+            rh / 1000.0,
+            rh / 1000.0,
+          ]);
         } else {
           renfortFramePieces.addAll([rw / 1000.0, rh / 1000.0, rh / 1000.0]);
         }
@@ -1054,7 +1214,9 @@ class ComponentCalculator {
           colorName,
           pieces: framePlinthePieces,
           unit: 'قطاع',
-          overrideMap: window.componentOverrides['بلانت (Plinthe)'] ?? window.getSectionByType('plinthe')?.toMap(),
+          overrideMap:
+              window.componentOverrides['بلانت (Plinthe)'] ??
+              window.getSectionByType('plinthe')?.toMap(),
         ),
       );
     }
@@ -1074,13 +1236,22 @@ class ComponentCalculator {
 
     if (showSideCover) {
       double w = window.sideCoverWidth; // cover visible width in mm
-      final double weldAllowance = window.isPVC ? 5.0 : 0.0; // 5 مم تلحيم (لحيم / تفخيم) لكل قطعة في PVC فقط
+      final double weldAllowance = window.isPVC
+          ? 5.0
+          : 0.0; // 5 مم تلحيم (لحيم / تفخيم) لكل قطعة في PVC فقط
 
-      final checkShutterRemoval = window.hasShutter && window.removedShutterSides.isNotEmpty;
-      final hasL = !checkShutterRemoval || !window.removedShutterSides.contains('left');
-      final hasR = !checkShutterRemoval || !window.removedShutterSides.contains('right');
-      final hasT = !checkShutterRemoval || !window.removedShutterSides.contains('top');
-      final hasB = (!checkShutterRemoval || !window.removedShutterSides.contains('bottom')) && window.hasBottomFrame;
+      final checkShutterRemoval =
+          window.hasShutter && window.removedShutterSides.isNotEmpty;
+      final hasL =
+          !checkShutterRemoval || !window.removedShutterSides.contains('left');
+      final hasR =
+          !checkShutterRemoval || !window.removedShutterSides.contains('right');
+      final hasT =
+          !checkShutterRemoval || !window.removedShutterSides.contains('top');
+      final hasB =
+          (!checkShutterRemoval ||
+              !window.removedShutterSides.contains('bottom')) &&
+          window.hasBottomFrame;
 
       // الطول الرأسي: ارتفاع النافذة + عرض الغطاء العلوي/السفلي (إذا موجود) + 5 مم لحيم
       double verticalLen =
@@ -1195,11 +1366,7 @@ class ComponentCalculator {
           double sashW = clearW + overlap * 2;
           double sashH = clearH + overlap * 2;
           if (zone.hasSashPlintheBottom) {
-            sashPieces.addAll([
-              sashW / 1000.0,
-              sashH / 1000.0,
-              sashH / 1000.0,
-            ]);
+            sashPieces.addAll([sashW / 1000.0, sashH / 1000.0, sashH / 1000.0]);
             sashPlinthePieces.add(sashW / 1000.0);
           } else {
             sashPieces.addAll([
@@ -1250,7 +1417,8 @@ class ComponentCalculator {
 
           final slidingFrame = getSlidingFrameSection();
           if (slidingFrame != null && window.zones.length > 1) {
-            double frameT = (slidingFrame['visible_width'] as num?)?.toDouble() ?? 45.0;
+            double frameT =
+                (slidingFrame['visible_width'] as num?)?.toDouble() ?? 45.0;
 
             if (window.zones.length > 1) {
               double innerFrameW = clearW;
@@ -1284,9 +1452,15 @@ class ComponentCalculator {
             sashW = (wForCalc + ((sashes - 1) * slidingOverlap)) / sashes;
           }
           double sashH = hForCalc + slidingOverlap * 2;
-          final String seriesName = window.activeSlidingSeries?.name.toLowerCase() ?? window.activeSeries?.name.toLowerCase() ?? '';
-          final bool isTPI67000 = seriesName.contains('67000') || seriesName.contains('tpi');
-          bool hasThreePiece = (window.activeSlidingSeries?.hasThreePieceSash ?? false) || isTPI67000;
+          final String seriesName =
+              window.activeSlidingSeries?.name.toLowerCase() ??
+              window.activeSeries?.name.toLowerCase() ??
+              '';
+          final bool isTPI67000 =
+              seriesName.contains('67000') || seriesName.contains('tpi');
+          bool hasThreePiece =
+              (window.activeSlidingSeries?.hasThreePieceSash ?? false) ||
+              isTPI67000;
           if (hasThreePiece) {
             sashH = window.height - 64.0;
           } else {
@@ -1309,10 +1483,7 @@ class ComponentCalculator {
 
             // Traverse pieces (2 pieces per sash: top and bottom)
             for (int s = 0; s < sashes; s++) {
-              slidingSashTraversePieces.addAll([
-                tLen / 1000.0,
-                tLen / 1000.0,
-              ]);
+              slidingSashTraversePieces.addAll([tLen / 1000.0, tLen / 1000.0]);
             }
 
             // Lateral pieces (2 lateral profiles per window/sash assembly)
@@ -1331,7 +1502,8 @@ class ComponentCalculator {
               slidingTotalJointBrosse += (sashH * 8 + sashW * 12) / 1000.0;
             } else {
               final int pairs = sashes ~/ 2;
-              slidingTotalJointBrosse += pairs * (sashH * 6 + sashW * 8) / 1000.0;
+              slidingTotalJointBrosse +=
+                  pairs * (sashH * 6 + sashW * 8) / 1000.0;
             }
           } else {
             for (int s = 0; s < sashes; s++) {
@@ -1347,14 +1519,15 @@ class ComponentCalculator {
               slidingTotalJointBrosse += (sashH * 8 + sashW * 12) / 1000.0;
             } else {
               final int pairs = sashes ~/ 2;
-              slidingTotalJointBrosse += pairs * (sashH * 6 + sashW * 8) / 1000.0;
+              slidingTotalJointBrosse +=
+                  pairs * (sashH * 6 + sashW * 8) / 1000.0;
             }
           }
 
           slidingTotalRoulettes += (sashes * 2);
           slidingTotalEspagnolettes += 2;
           slidingTotalHandles += 2;
-          
+
           double h = hForCalc;
           int gachesPerEspagnolette = 2;
           if (h >= 1000 && h <= 1400) {
@@ -1375,14 +1548,25 @@ class ComponentCalculator {
 
           double frameT = window.profileThickness;
           if (window.slidingFrameOverride != null) {
-            frameT = ((window.slidingFrameOverride!['visible_width'] ?? window.slidingFrameOverride!['thickness']) as num?)?.toDouble() ?? window.profileThickness;
+            frameT =
+                ((window.slidingFrameOverride!['visible_width'] ??
+                            window.slidingFrameOverride!['thickness'])
+                        as num?)
+                    ?.toDouble() ??
+                window.profileThickness;
           } else {
             final frameSection = window.getSlidingSectionByType('frame');
             if (frameSection != null) {
-              frameT = ((frameSection.visibleWidth ?? frameSection.thickness) as num?)?.toDouble() ?? window.profileThickness;
+              frameT =
+                  ((frameSection.visibleWidth ?? frameSection.thickness)
+                          as num?)
+                      ?.toDouble() ??
+                  window.profileThickness;
             }
           }
-          double railLen = isTPRSeries ? (window.width - (frameT * 2) - 1.0) / 1000.0 : (wForCalc - 5.0) / 1000.0;
+          double railLen = isTPRSeries
+              ? (window.width - (frameT * 2) - 1.0) / 1000.0
+              : (wForCalc - 5.0) / 1000.0;
           slidingRailPieces.add(railLen);
           slidingRailPieces.add(railLen);
         }
@@ -1395,7 +1579,7 @@ class ComponentCalculator {
             colorName,
             pieces: sashPieces,
             unit: 'قطاع',
-            overrideMap: window.sashOverride,
+            overrideMap: openingSashOverride,
           ),
         );
       }
@@ -1407,7 +1591,9 @@ class ComponentCalculator {
             colorName,
             pieces: sashPlinthePieces,
             unit: 'متر',
-            overrideMap: window.componentOverrides['بلانت (Plinthe)'] ?? window.sashOverride,
+            overrideMap:
+                window.componentOverrides['بلانت (Plinthe)'] ??
+                window.sashOverride,
           ),
         );
       }
@@ -1419,7 +1605,8 @@ class ComponentCalculator {
             colorName,
             pieces: slidingSashPieces,
             unit: 'قطاع',
-            overrideMap: window.slidingSashOverride ??
+            overrideMap:
+                window.slidingSashOverride ??
                 window.getSlidingSectionByType('sash')?.toMap(),
             preferOverrideMap: true,
           ),
@@ -1433,7 +1620,8 @@ class ComponentCalculator {
             colorName,
             pieces: slidingSashTraversePieces,
             unit: 'قطاع',
-            overrideMap: slidingOverrideFor(['عرضي (Traverse)']) ??
+            overrideMap:
+                slidingOverrideFor(['عرضي (Traverse)']) ??
                 window.getSlidingSectionByType('sash_traverse')?.toMap() ??
                 window.getSlidingSectionByType('traverse')?.toMap(),
             preferOverrideMap: true,
@@ -1441,19 +1629,21 @@ class ComponentCalculator {
         );
       }
 
-
       if (slidingSashLateralPieces.isNotEmpty) {
         // Determine whether reinforcement is active for lateral
-        bool isLateralReinforced = window.zones.any((z) =>
-            z.slidingMontantReinforced['lateral_0'] == true ||
-            z.slidingMontantReinforced['lateral_1'] == true);
+        bool isLateralReinforced = window.zones.any(
+          (z) =>
+              z.slidingMontantReinforced['lateral_0'] == true ||
+              z.slidingMontantReinforced['lateral_1'] == true,
+        );
 
         String lateralName = isLateralReinforced
             ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
             : 'قائم جانبي (Sash Lateral)';
 
         // Fetch user override or default normal profile
-        Map<String, dynamic>? baseLateral = slidingOverrideFor([
+        Map<String, dynamic>? baseLateral =
+            slidingOverrideFor([
               lateralName,
               'قائم جانبي (Sash Lateral)',
               'قائم جانبي (Lateral)',
@@ -1463,7 +1653,11 @@ class ComponentCalculator {
 
         if (baseLateral != null) {
           if (isLateralReinforced) {
-            final reinforced = findReinforcedSection(baseLateral, false, window);
+            final reinforced = findReinforcedSection(
+              baseLateral,
+              false,
+              window,
+            );
             if (reinforced != null) {
               baseLateral = reinforced;
             }
@@ -1489,15 +1683,19 @@ class ComponentCalculator {
 
       if (slidingSashCentralPieces.isNotEmpty) {
         // Determine whether reinforcement is active for central
-        bool isCentralReinforced = window.zones.any((z) =>
-            z.slidingMontantReinforced.entries.any((e) => e.key.startsWith('central_') && e.value == true));
+        bool isCentralReinforced = window.zones.any(
+          (z) => z.slidingMontantReinforced.entries.any(
+            (e) => e.key.startsWith('central_') && e.value == true,
+          ),
+        );
 
         String centralName = isCentralReinforced
             ? 'قائم وسطي معزز (Sash Central Renforcé)'
             : 'قائم وسطي (Sash Central)';
 
         // Fetch user override or default normal profile
-        Map<String, dynamic>? baseCentral = slidingOverrideFor([
+        Map<String, dynamic>? baseCentral =
+            slidingOverrideFor([
               centralName,
               'قائم وسطي (Sash Central)',
               'قائم وسطي (Central)',
@@ -1534,8 +1732,8 @@ class ComponentCalculator {
       if (slidingChicanePieces.isNotEmpty) {
         Map<String, dynamic>? baseChicane =
             slidingOverrideFor(['الشيكان (Chicane)']) ??
-                window.getSlidingSectionByType('chicane')?.toMap() ??
-                window.getSlidingSectionByType('sash_chicane')?.toMap();
+            window.getSlidingSectionByType('chicane')?.toMap() ??
+            window.getSlidingSectionByType('sash_chicane')?.toMap();
         items.add(
           createProfile(
             'الشيكان (Chicane)',
@@ -1549,7 +1747,8 @@ class ComponentCalculator {
       }
 
       if (slidingRailPieces.isNotEmpty) {
-        final railOverride = slidingOverrideFor(['الري (Rail)']) ??
+        final railOverride =
+            slidingOverrideFor(['الري (Rail)']) ??
             window.getSlidingSectionByType('rail')?.toMap();
         items.add(
           createProfile(
@@ -1610,11 +1809,13 @@ class ComponentCalculator {
 
           if (zone.content == ZoneContent.singleSash) {
             double sashH = clearH + overlap * 2;
-            double len = (sashH / 1000.0) - (renfortSashMifsalDeduction / 1000.0);
+            double len =
+                (sashH / 1000.0) - (renfortSashMifsalDeduction / 1000.0);
             renfortSashMifsalPieces.add(len < 0.0 ? 0.0 : len);
           } else if (zone.content == ZoneContent.doubleSash) {
             double sashH = clearH + overlap * 2;
-            double len = (sashH / 1000.0) - (renfortSashMifsalDeduction / 1000.0);
+            double len =
+                (sashH / 1000.0) - (renfortSashMifsalDeduction / 1000.0);
             double finalLen = len < 0.0 ? 0.0 : len;
             renfortSashMifsalPieces.addAll([finalLen, finalLen]);
           }
@@ -1924,75 +2125,131 @@ class ComponentCalculator {
 
       if (useCremone && cremoneQty > 0) {
         items.add(
-          createAccessory('كريمون (Cremone)', color: colorName, qty: cremoneQty),
+          createAccessory(
+            'كريمون (Cremone)',
+            color: colorName,
+            qty: cremoneQty,
+          ),
         );
       }
 
       if (octoHandles > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض أوكتو (Octo)', color: colorName, qty: octoHandles),
+          createAccessory(
+            'مقبض أوكتو (Octo)',
+            color: colorName,
+            qty: octoHandles,
+          ),
         );
       }
       if (pvcHandlesOnAlu > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض نافذة بي في سي (Poignée Fenêtre PVC)', color: colorName, qty: pvcHandlesOnAlu),
+          createAccessory(
+            'مقبض نافذة بي في سي (Poignée Fenêtre PVC)',
+            color: colorName,
+            qty: pvcHandlesOnAlu,
+          ),
         );
       }
       if (totalHandles > 0 && window.systemMode != 'sliding') {
         if (window.isPVC) {
           items.add(
-            createAccessory('مقبض نافذة (Poignée Fenêtre)', color: colorName, qty: totalHandles),
+            createAccessory(
+              'مقبض نافذة (Poignée Fenêtre)',
+              color: colorName,
+              qty: totalHandles,
+            ),
           );
         } else {
           items.add(
-            createAccessory('المقبض (Handle)', color: colorName, qty: totalHandles),
+            createAccessory(
+              'المقبض (Handle)',
+              color: colorName,
+              qty: totalHandles,
+            ),
           );
         }
       }
 
       if (totalCompas > 0) {
         items.add(
-          createAccessory('كومباس (Compas)', color: colorName, qty: totalCompas),
+          createAccessory(
+            'كومباس (Compas)',
+            color: colorName,
+            qty: totalCompas,
+          ),
         );
       }
       if (normalDoorHandles > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض الباب عادي (Poignée Porte)', color: colorName, qty: normalDoorHandles),
+          createAccessory(
+            'مقبض الباب عادي (Poignée Porte)',
+            color: colorName,
+            qty: normalDoorHandles,
+          ),
         );
       }
       if (marechal125Handles > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)', color: colorName, qty: marechal125Handles),
+          createAccessory(
+            'مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)',
+            color: colorName,
+            qty: marechal125Handles,
+          ),
         );
       }
       if (marechal2mHandles > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)', color: colorName, qty: marechal2mHandles),
+          createAccessory(
+            'مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)',
+            color: colorName,
+            qty: marechal2mHandles,
+          ),
         );
       }
       if (rollerLocks > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('قفل رولون (Serrure à Rouleau)', color: colorName, qty: rollerLocks),
+          createAccessory(
+            'قفل رولون (Serrure à Rouleau)',
+            color: colorName,
+            qty: rollerLocks,
+          ),
         );
       }
       if (keyHandles > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض الباب (Poignée Porte à Clé)', color: colorName, qty: keyHandles),
+          createAccessory(
+            'مقبض الباب (Poignée Porte à Clé)',
+            color: colorName,
+            qty: keyHandles,
+          ),
         );
       }
       if (condamnationHandles > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('مقبض الباب Condamnation (Poignée Condamnation)', color: colorName, qty: condamnationHandles),
+          createAccessory(
+            'مقبض الباب Condamnation (Poignée Condamnation)',
+            color: colorName,
+            qty: condamnationHandles,
+          ),
         );
       }
       if (keyLocks > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('قفل الباب (Serrure)', color: colorName, qty: keyLocks),
+          createAccessory(
+            'قفل الباب (Serrure)',
+            color: colorName,
+            qty: keyLocks,
+          ),
         );
       }
       if (condamnationLocks > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('قفل الباب Condamnation (Serrure Condamnation)', color: colorName, qty: condamnationLocks),
+          createAccessory(
+            'قفل الباب Condamnation (Serrure Condamnation)',
+            color: colorName,
+            qty: condamnationLocks,
+          ),
         );
       }
       if (pointLocks > 0 && window.systemMode != 'sliding') {
@@ -2002,50 +2259,60 @@ class ComponentCalculator {
       }
       if (doorCanons > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('الأسطوانة (Canon)', color: colorName, qty: doorCanons),
+          createAccessory(
+            'الأسطوانة (Canon)',
+            color: colorName,
+            qty: doorCanons,
+          ),
         );
       }
       if (gachePortes > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('قاش بورت (Gache Porte)', color: colorName, qty: gachePortes),
+          createAccessory(
+            'قاش بورت (Gache Porte)',
+            color: colorName,
+            qty: gachePortes,
+          ),
         );
       }
       if (totalHinges > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('المفاصل (Hinges)', color: colorName, qty: totalHinges),
+          createAccessory(
+            'المفاصل (Hinges)',
+            color: colorName,
+            qty: totalHinges,
+          ),
         );
       }
 
-        if (slidingTotalRoulettes > 0) {
-          items.add(
-            createAccessory(
-              'عجلات المنزلق (Roulettes)',
-              color: colorName,
-              qty: slidingTotalRoulettes,
-            ),
-          );
-          if (!window.isSlidingPVC) {
-            final String seriesName = window.activeSlidingSeries?.name.toLowerCase() ?? '';
-            String kitKey = 'كيت 67000 (Kit 67000)';
-            if (seriesName.contains('76000')) {
-              kitKey = 'كيت 76000 (Kit 76000)';
-            } else if (seriesName.contains('40000')) {
-              kitKey = 'كيت 40000 (Kit 40000)';
-            } else if (seriesName.contains('67000')) {
-              kitKey = 'كيت 67000 (Kit 67000)';
-            }
-            items.add(
-              createOther(
-                kitKey,
-                color: colorName,
-                qty: 1,
-              ),
-            );
+      if (slidingTotalRoulettes > 0) {
+        items.add(
+          createAccessory(
+            'عجلات المنزلق (Roulettes)',
+            color: colorName,
+            qty: slidingTotalRoulettes,
+          ),
+        );
+        if (!window.isSlidingPVC) {
+          final String seriesName =
+              window.activeSlidingSeries?.name.toLowerCase() ?? '';
+          String kitKey = 'كيت 67000 (Kit 67000)';
+          if (seriesName.contains('76000')) {
+            kitKey = 'كيت 76000 (Kit 76000)';
+          } else if (seriesName.contains('40000')) {
+            kitKey = 'كيت 40000 (Kit 40000)';
+          } else if (seriesName.contains('67000')) {
+            kitKey = 'كيت 67000 (Kit 67000)';
           }
-          final bool useEntrematique = !window.isSlidingPVC &&
-              window.zones.any((z) =>
+          items.add(createOther(kitKey, color: colorName, qty: 1));
+        }
+        final bool useEntrematique =
+            !window.isSlidingPVC &&
+            window.zones.any(
+              (z) =>
                   z.content == ZoneContent.slidingSash &&
-                  z.useClassicHandle != true);
+                  z.useClassicHandle != true,
+            );
 
         if (useEntrematique) {
           items.add(
@@ -2065,14 +2332,17 @@ class ComponentCalculator {
           );
           items.add(
             createAccessory(
-              'المقبض (Handle)',
+              // Keep a distinct BOM key from the opening handle.  In mixed
+              // drawings both are present, and sharing a key made one manual
+              // selection overwrite the other.
+              'مقبض منزلق (Poignée Coulissante)',
               color: colorName,
               qty: slidingTotalHandles,
             ),
           );
-          final String seriesName = window.activeSlidingSeries?.name.toLowerCase() ?? '';
-          final bool isTPR =
-              seriesName.contains('tpr') && !window.isSlidingPVC;
+          final String seriesName =
+              window.activeSlidingSeries?.name.toLowerCase() ?? '';
+          final bool isTPR = seriesName.contains('tpr') && !window.isSlidingPVC;
           if (isTPR) {
             items.add(
               createAccessory(
@@ -2093,24 +2363,22 @@ class ComponentCalculator {
         }
 
         // Add Gache Porte (قاش بورت) if it is a door
-        final isDoor = window.system?.name.toLowerCase().contains('porte') ?? false;
+        final isDoor =
+            window.system?.name.toLowerCase().contains('porte') ?? false;
         if (isDoor) {
           items.add(
-            createAccessory(
-              'قاش بورت (Gache Porte)',
-              color: colorName,
-              qty: 2,
-            ),
+            createAccessory('قاش بورت (Gache Porte)', color: colorName, qty: 2),
           );
         }
 
         // الصيغة الموحدة لا تحتاج تبديل خاص بـ PVC
 
-        // 🟢 جوان بروس للظلفة: لا يُضاف تلقائياً لسلاسل الألمنيوم مثل TPR 67000 
+        // 🟢 جوان بروس للظلفة: لا يُضاف تلقائياً لسلاسل الألمنيوم مثل TPR 67000
         // إلا إذا كان خيار جوان البروس مخصصاً ومحدداً صراحة لهذه السلسلة أو إذا كان النظام PVC
         if (window.isSlidingPVC ||
-            window.componentOverrides
-                .containsKey('جوان بروس للظلفة (Joint Brosse Sash)')) {
+            window.componentOverrides.containsKey(
+              'جوان بروس للظلفة (Joint Brosse Sash)',
+            )) {
           items.add(
             createJoint(
               'جوان بروس للظلفة (Joint Brosse Sash)',
@@ -2134,7 +2402,9 @@ class ComponentCalculator {
 
       // Add Bouchon Parclose (بوشون بارك لوز) for opening systems
       if ((hasSingleSash || hasDoubleSash) && window.systemMode != 'sliding') {
-        if (window.componentOverrides.containsKey('بوشون بارك لوز (Bouchon Parclose)')) {
+        if (window.componentOverrides.containsKey(
+          'بوشون بارك لوز (Bouchon Parclose)',
+        )) {
           items.add(
             createAccessory(
               'بوشون بارك لوز (Bouchon Parclose)',
@@ -2143,17 +2413,13 @@ class ComponentCalculator {
             ),
           );
         }
-        if (!useCremone && window.componentOverrides.containsKey('كريمون (Cremone)')) {
+        if (!useCremone &&
+            window.componentOverrides.containsKey('كريمون (Cremone)')) {
           items.add(
-            createAccessory(
-              'كريمون (Cremone)',
-              color: colorName,
-              qty: 0,
-            ),
+            createAccessory('كريمون (Cremone)', color: colorName, qty: 0),
           );
         }
       }
-
     }
 
     // --- 3. الستائر (Shutters) ---
@@ -2647,15 +2913,16 @@ class ComponentCalculator {
             ),
           );
         }
-        final String seriesName = window.activeSlidingSeries?.name.toLowerCase() ?? window.activeSeries?.name.toLowerCase() ?? '';
-        final bool isTPI67000 = seriesName.contains('67000') || seriesName.contains('tpi') || seriesName.contains('tpr');
+        final String seriesName =
+            window.activeSlidingSeries?.name.toLowerCase() ??
+            window.activeSeries?.name.toLowerCase() ??
+            '';
+        final bool isTPI67000 =
+            seriesName.contains('67000') ||
+            seriesName.contains('tpi') ||
+            seriesName.contains('tpr');
         if (isTPI67000) {
-          items.add(
-            createAccessory(
-              'Clam 67000',
-              qty: 4,
-            ),
-          );
+          items.add(createAccessory('Clam 67000', qty: 4));
         }
       }
     }
@@ -3246,16 +3513,24 @@ class ComponentCalculator {
         // Add screws for this reinforcement
         int mullionRenfortScrews = 0;
         for (var p in allMullionPieces) {
-          mullionRenfortScrews += ((p * 1000.0 / 500.0) + 1).ceilToDouble().toInt();
+          mullionRenfortScrews += ((p * 1000.0 / 500.0) + 1)
+              .ceilToDouble()
+              .toInt();
         }
 
-        int index = items.indexWhere((item) => item.originalName == 'براغي حديد الدعم');
+        int index = items.indexWhere(
+          (item) => item.originalName == 'براغي حديد الدعم',
+        );
         if (index != -1) {
           final existing = items[index];
           // Since the existing item already has the multiplied quantity, we multiply the new batch here before adding
-          items[index] = existing.copyWith(qty: existing.quantity + (mullionRenfortScrews * window.quantity));
+          items[index] = existing.copyWith(
+            qty: existing.quantity + (mullionRenfortScrews * window.quantity),
+          );
         } else {
-          items.add(createAccessory('براغي حديد الدعم', qty: mullionRenfortScrews));
+          items.add(
+            createAccessory('براغي حديد الدعم', qty: mullionRenfortScrews),
+          );
         }
       }
     }
@@ -3263,7 +3538,8 @@ class ComponentCalculator {
     // --- 3.7 حساب إكسسوار الطاسو (Tasso) ---
     int tassoQty = 0;
     // Condition A: In divisions (mullions/transoms)
-    final bool canHaveDivisionTasso = window.systemMode != 'sliding' && 
+    final bool canHaveDivisionTasso =
+        window.systemMode != 'sliding' &&
         !(window.system?.name.toLowerCase().contains('tpr') ?? false);
     if (canHaveDivisionTasso) {
       tassoQty +=
@@ -3276,23 +3552,24 @@ class ComponentCalculator {
     }
 
     // Condition B: PVC window with Shutter and monobloc/integrated frame
-    final bool isFrameMonobloc = (outerFrameOverride != null) &&
+    final bool isFrameMonobloc =
+        (outerFrameOverride != null) &&
         (outerFrameOverride['name'].toString().contains('Cadre cj') ||
-         outerFrameOverride['code'].toString().contains('103') ||
-         outerFrameOverride['name'].toString().toLowerCase().contains('monobloc') ||
-         outerFrameOverride['code'].toString().toLowerCase().contains('monobloc'));
-    
+            outerFrameOverride['code'].toString().contains('103') ||
+            outerFrameOverride['name'].toString().toLowerCase().contains(
+              'monobloc',
+            ) ||
+            outerFrameOverride['code'].toString().toLowerCase().contains(
+              'monobloc',
+            ));
+
     if (isOuterFramePvc && hasShutter && isFrameMonobloc) {
       tassoQty += 2;
     }
 
     if (tassoQty > 0) {
       items.add(
-        createAccessory(
-          'الطاسو (Tasso)',
-          qty: tassoQty,
-          isActive: true,
-        ),
+        createAccessory('الطاسو (Tasso)', qty: tassoQty, isActive: true),
       );
     }
 
@@ -3319,14 +3596,20 @@ class ComponentCalculator {
     // Vitrage  = Bourrage = parcloseSimple×1 + parcloseDouble×2 (يُحسب في لحظة الإخراج)
     // Frappe   = محيط الظلفة + محيط الإطار (لكل فتحة بها ظلفة)
     // Central  = محيط الإطار (فتحات مزدوجة فقط)
-    double swingFrappeSashPerim  = 0.0; // مجموع محيطات الظلفات (متر)
-    double swingFrappeFramePerim = 0.0; // مجموع محيطات الإطارات للفتحات ذات الظلفات (متر)
-    double swingCentralFramePerim = 0.0; // مجموع محيطات الإطارات للفتحات المزدوجة (متر)
+    double swingFrappeSashPerim = 0.0; // مجموع محيطات الظلفات (متر)
+    double swingFrappeFramePerim =
+        0.0; // مجموع محيطات الإطارات للفتحات ذات الظلفات (متر)
+    double swingCentralFramePerim =
+        0.0; // مجموع محيطات الإطارات للفتحات المزدوجة (متر)
 
     double getSlatWidthForSpec(GlassSpecification spec) {
       final bardageOverride = window.componentOverrides['البارداج (Bardage)'];
       if (bardageOverride != null) {
-        final double vw = ((bardageOverride['visible_width'] ?? bardageOverride['thickness']) as num?)?.toDouble() ?? 0.0;
+        final double vw =
+            ((bardageOverride['visible_width'] ?? bardageOverride['thickness'])
+                    as num?)
+                ?.toDouble() ??
+            0.0;
         if (vw > 0) return vw;
       }
       Map<String, dynamic> dbMatch = <String, dynamic>{};
@@ -3346,17 +3629,20 @@ class ComponentCalculator {
       }
       double width = 0.0;
       if (dbMatch.isNotEmpty) {
-        width = ((dbMatch['visible_width'] ?? dbMatch['thickness']) as num?)?.toDouble() ?? 0.0;
+        width =
+            ((dbMatch['visible_width'] ?? dbMatch['thickness']) as num?)
+                ?.toDouble() ??
+            0.0;
       }
       return width > 0 ? width : 100.0; // fallback to 100mm
     }
+
     double totalBaguetteLength = 0.0;
     int totalRosettesCount = 0;
     Map<String, dynamic>? selectedBaguetteProduct;
     Map<String, dynamic>? selectedRosetteProduct;
 
     for (var zone in window.zones) {
-
       if (zone.content == ZoneContent.empty) continue;
 
       // جلب قيمة التداخل من قاعدة البيانات أو الافتراضية
@@ -3380,8 +3666,12 @@ class ComponentCalculator {
       // baseGw and baseGh are now calculated below after retrieving glassDeduction for casement windows
       double glassDeduction = 0.0;
       if (window.sashOverride != null) {
-        glassDeduction = ((window.sashOverride!['glass_deduction'] ??
-            window.sashOverride!['glassDeduction'] ?? 0.0) as num).toDouble();
+        glassDeduction =
+            ((window.sashOverride!['glass_deduction'] ??
+                        window.sashOverride!['glassDeduction'] ??
+                        0.0)
+                    as num)
+                .toDouble();
       } else {
         final sashSec = window.getSectionByType('sash');
         if (sashSec != null) {
@@ -3389,8 +3679,8 @@ class ComponentCalculator {
         }
       }
 
-      double deductionWidthTerm = - videVerre;
-      double deductionHeightTerm = - videVerre;
+      double deductionWidthTerm = -videVerre;
+      double deductionHeightTerm = -videVerre;
       if (glassDeduction != 0.0) {
         deductionWidthTerm = (glassDeduction * 2.0) - 4.0;
         deductionHeightTerm = (glassDeduction * 2.0) - 4.0;
@@ -3408,9 +3698,9 @@ class ComponentCalculator {
         // جوانات نظام الفتح — ظلفة مفردة
         // Frappe = محيط الظلفة + محيط الإطار
         if (!window.isPVC) {
-          final double sashPerimM  = ((baseGw + baseGh) * 2.0) / 1000.0;
+          final double sashPerimM = ((baseGw + baseGh) * 2.0) / 1000.0;
           final double framePerimM = ((clearW + clearH) * 2.0) / 1000.0;
-          swingFrappeSashPerim  += sashPerimM;
+          swingFrappeSashPerim += sashPerimM;
           swingFrappeFramePerim += framePerimM;
         }
       } else if (zone.content == ZoneContent.doubleSash) {
@@ -3427,9 +3717,12 @@ class ComponentCalculator {
             deductionWidthTerm;
         baseGh = (clearH + totalOverlap) - (sw * 2) + deductionHeightTerm;
         if (zone.hasSashPlintheBottom) {
-          double plintheW = window.componentOverrides.containsKey('بلانت (Plinthe)') 
-               ? (window.componentOverrides['بلانت (Plinthe)']['visible_width'] ?? 40.0).toDouble() 
-               : 40.0;
+          double plintheW =
+              window.componentOverrides.containsKey('بلانت (Plinthe)')
+              ? (window.componentOverrides['بلانت (Plinthe)']['visible_width'] ??
+                        40.0)
+                    .toDouble()
+              : 40.0;
           baseGh += sw;
           baseGh -= plintheW;
         }
@@ -3439,13 +3732,13 @@ class ComponentCalculator {
         // Frappe   = محيط كل ظلفة + محيط الإطار
         // Central  = محيط الإطار فقط
         if (!window.isPVC) {
-          final double ghM  = baseGh / 1000.0;
-          final double gwLM = baseGwLeft  / 1000.0;
+          final double ghM = baseGh / 1000.0;
+          final double gwLM = baseGwLeft / 1000.0;
           final double gwRM = baseGwRight / 1000.0;
           final double framePerimM = ((clearW + clearH) * 2.0) / 1000.0;
           // ظلفة يسرى + ظلفة يمنى
-          swingFrappeSashPerim  += (ghM + gwLM) * 2.0;
-          swingFrappeSashPerim  += (ghM + gwRM) * 2.0;
+          swingFrappeSashPerim += (ghM + gwLM) * 2.0;
+          swingFrappeSashPerim += (ghM + gwRM) * 2.0;
           swingFrappeFramePerim += framePerimM; // محيط الإطار مرة واحدة للفتحة
           // جوان وسطي = محيط الإطار
           swingCentralFramePerim += framePerimM;
@@ -3457,13 +3750,18 @@ class ComponentCalculator {
         if (window.zones.length > 1) {
           final slidingFrame = getSlidingFrameSection();
           double frameT = slidingFrame != null
-              ? ((slidingFrame['visible_width'] ?? slidingFrame['thickness']) as num?)?.toDouble() ?? 45.0
+              ? ((slidingFrame['visible_width'] ?? slidingFrame['thickness'])
+                            as num?)
+                        ?.toDouble() ??
+                    45.0
               : 45.0;
           wForCalc = clearW - (frameT * 2.0);
           hForCalc = clearH - (frameT * 2.0);
         }
         baseGw =
-            ((wForCalc + ((sashes - 1) * 26.0)) / sashes) - (sw * 2) - videVerre;
+            ((wForCalc + ((sashes - 1) * 26.0)) / sashes) -
+            (sw * 2) -
+            videVerre;
         baseGh = (hForCalc + 16.0) - (sw * 2) - videVerre;
         sashesCount = sashes;
       }
@@ -3542,18 +3840,22 @@ class ComponentCalculator {
 
           // استخدم مواصفات الزجاج الخاصة بالخلية إن وجدت
           final cellGlass = zone.getGlassForCell(cellKey);
-          final isPanneau = cellGlass.structure == GlassStructure.closed ||
+          final isPanneau =
+              cellGlass.structure == GlassStructure.closed ||
               zone.cellIsPanel[cellKey] == true;
 
-          final isBardage = isPanneau &&
-              (cellGlass.panneauSubtype?.toLowerCase().contains('bardage') == true ||
-               cellGlass.finishOuter == GlassFinish.bardage);
+          final isBardage =
+              isPanneau &&
+              (cellGlass.panneauSubtype?.toLowerCase().contains('bardage') ==
+                      true ||
+                  cellGlass.finishOuter == GlassFinish.bardage);
 
-          if (isBardage && window.componentOverrides.containsKey('البارداج (Bardage)')) {
+          if (isBardage &&
+              window.componentOverrides.containsKey('البارداج (Bardage)')) {
             // البارداج يُحسب كبروفيل طولي في قسم البروفيلات، ولا يُضاف كبانو مساحي
             final double slatW = getSlatWidthForSpec(cellGlass);
             final bool isVertical = cellGlass.isVerticalBardage;
-            
+
             final int slatsCount = isVertical
                 ? (cellGw / slatW).ceil()
                 : (cellGh / slatW).ceil();
@@ -3581,15 +3883,19 @@ class ComponentCalculator {
           int totalPieces = pieceMultiplier * window.quantity;
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
-          final double cellThick = cellGlass.totalThickness(window.allGlassCache);
-          final bool isSlidingSystem = window.systemMode == 'sliding' ||
+          final double cellThick = cellGlass.totalThickness(
+            window.allGlassCache,
+          );
+          final bool isSlidingSystem =
+              window.systemMode == 'sliding' ||
               window.systemMode == 'coulissant' ||
               window.systemMode == 'منزلق' ||
               zone.content == ZoneContent.slidingSash;
 
           if (isSlidingSystem) {
             if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
-              final double reducteurThick = (cellGlass.structure == GlassStructure.simple) ? 15.0 : 0.0;
+              final double reducteurThick =
+                  (cellGlass.structure == GlassStructure.simple) ? 15.0 : 0.0;
               if (reducteurThick > 0) {
                 for (int q = 0; q < totalPieces; q++) {
                   reducteurPieces.add(cellGw / 1000.0);
@@ -3599,26 +3905,35 @@ class ComponentCalculator {
                 }
               }
               double maxGlass = 24.0;
-              final sashMap = window.slidingSashOverride ??
+              final sashMap =
+                  window.slidingSashOverride ??
                   window.getSlidingSectionByType('sash_sliding')?.toMap() ??
                   window.getSlidingSectionByType('sash')?.toMap();
               if (sashMap != null) {
-                final double mG = (sashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+                final double mG =
+                    (sashMap['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
                 if (mG > 0) maxGlass = mG;
               }
               // 🟢 الفراغ الصافي للزجاج: إذا استعملنا reducteur يصبح مجرى الزجاج 15 مم
-              final double pocketWidth = (reducteurThick > 0) ? 15.0 : (maxGlass - reducteurThick);
+              final double pocketWidth = (reducteurThick > 0)
+                  ? 15.0
+                  : (maxGlass - reducteurThick);
               double remaining = pocketWidth - cellThick;
               if (remaining <= 0) {
-                remaining = 2.0; // fallback to ensure glass gasket is calculated
+                remaining =
+                    2.0; // fallback to ensure glass gasket is calculated
               }
               if (remaining > 0) {
                 final bool forceTwoSides = cellGlass.jointTwoSides;
-                final double targetThick = forceTwoSides ? (remaining / 2.0) : remaining;
+                final double targetThick = forceTwoSides
+                    ? (remaining / 2.0)
+                    : remaining;
                 String jointName = 'جوان البوراج (Joint Bourrage)';
                 final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
-                final double qty = perimeter * (forceTwoSides ? 2 : 1) * totalPieces;
-                slidingGlassJoints[jointName] = (slidingGlassJoints[jointName] ?? 0.0) + qty;
+                final double qty =
+                    perimeter * (forceTwoSides ? 2 : 1) * totalPieces;
+                slidingGlassJoints[jointName] =
+                    (slidingGlassJoints[jointName] ?? 0.0) + qty;
               }
             }
           } else {
@@ -3627,7 +3942,8 @@ class ComponentCalculator {
               final double mult = cellGlass.jointTwoSides ? 2.0 : 1.0;
               final double gasketQty = perimeter * mult * totalPieces;
               String gName = 'جوان زجاج (Joint Vitrage)';
-              slidingGlassJoints[gName] = (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
+              slidingGlassJoints[gName] =
+                  (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
             }
             if (cellThick > 10.0) {
               for (int q = 0; q < pieceMultiplier; q++) {
@@ -3648,25 +3964,36 @@ class ComponentCalculator {
 
           // 🟢 حساب الديكور باجيت والورود لهذه القطعة الفردية
           if (cellGlass.decorH > 0 || cellGlass.decorV > 0) {
-            double cellBaguette = (cellGlass.decorH * cellGw + cellGlass.decorV * cellGh) / 1000.0;
+            double cellBaguette =
+                (cellGlass.decorH * cellGw + cellGlass.decorV * cellGh) /
+                1000.0;
             totalBaguetteLength += cellBaguette * totalPieces;
 
             if (cellGlass.hasRosettes) {
-              totalRosettesCount += (cellGlass.decorH * cellGlass.decorV) * totalPieces;
+              totalRosettesCount +=
+                  (cellGlass.decorH * cellGlass.decorV) * totalPieces;
             }
 
-            if (selectedBaguetteProduct == null && cellGlass.decorBaguetteId != null) {
+            if (selectedBaguetteProduct == null &&
+                cellGlass.decorBaguetteId != null) {
               selectedBaguetteProduct = window.allGlassCache.firstWhere(
-                (g) => g['id'] == cellGlass.decorBaguetteId && g['color']?.toString().toLowerCase().trim() == cellGlass.decorColor.toLowerCase().trim(),
+                (g) =>
+                    g['id'] == cellGlass.decorBaguetteId &&
+                    g['color']?.toString().toLowerCase().trim() ==
+                        cellGlass.decorColor.toLowerCase().trim(),
                 orElse: () => window.allGlassCache.firstWhere(
                   (g) => g['id'] == cellGlass.decorBaguetteId,
                   orElse: () => <String, dynamic>{},
                 ),
               );
             }
-            if (selectedRosetteProduct == null && cellGlass.decorRosetteId != null) {
+            if (selectedRosetteProduct == null &&
+                cellGlass.decorRosetteId != null) {
               selectedRosetteProduct = window.allGlassCache.firstWhere(
-                (g) => g['id'] == cellGlass.decorRosetteId && g['color']?.toString().toLowerCase().trim() == cellGlass.decorColor.toLowerCase().trim(),
+                (g) =>
+                    g['id'] == cellGlass.decorRosetteId &&
+                    g['color']?.toString().toLowerCase().trim() ==
+                        cellGlass.decorColor.toLowerCase().trim(),
                 orElse: () => window.allGlassCache.firstWhere(
                   (g) => g['id'] == cellGlass.decorRosetteId,
                   orElse: () => <String, dynamic>{},
@@ -3675,47 +4002,159 @@ class ComponentCalculator {
             }
           }
 
-          String glassName = _buildGlassDescription(
-            cellGlass,
-            window,
-            cellGw,
-            cellGh,
-          );
-          if (labelSuffix.isNotEmpty) glassName = "$labelSuffix\n$glassName";
+          // الزجاج المزدوج يتكون من زجاج خارجي وزجاج داخلي مستقلين. لكل
+          // طبقة سعرها ومساحتها الصحيحة، ويضاف الغاز كسطر مستقل عند اختياره.
+          // لا نضع سعر الفاصل بين الطبقتين ضمن أحد الزجاجين.
+          final double totalAreaSqm =
+              (cellGw * cellGh / 1000000.0) * totalPieces;
 
-          glassItems.add(
-            BomItem(
-              category: isPanneau ? 'panneau' : 'glass',
-              originalName: originalName,
-              name: glassName,
-              imagePath: (() {
-                if (window.componentOverrides.containsKey(originalName)) {
-                  final ov = window.componentOverrides[originalName];
-                  return ov['image_path']?.toString();
-                }
-                return null;
-              })(),
-              colorName: cellGh.toStringAsFixed(1),
-              length: cellGw,
-              glassHeight: cellGh,
-              quantity: totalPieces.toDouble(),
-              unit: 'قطعة',
-              unitPrice: (() {
-                if (window.componentOverrides.containsKey(originalName)) {
-                  final ov = window.componentOverrides[originalName];
-                  return ((ov['calculated_price'] ??
-                              ov['price'] ??
-                              window.calculateTotalGlassPricePerSqmForZoneGlass(cellGlass))
-                          as num)
-                      .toDouble();
-                }
-                return window.calculateTotalGlassPricePerSqmForZoneGlass(cellGlass);
-              })(),
-              isMissing: false,
-            ),
-          );
+          double layerPrice({required bool isOuter}) {
+            final thickness = isOuter
+                ? (cellGlass.thicknessOuter ??
+                      window.getThicknessForFinish(
+                        cellGlass.finishOuter,
+                        cellGlass.colorOuter,
+                      ))
+                : (cellGlass.thicknessInner ??
+                      window.getThicknessForFinish(
+                        cellGlass.finishInner,
+                        cellGlass.colorInner,
+                      ));
+            final processing = isOuter
+                ? cellGlass.processingOuter
+                : cellGlass.processingInner;
+            final finish = isOuter
+                ? cellGlass.finishOuter
+                : cellGlass.finishInner;
+            final glassColor = isOuter
+                ? cellGlass.colorOuter
+                : cellGlass.colorInner;
+            final laminatedColor = isOuter
+                ? cellGlass.laminatedColorOuter
+                : cellGlass.laminatedColorInner;
+            final isTempered = isOuter
+                ? cellGlass.temperedOuter
+                : cellGlass.temperedInner;
+
+            double price = processing == GlassProcessing.laminated
+                ? window.getLaminatedPrice(thickness, laminatedColor)
+                : window.getPriceForFinish(
+                    finish,
+                    glassColor,
+                    chosenThickness: thickness,
+                  );
+            if (processing == GlassProcessing.tempered || isTempered) {
+              price += window.getTemperingPricePerSqm(thickness);
+            }
+            return price;
+          }
+
+          String layerDescription({required bool isOuter}) {
+            final processing = isOuter
+                ? cellGlass.processingOuter
+                : cellGlass.processingInner;
+            final finish = isOuter
+                ? cellGlass.finishOuter
+                : cellGlass.finishInner;
+            final glassColor = isOuter
+                ? cellGlass.colorOuter
+                : cellGlass.colorInner;
+            final laminatedColor = isOuter
+                ? cellGlass.laminatedColorOuter
+                : cellGlass.laminatedColorInner;
+            final isTempered = isOuter
+                ? cellGlass.temperedOuter
+                : cellGlass.temperedInner;
+            String material = processing == GlassProcessing.laminated
+                ? 'مورق ($laminatedColor)'
+                : '${window.getFinishName(finish)} ${window.getArabicColorName(glassColor)}'
+                      .trim();
+            if (processing == GlassProcessing.tempered || isTempered) {
+              material += ' + مقسّى (Trempé)';
+            }
+            return material;
+          }
+
+          if (!isPanneau &&
+              (cellGlass.structure == GlassStructure.double ||
+                  cellGlass.structure == GlassStructure.simple)) {
+            final prefix = labelSuffix.isEmpty ? '' : '$labelSuffix\n';
+            final outerPrice = layerPrice(isOuter: true);
+            final innerPrice = cellGlass.structure == GlassStructure.double
+                ? layerPrice(isOuter: false)
+                : 0.0;
+            final intercallPrice = cellGlass.structure == GlassStructure.double
+                ? window.getPriceForIntercall(cellGlass.intercallThickness)
+                : 0.0;
+            final gasPrice =
+                cellGlass.structure == GlassStructure.double && cellGlass.hasGas
+                ? window.getPriceForGas(cellGlass.intercallThickness)
+                : 0.0;
+            final totalGlassPrice =
+                outerPrice + innerPrice + intercallPrice + gasPrice;
+            final dimensions =
+                '${cellGw.toStringAsFixed(0)} × ${cellGh.toStringAsFixed(0)} مم';
+
+            String glassName;
+            if (cellGlass.structure == GlassStructure.double) {
+              glassName =
+                  '${prefix}- Face extérieure / الوجه الخارجي: ${layerDescription(isOuter: true)}\n'
+                  '  ${outerPrice.toStringAsFixed(2)} دج/م²\n'
+                  '- Face intérieure / الوجه الداخلي: ${layerDescription(isOuter: false)}\n'
+                  '  ${innerPrice.toStringAsFixed(2)} دج/م²\n'
+                  '- Intercalaire / الفاصل: ${cellGlass.intercallThickness} مم\n'
+                  '  ${intercallPrice.toStringAsFixed(2)} دج/م²'
+                  '${cellGlass.hasGas ? '\n- Gaz / الغاز\n  ${gasPrice.toStringAsFixed(2)} دج/م²' : ''}'
+                  '\n- Dimensions / القياس: $dimensions';
+            } else {
+              glassName =
+                  '${prefix}- Face extérieure / الوجه الخارجي: ${layerDescription(isOuter: true)}\n'
+                  '  ${outerPrice.toStringAsFixed(2)} دج/م²\n'
+                  '- Dimensions / القياس: $dimensions';
+            }
+
+            glassItems.add(
+              BomItem(
+                category: 'glass',
+                originalName: 'الزجاج',
+                name: glassName,
+                imagePath: window.componentOverrides['الزجاج']?['image_path']
+                    ?.toString(),
+                colorName: cellGh.toStringAsFixed(1),
+                length: cellGw,
+                glassHeight: cellGh,
+                quantity: totalAreaSqm,
+                unit: 'م²',
+                unitPrice: totalGlassPrice,
+                isMissing: false,
+              ),
+            );
+          } else {
+            String glassName = _buildGlassDescription(
+              cellGlass,
+              window,
+              cellGw,
+              cellGh,
+            );
+            if (labelSuffix.isNotEmpty) glassName = "$labelSuffix\n$glassName";
+            glassItems.add(
+              BomItem(
+                category: 'panneau',
+                originalName: originalName,
+                name: glassName,
+                colorName: cellGh.toStringAsFixed(1),
+                length: cellGw,
+                glassHeight: cellGh,
+                quantity: totalPieces.toDouble(),
+                unit: 'قطعة',
+                unitPrice: window.calculateTotalGlassPricePerSqmForZoneGlass(
+                  cellGlass,
+                ),
+                isMissing: false,
+              ),
+            );
+          }
         }
-
 
         // دمج الخلايا المتجاورة إذا كانت الفواصل معطلة (Greedy cell merging)
         for (int r = 0; r < rows; r++) {
@@ -3791,11 +4230,15 @@ class ComponentCalculator {
                     (zone.cellSashOverrides[cellKey]!['visible_width'] as num?)
                         ?.toDouble() ??
                     sw;
-                cellGd = ((zone.cellSashOverrides[cellKey]!['glass_deduction'] ??
-                    zone.cellSashOverrides[cellKey]!['glassDeduction'] ?? 0.0) as num).toDouble();
+                cellGd =
+                    ((zone.cellSashOverrides[cellKey]!['glass_deduction'] ??
+                                zone.cellSashOverrides[cellKey]!['glassDeduction'] ??
+                                0.0)
+                            as num)
+                        .toDouble();
               }
-              double cellDeductionW = - videVerre;
-              double cellDeductionH = - videVerre;
+              double cellDeductionW = -videVerre;
+              double cellDeductionH = -videVerre;
               if (cellGd != 0.0) {
                 cellDeductionW = (cellGd * 2.0) - 4.0;
                 cellDeductionH = (cellGd * 2.0) - 4.0;
@@ -3812,11 +4255,15 @@ class ComponentCalculator {
                     (zone.cellSashOverrides[cellKey]!['visible_width'] as num?)
                         ?.toDouble() ??
                     sw;
-                cellGd = ((zone.cellSashOverrides[cellKey]!['glass_deduction'] ??
-                    zone.cellSashOverrides[cellKey]!['glassDeduction'] ?? 0.0) as num).toDouble();
+                cellGd =
+                    ((zone.cellSashOverrides[cellKey]!['glass_deduction'] ??
+                                zone.cellSashOverrides[cellKey]!['glassDeduction'] ??
+                                0.0)
+                            as num)
+                        .toDouble();
               }
-              double cellDeductionW = - videVerre;
-              double cellDeductionH = - videVerre;
+              double cellDeductionW = -videVerre;
+              double cellDeductionH = -videVerre;
               if (cellGd != 0.0) {
                 cellDeductionW = (cellGd * 2.0) - 4.0;
                 cellDeductionH = (cellGd * 2.0) - 4.0;
@@ -3900,7 +4347,6 @@ class ComponentCalculator {
     // ✅ إضافة قطع الزجاج والبانو المدمجة إلى كشف المواد الإجمالي ليظهر في الجدول
     items.addAll(mergedGlass.values);
 
-
     // --- 5. الباكيت (Parclose) ---
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
     Map<String, dynamic>? parcloseSimple;
@@ -3910,13 +4356,18 @@ class ComponentCalculator {
     if (activeSeries != null) {
       if (chosenParclose != null) {
         // المستخدم اختار باكيت محدد — نحدد نوعه ونبحث عن المقابل
-        final double maxG = (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+        final double maxG =
+            (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
         if (maxG > 10.0) {
           parcloseDouble = chosenParclose;
           // البحث عن باكيت السامبل في نفس السلسلة
           try {
             final sampleSec = activeSeries.sections.firstWhere(
-              (s) => (s.type.toLowerCase().contains('parclose') || s.name.contains('باكيت')) && s.maxGlassThickness <= 10.0 && s.maxGlassThickness > 0.0,
+              (s) =>
+                  (s.type.toLowerCase().contains('parclose') ||
+                      s.name.contains('باكيت')) &&
+                  s.maxGlassThickness <= 10.0 &&
+                  s.maxGlassThickness > 0.0,
             );
             parcloseSimple = sampleSec.toMap();
           } catch (_) {
@@ -3926,17 +4377,23 @@ class ComponentCalculator {
         } else {
           parcloseSimple = chosenParclose;
           // البحث عن باكيت الدوبل — أولاً عبر الرابط المباشر
-          final int? linkedId = chosenParclose['linked_parclose_double_id'] as int?;
+          final int? linkedId =
+              chosenParclose['linked_parclose_double_id'] as int?;
           if (linkedId != null && linkedId > 0) {
             try {
-              final linkedSec = activeSeries.sections.firstWhere((s) => s.id == linkedId);
+              final linkedSec = activeSeries.sections.firstWhere(
+                (s) => s.id == linkedId,
+              );
               parcloseDouble = linkedSec.toMap();
             } catch (_) {}
           }
           if (parcloseDouble == null) {
             try {
               final doubleSec = activeSeries.sections.firstWhere(
-                (s) => (s.type.toLowerCase().contains('parclose') || s.name.contains('باكيت')) && s.maxGlassThickness > 10.0,
+                (s) =>
+                    (s.type.toLowerCase().contains('parclose') ||
+                        s.name.contains('باكيت')) &&
+                    s.maxGlassThickness > 10.0,
               );
               parcloseDouble = doubleSec.toMap();
             } catch (_) {
@@ -3949,7 +4406,11 @@ class ComponentCalculator {
         // لم يختر المستخدم — بحث تلقائي في السلسلة المحملة
         try {
           final simpleSec = activeSeries.sections.firstWhere(
-            (s) => (s.type.toLowerCase().contains('parclose') || s.name.contains('باكيت')) && s.maxGlassThickness <= 10.0 && s.maxGlassThickness > 0.0,
+            (s) =>
+                (s.type.toLowerCase().contains('parclose') ||
+                    s.name.contains('باكيت')) &&
+                s.maxGlassThickness <= 10.0 &&
+                s.maxGlassThickness > 0.0,
           );
           parcloseSimple = simpleSec.toMap();
         } catch (_) {
@@ -3957,7 +4418,10 @@ class ComponentCalculator {
         }
         try {
           final doubleSec = activeSeries.sections.firstWhere(
-            (s) => (s.type.toLowerCase().contains('parclose') || s.name.contains('باكيت')) && s.maxGlassThickness > 10.0,
+            (s) =>
+                (s.type.toLowerCase().contains('parclose') ||
+                    s.name.contains('باكيت')) &&
+                s.maxGlassThickness > 10.0,
           );
           parcloseDouble = doubleSec.toMap();
         } catch (_) {
@@ -3999,9 +4463,15 @@ class ComponentCalculator {
     // ===== جوانات نظام الفتح (ألمنيوم فقط) =====
     if (!window.isPVC) {
       // حساب الكميات المشتركة بين Vitrage و Bourrage
-      final double simplePerim = parcloseSimplePieces.fold(0.0, (s, p) => s + p); // محيط زجاج مفرد (×1)
-      final double doublePerim = parcloseDoublePieces.fold(0.0, (s, p) => s + p); // محيط زجاج مزدوج (×2)
-      final double vitrageQty  = simplePerim * 1.0 + doublePerim * 2.0;
+      final double simplePerim = parcloseSimplePieces.fold(
+        0.0,
+        (s, p) => s + p,
+      ); // محيط زجاج مفرد (×1)
+      final double doublePerim = parcloseDoublePieces.fold(
+        0.0,
+        (s, p) => s + p,
+      ); // محيط زجاج مزدوج (×2)
+      final double vitrageQty = simplePerim * 1.0 + doublePerim * 2.0;
 
       // Joint Vitrage = محيط الزجاج ×1 (مفرد) أو ×2 (مزدوج)
       if (vitrageQty > 0) {
@@ -4050,7 +4520,8 @@ class ComponentCalculator {
     }
 
     if (reducteurPieces.isNotEmpty) {
-      Map<String, dynamic>? reducteurOverride = window.componentOverrides['ريديكتور (Réducteur)'] ??
+      Map<String, dynamic>? reducteurOverride =
+          window.componentOverrides['ريديكتور (Réducteur)'] ??
           window.componentOverrides['مخفض الزجاج (Réducteur)'];
 
       if (reducteurOverride == null && activeSeries != null) {
@@ -4093,7 +4564,8 @@ class ComponentCalculator {
     // =========================================================================
     // --- 4.6 البارداج كبروفيل (Bardage Profile) ---
     // =========================================================================
-    if (bardagePieces.isNotEmpty && window.componentOverrides.containsKey('البارداج (Bardage)')) {
+    if (bardagePieces.isNotEmpty &&
+        window.componentOverrides.containsKey('البارداج (Bardage)')) {
       items.add(
         createProfile(
           'البارداج (Bardage)',
@@ -4104,9 +4576,7 @@ class ComponentCalculator {
       );
     }
 
-
     // =========================================================================
-
 
     if (selectedBaguetteProduct == null || selectedBaguetteProduct!.isEmpty) {
       selectedBaguetteProduct = window.allGlassCache.firstWhere(
@@ -4121,11 +4591,18 @@ class ComponentCalculator {
       );
     }
 
-    if (totalBaguetteLength > 0 && selectedBaguetteProduct != null && selectedBaguetteProduct!.isNotEmpty) {
-      double baguettePrice = (selectedBaguetteProduct!['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
+    if (totalBaguetteLength > 0 &&
+        selectedBaguetteProduct != null &&
+        selectedBaguetteProduct!.isNotEmpty) {
+      double baguettePrice =
+          (selectedBaguetteProduct!['price_per_sqm'] as num?)?.toDouble() ??
+          0.0;
       String bName = selectedBaguetteProduct!['name'].toString();
-      String thickness = selectedBaguetteProduct!['thickness']?.toString() ?? '';
-      String thicknessText = thickness.isNotEmpty ? 'حجم: $thickness مم - ' : '';
+      String thickness =
+          selectedBaguetteProduct!['thickness']?.toString() ?? '';
+      String thicknessText = thickness.isNotEmpty
+          ? 'حجم: $thickness مم - '
+          : '';
       items.add(
         BomItem(
           category: 'glass',
@@ -4141,8 +4618,11 @@ class ComponentCalculator {
       );
     }
 
-    if (totalRosettesCount > 0 && selectedRosetteProduct != null && selectedRosetteProduct!.isNotEmpty) {
-      double rosettePrice = (selectedRosetteProduct!['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
+    if (totalRosettesCount > 0 &&
+        selectedRosetteProduct != null &&
+        selectedRosetteProduct!.isNotEmpty) {
+      double rosettePrice =
+          (selectedRosetteProduct!['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
       String rName = selectedRosetteProduct!['name'].toString();
       String size = selectedRosetteProduct!['size']?.toString() ?? '';
       String sizeText = size.isNotEmpty ? 'مقاس: $size - ' : '';
@@ -4172,9 +4652,13 @@ class ComponentCalculator {
         if (code == null || code.isEmpty || path == null || path.isEmpty) {
           String? type;
           final orig = item.originalName.toLowerCase();
-          if (orig.contains('إطار') || orig.contains('frame') || orig.contains('cadre')) {
+          if (orig.contains('إطار') ||
+              orig.contains('frame') ||
+              orig.contains('cadre')) {
             type = 'frame';
-          } else if (orig.contains('ظلفة') || orig.contains('sash') || orig.contains('ouvrant')) {
+          } else if (orig.contains('ظلفة') ||
+              orig.contains('sash') ||
+              orig.contains('ouvrant')) {
             type = 'sash';
           } else if (orig.contains('بلانت') || orig.contains('plinthe')) {
             type = 'plinthe';
@@ -4199,14 +4683,13 @@ class ComponentCalculator {
           }
         }
 
-        if ((code != null && code != item.profileCode) || (path != null && path != item.imagePath)) {
-          items[i] = item.copyWith(
-            profileCode: code,
-            imagePath: path,
-          );
+        if ((code != null && code != item.profileCode) ||
+            (path != null && path != item.imagePath)) {
+          items[i] = item.copyWith(profileCode: code, imagePath: path);
         }
       }
     }
+
     return items;
   }
 
@@ -4240,16 +4723,17 @@ class ComponentCalculator {
         'القياس (العرض × الارتفاع): ${gw.toStringAsFixed(1)} × ${gh.toStringAsFixed(1)} ملم';
     String result;
     if (glass.structure == GlassStructure.simple) {
-      double thickness = glass.thicknessOuter ?? window.getThicknessForFinish(
-        glass.finishOuter,
-        glass.colorOuter,
-      );
+      double thickness =
+          glass.thicknessOuter ??
+          window.getThicknessForFinish(glass.finishOuter, glass.colorOuter);
       double price = window.calculateTotalGlassPricePerSqmForZoneGlass(glass);
       String namePart = "";
       if (glass.processingOuter == GlassProcessing.laminated) {
         String lamCol = "شفاف";
-        if (glass.laminatedColorOuter == 'white') lamCol = "أبيض";
-        else if (glass.laminatedColorOuter == 'blue') lamCol = "أزرق";
+        if (glass.laminatedColorOuter == 'white')
+          lamCol = "أبيض";
+        else if (glass.laminatedColorOuter == 'blue')
+          lamCol = "أزرق";
         namePart = "مورق ($lamCol)";
       } else {
         String outerFinish = window.getFinishName(glass.finishOuter).trim();
@@ -4258,27 +4742,38 @@ class ComponentCalculator {
             ? outerFinish
             : '$outerFinish $outerColor';
       }
-      if (glass.processingOuter == GlassProcessing.tempered || glass.temperedOuter) {
+      if (glass.processingOuter == GlassProcessing.tempered ||
+          glass.temperedOuter) {
         namePart += ' + مقص (Trempé)';
       }
-      result = 'زجاج مفرد\n${thickness.toStringAsFixed(0)}مم: $namePart (${price.toStringAsFixed(0)} دج/م²)\n$dimText';
+      result =
+          'زجاج مفرد\n${thickness.toStringAsFixed(0)}مم: $namePart (${price.toStringAsFixed(0)} دج/م²)\n$dimText';
     } else if (glass.structure == GlassStructure.closed) {
       double price = window.calculateTotalGlassPricePerSqmForZoneGlass(glass);
-      
+
       String getArabicSubtypeName(String sub) {
         final s = sub.toLowerCase();
-        if (s.contains('resine') || s.contains('ارزين') || s.contains('أرزين')) return 'ارزين';
+        if (s.contains('resine') || s.contains('ارزين') || s.contains('أرزين'))
+          return 'ارزين';
         if (s.contains('plexi')) return 'بليكسي';
         if (s.contains('decore') || s.contains('ديكور')) return 'بانو ديكور';
-        if (s.contains('sandwitch') || s.contains('sandwich') || s == 'panneau' || s == 'بانو') return 'بانو';
+        if (s.contains('sandwitch') ||
+            s.contains('sandwich') ||
+            s == 'panneau' ||
+            s == 'بانو')
+          return 'بانو';
         if (s.contains('aluco') || s.contains('الوكو')) return 'الوكو';
         if (s.contains('bardage') || s.contains('بارداش')) return 'بارداش';
         return sub;
       }
-      
-      String subtype = getArabicSubtypeName(glass.panneauSubtype ?? window.getFinishName(glass.finishOuter));
-      String color = glass.panneauColor ?? window.getClosedColoreName(glass.colorP);
-      result = 'بانو (Panneau)\n- النوع: $subtype - اللون: $color (${price.toStringAsFixed(0)} دج/م²)\n$dimText';
+
+      String subtype = getArabicSubtypeName(
+        glass.panneauSubtype ?? window.getFinishName(glass.finishOuter),
+      );
+      String color =
+          glass.panneauColor ?? window.getClosedColoreName(glass.colorP);
+      result =
+          'بانو (Panneau)\n- النوع: $subtype - اللون: $color (${price.toStringAsFixed(0)} دج/م²)\n$dimText';
     } else {
       double intercallPrice = window.getPriceForIntercall(
         glass.intercallThickness,
@@ -4287,47 +4782,53 @@ class ComponentCalculator {
           ? window.getPriceForGas(glass.intercallThickness)
           : 0.0;
 
-      double innerThickness = glass.thicknessInner ?? window.getThicknessForFinish(
-        glass.finishInner,
-        glass.colorInner,
-      );
-      double outerThickness = glass.thicknessOuter ?? window.getThicknessForFinish(
-        glass.finishOuter,
-        glass.colorOuter,
-      );
+      double innerThickness =
+          glass.thicknessInner ??
+          window.getThicknessForFinish(glass.finishInner, glass.colorInner);
+      double outerThickness =
+          glass.thicknessOuter ??
+          window.getThicknessForFinish(glass.finishOuter, glass.colorOuter);
       double intercallThickness = glass.intercallThickness.toDouble();
       double totalThickness =
           innerThickness + outerThickness + intercallThickness;
 
-      double totalSqmPrice = window.calculateTotalGlassPricePerSqmForZoneGlass(glass);
+      double totalSqmPrice = window.calculateTotalGlassPricePerSqmForZoneGlass(
+        glass,
+      );
 
       String outDesc = "";
       if (glass.processingOuter == GlassProcessing.laminated) {
         String lamCol = "شفاف";
-        if (glass.laminatedColorOuter == 'white') lamCol = "أبيض";
-        else if (glass.laminatedColorOuter == 'blue') lamCol = "أزرق";
+        if (glass.laminatedColorOuter == 'white')
+          lamCol = "أبيض";
+        else if (glass.laminatedColorOuter == 'blue')
+          lamCol = "أزرق";
         outDesc = "مورق ($lamCol)";
       } else {
         String outerFinish = window.getFinishName(glass.finishOuter).trim();
         final outC = window.getArabicColorName(glass.colorOuter).trim();
         outDesc = outerFinish == outC ? outerFinish : '$outerFinish $outC';
       }
-      if (glass.processingOuter == GlassProcessing.tempered || glass.temperedOuter) {
+      if (glass.processingOuter == GlassProcessing.tempered ||
+          glass.temperedOuter) {
         outDesc += ' + مقص (Trempé)';
       }
 
       String inDesc = "";
       if (glass.processingInner == GlassProcessing.laminated) {
         String lamCol = "شفاف";
-        if (glass.laminatedColorInner == 'white') lamCol = "أبيض";
-        else if (glass.laminatedColorInner == 'blue') lamCol = "أزرق";
+        if (glass.laminatedColorInner == 'white')
+          lamCol = "أبيض";
+        else if (glass.laminatedColorInner == 'blue')
+          lamCol = "أزرق";
         inDesc = "مورق ($lamCol)";
       } else {
         String innerFinish = window.getFinishName(glass.finishInner).trim();
         final inC = window.getArabicColorName(glass.colorInner).trim();
         inDesc = innerFinish == inC ? innerFinish : '$innerFinish $inC';
       }
-      if (glass.processingInner == GlassProcessing.tempered || glass.temperedInner) {
+      if (glass.processingInner == GlassProcessing.tempered ||
+          glass.temperedInner) {
         inDesc += ' + مقص (Trempé)';
       }
 
@@ -4368,20 +4869,32 @@ class ComponentCalculator {
 
     if (activeSeries != null) {
       // جمع كل باركلوزات السلسلة وترتيبها
-      final allParcloseSections = activeSeries.sections.where((s) =>
-        (s.type.toLowerCase().contains('parclose') || s.name.contains('باكيت')) &&
-        s.maxGlassThickness > 0.0,
-      ).toList();
-      allParcloseSections.sort((a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness));
+      final allParcloseSections = activeSeries.sections
+          .where(
+            (s) =>
+                (s.type.toLowerCase().contains('parclose') ||
+                    s.name.contains('باكيت')) &&
+                s.maxGlassThickness > 0.0,
+          )
+          .toList();
+      allParcloseSections.sort(
+        (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
+      );
 
       if (allParcloseSections.isNotEmpty) {
         if (chosenParclose != null) {
           // المستخدم اختار — نحدد هل المختار يتطابق سمك الزجاج
-          final double chosenMax = (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+          final double chosenMax =
+              (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ??
+              0.0;
           // هل المختار simple أو double بالمقارنة مع أصغر max متاح
-          final double seriesMinMax = allParcloseSections.first.maxGlassThickness;
-          final bool chosenIsSimple = (chosenMax <= seriesMinMax) || allParcloseSections.length == 1;
-          final bool chosenMatchesGlass = isDouble ? !chosenIsSimple : chosenIsSimple;
+          final double seriesMinMax =
+              allParcloseSections.first.maxGlassThickness;
+          final bool chosenIsSimple =
+              (chosenMax <= seriesMinMax) || allParcloseSections.length == 1;
+          final bool chosenMatchesGlass = isDouble
+              ? !chosenIsSimple
+              : chosenIsSimple;
 
           if (chosenMatchesGlass) {
             matchingParclose = chosenParclose;
@@ -4412,14 +4925,17 @@ class ComponentCalculator {
     }
 
     if (matchingParclose != null) {
-      final double maxG = (matchingParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+      final double maxG =
+          (matchingParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
       if (maxG > 0) {
         final bool isClosed = glass.structure == GlassStructure.closed;
         final String label = isClosed ? 'البانو' : 'الزجاج';
         if (totalT > maxG) {
-          result += '\n⚠️ تنبيه: سمك $label ($totalT مم) أكبر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
+          result +=
+              '\n⚠️ تنبيه: سمك $label ($totalT مم) أكبر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
         } else if (totalT < maxG - 2.0) {
-          result += '\n⚠️ تنبيه: سمك $label ($totalT مم) أصغر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
+          result +=
+              '\n⚠️ تنبيه: سمك $label ($totalT مم) أصغر من سعة البيركلوز (${matchingParclose['name']}) ($maxG مم)';
         }
       }
     }
@@ -4440,12 +4956,12 @@ class ComponentCalculator {
   }) {
     final Map<String, dynamic>? savedOverride =
         overrides.containsKey(originalName)
-            ? overrides[originalName] as Map<String, dynamic>?
-            : null;
+        ? overrides[originalName] as Map<String, dynamic>?
+        : null;
     final Map<String, dynamic>? selectedOverride =
         preferOverrideMap && overrideMap != null
-            ? overrideMap
-            : savedOverride ?? overrideMap;
+        ? overrideMap
+        : savedOverride ?? overrideMap;
     bool isLinked = selectedOverride != null;
     double price = defaultPrice;
     double finalQty = qty;
@@ -4460,7 +4976,14 @@ class ComponentCalculator {
       imagePath = ov['image_path']?.toString();
       subName = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
       if (subName.startsWith('- ')) subName = subName.substring(2);
-      price = (ov['calculated_price'] ?? ov['price'] ?? defaultPrice).toDouble();
+      final rawPrice =
+          ov['calculated_price'] ??
+          ov['price_dzd'] ??
+          ov['price'] ??
+          defaultPrice;
+      price = rawPrice is num
+          ? rawPrice.toDouble()
+          : double.tryParse(rawPrice.toString()) ?? defaultPrice;
     }
     double? exactBars;
     if (pieces != null && pieces.isNotEmpty) {
@@ -4472,17 +4995,17 @@ class ComponentCalculator {
           originalName.contains('Renfort')) {
         barLength = 6.0;
       }
- 
+
       final optimization = optimizeCutting(
         pieces: pieces,
         barLength: barLength,
       );
       exactBars = optimization['exactBars'];
       int optimizedBars = optimization['optimizedBars'];
- 
+
       finalQty = optimizedBars.toDouble();
       finalLength = barLength;
- 
+
       // Format cutting list
       Map<int, int> counts = {};
       for (double p in pieces) {
@@ -4497,21 +5020,22 @@ class ComponentCalculator {
       }
       cuttingListText = 'قطع القص: ${parts.join(' ، ')}';
     }
- 
+
     // Build the final display name:
     String name = originalName;
     if (subName.isNotEmpty) {
       name += '\n$subName';
     }
     if (exactBars != null) {
-      name += '\n(المطلوب الفعلي: ${exactBars.toStringAsFixed(2)} بارة / ${exactBars.toStringAsFixed(2)} bar)';
+      name +=
+          '\n(المطلوب الفعلي: ${exactBars.toStringAsFixed(2)} بارة / ${exactBars.toStringAsFixed(2)} bar)';
     }
- 
+
     if (isLinked && (finalLength == null || finalLength == 0.0)) {
       final ov = selectedOverride!;
       finalLength = (ov['bar_length'] as num?)?.toDouble() ?? 5.8;
     }
- 
+
     return BomItem(
       category: 'profile',
       originalName: originalName,
@@ -4538,7 +5062,9 @@ class ComponentCalculator {
     int qty = 0,
   }) {
     String lookupKey = originalName;
-    if (!overrides.containsKey(lookupKey) && lookupKey.startsWith('إسبانيوليت ') && lookupKey.endsWith(' (Espagnolette)')) {
+    if (!overrides.containsKey(lookupKey) &&
+        lookupKey.startsWith('إسبانيوليت ') &&
+        lookupKey.endsWith(' (Espagnolette)')) {
       lookupKey = 'إسبانيوليت (Espagnolette)';
     }
     bool isLinked = overrides.containsKey(lookupKey);
@@ -4554,11 +5080,7 @@ class ComponentCalculator {
       final cName = ov['name'] ?? originalName;
       final details = code.toString().isNotEmpty ? '$code - $cName' : cName;
       name = '$originalName\n$details';
-      price =
-          (ov['calculated_price'] ??
-                  ov['price'] ??
-                  0.0)
-              .toDouble();
+      price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
     }
     return BomItem(
       category: 'accessory',
@@ -4596,11 +5118,7 @@ class ComponentCalculator {
       final cName = ov['name'] ?? originalName;
       final details = code.toString().isNotEmpty ? '$code - $cName' : cName;
       name = '$originalName\n$details';
-      price =
-          (ov['calculated_price'] ??
-                  ov['price'] ??
-                  0.0)
-              .toDouble();
+      price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
     }
     return BomItem(
       category: 'other',
@@ -4627,7 +5145,9 @@ class ComponentCalculator {
     String category = 'accessory',
   }) {
     String lookupKey = originalName;
-    if (!overrides.containsKey(lookupKey) && lookupKey.startsWith('إسبانيوليت ') && lookupKey.endsWith(' (Espagnolette)')) {
+    if (!overrides.containsKey(lookupKey) &&
+        lookupKey.startsWith('إسبانيوليت ') &&
+        lookupKey.endsWith(' (Espagnolette)')) {
       lookupKey = 'إسبانيوليت (Espagnolette)';
     }
     bool isLinked = overrides.containsKey(lookupKey);
@@ -4643,11 +5163,7 @@ class ComponentCalculator {
       final cName = ov['name'] ?? originalName;
       final details = code.toString().isNotEmpty ? '$code - $cName' : cName;
       name = '$originalName\n$details';
-      price =
-          (ov['calculated_price'] ??
-                  ov['price'] ??
-                  0.0)
-              .toDouble();
+      price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
     }
     return BomItem(
       category: category,
@@ -4686,11 +5202,8 @@ class ComponentCalculator {
       final cName = ov['name'] ?? originalName;
       final details = code.toString().isNotEmpty ? '$code - $cName' : cName;
       name = '$originalName\n$details';
-      price =
-          (ov['price_per_meter'] ??
-                  ov['calculated_price'] ??
-                  0.0)
-              .toDouble();
+      price = (ov['price_per_meter'] ?? ov['calculated_price'] ?? 0.0)
+          .toDouble();
     }
     return BomItem(
       category: 'joint',
@@ -4747,7 +5260,8 @@ class ComponentCalculator {
         finalUnit = 'م²';
         isSqmOrLinear = true;
         if (windowWidth != null && windowHeight != null) {
-          final double areaSqm = (windowWidth / 1000.0) * (windowHeight / 1000.0);
+          final double areaSqm =
+              (windowWidth / 1000.0) * (windowHeight / 1000.0);
           finalQty = areaSqm * windowQuantity;
         }
       } else if (dbUnit == 'm' || dbUnit == 'ml' || dbUnit == 'linear') {
@@ -4846,7 +5360,9 @@ class ComponentCalculator {
 
     if (targetSuffix != null) {
       try {
-        final sec = activeSeries.sections.firstWhere((s) => s.code.endsWith(targetSuffix!));
+        final sec = activeSeries.sections.firstWhere(
+          (s) => s.code.endsWith(targetSuffix!),
+        );
         return sec.toMap();
       } catch (_) {}
     }
@@ -4857,9 +5373,15 @@ class ComponentCalculator {
         final name = s.name.toLowerCase();
         final type = s.type.toLowerCase();
         if (isCentral) {
-          return code.contains('67107') || code.endsWith('107') || name.contains('chicane') || name.contains('central');
+          return code.contains('67107') ||
+              code.endsWith('107') ||
+              name.contains('chicane') ||
+              name.contains('central');
         } else {
-          return code.contains('67108') || code.endsWith('108') || (name.contains('lateral') && (name.contains('renforc') || type.contains('renforc')));
+          return code.contains('67108') ||
+              code.endsWith('108') ||
+              (name.contains('lateral') &&
+                  (name.contains('renforc') || type.contains('renforc')));
         }
       });
       return sec.toMap();

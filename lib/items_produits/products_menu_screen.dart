@@ -35,7 +35,8 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
     // ✅ مزامنة تلقائية من السحابة عند فتح الصفحة لضمان رؤية العامل لكل المنتجات
     // Keep product cards backed by the central catalog. Do not let a locally
     // created fallback catalog win over the cloud catalog.
-    _syncFromCloud().catchError((_) {});
+    // A full import is manual. Running it while this page is rebuilt resets
+    // the list position and keeps the progress indicator active.
   }
 
   Future<void> _syncFromCloud({bool force = false}) {
@@ -66,7 +67,6 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
       // Never block the product pages on the server. They open from the
       // current local workshop catalogue and redraw when the background
       // download finishes.
-      _syncFromCloud().catchError((_) {});
       if (!mounted) return;
       await Navigator.push(
         context,
@@ -125,11 +125,13 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                 : IconButton(
                     icon: const Icon(Icons.cloud_download_rounded),
                     tooltip: 'مزامنة واستيراد الكتالوج العالمي من السحابة',
-                    onPressed: () => _syncFromCloud(force: true).catchError((_) {}),
+                    onPressed: () =>
+                        _syncFromCloud(force: true).catchError((_) {}),
                   ),
         ],
       ),
       body: SingleChildScrollView(
+        key: const PageStorageKey<String>('products-menu-scroll'),
         child: Container(
           padding: const EdgeInsets.all(24.0),
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -156,14 +158,38 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewProfiles()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0627\u0644\u0628\u0631\u0648\u0641\u064a\u0644\u0627\u062a \u0648\u0627\u0644\u0627\u0646\u0638\u0645\u0629", lang),
+                  title: Localization.translate(
+                    "\u0627\u0644\u0628\u0631\u0648\u0641\u064a\u0644\u0627\u062a \u0648\u0627\u0644\u0627\u0646\u0638\u0645\u0629",
+                    lang,
+                  ),
                   icon: Icons.format_shapes_rounded,
                   color: Colors.blue,
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => CatalogManagerScreen(db: widget.db),
+                        builder: (context) =>
+                            CatalogManagerScreen(db: widget.db),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+              // Keep this administrator setup close to the catalogue entry so
+              // it is visible immediately in the desktop products screen.
+              if (settings.isManager) ...[
+                _buildMenuCard(
+                  context,
+                  title: _seriesDesignTitle(lang),
+                  icon: Icons.architecture_rounded,
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            SeriesTableConfigScreen(db: widget.db),
                       ),
                     );
                   },
@@ -173,7 +199,10 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewGlass()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0632\u062c\u0627\u062c", lang),
+                  title: Localization.translate(
+                    "\u0632\u062c\u0627\u062c",
+                    lang,
+                  ),
                   icon: Icons.window_rounded,
                   color: Colors.lightBlue,
                   onTap: () {
@@ -190,7 +219,10 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewShutters()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0633\u062a\u0627\u0631", lang),
+                  title: Localization.translate(
+                    "\u0633\u062a\u0627\u0631",
+                    lang,
+                  ),
                   icon: Icons.view_sidebar_rounded,
                   color: Colors.indigo,
                   onTap: () => _openCloudCatalogPage(
@@ -202,19 +234,24 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewColors()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0627\u0644\u0623\u0644\u0648\u0627\u0646", lang),
+                  title: Localization.translate(
+                    "\u0627\u0644\u0623\u0644\u0648\u0627\u0646",
+                    lang,
+                  ),
                   icon: Icons.color_lens_rounded,
                   color: Colors.purple,
-                  onTap: () => _openCloudCatalogPage(
-                    () => ColorsScreen(db: widget.db),
-                  ),
+                  onTap: () =>
+                      _openCloudCatalogPage(() => ColorsScreen(db: widget.db)),
                 ),
                 const SizedBox(height: 16),
               ],
               if (settings.canViewAccessories()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0627\u0644\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a", lang),
+                  title: Localization.translate(
+                    "\u0627\u0644\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a",
+                    lang,
+                  ),
                   icon: Icons.construction_rounded,
                   color: Colors.orange,
                   onTap: () {
@@ -231,14 +268,18 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewSeriesAccessories()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a \u0627\u0644\u0633\u0644\u0627\u0633\u0644", lang),
+                  title: Localization.translate(
+                    "\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a \u0627\u0644\u0633\u0644\u0627\u0633\u0644",
+                    lang,
+                  ),
                   icon: Icons.account_tree_rounded,
                   color: Colors.deepOrange,
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => SeriesAccessoriesScreen(db: widget.db),
+                        builder: (context) =>
+                            SeriesAccessoriesScreen(db: widget.db),
                       ),
                     );
                   },
@@ -248,7 +289,10 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewJoints()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0627\u0644\u062c\u0648\u0627\u0646\u0627\u062a", lang),
+                  title: Localization.translate(
+                    "\u0627\u0644\u062c\u0648\u0627\u0646\u0627\u062a",
+                    lang,
+                  ),
                   icon: Icons.line_weight_rounded,
                   color: Colors.teal,
                   onTap: () {
@@ -265,7 +309,10 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
               if (settings.canViewKitBundles()) ...[
                 _buildMenuCard(
                   context,
-                  title: Localization.translate("\u0645\u062c\u0645\u0648\u0639\u0627\u062a \u0627\u0644\u0643\u064a\u062a (Kit)", lang),
+                  title: Localization.translate(
+                    "\u0645\u062c\u0645\u0648\u0639\u0627\u062a \u0627\u0644\u0643\u064a\u062a (Kit)",
+                    lang,
+                  ),
                   icon: Icons.inventory_2_rounded,
                   color: Colors.deepPurple,
                   onTap: () {
@@ -279,29 +326,18 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              // \u062a\u062e\u0635\u064a\u0635 \u062c\u062f\u0648\u0644 \u0627\u0644\u0643\u0645\u064a\u0629 \u0648\u0627\u0644\u062a\u0643\u0644\u0641\u0629: \u0644\u0644\u0645\u062f\u064a\u0631 \u0641\u0642\u0637
-              if (settings.isManager) ...[
-                _buildMenuCard(
-                  context,
-                  title: Localization.translate("\u062a\u062e\u0635\u064a\u0635 \u062c\u062f\u0648\u0644 \u0627\u0644\u0643\u0645\u064a\u0629 \u0648\u0627\u0644\u062a\u0643\u0644\u0641\u0629", lang),
-                  icon: Icons.table_chart_rounded,
-                  color: Colors.green,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => SeriesTableConfigScreen(db: widget.db),
-                      ),
-                    );
-                  },
-                ),
-              ],
             ],
           ),
         ),
       ),
     );
   }
+
+  String _seriesDesignTitle(AppLanguage language) => switch (language) {
+    AppLanguage.arabic => 'تعريف مكوّنات السلسلة',
+    AppLanguage.french => 'Définition des composants de la série',
+    AppLanguage.english => 'Series components definition',
+  };
 
   Widget _buildMenuCard(
     BuildContext context, {

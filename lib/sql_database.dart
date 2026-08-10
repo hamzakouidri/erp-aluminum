@@ -55,6 +55,29 @@ class SqlDatabase {
   static final Random _distributedIdRandom = Random.secure();
   static int _lastDistributedId = 0;
 
+  static String _repairLegacyTextEncoding(String value) {
+    if (value.isEmpty ||
+        (!value.contains('Ø') &&
+            !value.contains('Ã') &&
+            !value.contains('Â'))) {
+      return value;
+    }
+    try {
+      final repaired = utf8.decode(latin1.encode(value));
+      return repaired.contains('�') ? value : repaired;
+    } catch (_) {
+      return value;
+    }
+  }
+
+  static final DatabaseFactory _webDbFactory = createDatabaseFactoryFfiWeb(
+    noWebWorker: true,
+    options: SqfliteFfiWebOptions(
+      sqlite3WasmUri: Uri.parse('assets/web/sqlite3.wasm'),
+    ),
+    tag: 'erp_web',
+  );
+
   /// Generates an ordered 64-bit ID without relying on a device-local
   /// AUTOINCREMENT value, so concurrent offline additions cannot collide.
   static int _nextDistributedId() {
@@ -79,7 +102,10 @@ class SqlDatabase {
 
   static DatabaseFactory get _dbFactory {
     if (kIsWeb) {
-      return databaseFactoryFfiWeb;
+      // The shared-worker variant depends on sqflite_sw.js being present in
+      // every Firebase deployment. The no-worker variant persists in
+      // IndexedDB and reads the bundled wasm asset above instead.
+      return _webDbFactory;
     }
     if (!kIsWeb &&
         (Platform.isWindows ||
@@ -117,6 +143,9 @@ class SqlDatabase {
     'Profile',
     'Series',
     'Sections',
+    'SeriesDesignConfig',
+    'SeriesDesignRoles',
+    'SeriesShutterRules',
     'Colors',
     'Accessories',
     'Joints',
@@ -210,7 +239,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 52,
+          version: 54,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -221,7 +250,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 52,
+      version: 54,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -348,6 +377,10 @@ class SqlDatabase {
         'ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0;',
       );
     } catch (_) {}
+
+    await _ensureSeriesDesignTables(db);
+    await _ensureClientCodeInfrastructure(db);
+    await _backfillClientCodes(db);
 
     // Automatically link section and profile images based on their codes
     try {
@@ -1355,6 +1388,87 @@ class SqlDatabase {
     ''');
   }
 
+  /// Stores the administrator-defined blueprint used by the single Design
+  /// screen.  The renderer and the material calculator read the same rows;
+  /// a series is therefore identified by component roles, never by a name or
+  /// by a hard-coded section number.
+  Future<void> _ensureSeriesDesignTables(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SeriesDesignConfig (
+        series_id INTEGER PRIMARY KEY,
+        supports_shutter INTEGER NOT NULL DEFAULT 0,
+        allows_divisions INTEGER NOT NULL DEFAULT 1,
+        allowed_contents_json TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SeriesDesignRoles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        series_id INTEGER NOT NULL,
+        role_key TEXT NOT NULL,
+        section_id INTEGER NOT NULL,
+        is_required INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_visible INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(series_id, role_key, section_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SeriesShutterRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        series_id INTEGER NOT NULL,
+        component_id INTEGER NOT NULL,
+        component_role TEXT NOT NULL,
+        selection_mode TEXT NOT NULL DEFAULT 'always',
+        min_width_mm REAL,
+        max_width_mm REAL,
+        min_height_mm REAL,
+        max_height_mm REAL,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(series_id, component_id, component_role, selection_mode)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_design_roles_series ON SeriesDesignRoles(series_id, role_key);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_design_shutter_series ON SeriesShutterRules(series_id, component_role);',
+    );
+  }
+
+  /// These roles are independent of the legacy `type` field: one profile can
+  /// be offered as a frame, sash and/or mullion.  Keep the schema repair here
+  /// too because users can edit the catalogue in a session that started before
+  /// the normal database-open migration ran.
+  Future<void> _ensureSectionDrawingRoleColumns(DatabaseExecutor executor) async {
+    try {
+      await executor.execute(
+        'ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Sections ADD COLUMN is_frame INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Sections ADD COLUMN is_sash INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+  }
+
   Future<void> _ensureShutterComponentSeeds(DatabaseExecutor db) async {
     final List<Map<String, dynamic>> itemsToSeed = [
       {
@@ -2326,6 +2440,14 @@ class SqlDatabase {
         );
       } catch (_) {}
     }
+
+    if (oldVersion < 53) {
+      await _ensureSeriesDesignTables(db);
+    }
+    if (oldVersion < 54) {
+      await _ensureClientCodeInfrastructure(db);
+      await _backfillClientCodes(db);
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -2414,6 +2536,7 @@ class SqlDatabase {
     await db.execute('''
     CREATE TABLE Client (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_code INTEGER NOT NULL DEFAULT 0,
       firstname TEXT NOT NULL,
       lastname TEXT NOT NULL,
       phone1 TEXT,
@@ -2429,6 +2552,7 @@ class SqlDatabase {
       creation_platform TEXT NOT NULL DEFAULT 'unknown'
     )
     ''');
+    await _ensureClientCodeInfrastructure(db);
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Measurements (
@@ -3010,11 +3134,55 @@ class SqlDatabase {
     double price,
   ) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('SectionColorPrices', {
-      'section_id': sectionId,
-      'color_id': colorId,
-      'price': price,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    if (myDb == null) {
+      throw StateError('قاعدة البيانات غير متاحة لحفظ سعر القطاع');
+    }
+    if (!price.isFinite || price < 0) {
+      throw ArgumentError.value(price, 'price', 'سعر القطاع غير صالح');
+    }
+
+    await myDb.execute('''
+      CREATE TABLE IF NOT EXISTS SectionColorPrices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id INTEGER NOT NULL,
+        color_id INTEGER NOT NULL,
+        price REAL NOT NULL DEFAULT 0.0,
+        UNIQUE(section_id, color_id)
+      )
+    ''');
+
+    // بعض قواعد البيانات القديمة لم يكن فيها القيد الفريد على
+    // (section_id, color_id). في تلك الحالة كان INSERT OR REPLACE يضيف صفاً
+    // جديداً ويترك السعر القديم يُقرأ أولاً. نحدّث كل الصفوف المطابقة صراحة.
+    final updated = await myDb.update(
+      'SectionColorPrices',
+      {'price': price},
+      where: 'section_id = ? AND color_id = ?',
+      whereArgs: [sectionId, colorId],
+    );
+    final res = updated > 0
+        ? updated
+        : await myDb.insert('SectionColorPrices', {
+            'section_id': sectionId,
+            'color_id': colorId,
+            'price': price,
+          });
+
+    // تحقق مباشر قبل إعلام الواجهة بالنجاح؛ لا نعرض نجاحاً وهمياً إذا لم
+    // يُكتب السعر فعلاً في التخزين المحلي.
+    final persisted = await myDb.query(
+      'SectionColorPrices',
+      columns: ['price'],
+      where: 'section_id = ? AND color_id = ?',
+      whereArgs: [sectionId, colorId],
+    );
+    if (persisted.isEmpty ||
+        persisted.any(
+          (row) =>
+              ((row['price'] as num?)?.toDouble() ?? double.nan) != price,
+        )) {
+      throw StateError('تعذر التحقق من حفظ سعر القطاع');
+    }
     CloudSyncService().notifyChange();
     return res;
   }
@@ -3123,6 +3291,10 @@ class SqlDatabase {
     int isMullion = 0,
   }) async {
     Database? myDb = await db;
+    // A running application can keep an older local database open during a
+    // hot restart.  Ensure the independent drawing-role columns exist before
+    // creating a section, rather than silently losing the selected roles.
+    await _ensureSectionDrawingRoleColumns(myDb!);
     var res = await myDb!.insert('Sections', {
       'series_id': seriesId,
       'code': code,
@@ -3146,24 +3318,23 @@ class SqlDatabase {
       'is_sash': isSash,
       'is_mullion': isMullion,
     });
-    CloudSyncService().notifyChange();
+    // Sections are part of the shared catalogue.  A normal data-change
+    // notification does not mark the catalogue as newer, so opening the
+    // profile page could import an older catalogue and undo these roles.
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
   Future<int> updateSection(int id, Map<String, dynamic> data) async {
     Database? myDb = await db;
-    try {
-      await myDb!.execute(
-        "ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;",
-      );
-    } catch (_) {}
+    await _ensureSectionDrawingRoleColumns(myDb!);
     var res = await myDb!.update(
       'Sections',
       data,
       where: 'id = ?',
       whereArgs: [id],
     );
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyCatalogChange();
     return res;
   }
 
@@ -3180,9 +3351,183 @@ class SqlDatabase {
   }
 
   //////////////////////////////////// Client //////////////////////////////////////
+  /// Adds the immutable, user-facing client ID infrastructure.  [id] remains
+  /// a distributed technical key for synchronisation; [client_code] is the
+  /// business ID shown to people (1, 2, 3...) and is never recalculated.
+  Future<void> _ensureClientCodeInfrastructure(
+    DatabaseExecutor executor,
+  ) async {
+    try {
+      await executor.execute(
+        'ALTER TABLE Client ADD COLUMN client_code INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {
+      // The column already exists on new and upgraded databases.
+    }
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS ClientCodeSequence (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_code INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await executor.insert('ClientCodeSequence', {
+      'id': 1,
+      'last_code': 0,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  int _positiveInt(Object? value) {
+    if (value is num) {
+      final number = value.toInt();
+      return number > 0 ? number : 0;
+    }
+    final parsed = int.tryParse(value?.toString().trim() ?? '') ?? 0;
+    return parsed > 0 ? parsed : 0;
+  }
+
+  /// Gives legacy rows a permanent client code once.  Existing old local IDs
+  /// are preserved as their visible code; newer distributed IDs receive the
+  /// next available code.  The sequence's high-water mark is retained even
+  /// if all clients are later deleted.
+  Future<void> _backfillClientCodes(DatabaseExecutor executor) async {
+    await _ensureClientCodeInfrastructure(executor);
+    final rows = await executor.query(
+      'Client',
+      columns: ['id', 'client_code', 'created_at'],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    if (rows.isEmpty) return;
+
+    final usedCodes = <int>{};
+    final pending = <Map<String, dynamic>>[];
+    var highestCode = 0;
+
+    for (final source in rows) {
+      final row = Map<String, dynamic>.from(source);
+      final code = _positiveInt(row['client_code']);
+      if (code > 0 && usedCodes.add(code)) {
+        if (code > highestCode) highestCode = code;
+      } else {
+        pending.add(row);
+      }
+    }
+
+    // Old databases used AUTOINCREMENT for Client.id. Preserve those numbers
+    // so a historical client #21 stays #21 after this migration.
+    final stillPending = <Map<String, dynamic>>[];
+    for (final row in pending) {
+      final legacyId = _positiveInt(row['id']);
+      if (legacyId > 0 && legacyId < 100000 && usedCodes.add(legacyId)) {
+        await executor.update(
+          'Client',
+          {'client_code': legacyId},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        if (legacyId > highestCode) highestCode = legacyId;
+      } else {
+        stillPending.add(row);
+      }
+    }
+
+    for (final row in stillPending) {
+      do {
+        highestCode++;
+      } while (usedCodes.contains(highestCode));
+      usedCodes.add(highestCode);
+      await executor.update(
+        'Client',
+        {'client_code': highestCode},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+
+    final sequenceRows = await executor.query(
+      'ClientCodeSequence',
+      columns: ['last_code'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    final previousHighWater = sequenceRows.isEmpty
+        ? 0
+        : _positiveInt(sequenceRows.first['last_code']);
+    if (highestCode > previousHighWater) {
+      await executor.update(
+        'ClientCodeSequence',
+        {'last_code': highestCode},
+        where: 'id = 1',
+      );
+    }
+  }
+
+  Future<int> _reserveNextClientCode(DatabaseExecutor executor) async {
+    await _ensureClientCodeInfrastructure(executor);
+    final sequenceRows = await executor.query(
+      'ClientCodeSequence',
+      columns: ['last_code'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    final sequenceValue = sequenceRows.isEmpty
+        ? 0
+        : _positiveInt(sequenceRows.first['last_code']);
+    final maxRows = await executor.rawQuery(
+      'SELECT MAX(client_code) AS max_code FROM Client',
+    );
+    final maxExisting = maxRows.isEmpty
+        ? 0
+        : _positiveInt(maxRows.first['max_code']);
+    final nextCode = (sequenceValue > maxExisting
+            ? sequenceValue
+            : maxExisting) +
+        1;
+    await executor.update(
+      'ClientCodeSequence',
+      {'last_code': nextCode},
+      where: 'id = 1',
+    );
+    return nextCode;
+  }
+
   Future<List<Map<String, dynamic>>> readClient() async {
     Database? myDb = await db;
     return await myDb!.rawQuery('SELECT * FROM Client');
+  }
+
+  /// Client primary keys are intentionally large distributed IDs so records
+  /// created offline on two devices cannot collide.  Screens and documents
+  /// must show a short, human-friendly number instead of exposing that key.
+  ///
+  /// This method leaves [readClient] unchanged because synchronisation needs
+  /// the exact database rows, without this computed display-only field.
+  Future<List<Map<String, dynamic>>> readClientsForDisplay() async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _backfillClientCodes(myDb);
+    return _queryClientsForDisplay(database: myDb);
+  }
+
+  Future<List<Map<String, dynamic>>> _queryClientsForDisplay({
+    Database? database,
+    String? whereClause,
+    List<Object?>? whereArgs,
+  }) async {
+    final myDb = database ?? await db;
+    if (myDb == null) return [];
+
+    final where = (whereClause ?? '').trim();
+    final filter = where.isEmpty ? '' : 'WHERE $where';
+    return myDb.rawQuery(
+      '''
+      SELECT c.*,
+        c.client_code AS display_number
+      FROM Client AS c
+      $filter
+      ORDER BY c.client_code ASC, c.id ASC
+      ''',
+      whereArgs,
+    );
   }
 
   Future<int> insertClient(
@@ -3198,27 +3543,31 @@ class SqlDatabase {
     String ai = '',
   ]) async {
     Database? myDb = await db;
-    var res = await myDb!.rawInsert(
-      'INSERT INTO Client (id, firstname, lastname, phone1, phone2, email, address, nif, nis, rc, ai, created_at, updated_at, creation_platform) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        _nextDistributedId(),
-        firstname,
-        lastname,
-        phone1,
-        phone2,
-        email,
-        address,
-        nif,
-        nis,
-        rc,
-        ai,
-        now,
-        now,
-        _currentCreationPlatform,
-      ],
-    );
+    if (myDb == null) throw StateError('قاعدة بيانات الزبائن غير متاحة');
+    final clientId = _nextDistributedId();
+    await myDb.transaction((txn) async {
+      await _backfillClientCodes(txn);
+      final clientCode = await _reserveNextClientCode(txn);
+      await txn.insert('Client', {
+        'id': clientId,
+        'client_code': clientCode,
+        'firstname': firstname,
+        'lastname': lastname,
+        'phone1': phone1,
+        'phone2': phone2,
+        'email': email,
+        'address': address,
+        'nif': nif,
+        'nis': nis,
+        'rc': rc,
+        'ai': ai,
+        'created_at': now,
+        'updated_at': now,
+        'creation_platform': _currentCreationPlatform,
+      });
+    });
     CloudSyncService().notifyChangeImmediate();
-    return res;
+    return clientId;
   }
 
   Future<int> updateClient(
@@ -3380,6 +3729,44 @@ class SqlDatabase {
     return await dbClient!.rawQuery(
       'SELECT * FROM Client WHERE $whereClause',
       whereArgs,
+    );
+  }
+
+  /// Search variant for customer-facing lists.  The returned maps contain
+  /// [display_number], while [id] remains the internal foreign-key value.
+  Future<List<Map<String, dynamic>>> searchClientsForDisplay(
+    String query,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _backfillClientCodes(myDb);
+    final terms = query
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toList();
+    if (terms.isEmpty) return _queryClientsForDisplay(database: myDb);
+
+    final whereClause = terms
+        .map(
+          (_) =>
+              '(c.firstname LIKE ? OR c.lastname LIKE ? OR c.phone1 LIKE ? OR c.phone2 LIKE ? OR c.address LIKE ?)',
+        )
+        .join(' AND ');
+    final whereArgs = <Object?>[];
+    for (final term in terms) {
+      whereArgs.addAll([
+        '%$term%',
+        '%$term%',
+        '%$term%',
+        '%$term%',
+        '%$term%',
+      ]);
+    }
+    return _queryClientsForDisplay(
+      database: myDb,
+      whereClause: whereClause,
+      whereArgs: whereArgs,
     );
   }
 
@@ -3593,10 +3980,11 @@ class SqlDatabase {
     }
   }
 
-  Future<void> syncOrdersStatusFromCloud() async {
+  /// Returns true only when cloud data changed a local order.
+  Future<bool> syncOrdersStatusFromCloud() async {
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
-    if (workshopId == null || workshopId.isEmpty) return;
+    if (workshopId == null || workshopId.isEmpty) return false;
 
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -3606,7 +3994,8 @@ class SqlDatabase {
           .get();
 
       Database? myDb = await db;
-      if (myDb == null) return;
+      if (myDb == null) return false;
+      var didChange = false;
 
       for (var doc in snapshot.docs) {
         final orderId = int.tryParse(doc.id);
@@ -3643,14 +4032,17 @@ class SqlDatabase {
             if (updateMap.containsKey('status')) {
               await _syncAllocationsFromOrderStatus(orderId, cloudStatus);
             }
+            didChange = true;
           }
         }
       }
       debugPrint(
         '--- SqlDatabase: Synced orders status from cloud successfully ---',
       );
+      return didChange;
     } catch (e) {
       debugPrint('Error syncing orders status from cloud: $e');
+      return false;
     }
   }
 
@@ -3974,41 +4366,25 @@ class SqlDatabase {
     return (orderId % 1000).abs();
   }
 
-  /// Returns a short, stable client reference for documents. Client primary
-  /// keys are distributed IDs, so displaying them would expose a long
-  /// timestamp-like value instead of a usable client number.
+  /// Returns the immutable customer number shown in tables and documents.
+  /// This must never be derived from the current row count because deletion
+  /// of another client must not alter a customer's identifier.
   Future<int> getClientSequenceNumber(int clientId) async {
     if (clientId <= 0) return 0;
-    if (clientId < 100000) return clientId;
 
     try {
       final myDb = await db;
       if (myDb == null) return 0;
+      await _backfillClientCodes(myDb);
       final rows = await myDb.query(
         'Client',
-        columns: ['created_at'],
+        columns: ['client_code'],
         where: 'id = ? OR CAST(id AS TEXT) = ?',
         whereArgs: [clientId, clientId.toString()],
         limit: 1,
       );
       if (rows.isEmpty) return 0;
-
-      final createdAt = rows.first['created_at']?.toString().trim() ?? '';
-      final countResult = createdAt.isEmpty
-          ? await myDb.rawQuery(
-              'SELECT COUNT(*) AS seq FROM Client WHERE id <= ?',
-              [clientId],
-            )
-          : await myDb.rawQuery(
-              '''
-              SELECT COUNT(*) AS seq FROM Client
-              WHERE created_at < ? OR (created_at = ? AND id <= ?)
-              ''',
-              [createdAt, createdAt, clientId],
-            );
-      if (countResult.isEmpty) return 0;
-      final sequence = (countResult.first['seq'] as num?)?.toInt() ?? 0;
-      return sequence > 0 ? sequence : 0;
+      return _positiveInt(rows.first['client_code']);
     } catch (e) {
       debugPrint('Error computing client sequence number: $e');
       return 0;
@@ -6588,10 +6964,7 @@ class SqlDatabase {
     Database? myDb = await db;
     var res = await myDb!.update(
       'Commandes_details',
-      {
-        'delivered_qty': 0,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
+      {'delivered_qty': 0, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id_commandes = ?',
       whereArgs: [idCommande],
     );
@@ -6712,7 +7085,33 @@ class SqlDatabase {
         )
       ''');
     } catch (_) {}
-    return await myDb.query('Caisses', orderBy: 'id ASC');
+    var rows = await myDb.query('Caisses', orderBy: 'id ASC');
+    var repairedAnyName = false;
+    for (final row in rows) {
+      final rawName = row['name']?.toString() ?? '';
+      final repairedName = _repairLegacyTextEncoding(rawName);
+      if (rawName.isEmpty || repairedName == rawName) continue;
+      final id = row['id'];
+      if (id == null) continue;
+      await myDb.update(
+        'Caisses',
+        {'name': repairedName},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await myDb.update(
+        'Treasury',
+        {'caisse_name': repairedName},
+        where: 'caisse_name = ?',
+        whereArgs: [rawName],
+      );
+      repairedAnyName = true;
+    }
+    if (repairedAnyName) {
+      CloudSyncService().notifyChange();
+      rows = await myDb.query('Caisses', orderBy: 'id ASC');
+    }
+    return rows;
   }
 
   Future<int> insertCaisse(String name) async {
@@ -9508,6 +9907,7 @@ class SqlDatabase {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Client (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_code INTEGER NOT NULL DEFAULT 0,
         firstname TEXT NOT NULL,
         lastname TEXT NOT NULL,
         phone1 TEXT,
@@ -9519,6 +9919,7 @@ class SqlDatabase {
         creation_platform TEXT NOT NULL DEFAULT 'unknown'
       )
     ''');
+    await _ensureClientCodeInfrastructure(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Commandes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9695,6 +10096,7 @@ class SqlDatabase {
         await db.execute(sql);
       } catch (_) {}
     }
+    await _ensureSeriesDesignTables(db);
     await _ensureSyncTombstoneInfrastructure(db);
   }
 
@@ -9876,6 +10278,10 @@ class SqlDatabase {
       'Series',
       'Sections',
       'SeriesTableConfig',
+      'SeriesDesignConfig',
+      'SeriesDesignRoles',
+      'SeriesShutterRules',
+      'ClientCodeSequence',
       'Client',
       'Projects',
       'Measurements',
@@ -10029,6 +10435,9 @@ class SqlDatabase {
       }, where: 'id = 1');
       await txn.execute('PRAGMA foreign_keys = ON');
     });
+    // Old cloud snapshots have no client_code field. Assign immutable codes
+    // once immediately after restore, before any customer list is displayed.
+    await _backfillClientCodes(myDb);
   }
 
   Future<Map<String, dynamic>> exportGlobalCatalog() async {
@@ -11795,6 +12204,208 @@ class SqlDatabase {
       ],
     );
     CloudSyncService().notifyChange();
+  }
+
+  // ── Dynamic design definition (drawing + shutter) ───────────────────────
+
+  Future<Map<String, dynamic>?> getSeriesDesignConfig(int seriesId) async {
+    final myDb = await db;
+    if (myDb == null) return null;
+    await _ensureSeriesDesignTables(myDb);
+    final rows = await myDb.query(
+      'SeriesDesignConfig',
+      where: 'series_id = ?',
+      whereArgs: [seriesId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+
+  Future<List<Map<String, dynamic>>> getSeriesDesignRoles(int seriesId) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    return myDb.rawQuery(
+      '''
+      SELECT r.*, s.code AS section_code, s.name AS section_name,
+             s.type AS section_type, s.visible_width, s.thickness
+      FROM SeriesDesignRoles r
+      LEFT JOIN Sections s ON s.id = r.section_id
+      WHERE r.series_id = ?
+      ORDER BY r.sort_order ASC, r.is_default DESC, r.id ASC
+    ''',
+      [seriesId],
+    );
+  }
+
+  /// Replaces only the profile-to-role mapping of a series.  It deliberately
+  /// leaves drawing options and shutter rules untouched: a shutter is a
+  /// separate product and must not be coupled to the aluminium series.
+  Future<void> saveSeriesDesignRoles({
+    required int seriesId,
+    required List<Map<String, dynamic>> roles,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final now = DateTime.now().toIso8601String();
+    await myDb.transaction((txn) async {
+      await txn.delete(
+        'SeriesDesignRoles',
+        where: 'series_id = ?',
+        whereArgs: [seriesId],
+      );
+      for (var index = 0; index < roles.length; index++) {
+        final role = roles[index];
+        final sectionId = (role['section_id'] as num?)?.toInt();
+        final roleKey = role['role_key']?.toString().trim() ?? '';
+        if (sectionId == null || roleKey.isEmpty) continue;
+        await txn.insert('SeriesDesignRoles', {
+          'series_id': seriesId,
+          'role_key': roleKey,
+          'section_id': sectionId,
+          'is_required': role['is_required'] == true || role['is_required'] == 1
+              ? 1
+              : 0,
+          'is_default': role['is_default'] == true || role['is_default'] == 1
+              ? 1
+              : 0,
+          'is_visible': role['is_visible'] == false || role['is_visible'] == 0
+              ? 0
+              : 1,
+          'sort_order': index,
+          'updated_at': now,
+        });
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<List<Map<String, dynamic>>> getSeriesShutterRules(int seriesId) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    return myDb.rawQuery(
+      '''
+      SELECT r.*, c.name AS component_name, c.component_type,
+             c.measurement, c.shutter_subtype, c.unit
+      FROM SeriesShutterRules r
+      LEFT JOIN ShutterComponents c ON c.id = r.component_id
+      WHERE r.series_id = ? AND r.is_active = 1
+      ORDER BY r.component_role ASC, r.sort_order ASC, r.is_default DESC, r.id ASC
+    ''',
+      [seriesId],
+    );
+  }
+
+  /// Saves an entire definition in one transaction. Replacing the rows keeps
+  /// the page predictable: the exact set visible in Design is always the set
+  /// selected by the administrator, with no old component left behind.
+  Future<void> saveSeriesDesignDefinition({
+    required int seriesId,
+    required bool supportsShutter,
+    required bool allowsDivisions,
+    required List<String> allowedContents,
+    required List<Map<String, dynamic>> roles,
+    required List<Map<String, dynamic>> shutterRules,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final now = DateTime.now().toIso8601String();
+    await myDb.transaction((txn) async {
+      await txn.insert('SeriesDesignConfig', {
+        'series_id': seriesId,
+        'supports_shutter': supportsShutter ? 1 : 0,
+        'allows_divisions': allowsDivisions ? 1 : 0,
+        'allowed_contents_json': jsonEncode(allowedContents),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      await txn.delete(
+        'SeriesDesignRoles',
+        where: 'series_id = ?',
+        whereArgs: [seriesId],
+      );
+      for (var index = 0; index < roles.length; index++) {
+        final role = roles[index];
+        final sectionId = (role['section_id'] as num?)?.toInt();
+        final roleKey = role['role_key']?.toString().trim() ?? '';
+        if (sectionId == null || roleKey.isEmpty) continue;
+        await txn.insert('SeriesDesignRoles', {
+          'series_id': seriesId,
+          'role_key': roleKey,
+          'section_id': sectionId,
+          'is_required': role['is_required'] == true || role['is_required'] == 1
+              ? 1
+              : 0,
+          'is_default': role['is_default'] == true || role['is_default'] == 1
+              ? 1
+              : 0,
+          'is_visible': role['is_visible'] == false || role['is_visible'] == 0
+              ? 0
+              : 1,
+          'sort_order': index,
+          'updated_at': now,
+        });
+      }
+
+      await txn.delete(
+        'SeriesShutterRules',
+        where: 'series_id = ?',
+        whereArgs: [seriesId],
+      );
+      for (var index = 0; index < shutterRules.length; index++) {
+        final rule = shutterRules[index];
+        final componentId = (rule['component_id'] as num?)?.toInt();
+        final role = rule['component_role']?.toString().trim() ?? '';
+        if (componentId == null || role.isEmpty) continue;
+        await txn.insert('SeriesShutterRules', {
+          'series_id': seriesId,
+          'component_id': componentId,
+          'component_role': role,
+          'selection_mode': rule['selection_mode']?.toString() ?? 'always',
+          'min_width_mm': rule['min_width_mm'],
+          'max_width_mm': rule['max_width_mm'],
+          'min_height_mm': rule['min_height_mm'],
+          'max_height_mm': rule['max_height_mm'],
+          'is_default': rule['is_default'] == true || rule['is_default'] == 1
+              ? 1
+              : 0,
+          'is_active': rule['is_active'] == false || rule['is_active'] == 0
+              ? 0
+              : 1,
+          'sort_order': index,
+          'updated_at': now,
+        });
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<List<Map<String, dynamic>>> getDesignSectionsForRoles(
+    int seriesId,
+    Iterable<String> roleKeys,
+  ) async {
+    final keys = roleKeys.where((key) => key.trim().isNotEmpty).toList();
+    if (keys.isEmpty) return [];
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    final placeholders = List.filled(keys.length, '?').join(',');
+    return myDb.rawQuery(
+      '''
+      SELECT s.*
+      FROM Sections s
+      INNER JOIN SeriesDesignRoles r ON r.section_id = s.id
+      WHERE r.series_id = ?
+        AND r.is_visible = 1
+        AND r.role_key IN ($placeholders)
+        AND (s.is_active = 1 OR s.is_active IS NULL)
+      ORDER BY r.sort_order ASC, r.is_default DESC, s.name ASC
+    ''',
+      [seriesId, ...keys],
+    );
   }
 
   Future<Map<int, String>> getOrderAssignedWorkersMap() async {

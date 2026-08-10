@@ -49,7 +49,13 @@ void main() async {
   try {
     if (kIsWeb) {
       sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfiWebNoWebWorker;
+      databaseFactory = createDatabaseFactoryFfiWeb(
+        noWebWorker: true,
+        options: SqfliteFfiWebOptions(
+          sqlite3WasmUri: Uri.parse('assets/web/sqlite3.wasm'),
+        ),
+        tag: 'erp_web',
+      );
     }
   } catch (e) {
     debugPrint('SQLite Web init error: $e');

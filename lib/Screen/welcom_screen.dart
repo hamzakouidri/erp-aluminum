@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, mapEquals;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -131,18 +131,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
     super.initState();
     _loadUserData();
     _loadStats();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        await CloudSyncService().init();
-        await CloudSyncService().refreshFromCloudIfChanged();
-        if (mounted) {
-          _loadStats();
-        }
-      } catch (e) {
-        debugPrint('WelcomScreen cloud refresh notice: $e');
-      }
-    });
   }
 
   /// تحديث صورة الشعار فقط عند تغيير فعلي لتجنب إعادة فك التشفير في كل rebuild
@@ -396,7 +384,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         db.readCommandesWithClients(),
         db.readTreasury(),
         db.readEmployees(),
-        db.readClient(),
+        db.readClientsForDisplay(),
         db.getOrderAssignedWorkersMap(),
       ]);
       final stats = dashboardData[0] as Map<String, dynamic>;
@@ -574,15 +562,24 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
       // استماع التحديثات المحلية مع debounce لمنع تكرار البناء خلال مليسثانية فقيرة
       await _databaseUpdateSub?.cancel();
-      _databaseUpdateSub = CloudSyncService().dbUpdateStream.listen((_) {
+      _databaseUpdateSub = CloudSyncService().dbUpdateStream.listen((event) {
         if (!mounted) return;
+        // Allocation/measurement listeners can emit a snapshot without a
+        // dashboard value changing. Reloading the whole dashboard for those
+        // events restarts the orders chart and makes it look like it is
+        // continually loading.
+        if (event == 'status_updated' || event == 'measurements_updated') {
+          return;
+        }
         _statsDebounce?.cancel();
-        _statsDebounce = Timer(const Duration(milliseconds: 300), () {
+        _statsDebounce = Timer(const Duration(milliseconds: 600), () {
           if (mounted) {
-            Provider.of<AppSettingsProvider>(
-              context,
-              listen: false,
-            ).reloadPermissions();
+            if (event == 'cloud_restored' || event == 'cloud_delta_applied') {
+              Provider.of<AppSettingsProvider>(
+                context,
+                listen: false,
+              ).reloadPermissions();
+            }
             _loadStats();
           }
         });
@@ -1859,6 +1856,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     AppLanguage lang,
   ) {
     final clientId = (client['id'] as num?)?.toInt() ?? 0;
+    final clientNumber =
+        (client['display_number'] as num?)?.toInt() ?? clientId;
     final firstName = (client['firstname'] ?? '').toString().trim();
     final lastName = (client['lastname'] ?? '').toString().trim();
     final fullName = '$firstName $lastName'.trim();
@@ -1919,14 +1918,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
           child: Row(
             children: [
               _desktopTableCell(
-                '#$clientId',
+                '#$clientNumber',
                 1,
                 contentColor,
                 false,
                 colorOverride: const Color(0xFF0EA5E9),
               ),
               _desktopTableCell(
-                fullName.isEmpty ? 'زبون #$clientId' : fullName,
+                fullName.isEmpty ? 'زبون #$clientNumber' : fullName,
                 3,
                 contentColor,
                 false,
@@ -4455,7 +4454,10 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   @override
   void didUpdateWidget(_OrdersChartCard old) {
     super.didUpdateWidget(old);
-    _anim.forward(from: 0);
+    if (!mapEquals(old.byStatus, widget.byStatus) ||
+        !mapEquals(old.byMonth, widget.byMonth)) {
+      _anim.forward(from: 0);
+    }
   }
 
   @override

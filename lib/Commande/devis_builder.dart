@@ -665,10 +665,7 @@ class DevisBuilder {
     final itemRawProfColor =
         map['selectedDbColor']?['name']?.toString() ??
         _colorLabel(itemColor ?? '');
-    final itemProfColor = Localization.translate(
-      itemRawProfColor,
-      _currentLang,
-    );
+    final itemProfColor = _localizedColorLabel(itemRawProfColor);
     final detailId = item['id'] as int? ?? 0;
 
     final seriesName = map['seriesName'];
@@ -1410,8 +1407,8 @@ class DevisBuilder {
     final rawAccColor =
         map['selectedAccessoryColor']?['name']?.toString() ?? rawProfColor;
 
-    final profColor = Localization.translate(rawProfColor, _currentLang);
-    final accColor = Localization.translate(rawAccColor, _currentLang);
+    final profColor = _localizedColorLabel(rawProfColor);
+    final accColor = _localizedColorLabel(rawAccColor);
 
     if (_currentLang == AppLanguage.french) {
       details.add('Couleur Profil: $profColor');
@@ -1838,6 +1835,54 @@ class DevisBuilder {
           return color;
       }
     }
+  }
+
+  /// Database colour names are catalogue data and may be saved in Arabic,
+  /// French or English.  Do not expose that stored label in a Devis: its
+  /// colour name must always follow the language chosen for the document.
+  static String _localizedColorLabel(String rawColor) {
+    final raw = rawColor.trim();
+    final normalized = raw.toLowerCase();
+    String? colorKey;
+    if (const <String>{'white', 'blanc', 'أبيض', 'الأبيض', 'الابيض'}
+        .contains(normalized)) {
+      colorKey = 'white';
+    } else if (const <String>{'gray', 'grey', 'gris', 'رمادي', 'الرمادي'}
+        .contains(normalized)) {
+      colorKey = 'grey';
+    } else if (const <String>{'black', 'noir', 'أسود', 'الأسود', 'الاسود'}
+        .contains(normalized)) {
+      colorKey = 'black';
+    } else if (const <String>{
+      'brown',
+      'wood',
+      'bois',
+      'faux bois',
+      'بني',
+      'البني',
+      'خشبي',
+      'الخشبي',
+    }.contains(normalized)) {
+      colorKey = 'wood';
+    }
+
+    if (colorKey != null) {
+      final labels = switch (colorKey) {
+        'white' => const ['أبيض', 'Blanc', 'White'],
+        'grey' => const ['رمادي', 'Gris', 'Grey'],
+        'black' => const ['أسود', 'Noir', 'Black'],
+        _ => const ['خشبي', 'Faux Bois', 'Wood'],
+      };
+      return switch (_currentLang) {
+        AppLanguage.arabic => labels[0],
+        AppLanguage.french => labels[1],
+        AppLanguage.english => labels[2],
+      };
+    }
+
+    final normalizedLabel = _colorLabel(raw);
+    if (normalizedLabel != raw) return normalizedLabel;
+    return Localization.translate(raw, _currentLang);
   }
 
   static String amountToFrenchWords(double amount) {

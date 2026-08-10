@@ -543,6 +543,7 @@ class SyncGateway extends StatefulWidget {
 class _SyncGatewayState extends State<SyncGateway> {
   static bool _hasSyncedOnce = false;
   bool _isSyncing = false;
+  String? _syncError;
   String _syncStatus = 'جاري فحص قاعدة البيانات المحلية...';
 
   @override
@@ -560,11 +561,14 @@ class _SyncGatewayState extends State<SyncGateway> {
 
   Future<void> _checkAndSync() async {
     try {
+      // Resolve the workshop from the signed-in Firebase account before
+      // opening/restoring the local web database. The preference write from
+      // SubscriptionChecker is asynchronous and can otherwise be stale.
+      await CloudSyncService().init();
       final db = SqlDatabase();
       final myDb = await db.db;
       if (myDb == null) {
-        _enterApp();
-        return;
+        throw StateError('تعذر فتح قاعدة البيانات المحلية.');
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -616,7 +620,14 @@ class _SyncGatewayState extends State<SyncGateway> {
       _hasSyncedOnce = true;
     } catch (e) {
       debugPrint('Sync gateway error: $e');
-      _enterApp();
+      if (!mounted) return;
+      setState(() {
+        _isSyncing = false;
+        _syncError =
+            'تعذر تنزيل بيانات الورشة. لم يتم إنشاء أو حذف أي بيانات.\n'
+            'تحقق من الاتصال ثم اضغط «إعادة المحاولة».\n\n'
+            '${CloudSyncService().lastRestoreSummary}';
+      });
     }
   }
 
@@ -634,6 +645,61 @@ class _SyncGatewayState extends State<SyncGateway> {
 
   @override
   Widget build(BuildContext context) {
+    if (_syncError != null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_rounded,
+                    color: Colors.orange,
+                    size: 64,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'لم تُسترجع بيانات الورشة بعد',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _syncError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontFamily: 'Cairo', height: 1.6),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _syncError = null;
+                        _isSyncing = true;
+                        _syncStatus = 'جاري إعادة تنزيل بيانات الورشة...';
+                      });
+                      _checkAndSync();
+                    },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text(
+                      'إعادة المحاولة',
+                      style: TextStyle(fontFamily: 'Cairo'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (_isSyncing) {
       return Scaffold(
         backgroundColor: Colors.white,

@@ -198,9 +198,21 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final lang = Provider.of<AppSettingsProvider>(context).language;
 
-    final systemItems = <Widget>[];
+    // There is one user-facing entry point for windows and doors.  Whether a
+    // zone is opening, sliding or uses a shutter is determined later by the
+    // selected series definition; those are not separate drawing screens.
+    final systemItems = <Widget>[
+      ItemBuildSystem(
+        width: 70,
+        height: 70,
+        title: Localization.translate('التصميم', lang),
+        iconPath: 'Icon/french.png',
+        onTap: () => _navigateToSystem(context, 'mixed'),
+      ),
+    ];
+    const showLegacySystemCards = false;
 
-    if (_activeModes['sliding'] ?? true) {
+    if (showLegacySystemCards && (_activeModes['sliding'] ?? true)) {
       systemItems.add(
         ItemBuildSystem(
           width: 60,
@@ -212,7 +224,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       );
     }
 
-    if (_activeModes['french'] ?? true) {
+    if (showLegacySystemCards && (_activeModes['french'] ?? true)) {
       if (systemItems.isNotEmpty)
         systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
@@ -226,7 +238,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       );
     }
 
-    if (_activeModes['mixed'] ?? true) {
+    if (showLegacySystemCards && (_activeModes['mixed'] ?? true)) {
       if (systemItems.isNotEmpty)
         systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
@@ -240,7 +252,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       );
     }
 
-    if (_activeModes['rolling'] ?? true) {
+    if (showLegacySystemCards && (_activeModes['rolling'] ?? true)) {
       if (systemItems.isNotEmpty)
         systemItems.add(const Divider(height: 1, indent: 10, endIndent: 10));
       systemItems.add(
@@ -322,6 +334,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
             : Colors.blue,
         foregroundColor: Colors.white,
         actions: [
+          if (false)
           IconButton(
             tooltip: Localization.translate('تعديل الأنظمة المفعلة', lang),
             icon: const Icon(Icons.tune_rounded),

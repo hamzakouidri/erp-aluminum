@@ -264,6 +264,23 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
   }
 
+  /// All category comparisons use the catalogue's canonical French value.
+  /// Older databases can still contain Arabic or legacy spellings, so the
+  /// value must be normalized before deciding which accessory controls show.
+  bool _isScrewCategory(String category) =>
+      mapArabicCategoryToFrench(category) == 'Visse';
+
+  bool _isGacheCategory(String category) {
+    final normalized = mapArabicCategoryToFrench(category);
+    return normalized == 'Gâche' ||
+        normalized == 'Gâche simple' ||
+        normalized == 'Gâche Porte' ||
+        normalized == 'Gâche Coulissante';
+  }
+
+  bool _databaseFlag(dynamic value) =>
+      value == true || value == 1 || value?.toString().trim() == '1';
+
 
 
   @override
@@ -317,6 +334,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       LEFT JOIN Profile p ON s.profile_id = p.id
 
     ''');
+
+    if (!mounted) return;
 
     setState(() {
 
@@ -578,7 +597,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                   const SizedBox(height: 10),
 
-                  if (accessoryCategory != 'البراغي') ...[
+                  if (!_isScrewCategory(accessoryCategory)) ...[
 
                     TextField(
 
@@ -1768,7 +1787,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                 ),
 
-                if (accessoryCategory == 'البراغي') ...[
+                if (_isScrewCategory(accessoryCategory)) ...[
 
                   const SizedBox(height: 10),
 
@@ -1922,7 +1941,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                   builder: (context) {
 
-                    final isGacheCategory = accessoryCategory == 'قاش';
+                      final isGacheCategory =
+                          _isGacheCategory(accessoryCategory);
 
                     if (!isGacheCategory) return const SizedBox.shrink();
 
@@ -2322,7 +2342,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                   String finalName = "${nameCtrl.text} ($quality)";
 
-                  String finalType = accessoryCategory == 'البراغي'
+                  String finalType = _isScrewCategory(accessoryCategory)
 
                       ? "$accessoryCategory|$quality|$screwUsage"
 
@@ -2374,7 +2394,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                       'type': finalType,
 
-                      'screw_count': accessoryCategory == 'البراغي'
+                      'screw_count': _isScrewCategory(accessoryCategory)
 
                           ? 0
 
@@ -2394,7 +2414,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
                       'is_gache_simple':
 
-                          (accessoryCategory == 'Gache simple ouvrant' ||
+                          (accessoryCategory == 'Gâche simple' ||
 
                               isGacheSimple)
 
@@ -3369,4 +3389,3 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
   }
 
 }
-

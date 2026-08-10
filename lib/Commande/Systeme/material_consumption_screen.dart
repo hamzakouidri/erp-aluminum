@@ -18,6 +18,7 @@ import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // نوع Database لاستعلامات SQL المباشرة
 import 'package:shared_preferences/shared_preferences.dart'; // تخزين إعدادات التسعير محليًا (نسبة الربح...)
+
 // الودجت الرئيسي: StatefulWidget لأن الشاشة تحتوي حالة كثيرة (تحديد الأسعار، توسعة الأقسام...)
 class MaterialConsumptionScreen extends StatefulWidget {
   final WindowModel model; // نموذج النافذة الحالية اللي بنعرض تفاصيلها
@@ -26,33 +27,122 @@ class MaterialConsumptionScreen extends StatefulWidget {
   State<MaterialConsumptionScreen> createState() =>
       _MaterialConsumptionScreenState();
 }
+
 class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
-  bool showCostPrice = true; // إظهار/إخفاء سعر التكلفة (TODO: لاحقًا يُربط بصلاحية المدير)
-  final ScrollController _scrollController = ScrollController(); // للتحكم بتمرير الجدول أفقيًا ومعرفة موضع السكرول
+  bool showCostPrice =
+      true; // إظهار/إخفاء سعر التكلفة (TODO: لاحقًا يُربط بصلاحية المدير)
+  final ScrollController _scrollController =
+      ScrollController(); // للتحكم بتمرير الجدول أفقيًا ومعرفة موضع السكرول
   bool _isScrolled = false; // هل تم التمرير أفقيًا (لإظهار عمود ثابت "overlay")
   bool _isBottomBarExpanded = false; // هل شريط الإعدادات السفلي مفتوح أو مطوي
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
-  String get _lang => Provider.of<AppSettingsProvider>(context, listen: false).language.name;
+  String get _lang =>
+      Provider.of<AppSettingsProvider>(context, listen: false).language.name;
   // دالة مساعدة: تتحقق إذا كان النص يحتوي حروف عربية (لتقرير هل نعرض الاسم الثانوي أو لا)
   bool _hasArabic(String text) {
     return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
   }
+
+  /// The BOM tells us which sash owns each hardware row.  This must take
+  /// precedence over [WindowModel.systemMode], because a mixed PVC drawing
+  /// has opening and sliding components at the same time.
+  AccessoryDrawingMode? _accessoryDrawingModeForItem(BomItem item) {
+    if (item.category != 'accessory' && item.category != 'other') return null;
+
+    final name = item.originalName.toLowerCase();
+    final isExplicitSliding = [
+      'منزلق',
+      'جرار',
+      'كوليس',
+      'كوريس',
+      'couliss',
+      'sliding',
+      'roulette',
+      'عجلات',
+      'entrematique',
+      'انتراميتيك',
+    ].any(name.contains);
+    if (isExplicitSliding) return AccessoryDrawingMode.sliding;
+
+    final hasSlidingSash = widget.model.zones.any(
+      (zone) => zone.content == ZoneContent.slidingSash,
+    );
+    final hasOpeningSash = widget.model.zones.any(
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash,
+    );
+
+    // All hinge rows and unqualified espagnolettes/window handles belong to
+    // opening sashes.  Sliding alternatives carry an explicit sliding label.
+    final isOpeningHardware = [
+      'مفاصل',
+      'hinges',
+      'mifsal',
+      'paumelle',
+      'إسبانيوليت',
+      'اسبانيوليت',
+      'espagnolette',
+      'مقبض نافذة',
+      'المقبض (handle)',
+      'poignée fenêtre',
+      'poignee fenetre',
+    ].any(name.contains);
+    if (isOpeningHardware && (hasOpeningSash || !hasSlidingSash)) {
+      return AccessoryDrawingMode.opening;
+    }
+    if (hasSlidingSash && !hasOpeningSash) {
+      return AccessoryDrawingMode.sliding;
+    }
+    if (hasOpeningSash && !hasSlidingSash) {
+      return AccessoryDrawingMode.opening;
+    }
+    return null;
+  }
+
+  int? _seriesIdForItem(BomItem item) {
+    final mode = _accessoryDrawingModeForItem(item);
+    if (mode == AccessoryDrawingMode.sliding) {
+      return widget.model.activeSlidingSeries?.id ?? widget.model.activeSeries?.id;
+    }
+    if (mode == AccessoryDrawingMode.opening) {
+      return widget.model.activeSeries?.id;
+    }
+    return widget.model.systemMode == 'sliding'
+        ? widget.model.activeSlidingSeries?.id
+        : widget.model.activeSeries?.id;
+  }
+
+  String _materialTypeForItem(BomItem item) {
+    return _accessoryDrawingModeForItem(item) == AccessoryDrawingMode.sliding
+        ? (widget.model.isSlidingPVC ? 'PVC' : 'Aluminium')
+        : (widget.model.isPVC ? 'PVC' : 'Aluminium');
+  }
+
   // ------------------ إعدادات التسعير (تُحمَّل من SharedPreferences وقاعدة البيانات) ------------------
   double _profitMargin = 0.0; // نسبة الربح % (طريقة الحساب بالنسبة المئوية)
   double _pricePerSqm = 0.0; // سعر المتر المربع (طريقة الحساب بالمتر المربع)
-  double _torqueFactor = 1.5; // معامل عزم المحرك (لحساب قوة المحرك المطلوبة حسب وزن الستار)
-  double _pricePerLinearMeterFromDb = 0.0; // سعر المتر الخطي القادم من جدول Series في قاعدة البيانات
-  double? _pricePerLinearMeterOverride; // تعديل يدوي لسعر المتر الخطي (يتجاوز القيمة من قاعدة البيانات)
-  double _shutterSqmPriceFromDb = 0.0; // سعر متر مربع الستار من جدول ShutterSqmPrices
+  double _torqueFactor =
+      1.5; // معامل عزم المحرك (لحساب قوة المحرك المطلوبة حسب وزن الستار)
+  double _pricePerLinearMeterFromDb =
+      0.0; // سعر المتر الخطي القادم من جدول Series في قاعدة البيانات
+  double?
+  _pricePerLinearMeterOverride; // تعديل يدوي لسعر المتر الخطي (يتجاوز القيمة من قاعدة البيانات)
+  double _shutterSqmPriceFromDb =
+      0.0; // سعر متر مربع الستار من جدول ShutterSqmPrices
   double? _shutterSqmPriceOverride; // تعديل يدوي لسعر متر الستار
   double _moteurInstallFee = 0.0; // أجرة تركيب المحرك
   double _obInstallFee = 0.0; // أجرة تركيب System OB
   double _demiObInstallFee = 0.0; // أجرة تركيب Demi System OB
   double _verrouInstallFee = 0.0; // أجرة تركيب Verrou Central
-  CostMethod _costMethod = CostMethod.percentage; // طريقة احتساب سعر البيع الحالية (نسبة/متر مربع/متر خطي)
-  Map<String, List<Map<String, dynamic>>> _kitBundleData = {}; // بيانات حزم الكيت (Kit Bundles) المحمّلة من القاعدة
-  Map<String, bool> _kitPerLeafMap = {}; // يحدد لكل كيت هل الكمية تُحسب لكل ضلفة (per leaf) أو لا
-  final Map<String, bool> _kitGroupExpanded = {}; // حالة توسعة/طي كل مجموعة كيت في الجدول
+  CostMethod _costMethod = CostMethod
+      .percentage; // طريقة احتساب سعر البيع الحالية (نسبة/متر مربع/متر خطي)
+  Map<String, List<Map<String, dynamic>>> _kitBundleData =
+      {}; // بيانات حزم الكيت (Kit Bundles) المحمّلة من القاعدة
+  Map<String, bool> _kitPerLeafMap =
+      {}; // يحدد لكل كيت هل الكمية تُحسب لكل ضلفة (per leaf) أو لا
+  final Map<String, bool> _kitGroupExpanded =
+      {}; // حالة توسعة/طي كل مجموعة كيت في الجدول
   // متحكمات حقول الإدخال (TextEditingController) لإعدادات التسعير
   late TextEditingController _profitMarginController;
   late TextEditingController _pricePerSqmController;
@@ -66,51 +156,93 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // وجدت تطابق بالـ subtype، تبحث بدونه.
   // ==========================================================================
   Future<Map<String, dynamic>?> _findShutterComponent(
-      String componentType,
-      String subtype,
-      ) async {
+    String componentType,
+    String subtype,
+  ) async {
     final dbInstance = await SqlDatabase().db; // فتح اتصال قاعدة البيانات
     if (dbInstance == null) return null; // إذا فشل الاتصال، رجّع null
-    // البحث الأساسي: نفس النوع ونفس subtype وعنصر نشط
+    // هذه الكلمات هي نفسها التي تستعملها نافذة «تغيير». لا تعتمد على
+    // component_type فقط، لأن الكتالوجات القديمة تستعمل أسماء مثل Bague
+    // Filet بدلاً من Embout أو L'axe بدلاً من laxe.
+    final normalizedType = componentType.toLowerCase().trim();
+    final aliases = <String>[normalizedType];
+    if (normalizedType == 'laxe' || normalizedType == 'axe') {
+      aliases.addAll(['axe', "l'axe", 'محور']);
+    } else if (normalizedType == 'embout') {
+      aliases.addAll(['embout', 'bague filet', 'bague fil', 'blague flit']);
+    } else if (normalizedType == 'support_roulement') {
+      aliases.addAll(['support roulement', 'roulement', 'سيبور رولمو']);
+    } else if (normalizedType == 'support_moteur') {
+      aliases.addAll(['support moteur', 'سيبور موتور']);
+    }
+
+    final matchClause = aliases
+        .map((_) =>
+            '(LOWER(component_type) = ? OR LOWER(name) LIKE ? OR LOWER(component_type) LIKE ?)')
+        .join(' OR ');
+    final matchArgs = <dynamic>[];
+    for (final alias in aliases) {
+      matchArgs.addAll([alias, '%$alias%', '%$alias%']);
+    }
     var queryRes = await dbInstance.query(
       'ShutterComponents',
       where:
-      'component_type = ? AND shutter_subtype = ? AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [componentType, subtype],
-      limit: 1,
+          '($matchClause) AND LOWER(shutter_subtype) = ? AND (is_active = 1 OR is_active IS NULL)',
+      whereArgs: [...matchArgs, subtype.toLowerCase()],
     );
     if (queryRes.isEmpty) {
-      // خطة بديلة: نفس النوع بس بدون شرط subtype
+      // خطة بديلة: نفس الدور دون شرط subtype، مع بقاء تصفية الدور نفسها.
       queryRes = await dbInstance.query(
         'ShutterComponents',
-        where: 'component_type = ? AND (is_active = 1 OR is_active IS NULL)',
-        whereArgs: [componentType],
-        limit: 1,
+        where: '($matchClause) AND (is_active = 1 OR is_active IS NULL)',
+        whereArgs: matchArgs,
       );
     }
     if (queryRes.isNotEmpty) {
-      final row = Map<String, dynamic>.from(queryRes.first); // نسخة قابلة للتعديل من النتيجة
+      final candidates = List<Map<String, dynamic>>.from(queryRes);
+      if (normalizedType == 'embout') {
+        // Bague Filet هو الافتراضي المطلوب؛ لا نستبدله بباغة الصندوق لمجرد
+        // أنها جاءت أولاً في قاعدة البيانات.
+        candidates.sort((a, b) {
+          int score(Map<String, dynamic> item) {
+            final name = (item['name'] ?? '').toString().toLowerCase();
+            if (name.contains('bague filet') ||
+                name.contains('bague fil') ||
+                name.contains('blague flit')) {
+              return 0;
+            }
+            if (name.contains('caisson') || name.contains('صندوق')) return 2;
+            return 1;
+          }
+
+          return score(a).compareTo(score(b));
+        });
+      }
+      final row = Map<String, dynamic>.from(
+        candidates.first,
+      ); // نسخة قابلة للتعديل من النتيجة
       // حساب السعر المعروض: يفضّل price_dzd وإلا price
       row['calculated_price'] = _safeDouble(row['price_dzd'] ?? row['price']);
       return row;
     }
     return null; // لا يوجد مكوّن مطابق
   }
+
   // ==========================================================================
   // دالة: _findClosestFinalBlade
   // الغرض: إيجاد "الشريحة النهائية" (Final Blade) الأقرب حجمًا لمقاس الشريحة
   // العادية المختارة (targetSize)، ضمن نفس الـ subtype، مع خطة بديلة أوسع.
   // ==========================================================================
   Future<Map<String, dynamic>?> _findClosestFinalBlade(
-      Database dbInstance,
-      double targetSize,
-      String subtype,
-      ) async {
+    Database dbInstance,
+    double targetSize,
+    String subtype,
+  ) async {
     // بحث عن كل الصفوف اللي اسمها يحتوي "final/finale/نهائي" وبنفس الـ subtype
     var finalBlades = await dbInstance.query(
       'ShutterComponents',
       where:
-      "(LOWER(name) LIKE '%final%' OR LOWER(name) LIKE '%finale%' OR name LIKE '%نهائي%') "
+          "(LOWER(name) LIKE '%final%' OR LOWER(name) LIKE '%finale%' OR name LIKE '%نهائي%') "
           "AND shutter_subtype = ? AND (is_active = 1 OR is_active IS NULL)",
       whereArgs: [subtype],
     );
@@ -119,16 +251,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       finalBlades = await dbInstance.query(
         'ShutterComponents',
         where:
-        "(LOWER(name) LIKE '%final%' OR LOWER(name) LIKE '%finale%' OR name LIKE '%نهائي%') "
+            "(LOWER(name) LIKE '%final%' OR LOWER(name) LIKE '%finale%' OR name LIKE '%نهائي%') "
             "AND (is_active = 1 OR is_active IS NULL)",
       );
     }
-    if (finalBlades.isEmpty) return null; // لا توجد شريحة نهائية أصلًا في القاعدة
+    if (finalBlades.isEmpty)
+      return null; // لا توجد شريحة نهائية أصلًا في القاعدة
     // دالة داخلية: تستخرج المقاس الرقمي من الصف (measurement أو من الاسم)
     double parseSize(Map<String, dynamic> component) {
       final sizeStr = getComponentSize(component) ?? '';
       return double.tryParse(sizeStr) ?? 0.0;
     }
+
     Map<String, dynamic>? closest; // أقرب شريحة نهائية للمقاس المطلوب
     double minDiff = double.infinity; // أصغر فرق تم إيجاده حتى الآن
     // المرور على كل الشرائح النهائية المتاحة لإيجاد الأقرب حجمًا
@@ -142,11 +276,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         }
       }
     }
-    closest ??= finalBlades.first; // إذا كل المقاسات كانت 0 أو غير صالحة، خذ أول نتيجة كخيار أخير
+    closest ??= finalBlades
+        .first; // إذا كل المقاسات كانت 0 أو غير صالحة، خذ أول نتيجة كخيار أخير
     final row = Map<String, dynamic>.from(closest);
     row['calculated_price'] = _safeDouble(row['price_dzd'] ?? row['price']);
     return row;
   }
+
   // ==========================================================================
   // Map: activeVariants
   // يمثل حالة تفعيل كل عنصر اختياري في النافذة (كيتات، سيبورات، طانديم...).
@@ -163,9 +299,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     'سيبور موتور (Support Moteur)': false,
     'أغطية الشفرات (Bouchons Lames)': false,
   };
-  String? _lastAlignedLameKey; // مفتاح تتبع (id+مقاس+subtype) لآخر "شريحة" تمت محاذاة الشريحة النهائية معها، لتفادي إعادة الحساب بلا داعٍ
+  String?
+  _lastAlignedLameKey; // مفتاح تتبع (id+مقاس+subtype) لآخر "شريحة" تمت محاذاة الشريحة النهائية معها، لتفادي إعادة الحساب بلا داعٍ
   // ------------------ ثوابت أبعاد أعمدة الجدول (بالبكسل) ------------------
-  static const double _rowHeight = 120; // ارتفاع الصف الأدنى
+  static const double _rowMinHeight =
+      56; // ارتفاع أدنى فقط — الصف يتمدّد حسب محتواه
   static const double _wImg = 50; // عرض عمود الصورة
   static const double _wName = 220; // عرض عمود اسم المكوّن
   static const double _wColor = 100; // عرض عمود اللون
@@ -175,7 +313,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   static const double _wTotal = 120; // عرض عمود التكلفة الإجمالية للصف
   static const double _wCheck = 80; // عرض عمود مربع التفعيل (Checkbox)
   static const double _minW = // العرض الكلي الأدنى للجدول = مجموع كل الأعمدة
-  _wImg + _wName + _wColor + _wLen + _wQty + _wPrice + _wTotal + _wCheck;
+      _wImg + _wName + _wColor + _wLen + _wQty + _wPrice + _wTotal + _wCheck;
+  static const double _frozenWidth = _wName;
   // ==========================================================================
   // دالة: _fetchDefaults  ⭐ (الدالة الأهم في الملف)
   // الغرض: عند فتح الشاشة أو تغيير أي إعداد، تقوم "بالجلب الذكي" لكل المكونات
@@ -183,30 +322,41 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // حسب الوزن...)، وتضبط activeVariants حسب آلية الستار (محرك/مانيفيل/حزام)
   // وحالة الصندوق (تونيل أو لا).
   // ==========================================================================
-// ==========================================================================
-// دالة مساعدة: تبني شرط WHERE وقائمة args لفلترة الإكسسوارات حسب السلسلة النشطة
-// نفس منطق الفلترة المستخدم في model.dart -> _loadAccessoryDefaults
-// ==========================================================================
-  Map<String, dynamic> _buildSeriesFilterClause() {
-    final seriesId = widget.model.systemMode == 'sliding'
-        ? widget.model.activeSlidingSeries?.id
-        : widget.model.activeSeries?.id;
-    if (seriesId == null) {
-      return {'clause': '', 'args': <dynamic>[]};
+  // ==========================================================================
+  // دالة مساعدة: تبني شرط WHERE وقائمة args لفلترة الإكسسوارات حسب السلسلة النشطة
+  // نفس منطق الفلترة المستخدم في model.dart -> _loadAccessoryDefaults
+  // ==========================================================================
+  Map<String, dynamic> _buildSeriesFilterClause({int? seriesId}) {
+    final selectedSeriesId = seriesId ??
+        (widget.model.systemMode == 'sliding'
+            ? widget.model.activeSlidingSeries?.id
+            : widget.model.activeSeries?.id);
+    if (selectedSeriesId == null) {
+      // لا توجد سلسلة مختارة، إذن لا يوجد إكسسوار صالح للاختيار.
+      return {'clause': ' AND 1 = 0', 'args': <dynamic>[]};
     }
+    final seriesConstraint =
+        "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
+    final globalConstraint =
+        "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')";
     return {
       'clause':
-      ' AND (series_id = ? OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\')))',
-      'args': [seriesId, '%,' + seriesId.toString() + ',%'],
+          // الإكسسوار المخصص يتطلب سلسلة مطابقة، بينما الإكسسوار العام
+          // يمر عبر فلتر المادة المرافق له (PVC / Aluminium / Both).
+          ' AND ($seriesConstraint OR ($globalConstraint))',
+      'args': [selectedSeriesId, '%,' + selectedSeriesId.toString() + ',%'],
     };
   }
+
   Future<void> _fetchDefaults() async {
-    await widget.model.updateShutterDefaultsIfNeeded(); // تحديث افتراضيات الستار داخل النموذج نفسه أولًا
+    await widget.model
+        .updateShutterDefaultsIfNeeded(); // تحديث افتراضيات الستار داخل النموذج نفسه أولًا
     // قراءة حالة الآلية الحالية من النموذج لتحديد أي كيت/سيبور يجب أن يكون مفعّلاً
     final isTunnel = widget.model.isCaissonTunnel; // هل الصندوق نوع "تونيل"
-    final isMotor = widget.model.shutterMechanism == 'محرك'; // هل الآلية محرك كهربائي
+    final isMotor =
+        widget.model.shutterMechanism == 'محرك'; // هل الآلية محرك كهربائي
     final isCrank = // هل الآلية يدوية (مانيفيل)
-    widget.model.shutterMechanism == 'منايفال' ||
+        widget.model.shutterMechanism == 'منايفال' ||
         widget.model.shutterMechanism == 'مانيفال' ||
         widget.model.shutterMechanism == 'مانيفر';
     // ضبط تفعيل الكيتات المختلفة حسب نوع الآلية وحالة التونيل
@@ -222,7 +372,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ? false
         : (!isMotor && !isCrank); // الافتراضي (حزام) لو مو محرك ولا مانيفيل
     activeVariants['كيت حزام (Kit Sangle)'] = false;
-    activeVariants['طانديم (Tandem)'] = isTunnel; // الطانديم يُفعّل تلقائيًا فقط في حالة التونيل
+    activeVariants['طانديم (Tandem)'] =
+        isTunnel; // الطانديم يُفعّل تلقائيًا فقط في حالة التونيل
     // قطع المحرك (الامبو، سيبور رولمو، سيبور موتور) تُفعّل فقط لو الآلية محرك
     if (isMotor) {
       activeVariants['الامبو (Embout)'] = true;
@@ -231,7 +382,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     } else {
       activeVariants['الامبو (Embout)'] = false;
       activeVariants['سيبور رولمو (Support Roulement)'] = false;
-      activeVariants['سيبور موتور (Support Moteur)'] = isTunnel; // في التونيل قد يلزم سيبور موتور حتى بدون محرك
+      activeVariants['سيبور موتور (Support Moteur)'] =
+          isTunnel; // في التونيل قد يلزم سيبور موتور حتى بدون محرك
     }
     activeVariants['أغطية الشفرات (Bouchons Lames)'] = isTunnel || isMotor;
     // تنظيف الـ overrides اللي ما عادت منطقية (مثلاً قطع محرك محفوظة رغم إن الآلية تغيّرت لغير محرك)
@@ -248,11 +400,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       widget.model.componentOverrides.remove('سيبور موتور (Support Moteur)');
       widget.model.componentOverrides.remove('أغطية الشفرات (Bouchons Lames)');
     }
-    final db = await SqlDatabase().db; // اتصال قاعدة البيانات لباقي عمليات الجلب
+    final db =
+        await SqlDatabase().db; // اتصال قاعدة البيانات لباقي عمليات الجلب
     if (db == null) return; // بدون اتصال ما فيه داعي نكمل
     final Database dbInstance = db;
     try {
-      final colorId = widget.model.selectedDbColor?['id']; // معرّف اللون المختار حاليًا (للأسعار الملونة)
+      final colorId = widget
+          .model
+          .selectedDbColor?['id']; // معرّف اللون المختار حاليًا (للأسعار الملونة)
       final sqlDb = SqlDatabase();
       // تنظيف ذاتي: إزالة أي "براغي" محفوظة غلط كأنها تخص "فيرو" (verrou) بدل نوعها الصحيح
       widget.model.componentOverrides.removeWhere((key, val) {
@@ -263,6 +418,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               t.contains('verrou') ||
               n.contains('verro') ||
               t.contains('verro') ||
+              n.contains('viro') ||
+              t.contains('viro') ||
               n.contains('gevisse') ||
               t.contains('gevisse');
         }
@@ -270,12 +427,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       });
       // ------- محاذاة تلقائية للقياسات لتفادي عدم تطابق قديم (صندوق مع كيت، شرائح مع سكك...) -------
       try {
-        final caisson = widget.model.componentOverrides['الصندوق (Caisson)']; // الصندوق الحالي المختار
+        final caisson = widget
+            .model
+            .componentOverrides['الصندوق (Caisson)']; // الصندوق الحالي المختار
         final isMotor = widget.model.shutterMechanism == 'محرك';
         final isCrank =
             widget.model.shutterMechanism == 'منايفال' ||
-                widget.model.shutterMechanism == 'مانيفال' ||
-                widget.model.shutterMechanism == 'مانيفر';
+            widget.model.shutterMechanism == 'مانيفال' ||
+            widget.model.shutterMechanism == 'مانيفر';
         List<String> activeKitKeys = []; // مفاتيح الكيتات النشطة حسب نوع الآلية
         if (isMotor) {
           activeKitKeys.add('كيت فولي موتور (Kit Volet Moteur)');
@@ -301,7 +460,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               final compRes = await dbInstance.query(
                 'ShutterComponents',
                 where:
-                "(LOWER(name) LIKE '%kit%' OR name LIKE '%كيت%') AND (is_active = 1 OR is_active IS NULL)",
+                    "(LOWER(name) LIKE '%kit%' OR name LIKE '%كيت%') AND (is_active = 1 OR is_active IS NULL)",
               );
               for (var row in compRes) {
                 final rowSize = getComponentSize(row);
@@ -315,6 +474,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   }
                   return s1 == s2;
                 }
+
                 bool matches = isSameSize(rowSize, caissonDigits);
                 if (matches) {
                   // وجدنا كيتًا يطابق مقاس الصندوق: نحفظه كـ override جديد
@@ -341,7 +501,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             final compRes = await dbInstance.query(
               'ShutterComponents',
               where:
-              "(LOWER(name) LIKE '%coulisse%' OR name LIKE '%سك%') AND (is_active = 1 OR is_active IS NULL)",
+                  "(LOWER(name) LIKE '%coulisse%' OR name LIKE '%سك%') AND (is_active = 1 OR is_active IS NULL)",
             );
             for (var row in compRes) {
               if (getComponentSize(row) == lamesDigits) {
@@ -358,10 +518,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         }
         // محاذاة "الشريحة النهائية" مع الشريحة العادية (الاسم/المقاس/subtype)
         final finale =
-        widget.model.componentOverrides['الشريحة النهائية (Lame Finale)'];
+            widget.model.componentOverrides['الشريحة النهائية (Lame Finale)'];
         if (lames != null) {
           final targetSubtype =
-              lames['shutter_subtype']?.toString() ?? 'normal'; // نوع الشريحة الحالي (extruded/normal)
+              lames['shutter_subtype']?.toString() ??
+              'normal'; // نوع الشريحة الحالي (extruded/normal)
           final currentLameKey = // مفتاح فريد يمثل الشريحة الحالية (لتتبع التغيير)
               "${lames['id']}_${getComponentSize(lames)}_$targetSubtype";
           // إعادة حساب الشريحة النهائية فقط إذا تغيّرت الشريحة الأساسية أو الـ subtype
@@ -379,8 +540,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               if (matchedFinale != null) {
                 widget
-                    .model
-                    .componentOverrides['الشريحة النهائية (Lame Finale)'] =
+                        .model
+                        .componentOverrides['الشريحة النهائية (Lame Finale)'] =
                     matchedFinale;
               }
             } else {
@@ -391,8 +552,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               if (matched != null) {
                 widget
-                    .model
-                    .componentOverrides['الشريحة النهائية (Lame Finale)'] =
+                        .model
+                        .componentOverrides['الشريحة النهائية (Lame Finale)'] =
                     matched;
               }
             }
@@ -412,6 +573,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               }
             }
           }
+
           // محاذاة كل القطع المرتبطة بالشريحة (المحور، الأطاش، سيبور موتور، الامبو...)
           await alignComponent('المحور (Axe)', 'laxe');
           await alignComponent('أطاش (Attache)', 'attache');
@@ -434,10 +596,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // 1. حساب معامل الوزن (كغ/م²) حسب نوع الشريحة ومقاسها
             final bladeSubtype =
                 lames['shutter_subtype']?.toString() ?? 'normal';
-            final isExtruded = bladeSubtype == 'extruded'; // شريحة إكسترودي (أثقل عادة)
+            final isExtruded =
+                bladeSubtype == 'extruded'; // شريحة إكسترودي (أثقل عادة)
             final bladeSizeStr = getComponentSize(lames) ?? '';
             final bladeSize = double.tryParse(bladeSizeStr) ?? 0.0;
-            final is55OrMore = bladeSize >= 55.0; // شرائح كبيرة (55 مم فأكثر) أثقل
+            final is55OrMore =
+                bladeSize >= 55.0; // شرائح كبيرة (55 مم فأكثر) أثقل
             double weightCoef = 0.0;
             // إذا كان معامل الوزن محفوظًا مباشرة في بيانات الشريحة، استخدمه
             if (lames.containsKey('weight_per_sqm') &&
@@ -464,12 +628,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             final motorRes = await dbInstance.query(
               'ShutterComponents',
               where:
-              "(component_type = 'Moteur' OR (name LIKE '%moteur%' OR name LIKE '%محرك%')) "
+                  "(component_type = 'Moteur' OR (name LIKE '%moteur%' OR name LIKE '%محرك%')) "
                   "AND name NOT LIKE '%kit%' AND name NOT LIKE '%كيت%' "
                   "AND (is_active = 1 OR is_active IS NULL)",
             );
             Map<String, dynamic>? selectedMotor; // المحرك المختار نهائيًا
-            double bestNmDifference = double.infinity; // أقل فرق عزم زائد عن الحاجة
+            double bestNmDifference =
+                double.infinity; // أقل فرق عزم زائد عن الحاجة
             // دالة داخلية: تستخرج قيمة العزم (Nm) من حقل measurement أو من اسم المحرك
             double? parseTorque(Map<String, dynamic> item) {
               final name = item['name']?.toString() ?? '';
@@ -484,13 +649,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               if (numMatch != null) return double.tryParse(numMatch.group(0)!);
               return null;
             }
+
             // اختيار المحرك الأقرب من فوق (أصغر عزم يكفي الحاجة، وليس أقل منها)
             for (final row in motorRes) {
               final nm = parseTorque(row);
               if (nm != null) {
-                if (nm >= requiredNm) { // المحرك يكفي (عزمه ≥ العزم المطلوب)
+                if (nm >= requiredNm) {
+                  // المحرك يكفي (عزمه ≥ العزم المطلوب)
                   final diff = nm - requiredNm;
-                  if (diff < bestNmDifference) { // نفضّل الأقرب لتفادي "مبالغة" في القوة
+                  if (diff < bestNmDifference) {
+                    // نفضّل الأقرب لتفادي "مبالغة" في القوة
                     bestNmDifference = diff;
                     selectedMotor = row;
                   }
@@ -540,7 +708,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final axeRes = await dbInstance.query(
                   'ShutterComponents',
                   where:
-                  "(component_type = 'Axe' OR name LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
+                      "(component_type = 'Axe' OR name LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
                 );
                 Map<String, dynamic>? selectedAxe;
                 for (final row in axeRes) {
@@ -569,12 +737,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           }
         }
       } catch (e) {
-        print("Error in self-healing alignment: $e"); // تسجيل أي خطأ أثناء المحاذاة الذاتية دون إيقاف التنفيذ
+        print(
+          "Error in self-healing alignment: $e",
+        ); // تسجيل أي خطأ أثناء المحاذاة الذاتية دون إيقاف التنفيذ
       }
       // 0. تحديث أسعار البروفيلات الرئيسية (الإطار/الظلفة/الغطاء الجانبي) حسب اللون المختار
       if (widget.model.frameOverride != null) {
         final fId = widget.model.frameOverride!['id'];
-        double price = await sqlDb.getSectionPrice(fId, colorId); // سعر القسم (Section) حسب اللون
+        double price = await sqlDb.getSectionPrice(
+          fId,
+          colorId,
+        ); // سعر القسم (Section) حسب اللون
         widget.model.frameOverride!['calculated_price'] = price;
       }
       if (widget.model.sashOverride != null) {
@@ -681,6 +854,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         final val = widget.model.componentOverrides[key];
         return val != null && val is Map && val['id'] != null;
       }
+
       // 1. جلب حديد الإطار الافتراضي المرتبط بالبروفيل المختار (linked_renfort_id)
       if (!isLinked('حديد الإطار (Renfort Frame)')) {
         // نحدد الإطار الفعّال حسب وضع النظام (منزلق/عادي)
@@ -701,7 +875,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             rMap['calculated_price'] = price;
             widget.model.componentOverrides['حديد الإطار (Renfort Frame)'] =
                 rMap;
-            if (mounted) setState(() {}); // تحديث فوري للواجهة بمجرد إيجاد الحديد
+            if (mounted)
+              setState(() {}); // تحديث فوري للواجهة بمجرد إيجاد الحديد
           }
         }
       }
@@ -728,10 +903,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             final mifsalRes = await dbInstance.query(
               'Sections',
               where:
-              'series_id = ? AND (name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?)',
+                  'series_id = ? AND (name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?)',
               whereArgs: [
                 (widget.model.systemMode == 'sliding' &&
-                    widget.model.activeSlidingSeries != null)
+                        widget.model.activeSlidingSeries != null)
                     ? widget.model.activeSlidingSeries!.id
                     : widget.model.activeSeries?.id,
                 '%مفصل%',
@@ -775,20 +950,43 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       // 3. البراغي: دالة عامة تجلب برغيًا مناسبًا حسب عمود boolean في جدول Accessories (مثل is_moteur_screw)
       Future<void> assignScrew(String key, String dbColumn) async {
-        if (!isLinked(key)) {
+        // لا يكفي أن يكون للمكوّن id: الطلبات القديمة قد تحفظ تحت مفتاح
+        // البراغي إكسسواراً آخر (مثل ViroRouge). نتحقق من دوره وسلسلته قبل
+        // اعتباره اختياراً صالحاً.
+        Future<bool> hasValidCurrentScrew() async {
+          final current = widget.model.componentOverrides[key];
+          if (current is! Map || current['id'] == null) return false;
+          final mat = widget.model.isPVC ? 'pvc' : 'aluminium';
+          final seriesFilter = _buildSeriesFilterClause();
+          final rows = await dbInstance.query(
+            'Accessories',
+            columns: const ['id'],
+            where:
+                'id = ? AND $dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) '
+                "AND (LOWER(material_type) = ? OR LOWER(material_type) = 'both')${seriesFilter['clause']}",
+            whereArgs: [current['id'], mat, ...seriesFilter['args']],
+            limit: 1,
+          );
+          return rows.isNotEmpty;
+        }
+
+        if (!await hasValidCurrentScrew()) {
+          widget.model.componentOverrides.remove(key);
           try {
             List<Map<String, dynamic>> res = [];
             try {
-              final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
+              final matType = widget.model.isPVC ? 'pvc' : 'aluminium';
               final seriesFilter = _buildSeriesFilterClause();
               res = await dbInstance.query(
                 'Accessories',
                 where:
-                '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = "Both" OR material_type IS NULL OR material_type = "")${seriesFilter['clause']}',
+                    '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) '
+                    "AND (LOWER(material_type) = ? OR LOWER(material_type) = 'both')${seriesFilter['clause']}",
                 whereArgs: [matType, ...seriesFilter['args']],
+                orderBy: 'id ASC',
                 limit: 1,
               );
-            } catch (_) {}// تجاهل خطأ إذا العمود غير موجود بقاعدة بيانات قديمة
+            } catch (_) {} // تجاهل خطأ إذا العمود غير موجود بقاعدة بيانات قديمة
             // ملاحظة مهمة: لا يوجد بحث احتياطي عشوائي للبراغي حتى لا يختلط برغي بنوع خاطئ
             if (res.isNotEmpty) {
               final mutableItem = Map<String, dynamic>.from(res.first);
@@ -821,14 +1019,19 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               mutableItem['calculated_price'] = price;
               widget.model.componentOverrides[key] = mutableItem;
               if (mounted) {
-                setState(() {}); // إجبار الخانة على الظهور فورًا بدون تدخل المستخدم
+                setState(
+                  () {},
+                ); // إجبار الخانة على الظهور فورًا بدون تدخل المستخدم
               }
             }
           } catch (e) {
-            print(''); // ملاحظة: طباعة فارغة (يبدو أنها كانت لتصحيح أخطاء سابق ولم تُزل)
+            print(
+              '',
+            ); // ملاحظة: طباعة فارغة (يبدو أنها كانت لتصحيح أخطاء سابق ولم تُزل)
           }
         }
       }
+
       // استدعاء assignScrew لكل نوع برغي محتمل (كل نوع مرتبط بعمود boolean مختلف)
       await assignScrew('براغي المحرك', 'is_moteur_screw');
       await assignScrew('براغي الصندوق', 'is_caisson_screw');
@@ -849,7 +1052,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             var res = await dbInstance.query(
               'Accessories',
               where:
-              '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = "Both" OR material_type IS NULL OR material_type = "")${seriesFilter['clause']}',
+                  '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = "Both" OR material_type IS NULL OR material_type = "")${seriesFilter['clause']}',
               whereArgs: [matType, ...seriesFilter['args']],
               limit: 1,
             );
@@ -857,60 +1060,158 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               final allAcc = await dbInstance.query(
                 'Accessories',
                 where:
-                '(is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = "Both" OR material_type IS NULL OR material_type = "")${seriesFilter['clause']}',
+                    '(is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = "Both" OR material_type IS NULL OR material_type = "")${seriesFilter['clause']}',
                 whereArgs: [matType, ...seriesFilter['args']],
               );
               final filtered = allAcc.where((a) {
                 final n = a['name'].toString().toLowerCase();
                 final ty = a['type'].toString().toLowerCase();
                 if (key.contains('قاش بورت') || key.contains('Gache Porte')) {
-                  final bool containsGache = n.contains('gache') || n.contains('gâche') || n.contains('قاش') || n.contains('كاش') || n.contains('gage') ||
-                                             ty.contains('gache') || ty.contains('gâche') || ty.contains('قاش') || ty.contains('كاش') || ty.contains('gage');
-                  final bool containsPorte = n.contains('port') || n.contains('بورت') || n.contains('باب') ||
-                                             ty.contains('port') || ty.contains('بورت') || ty.contains('باب');
+                  final bool containsGache =
+                      n.contains('gache') ||
+                      n.contains('gâche') ||
+                      n.contains('قاش') ||
+                      n.contains('كاش') ||
+                      n.contains('gage') ||
+                      ty.contains('gache') ||
+                      ty.contains('gâche') ||
+                      ty.contains('قاش') ||
+                      ty.contains('كاش') ||
+                      ty.contains('gage');
+                  final bool containsPorte =
+                      n.contains('port') ||
+                      n.contains('بورت') ||
+                      n.contains('باب') ||
+                      ty.contains('port') ||
+                      ty.contains('بورت') ||
+                      ty.contains('باب');
                   return containsGache && containsPorte;
                 }
-                if (key.contains('مقبض الباب') && key.contains('Condamnation')) {
-                  final bool containsHandle = n.contains('poignée') || n.contains('مقبض') || n.contains('handle') ||
-                                              ty.contains('poignée') || ty.contains('مقبض') || ty.contains('handle');
-                  final bool containsCond = n.contains('condamnation') || n.contains('حمام') || n.contains('بدون مفتاح') ||
-                                            ty.contains('condamnation') || ty.contains('حمام') || ty.contains('بدون مفتاح');
+                if (key.contains('مقبض الباب') &&
+                    key.contains('Condamnation')) {
+                  final bool containsHandle =
+                      n.contains('poignée') ||
+                      n.contains('مقبض') ||
+                      n.contains('handle') ||
+                      ty.contains('poignée') ||
+                      ty.contains('مقبض') ||
+                      ty.contains('handle');
+                  final bool containsCond =
+                      n.contains('condamnation') ||
+                      n.contains('حمام') ||
+                      n.contains('بدون مفتاح') ||
+                      ty.contains('condamnation') ||
+                      ty.contains('حمام') ||
+                      ty.contains('بدون مفتاح');
                   return containsHandle && containsCond;
                 }
-                if (key.contains('مقبض الباب') && (key.contains('à Clé') || key.contains('Clef') || key.contains('Poignée Porte'))) {
-                  final bool containsHandle = n.contains('poignée') || n.contains('مقبض') || n.contains('handle') ||
-                                              ty.contains('poignée') || ty.contains('مقبض') || ty.contains('handle');
-                  final bool containsKey = n.contains('clef') || n.contains('clé') || n.contains('مفتاح') ||
-                                           ty.contains('clef') || ty.contains('clé') || ty.contains('مفتاح');
+                if (key.contains('مقبض الباب') &&
+                    (key.contains('à Clé') ||
+                        key.contains('Clef') ||
+                        key.contains('Poignée Porte'))) {
+                  final bool containsHandle =
+                      n.contains('poignée') ||
+                      n.contains('مقبض') ||
+                      n.contains('handle') ||
+                      ty.contains('poignée') ||
+                      ty.contains('مقبض') ||
+                      ty.contains('handle');
+                  final bool containsKey =
+                      n.contains('clef') ||
+                      n.contains('clé') ||
+                      n.contains('مفتاح') ||
+                      ty.contains('clef') ||
+                      ty.contains('clé') ||
+                      ty.contains('مفتاح');
                   return containsHandle && containsKey;
                 }
                 if (key.contains('قفل الباب') && key.contains('Condamnation')) {
-                  final bool containsLock = n.contains('serrure') || n.contains('lock') || n.contains('قفل') ||
-                                            ty.contains('serrure') || ty.contains('lock') || ty.contains('قفل');
-                  final bool containsCond = n.contains('condamnation') || n.contains('حمام') || n.contains('بدون مفتاح') ||
-                                            ty.contains('condamnation') || ty.contains('حمام') || ty.contains('بدون مفتاح');
-                  final bool containsExcludes = n.contains('poignée') || n.contains('مقبض') || n.contains('handle') ||
-                                                ty.contains('poignée') || ty.contains('مقبض') || ty.contains('handle');
+                  final bool containsLock =
+                      n.contains('serrure') ||
+                      n.contains('lock') ||
+                      n.contains('قفل') ||
+                      ty.contains('serrure') ||
+                      ty.contains('lock') ||
+                      ty.contains('قفل');
+                  final bool containsCond =
+                      n.contains('condamnation') ||
+                      n.contains('حمام') ||
+                      n.contains('بدون مفتاح') ||
+                      ty.contains('condamnation') ||
+                      ty.contains('حمام') ||
+                      ty.contains('بدون مفتاح');
+                  final bool containsExcludes =
+                      n.contains('poignée') ||
+                      n.contains('مقبض') ||
+                      n.contains('handle') ||
+                      ty.contains('poignée') ||
+                      ty.contains('مقبض') ||
+                      ty.contains('handle');
                   return containsLock && containsCond && !containsExcludes;
                 }
                 if (key.contains('قفل الباب') || key.contains('Serrure')) {
-                  final bool containsLock = n.contains('serrure') || n.contains('lock') || n.contains('قفل') ||
-                                            ty.contains('serrure') || ty.contains('lock') || ty.contains('قفل');
-                  final bool containsKey = n.contains('clef') || n.contains('clé') || n.contains('مفتاح') ||
-                                           ty.contains('clef') || ty.contains('clé') || ty.contains('مفتاح');
-                  final bool containsExcludes = n.contains('canon') || n.contains('أسطوانة') || n.contains('اسطوانة') || n.contains('poignée') || n.contains('مقبض') || n.contains('handle') ||
-                                                ty.contains('canon') || ty.contains('أسطوانة') || ty.contains('اسطوانة') || ty.contains('poignée') || ty.contains('مقبض') || ty.contains('handle');
+                  final bool containsLock =
+                      n.contains('serrure') ||
+                      n.contains('lock') ||
+                      n.contains('قفل') ||
+                      ty.contains('serrure') ||
+                      ty.contains('lock') ||
+                      ty.contains('قفل');
+                  final bool containsKey =
+                      n.contains('clef') ||
+                      n.contains('clé') ||
+                      n.contains('مفتاح') ||
+                      ty.contains('clef') ||
+                      ty.contains('clé') ||
+                      ty.contains('مفتاح');
+                  final bool containsExcludes =
+                      n.contains('canon') ||
+                      n.contains('أسطوانة') ||
+                      n.contains('اسطوانة') ||
+                      n.contains('poignée') ||
+                      n.contains('مقبض') ||
+                      n.contains('handle') ||
+                      ty.contains('canon') ||
+                      ty.contains('أسطوانة') ||
+                      ty.contains('اسطوانة') ||
+                      ty.contains('poignée') ||
+                      ty.contains('مقبض') ||
+                      ty.contains('handle');
                   return containsLock && containsKey && !containsExcludes;
                 }
                 // generic fallback
                 String kw = '';
-                if (key.contains('سامبل') || key.contains('Simple')) kw = 'simple';
-                else if (key.contains('دوبل') || key.contains('Double')) kw = 'double';
-                else if (key.contains('بورت') || key.contains('Porte')) kw = 'porte';
-                else if (key.contains('مفتاح') || key.contains('Clef')) kw = 'clef';
-                else if (key.contains('Condamnation')) kw = 'condamnation';
+                if (key.contains('سامبل') || key.contains('Simple')) {
+                  final isGache = n.contains('gache') ||
+                      n.contains('gâche') ||
+                      ty.contains('gache') ||
+                      ty.contains('gâche') ||
+                      n.contains('قاش') ||
+                      ty.contains('قاش');
+                  // تسميات مثل «Gâche de Bluron» لا تحتوي كلمة simple، لكنها
+                  // القاش البسيط الصحيح ما دامت ليست Double أو Porte.
+                  return isGache &&
+                      !n.contains('double') &&
+                      !ty.contains('double') &&
+                      !n.contains('doub') &&
+                      !ty.contains('doub') &&
+                      !n.contains('porte') &&
+                      !ty.contains('porte');
+                }
+                else if (key.contains('دوبل') || key.contains('Double'))
+                  kw = 'double';
+                else if (key.contains('بورت') || key.contains('Porte'))
+                  kw = 'porte';
+                else if (key.contains('مفتاح') || key.contains('Clef'))
+                  kw = 'clef';
+                else if (key.contains('Condamnation'))
+                  kw = 'condamnation';
                 if (kw.isNotEmpty) {
-                  return (n.contains('gache') || n.contains('قاش') || ty.contains('gache') || ty.contains('قاش')) && (n.contains(kw) || ty.contains(kw));
+                  return (n.contains('gache') ||
+                          n.contains('قاش') ||
+                          ty.contains('gache') ||
+                          ty.contains('قاش')) &&
+                      (n.contains(kw) || ty.contains(kw));
                 }
                 return false;
               }).toList();
@@ -951,6 +1252,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           } catch (e) {}
         }
       }
+
       // استدعاء assignGache لكل نوع قفل/قاش محتمل
       await assignGache('قاش سامبل (Gache Simple Ouvrant)', 'is_gache_simple');
       await assignGache('قاش دوبل (Gache Double Ouvrant)', 'is_gache_double');
@@ -958,17 +1260,36 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       await assignGache('قفل بمفتاح (Clef)', 'is_lock_clef');
       await assignGache('مقبض الباب (Poignée Porte à Clé)', 'is_lock_clef');
       await assignGache('قفل الباب (Serrure)', 'is_lock_clef');
-      await assignGache('مقبض الباب Condamnation (Poignée Condamnation)', 'is_lock_condamnation');
-      await assignGache('قفل الباب Condamnation (Serrure Condamnation)', 'is_lock_condamnation');
+      await assignGache(
+        'مقبض الباب Condamnation (Poignée Condamnation)',
+        'is_lock_condamnation',
+      );
+      await assignGache(
+        'قفل الباب Condamnation (Serrure Condamnation)',
+        'is_lock_condamnation',
+      );
       await assignGache('قفل Condamnation', 'is_lock_condamnation');
       // Migration for backward compatibility
-      if (widget.model.componentOverrides.containsKey('جوان بروس (Joint Brosse)')) {
-        final oldVal = widget.model.componentOverrides['جوان بروس (Joint Brosse)'];
-        if (!widget.model.componentOverrides.containsKey('جوان بروس للظلفة (Joint Brosse Sash)')) {
-          widget.model.componentOverrides['جوان بروس للظلفة (Joint Brosse Sash)'] = oldVal;
+      if (widget.model.componentOverrides.containsKey(
+        'جوان بروس (Joint Brosse)',
+      )) {
+        final oldVal =
+            widget.model.componentOverrides['جوان بروس (Joint Brosse)'];
+        if (!widget.model.componentOverrides.containsKey(
+          'جوان بروس للظلفة (Joint Brosse Sash)',
+        )) {
+          widget
+                  .model
+                  .componentOverrides['جوان بروس للظلفة (Joint Brosse Sash)'] =
+              oldVal;
         }
-        if (!widget.model.componentOverrides.containsKey('جوان بروس للستار (Joint Brosse Shutter)')) {
-          widget.model.componentOverrides['جوان بروس للستار (Joint Brosse Shutter)'] = oldVal;
+        if (!widget.model.componentOverrides.containsKey(
+          'جوان بروس للستار (Joint Brosse Shutter)',
+        )) {
+          widget
+                  .model
+                  .componentOverrides['جوان بروس للستار (Joint Brosse Shutter)'] =
+              oldVal;
         }
       }
       // 5. جلب Joint Brosse (جوان فرشاة) تلقائيًا: يبحث أولًا في جدول Joints ثم في Accessories كخطة بديلة
@@ -979,7 +1300,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             var jointRes = await dbInstance.query(
               'Joints',
               where:
-              "(LOWER(name) LIKE '%bross%' OR name LIKE '%بروس%' OR name LIKE '%برش%' OR name LIKE '%فرشا%' OR name LIKE '%فرشاة%' OR LOWER(name) LIKE '%brush%')${seriesFilter['clause']}",
+                  "(LOWER(name) LIKE '%bross%' OR name LIKE '%بروس%' OR name LIKE '%برش%' OR name LIKE '%فرشا%' OR name LIKE '%فرشاة%' OR LOWER(name) LIKE '%brush%')${seriesFilter['clause']}",
               whereArgs: [...seriesFilter['args']],
               limit: 1,
             );
@@ -988,7 +1309,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               jointRes = await dbInstance.query(
                 'Accessories',
                 where:
-                "(LOWER(name) LIKE '%bross%' OR name LIKE '%بروس%' OR name LIKE '%برش%' OR name LIKE '%فرشا%' OR name LIKE '%فرشاة%' OR LOWER(name) LIKE '%brush%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')${seriesFilter['clause']}",
+                    "(LOWER(name) LIKE '%bross%' OR name LIKE '%بروس%' OR name LIKE '%برش%' OR name LIKE '%فرشا%' OR name LIKE '%فرشاة%' OR LOWER(name) LIKE '%brush%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')${seriesFilter['clause']}",
                 whereArgs: [matType, ...seriesFilter['args']],
                 limit: 1,
               );
@@ -998,7 +1319,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               jointRes = await dbInstance.query(
                 'Joints',
                 where:
-                "(LOWER(name) LIKE '%bross%' OR name LIKE '%بروس%' OR name LIKE '%برش%' OR name LIKE '%فرشا%' OR name LIKE '%فرشاة%' OR LOWER(name) LIKE '%brush%')",
+                    "(LOWER(name) LIKE '%bross%' OR name LIKE '%بروس%' OR name LIKE '%برش%' OR name LIKE '%فرشا%' OR name LIKE '%فرشاة%' OR LOWER(name) LIKE '%brush%')",
                 limit: 1,
               );
             }
@@ -1015,6 +1336,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           } catch (e) {}
         }
       }
+
       await assignJointBrosse('جوان بروس للظلفة (Joint Brosse Sash)');
       await assignJointBrosse('جوان بروس للستار (Joint Brosse Shutter)');
       // 5.5 جلب "الطاسو" (Tasso/Tasseau/Equerre) تلقائيًا بالبحث بعدة مرادفات
@@ -1024,7 +1346,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           final tRes = await dbInstance.query(
             'Accessories',
             where:
-            "(LOWER(name) LIKE '%tasso%' OR LOWER(name) LIKE '%tasseau%' OR name LIKE '%طاسو%' OR name LIKE '%طاصو%' OR LOWER(name) LIKE '%equerre%' OR LOWER(name) LIKE '%équerre%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+                "(LOWER(name) LIKE '%tasso%' OR LOWER(name) LIKE '%tasseau%' OR name LIKE '%طاسو%' OR name LIKE '%طاصو%' OR LOWER(name) LIKE '%equerre%' OR LOWER(name) LIKE '%équerre%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
             whereArgs: [matType],
             limit: 1,
           );
@@ -1043,9 +1365,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       Future<void> assignVitrageJoint(String uiKey, List<String> kws) async {
         if (!isLinked(uiKey)) {
           try {
-            String whereClause = "(gasket_type = 'جوان فيتراج' OR gasket_type = 'joint_vitrage' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%vitrage%' OR LOWER(name) LIKE '%زجاج%')))";
+            String whereClause =
+                "(gasket_type = 'جوان فيتراج' OR gasket_type = 'joint_vitrage' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%vitrage%' OR LOWER(name) LIKE '%زجاج%')))";
             if (kws.isNotEmpty) {
-              final kwStrings = kws.map((k) => "LOWER(name) LIKE '%$k%'").join(" OR ");
+              final kwStrings = kws
+                  .map((k) => "LOWER(name) LIKE '%$k%'")
+                  .join(" OR ");
               whereClause = "($whereClause) AND ($kwStrings)";
             }
             var jointRes = await dbInstance.query(
@@ -1057,7 +1382,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
               jointRes = await dbInstance.query(
                 'Accessories',
-                where: "($whereClause) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+                where:
+                    "($whereClause) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
                 whereArgs: [matType],
                 limit: 1,
               );
@@ -1076,10 +1402,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           } catch (e) {}
         }
       }
+
       await assignVitrageJoint('جوان الزجاج 2 ملم (Joint Vitrage 2mm)', ['2']);
-      await assignVitrageJoint('جوان الزجاج 3-4 ملم (Joint Vitrage 3-4mm)', ['3', '4']);
-      await assignVitrageJoint('جوان الزجاج 5-6 ملم (Joint Vitrage 5-6mm)', ['5', '6']);
-      await assignVitrageJoint('جوان الزجاج 7-8 ملم (Joint Vitrage 7-8mm)', ['7', '8']);
+      await assignVitrageJoint('جوان الزجاج 3-4 ملم (Joint Vitrage 3-4mm)', [
+        '3',
+        '4',
+      ]);
+      await assignVitrageJoint('جوان الزجاج 5-6 ملم (Joint Vitrage 5-6mm)', [
+        '5',
+        '6',
+      ]);
+      await assignVitrageJoint('جوان الزجاج 7-8 ملم (Joint Vitrage 7-8mm)', [
+        '7',
+        '8',
+      ]);
       await assignVitrageJoint('جوان الزجاج (Joint Vitrage)', []);
 
       // 5.6b Auto-assign swing gaskets (Bourrage, Frappe, Central)
@@ -1095,7 +1431,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
               jointRes = await dbInstance.query(
                 'Accessories',
-                where: "($whereClause) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+                where:
+                    "($whereClause) AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
                 whereArgs: [matType],
                 limit: 1,
               );
@@ -1117,15 +1454,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
       await assignSwingGasket(
         'جوان البوراج (Joint Bourrage)',
-        "(gasket_type = 'جوان بوراج' OR gasket_type = 'جوان بار كلوز' OR gasket_type = 'جوان باركلوز' OR gasket_type = 'joint_bourrage' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%bourrage%' OR LOWER(name) LIKE '%بوراج%' OR LOWER(name) LIKE '%parclose%' OR LOWER(name) LIKE '%بارك%')))"
+        "(gasket_type = 'جوان بوراج' OR gasket_type = 'جوان بار كلوز' OR gasket_type = 'جوان باركلوز' OR gasket_type = 'joint_bourrage' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%bourrage%' OR LOWER(name) LIKE '%بوراج%' OR LOWER(name) LIKE '%parclose%' OR LOWER(name) LIKE '%بارك%')))",
       );
       await assignSwingGasket(
         'جوان الضرب (Joint Frappe)',
-        "(gasket_type = 'جوان فراب' OR gasket_type = 'جوان فريب' OR gasket_type = 'joint_frappe' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%frappe%' OR LOWER(name) LIKE '%ضرب%' OR LOWER(name) LIKE '%فراب%' OR LOWER(name) LIKE '%فريب%')))"
+        "(gasket_type = 'جوان فراب' OR gasket_type = 'جوان فريب' OR gasket_type = 'joint_frappe' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%frappe%' OR LOWER(name) LIKE '%ضرب%' OR LOWER(name) LIKE '%فراب%' OR LOWER(name) LIKE '%فريب%')))",
       );
       await assignSwingGasket(
         'جوان الوسط (Joint Central)',
-        "(gasket_type = 'جوان سنترال' OR gasket_type = 'joint_central' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%central%' OR LOWER(name) LIKE '%وسط%')))"
+        "(gasket_type = 'جوان سنترال' OR gasket_type = 'joint_central' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%central%' OR LOWER(name) LIKE '%وسط%')))",
       );
       // 5.7 جلب صداد السكة (Arrêt) تلقائياً بالبحث بمرادفات والكود
       if (!isLinked('صداد السكة (Arrêt)')) {
@@ -1133,7 +1470,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
           var aRes = await dbInstance.query(
             'Accessories',
-            where: "(code = '80000' OR code = '116' OR LOWER(name) LIKE '%arrêt%' OR LOWER(name) LIKE '%arret%' OR LOWER(name) LIKE '%array%' OR name LIKE '%صداد%' OR name LIKE '%موقف%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
+            where:
+                "(code = '80000' OR code = '116' OR LOWER(name) LIKE '%arrêt%' OR LOWER(name) LIKE '%arret%' OR LOWER(name) LIKE '%array%' OR name LIKE '%صداد%' OR name LIKE '%موقف%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
             whereArgs: [matType],
             limit: 1,
           );
@@ -1152,11 +1490,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final kitBundleData = <String, List<Map<String, dynamic>>>{};
       final kitPerLeafMap = <String, bool>{};
       try {
-        final kits = await sqlDb.readKitBundles(); // قراءة كل حزم الكيت المعرّفة
+        final kits = await sqlDb
+            .readKitBundles(); // قراءة كل حزم الكيت المعرّفة
         for (final kit in kits) {
           final kitName = kit['name'] as String? ?? '';
           final kitId = kit['id'] as int;
-          final details = await sqlDb.readKitBundleItemsWithDetails(kitId); // عناصر هذا الكيت بالتفصيل
+          final details = await sqlDb.readKitBundleItemsWithDetails(
+            kitId,
+          ); // عناصر هذا الكيت بالتفصيل
           final mutableDetails = <Map<String, dynamic>>[];
           for (final item in details) {
             final mutableItem = Map<String, dynamic>.from(item);
@@ -1214,11 +1555,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             }
             mutableDetails.add(mutableItem);
           }
-          kitBundleData[kitName] = mutableDetails; // تخزين تفاصيل الكيت مع أسعارها المحدّثة
-          kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1; // هل الكمية تُحسب لكل ضلفة
+          kitBundleData[kitName] =
+              mutableDetails; // تخزين تفاصيل الكيت مع أسعارها المحدّثة
+          kitPerLeafMap[kitName] =
+              (kit['per_leaf'] ?? 0) == 1; // هل الكمية تُحسب لكل ضلفة
         }
       } catch (_) {}
-      _kitBundleData = kitBundleData; // حفظ في الحالة (State) لاستخدامها في بناء الجدول
+      _kitBundleData =
+          kitBundleData; // حفظ في الحالة (State) لاستخدامها في بناء الجدول
       _kitPerLeafMap = kitPerLeafMap;
       // 7. توليد قائمة المكونات الكاملة (BOM) وإكمال أي عنصر "ناقص" (missing) بالبحث الذكي عنه في القاعدة
       final bomItems = ComponentCalculator.generateBom(
@@ -1228,6 +1572,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         kitPerLeafMap: kitPerLeafMap,
       );
       for (var item in bomItems) {
+        final itemAccessoryMode = _accessoryDrawingModeForItem(item);
+        final itemSeriesId = _seriesIdForItem(item);
+        final itemMaterialType = _materialTypeForItem(item).toLowerCase();
         // نعالج فقط العناصر الناقصة التي لم يتم اختيار بديل لها يدويًا بعد
         if (item.isMissing &&
             !widget.model.componentOverrides.containsKey(item.originalName)) {
@@ -1238,29 +1585,55 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               try {
                 // 1. استخراج المقاس المطلوب من الاسم (مثلاً 180)
                 final match = RegExp(r'\d+').firstMatch(item.originalName);
-                String targetSize = match != null ? match.group(0)! : '';
-                final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
+                final double? targetSize = match == null
+                    ? null
+                    : double.tryParse(match.group(0)!);
+                final matType = itemMaterialType;
+                final seriesFilter = _buildSeriesFilterClause(
+                  seriesId: itemSeriesId,
+                );
                 var allEsp = await dbInstance.query(
                   'Accessories',
                   where:
-                  "(type LIKE '%إسبانيوليت%' OR LOWER(name) LIKE '%esp%') AND (is_active = 1 OR is_active IS NULL) AND (material_type = ? OR material_type = 'Both' OR material_type IS NULL OR material_type = '')",
-                  whereArgs: [matType],
+                      "(type LIKE '%إسبانيوليت%' OR LOWER(name) LIKE '%esp%') AND (is_active = 1 OR is_active IS NULL) AND (LOWER(material_type) = ? OR LOWER(material_type) = 'both')${seriesFilter['clause']}",
+                  whereArgs: [matType, ...seriesFilter['args']],
                 );
+                if (itemAccessoryMode != null) {
+                  allEsp = allEsp
+                      .where(
+                        (accessory) => accessoryMatchesDrawingMode(
+                          accessory,
+                          itemAccessoryMode,
+                        ),
+                      )
+                      .toList();
+                }
                 if (allEsp.isNotEmpty) {
                   Map<String, dynamic>? selectedEsp;
-                  // 3. محاولة العثور على إسبانيوليت بنفس المقاس المطلوب
-                  if (targetSize.isNotEmpty) {
-                    for (var e in allEsp) {
-                      String n = e['name'].toString();
-                      String ty = e['type'].toString();
-                      if (n.contains(targetSize) || ty.contains(targetSize)) {
-                        selectedEsp = e;
-                        break;
-                      }
-                    }
+                  // نختار أطول إسبانيوليت لا تتجاوز المقاس المحسوب للرسم.
+                  // لا يجوز أن يظهر أو يُختار مقاس أطول من اللازم.
+                  double? lengthOf(Map<String, dynamic> value) {
+                    final measurement = (value['measurement'] ?? '').toString();
+                    final source = measurement.isNotEmpty
+                        ? measurement
+                        : '${value['name'] ?? ''} ${value['type'] ?? ''}';
+                    final size = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(source);
+                    return size == null
+                        ? null
+                        : double.tryParse(size.group(1)!.replaceAll(',', '.'));
                   }
-                  // 4. إذا لم يجد نفس المقاس، يختار أول خيار متاح كبديل
-                  selectedEsp ??= allEsp.first;
+                  if (targetSize != null) {
+                    final compatible = allEsp.where((item) {
+                      final length = lengthOf(item);
+                      return length != null && length <= targetSize;
+                    }).toList()
+                      ..sort((a, b) => lengthOf(b)!.compareTo(lengthOf(a)!));
+                    if (compatible.isNotEmpty) selectedEsp = compatible.first;
+                  }
+                  // لا نعوض بمقاس أطول. إذا لم يوجد طول مقروء، نبقيه مفقوداً
+                  // حتى يختاره المستخدم من القائمة الصحيحة.
+                  selectedEsp ??= targetSize == null ? allEsp.first : null;
+                  if (selectedEsp == null) continue;
                   // 5. حفظ المكوّن وتحديث الشاشة فورًا
                   final mutableItem = Map<String, dynamic>.from(selectedEsp);
                   double price = 0.0;
@@ -1379,7 +1752,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 keywordFr = 'ob';
                 keywordAr = 'ob';
               } else if ((item.originalName.contains('الفيرو') ||
-                  item.originalName.contains('Verrou')) &&
+                      item.originalName.contains('Verrou')) &&
                   !item.originalName.contains('Central')) {
                 keywordFr = 'verrou';
                 keywordAr = 'فيرو';
@@ -1418,16 +1791,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   item.originalName.contains('جوان بروس')) {
                 keywordFr = 'bross';
                 keywordAr = 'بروس';
-              } else if (item.originalName.contains('2mm') || item.originalName.contains('2 ملم')) {
+              } else if (item.originalName.contains('2mm') ||
+                  item.originalName.contains('2 ملم')) {
                 keywordFr = '2';
                 keywordAr = '2';
-              } else if (item.originalName.contains('3-4mm') || item.originalName.contains('3-4 ملم')) {
+              } else if (item.originalName.contains('3-4mm') ||
+                  item.originalName.contains('3-4 ملم')) {
                 keywordFr = '3';
                 keywordAr = '3';
-              } else if (item.originalName.contains('5-6mm') || item.originalName.contains('5-6 ملم')) {
+              } else if (item.originalName.contains('5-6mm') ||
+                  item.originalName.contains('5-6 ملم')) {
                 keywordFr = '5';
                 keywordAr = '5';
-              } else if (item.originalName.contains('7-8mm') || item.originalName.contains('7-8 ملم')) {
+              } else if (item.originalName.contains('7-8mm') ||
+                  item.originalName.contains('7-8 ملم')) {
                 keywordFr = '7';
                 keywordAr = '7';
               } else {
@@ -1441,9 +1818,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final sId = widget.model.systemMode == 'sliding'
                     ? widget.model.activeSlidingSeries?.id
                     : widget.model.activeSeries?.id;
-                bool isLateralReinforced = widget.model.zones.any((z) =>
-                    z.slidingMontantReinforced['lateral_0'] == true ||
-                    z.slidingMontantReinforced['lateral_1'] == true);
+                bool isLateralReinforced = widget.model.zones.any(
+                  (z) =>
+                      z.slidingMontantReinforced['lateral_0'] == true ||
+                      z.slidingMontantReinforced['lateral_1'] == true,
+                );
                 final targetSuffix = isLateralReinforced ? '108' : '104';
                 final secRes = await dbInstance.query(
                   'Sections',
@@ -1460,10 +1839,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(secRes.first['price_dzd'] ?? secRes.first['price']);
+                    price = _safeDouble(
+                      secRes.first['price_dzd'] ?? secRes.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                   continue;
                 }
@@ -1472,8 +1854,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final sId = widget.model.systemMode == 'sliding'
                     ? widget.model.activeSlidingSeries?.id
                     : widget.model.activeSeries?.id;
-                bool isCentralReinforced = widget.model.zones.any((z) =>
-                    z.slidingMontantReinforced.entries.any((e) => e.key.startsWith('central_') && e.value == true));
+                bool isCentralReinforced = widget.model.zones.any(
+                  (z) => z.slidingMontantReinforced.entries.any(
+                    (e) => e.key.startsWith('central_') && e.value == true,
+                  ),
+                );
                 final targetSuffix = isCentralReinforced ? '107' : '105';
                 final secRes = await dbInstance.query(
                   'Sections',
@@ -1490,10 +1875,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(secRes.first['price_dzd'] ?? secRes.first['price']);
+                    price = _safeDouble(
+                      secRes.first['price_dzd'] ?? secRes.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                   continue;
                 }
@@ -1517,10 +1905,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(secRes.first['price_dzd'] ?? secRes.first['price']);
+                    price = _safeDouble(
+                      secRes.first['price_dzd'] ?? secRes.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                   continue;
                 }
@@ -1535,7 +1926,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final mullRes = await dbInstance.query(
                   'Sections',
                   where:
-                  'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ? OR type LIKE ?)',
+                      'series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ? OR type LIKE ?)',
                   whereArgs: [
                     widget.model.systemMode == 'sliding'
                         ? widget.model.activeSlidingSeries?.id
@@ -1585,7 +1976,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 // البحث عن الريديكتور بالكود أو الاسم/النوع ضمن السلسلة النشطة
                 final redResAll = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  where:
+                      'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
                   whereArgs: [sId],
                 );
                 final redMatches = redResAll.where((s) {
@@ -1615,10 +2007,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(redRes.first['price_dzd'] ?? redRes.first['price']);
+                    price = _safeDouble(
+                      redRes.first['price_dzd'] ?? redRes.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                 }
                 continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات خاطئة مثل السكة Rail
@@ -1631,16 +2026,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     : widget.model.activeSeries?.id;
                 final cjResAll = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  where:
+                      'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
                   whereArgs: [sId],
                 );
                 final cjMatches = cjResAll.where((s) {
                   final t = (s['type'] ?? '').toString().toLowerCase();
                   final n = (s['name'] ?? '').toString().toLowerCase();
-                  return t.contains('couvre') || n.contains('couvre') || n.contains('غطاء') || t.contains('side_cover');
+                  return t.contains('couvre') ||
+                      n.contains('couvre') ||
+                      n.contains('غطاء') ||
+                      t.contains('side_cover');
                 }).toList();
                 if (cjMatches.isNotEmpty) {
-                  final mutableItem = Map<String, dynamic>.from(cjMatches.first);
+                  final mutableItem = Map<String, dynamic>.from(
+                    cjMatches.first,
+                  );
                   double price = 0.0;
                   if (colorId != null) {
                     price = await sqlDb.getSectionPrice(
@@ -1648,10 +2049,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(cjMatches.first['price_dzd'] ?? cjMatches.first['price']);
+                    price = _safeDouble(
+                      cjMatches.first['price_dzd'] ?? cjMatches.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   widget.model.sideCoverOverride = mutableItem;
                   if (mounted) setState(() {});
                 }
@@ -1664,11 +2068,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     : widget.model.activeSeries?.id;
                 final latResAll = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  where:
+                      'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
                   whereArgs: [sId],
                 );
-                final bool isRenf = item.originalName.contains('معزز') || item.originalName.contains('Renforcé') ||
-                    widget.model.zones.any((z) => z.slidingMontantReinforced.entries.any((e) => e.key.startsWith('lateral_') && e.value == true));
+                final bool isRenf =
+                    item.originalName.contains('معزز') ||
+                    item.originalName.contains('Renforcé') ||
+                    widget.model.zones.any(
+                      (z) => z.slidingMontantReinforced.entries.any(
+                        (e) => e.key.startsWith('lateral_') && e.value == true,
+                      ),
+                    );
                 final targetCode = isRenf ? '67108' : '67104';
                 final targetSuffix = isRenf ? '108' : '104';
 
@@ -1680,14 +2091,25 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final fallbackMatches = latResAll.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('104') || c.contains('108') || n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
-                      !n.contains('central') && !n.contains('وسطي') && !n.contains('chicane') && !c.contains('105');
+                  return (c.contains('104') ||
+                          c.contains('108') ||
+                          n.contains('latéral') ||
+                          n.contains('lateral') ||
+                          n.contains('جانبي')) &&
+                      !n.contains('central') &&
+                      !n.contains('وسطي') &&
+                      !n.contains('chicane') &&
+                      !c.contains('105');
                 }).toList();
 
-                final finalMatches = latMatches.isNotEmpty ? latMatches : fallbackMatches;
+                final finalMatches = latMatches.isNotEmpty
+                    ? latMatches
+                    : fallbackMatches;
 
                 if (finalMatches.isNotEmpty) {
-                  final mutableItem = Map<String, dynamic>.from(finalMatches.first);
+                  final mutableItem = Map<String, dynamic>.from(
+                    finalMatches.first,
+                  );
                   double price = 0.0;
                   if (colorId != null) {
                     price = await sqlDb.getSectionPrice(
@@ -1695,10 +2117,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(finalMatches.first['price_dzd'] ?? finalMatches.first['price']);
+                    price = _safeDouble(
+                      finalMatches.first['price_dzd'] ??
+                          finalMatches.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                 }
                 continue;
@@ -1710,17 +2136,26 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     : widget.model.activeSeries?.id;
                 final cenResAll = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+                  where:
+                      'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
                   whereArgs: [sId],
                 );
                 final cenMatches = cenResAll.where((s) {
                   final n = (s['name'] ?? '').toString().toLowerCase();
                   final c = (s['code'] ?? '').toString().toLowerCase();
-                  return (c.contains('105') || c.contains('107') || n.contains('central') || n.contains('وسطي') || n.contains('chicane')) &&
-                      !n.contains('latéral') && !n.contains('جانبي') && !c.contains('104');
+                  return (c.contains('105') ||
+                          c.contains('107') ||
+                          n.contains('central') ||
+                          n.contains('وسطي') ||
+                          n.contains('chicane')) &&
+                      !n.contains('latéral') &&
+                      !n.contains('جانبي') &&
+                      !c.contains('104');
                 }).toList();
                 if (cenMatches.isNotEmpty) {
-                  final mutableItem = Map<String, dynamic>.from(cenMatches.first);
+                  final mutableItem = Map<String, dynamic>.from(
+                    cenMatches.first,
+                  );
                   double price = 0.0;
                   if (colorId != null) {
                     price = await sqlDb.getSectionPrice(
@@ -1728,10 +2163,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(cenMatches.first['price_dzd'] ?? cenMatches.first['price']);
+                    price = _safeDouble(
+                      cenMatches.first['price_dzd'] ??
+                          cenMatches.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                 }
                 continue;
@@ -1742,8 +2181,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     : widget.model.activeSeries?.id;
                 final railRes = await dbInstance.query(
                   'Sections',
-                  where: 'series_id = ? AND (LOWER(type) = ? OR LOWER(name) = ? OR LOWER(name) LIKE ?) AND LOWER(type) NOT LIKE ? AND LOWER(name) NOT LIKE ?',
-                  whereArgs: [sId, 'rail', 'rail', 'rail%', '%frame%', '%cadre%'],
+                  where:
+                      'series_id = ? AND (LOWER(type) = ? OR LOWER(name) = ? OR LOWER(name) LIKE ?) AND LOWER(type) NOT LIKE ? AND LOWER(name) NOT LIKE ?',
+                  whereArgs: [
+                    sId,
+                    'rail',
+                    'rail',
+                    'rail%',
+                    '%frame%',
+                    '%cadre%',
+                  ],
                   limit: 1,
                 );
                 if (railRes.isNotEmpty) {
@@ -1755,10 +2202,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       colorId,
                     );
                   } else {
-                    price = _safeDouble(railRes.first['price_dzd'] ?? railRes.first['price']);
+                    price = _safeDouble(
+                      railRes.first['price_dzd'] ?? railRes.first['price'],
+                    );
                   }
                   mutableItem['calculated_price'] = price;
-                  widget.model.componentOverrides[item.originalName] = mutableItem;
+                  widget.model.componentOverrides[item.originalName] =
+                      mutableItem;
                   if (mounted) setState(() {});
                 }
                 continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات عشوائية
@@ -1768,8 +2218,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             if (table != null) {
               List<Map<String, Object?>> res = [];
               if (keywordFr.isNotEmpty || keywordAr.isNotEmpty) {
-                String sizeFilter = ''; // فلتر إضافي للمقاس (يُستخدم للصندوق/الكيت فقط)
-                final activeSeriesIdForJoint = widget.model.systemMode == 'sliding'
+                String sizeFilter =
+                    ''; // فلتر إضافي للمقاس (يُستخدم للصندوق/الكيت فقط)
+                final activeSeriesIdForJoint =
+                    widget.model.systemMode == 'sliding'
                     ? widget.model.activeSlidingSeries?.id
                     : widget.model.activeSeries?.id;
                 if (item.originalName.contains('Caisson') ||
@@ -1790,14 +2242,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       ? size.substring(0, 2)
                       : size;
                   sizeFilter =
-                  " AND (name LIKE '%$size%' OR type LIKE '%$size%' OR name LIKE '%$sizeDot%' OR type LIKE '%$sizeDot%' OR name LIKE '%$sizeComma%' OR type LIKE '%$sizeComma%' OR name LIKE '%$shortSize%' OR type LIKE '%$shortSize%')";
+                      " AND (name LIKE '%$size%' OR type LIKE '%$size%' OR name LIKE '%$sizeDot%' OR type LIKE '%$sizeDot%' OR name LIKE '%$sizeComma%' OR type LIKE '%$sizeComma%' OR name LIKE '%$shortSize%' OR type LIKE '%$shortSize%')";
                 }
                 final isSections = table == 'Sections';
                 String whereClause;
                 List<dynamic> queryArgs;
                 if (table == 'Joints') {
                   if (activeSeriesIdForJoint != null) {
-                    whereClause = '((LOWER(name) LIKE ? OR LOWER(type) LIKE ?) OR (name LIKE ? OR type LIKE ?)) AND '
+                    whereClause =
+                        '((LOWER(name) LIKE ? OR LOWER(type) LIKE ?) OR (name LIKE ? OR type LIKE ?)) AND '
                         '(series_id = ? OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\')))'
                         ' AND (is_active = 1 OR is_active IS NULL)';
                     queryArgs = [
@@ -1809,7 +2262,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       '%,' + activeSeriesIdForJoint.toString() + ',%',
                     ];
                   } else {
-                    whereClause = '((LOWER(name) LIKE ? OR LOWER(type) LIKE ?) OR (name LIKE ? OR type LIKE ?)) AND (is_active = 1 OR is_active IS NULL)';
+                    whereClause =
+                        '((LOWER(name) LIKE ? OR LOWER(type) LIKE ?) OR (name LIKE ? OR type LIKE ?)) AND (is_active = 1 OR is_active IS NULL)';
                     queryArgs = [
                       '%$keywordFr%',
                       '%$keywordFr%',
@@ -1818,11 +2272,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ];
                   }
                 } else {
-                  final seriesFilter = _buildSeriesFilterClause();
+                  final seriesFilter = _buildSeriesFilterClause(
+                    seriesId: itemSeriesId,
+                  );
                   final bool applySeriesFilter = table == 'Accessories';
+                  final materialFilter = table == 'Accessories'
+                      ? (itemMaterialType == 'pvc'
+                            ? " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
+                            : " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')")
+                      : '';
                   whereClause = isSections
                       ? '((LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(code) LIKE ?) OR (name LIKE ? OR type LIKE ? OR code LIKE ?)) $sizeFilter AND (is_active = 1 OR is_active IS NULL)'
-                      : '((LOWER(name) LIKE ? OR LOWER(type) LIKE ?) OR (name LIKE ? OR type LIKE ?)) $sizeFilter${applySeriesFilter ? seriesFilter['clause'] : ''} AND (is_active = 1 OR is_active IS NULL)';
+                      : '((LOWER(name) LIKE ? OR LOWER(type) LIKE ?) OR (name LIKE ? OR type LIKE ?)) $sizeFilter${applySeriesFilter ? seriesFilter['clause'] : ''}$materialFilter AND (is_active = 1 OR is_active IS NULL)';
                   queryArgs = isSections
                       ? [
                           '%$keywordFr%',
@@ -1833,16 +2294,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           //'%$keywordAr%',
                         ]
                       : [
-                    '%$keywordFr%',
-                    '%$keywordFr%',
-                    '%$keywordAr%',
-                    '%$keywordAr%',
-                    if (applySeriesFilter) ...seriesFilter['args'],
+                          '%$keywordFr%',
+                          '%$keywordFr%',
+                          '%$keywordAr%',
+                          '%$keywordAr%',
+                          if (applySeriesFilter) ...seriesFilter['args'],
                         ];
                 }
                 String? orderBy;
                 if (table == 'Joints' && activeSeriesIdForJoint != null) {
-                  orderBy = 'CASE WHEN series_id = $activeSeriesIdForJoint OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE \'%,$activeSeriesIdForJoint,%\') THEN 0 ELSE 1 END ASC, id ASC';
+                  orderBy =
+                      'CASE WHEN series_id = $activeSeriesIdForJoint OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE \'%,$activeSeriesIdForJoint,%\') THEN 0 ELSE 1 END ASC, id ASC';
                 }
                 // البحث الأساسي بالكلمة المفتاحية + فلتر المقاس (إن وُجد)
                 res = await dbInstance.query(
@@ -1850,8 +2312,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   where: whereClause,
                   whereArgs: queryArgs,
                   orderBy: orderBy,
-                  limit: 1,
+                  limit: table == 'Accessories' && itemAccessoryMode != null
+                      ? null
+                      : 1,
                 );
+                if (table == 'Accessories' && itemAccessoryMode != null) {
+                  res = res
+                      .where(
+                        (accessory) => accessoryMatchesDrawingMode(
+                          accessory,
+                          itemAccessoryMode,
+                        ),
+                      )
+                      .toList();
+                }
                 // إذا لم يوجد تطابق مع فلتر المقاس، أعد البحث بدونه (نتيجة أعم)
                 if (res.isEmpty && sizeFilter.isNotEmpty) {
                   final fallbackWhereClause = isSections
@@ -1867,11 +2341,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 // تصفية نتائج Sections حسب نوع العنصر (Rail vs Réducteur وغيرها)
                 if (table == 'Sections' && res.isNotEmpty) {
                   final origLower = item.originalName.toLowerCase();
-                  if (origLower.contains('rail') || origLower.contains('سكة') || origLower.contains('الري')) {
+                  if (origLower.contains('rail') ||
+                      origLower.contains('سكة') ||
+                      origLower.contains('الري')) {
                     final railMatches = res.where((s) {
                       final t = (s['type'] ?? '').toString().toLowerCase();
                       final n = (s['name'] ?? '').toString().toLowerCase();
-                      return (t == 'rail' || t.contains('rail') || n == 'rail' || n.startsWith('rail') || n.contains('سكة')) &&
+                      return (t == 'rail' ||
+                              t.contains('rail') ||
+                              n == 'rail' ||
+                              n.startsWith('rail') ||
+                              n.contains('سكة')) &&
                           !t.contains('frame') &&
                           !t.contains('cadre') &&
                           !n.contains('cadre') &&
@@ -1907,7 +2387,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       final parcloseMatches = res.where((s) {
                         final t = (s['type'] ?? '').toString().toLowerCase();
                         final n = (s['name'] ?? '').toString().toLowerCase();
-                        return (t.contains('parclose') || t.contains('reduct')) &&
+                        return (t.contains('parclose') ||
+                                t.contains('reduct')) &&
                             !t.contains('frame') &&
                             !t.contains('cadre') &&
                             !t.contains('rail') &&
@@ -2005,10 +2486,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       await _loadPricesFromDb(); // بعد كل ما سبق، أعد تحميل أسعار المتر الخطي/الستار من القاعدة
     } finally {
       if (mounted) {
-        setState(() {}); // تحديث نهائي للواجهة بغض النظر عن نجاح أو فشل العمليات أعلاه
+        setState(
+          () {},
+        ); // تحديث نهائي للواجهة بغض النظر عن نجاح أو فشل العمليات أعلاه
       }
     }
   }
+
   // ==========================================================================
   // initState: يُستدعى مرة واحدة عند إنشاء الشاشة
   // ==========================================================================
@@ -2028,8 +2512,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final isMotor = widget.model.shutterMechanism == 'محرك';
     final isCrankInit =
         widget.model.shutterMechanism == 'منايفال' ||
-            widget.model.shutterMechanism == 'مانيفال' ||
-            widget.model.shutterMechanism == 'مانيفر';
+        widget.model.shutterMechanism == 'مانيفال' ||
+        widget.model.shutterMechanism == 'مانيفر';
     // بناء الحالة الابتدائية لكل عناصر activeVariants دفعة واحدة
     activeVariants = {
       'Verrou Central': widget.model.useVerrouCentral,
@@ -2051,9 +2535,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _fetchDefaults();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
     widget.model.addListener(_onModelChanged);
-    // مراقبة موضع التمرير الأفقي لإظهار/إخفاء العمود الثابت (overlay) عند التمرير أكثر من 150 بكسل
+    // إظهار العمود الثابت فور بدء السحب الأفقي، كي لا يضيع سطر العنصر عن المستخدم.
     _scrollController.addListener(() {
-      final isScrolled = _scrollController.offset > 150;
+      final isScrolled = _scrollController.offset > 0.5;
       if (isScrolled != _isScrolled) {
         setState(() {
           _isScrolled = isScrolled;
@@ -2061,12 +2545,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
     });
   }
+
   // دالة تُستدعى عند تغيّر النموذج من خارج هذه الشاشة، فقط تعيد بناء الواجهة
   void _onModelChanged() {
     if (mounted) {
       setState(() {});
     }
   }
+
   // ==========================================================================
   // dispose: تنظيف الموارد عند إغلاق الشاشة (إلغاء الاستماع، تحرير الكونترولرز)
   // ==========================================================================
@@ -2081,6 +2567,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _torqueFactorController.dispose();
     super.dispose();
   }
+
   // ==========================================================================
   // دالة: _loadCostSettings
   // تحميل إعدادات التسعير العامة (نسبة الربح، سعر المتر المربع، معامل العزم،
@@ -2089,13 +2576,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   Future<void> _loadCostSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _profitMargin = prefs.getDouble('app_profit_margin') ?? 0.0; // افتراضي 20%
-      _pricePerSqm = prefs.getDouble('app_price_per_sqm') ?? 0.0; // افتراضي 00 دج/م²
-      _torqueFactor = prefs.getDouble('shutter_torque_factor') ?? 1.5; // افتراضي 1.5
+      _profitMargin =
+          prefs.getDouble('app_profit_margin') ?? 0.0; // افتراضي 20%
+      _pricePerSqm =
+          prefs.getDouble('app_price_per_sqm') ?? 0.0; // افتراضي 00 دج/م²
+      _torqueFactor =
+          prefs.getDouble('shutter_torque_factor') ?? 1.5; // افتراضي 1.5
       // ملاحظة: سعر المتر الخطي يُحمَّل دائمًا من قاعدة البيانات وليس من SharedPreferences
       final methodIndex =
           prefs.getInt('app_cost_method') ?? CostMethod.percentage.index;
-      _costMethod = CostMethod.values[methodIndex]; // تحويل الرقم المحفوظ إلى enum
+      _costMethod =
+          CostMethod.values[methodIndex]; // تحويل الرقم المحفوظ إلى enum
       // مزامنة الكونترولرز مع القيم المحمّلة لعرضها في حقول الإدخال
       _profitMarginController.text = _profitMargin.toStringAsFixed(1);
       _pricePerSqmController.text = _pricePerSqm.toStringAsFixed(0);
@@ -2103,6 +2594,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _torqueFactorController.text = _torqueFactor.toStringAsFixed(1);
     });
   }
+
   // ==========================================================================
   // دالة: _loadPricesFromDb
   // تحميل الأسعار الديناميكية من قاعدة البيانات: سعر المتر الخطي للسلسلة
@@ -2152,7 +2644,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           limit: 1,
         );
         if (anyColorRes.isNotEmpty) {
-          linearMeterPrice = (anyColorRes.first['price'] as num?)?.toDouble() ?? 0.0;
+          linearMeterPrice =
+              (anyColorRes.first['price'] as num?)?.toDouble() ?? 0.0;
         }
       }
     }
@@ -2180,11 +2673,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             .replaceAll(' ', '')
             .trim();
       }
+
       String normActualName = normalize(actualBladeName);
       String normSubtype = normalize(subtype);
       // جلب كل أسعار المتر المربع للستار من القاعدة، ثم مطابقتها يدويًا في Dart (أدق من SQL LIKE هنا)
       final allSqmPrices = await dbInstance.query('ShutterSqmPrices');
-      double fallbackPrice = 0.0; // سعر احتياطي مبني على النوع فقط (لو ما وجد تطابق دقيق بالاسم)
+      double fallbackPrice =
+          0.0; // سعر احتياطي مبني على النوع فقط (لو ما وجد تطابق دقيق بالاسم)
       for (var row in allSqmPrices) {
         String dbBladeType = row['blade_type']?.toString() ?? '';
         String normDbBladeType = normalize(dbBladeType);
@@ -2196,15 +2691,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // مطابقة الاسم: تطابق تام أو احتواء جزئي في أي اتجاه
         bool nameMatches =
             normActualName == normDbBladeType ||
-                normActualName.contains(normDbBladeType) ||
-                normDbBladeType.contains(normActualName);
+            normActualName.contains(normDbBladeType) ||
+            normDbBladeType.contains(normActualName);
         bool subtypeMatches = normSubtype == normDbBladeType;
         if (nameMatches && normDbBladeType.isNotEmpty) {
           shutterSqmPrice = _safeDouble(row['price_per_sqm']);
           print("✅ [DEBUG] تم جلب سعر الشفرة الدقيق: $shutterSqmPrice");
-          if (dbColorId != 0) break; // الأولوية للسعر المرتبط بلون محدد (نتوقف فورًا)
+          if (dbColorId != 0)
+            break; // الأولوية للسعر المرتبط بلون محدد (نتوقف فورًا)
         } else if (subtypeMatches && fallbackPrice == 0.0) {
-          fallbackPrice = _safeDouble(row['price_per_sqm']); // احفظه كخطة بديلة فقط
+          fallbackPrice = _safeDouble(
+            row['price_per_sqm'],
+          ); // احفظه كخطة بديلة فقط
         }
       }
       // إذا لم يُوجد تطابق دقيق بالاسم، استخدم السعر الاحتياطي المبني على النوع (extruded/normal)
@@ -2223,7 +2721,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         );
         if (compRows.isNotEmpty) {
           shutterSqmPrice = _safeDouble(compRows.first['price']);
-          print("✅ [DEBUG] تم جلب السعر الافتراضي للشفرة من ShutterComponents: $shutterSqmPrice");
+          print(
+            "✅ [DEBUG] تم جلب السعر الافتراضي للشفرة من ShutterComponents: $shutterSqmPrice",
+          );
         }
       }
     }
@@ -2275,7 +2775,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (mounted) {
       setState(() {
         _pricePerLinearMeterFromDb = linearMeterPrice;
-        _shutterSqmPriceFromDb = shutterSqmPrice; // ⭐️ التحديث الحاسم لسعر الستار
+        _shutterSqmPriceFromDb =
+            shutterSqmPrice; // ⭐️ التحديث الحاسم لسعر الستار
         _moteurInstallFee = moteurInstall;
         _obInstallFee = obInstall;
         _demiObInstallFee = demiObInstall;
@@ -2290,6 +2791,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       });
     }
   }
+
   // ==========================================================================
   // دالة: _handleKitSelection
   // تُستدعى عند اختيار المستخدم كيتًا مختلفًا يدويًا من القائمة المنسدلة.
@@ -2308,22 +2810,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final bool isSliding = widget.model.systemMode == 'sliding';
     if (isSliding) {
       String targetKey = 'كيت 67000 (Kit 67000)';
-       if (selectedName.contains('40000')) {
+      if (selectedName.contains('40000')) {
         targetKey = 'كيت 40000 (Kit 40000)';
       } else if (selectedName.contains('67000')) {
         targetKey = 'كيت 67000 (Kit 67000)';
       } else {
-        final String sName = widget.model.activeSlidingSeries?.name.toLowerCase() ?? '';
-         if (sName.contains('40000')) {
+        final String sName =
+            widget.model.activeSlidingSeries?.name.toLowerCase() ?? '';
+        if (sName.contains('40000')) {
           targetKey = 'كيت 40000 (Kit 40000)';
         } else {
           targetKey = 'كيت 67000 (Kit 67000)';
         }
       }
-      final slidingKeys = [
-        'كيت 67000 (Kit 67000)',
-        'كيت 40000 (Kit 40000)',
-      ];
+      final slidingKeys = ['كيت 67000 (Kit 67000)', 'كيت 40000 (Kit 40000)'];
       for (final k in slidingKeys) {
         widget.model.componentOverrides.remove(k);
       }
@@ -2337,7 +2837,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       return;
     }
     String newMech; // الآلية الجديدة المستنتجة من اسم الكيت
-    String targetKitKey; // المفتاح الصحيح لحفظ هذا الكيت تحته في componentOverrides
+    String
+    targetKitKey; // المفتاح الصحيح لحفظ هذا الكيت تحته في componentOverrides
     // استنتاج نوع الآلية من اسم الكيت (محرك/مانيفيل مع فولي أو بدون/حزام)
     if (selectedName.contains('moteur') || selectedName.contains('محرك')) {
       newMech = 'محرك';
@@ -2384,16 +2885,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       });
     }
   }
+
   // ==========================================================================
   // دالة: _resolveDynamicProductPrice
   // تبحث عن سعر منتج بالاسم في جدولي Accessories ثم ShutterComponents،
   // مع مراعاة السعر الخاص باللون إن وُجد. تُستخدم لتحديث أسعار عناصر الكيت.
   // ==========================================================================
   Future<double?> _resolveDynamicProductPrice(
-      Database db,
-      String productName,
-      int? colorId,
-      ) async {
+    Database db,
+    String productName,
+    int? colorId,
+  ) async {
     // 1. البحث في جدول Accessories بالاسم بالضبط
     final accRows = await db.query(
       'Accessories',
@@ -2448,16 +2950,19 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
     return null; // المنتج غير موجود في أي من الجدولين
   }
+
   // حفظ إعداد تسعير رقمي واحد في SharedPreferences (بالمفتاح المعطى)
   Future<void> _saveCostSetting(String key, double value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(key, value);
   }
+
   // حفظ طريقة الحساب المختارة (percentage/squareMeter/linearMeter) في SharedPreferences
   Future<void> _saveCostMethod(CostMethod method) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('app_cost_method', method.index);
   }
+
   // ==========================================================================
   // دالة: _handleVariantToggle
   // تُستدعى عند تفعيل/تعطيل أي Checkbox لعنصر اختياري (كيت، سيبور، طانديم...).
@@ -2471,13 +2976,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       // تحقق: هل الاسم هو أحد مفاتيح الكيتات؟
       final isAnyKitKey =
           name == 'كيت (Kit)' ||
-              name == 'كيت فولي موتور (Kit Volet Moteur)' ||
-              name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
-              name == 'كيت مانيفر (Kit Manivelle)' ||
-              name == 'كيت حزام (Kit Sangle)' ||
-              name == 'كيت فولي (Kit Volet)';
+          name == 'كيت فولي موتور (Kit Volet Moteur)' ||
+          name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
+          name == 'كيت مانيفر (Kit Manivelle)' ||
+          name == 'كيت حزام (Kit Sangle)' ||
+          name == 'كيت فولي (Kit Volet)';
       if (name == 'Verrou Central') {
-        widget.model.toggleVerrouCentral(value); // تفويض المنطق لدالة النموذج نفسه
+        widget.model.toggleVerrouCentral(
+          value,
+        ); // تفويض المنطق لدالة النموذج نفسه
       } else if (name == 'System OB') {
         widget.model.toggleSystemOB(value);
       } else if (name == 'Demi System OB') {
@@ -2544,6 +3051,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
     });
   }
+
   // ==========================================================================
   // build: الدالة الرئيسية لبناء واجهة الشاشة كاملة
   // ==========================================================================
@@ -2559,9 +3067,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     );
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          Localization.translate('الالكمية والتكلفة', lang),
-        ),
+        title: Text(Localization.translate('الالكمية والتكلفة', lang)),
       ), // شريط العنوان العلوي
       body: SingleChildScrollView(
         scrollDirection: Axis.vertical, // تمرير رأسي لكامل محتوى الشاشة
@@ -2592,7 +3098,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        widget.model.shutterHeightWarning!, // نص التحذير القادم من النموذج
+                        widget
+                            .model
+                            .shutterHeightWarning!, // نص التحذير القادم من النموذج
                         style: TextStyle(
                           color: Colors.red.shade900,
                           fontSize: 14,
@@ -2615,7 +3123,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   child: FittedBox(
                     fit: BoxFit.contain,
                     child: CustomPaint(
-                      painter: WindowPainter(model: widget.model), // الرسام المخصص
+                      painter: WindowPainter(
+                        model: widget.model,
+                      ), // الرسام المخصص
                       size: Size(
                         widget.model.width.toDouble(),
                         widget.model.height.toDouble(),
@@ -2631,8 +3141,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             (() {
               // هل توجد أي حزمة كيت اسمها يحتوي "light/لايت/ليت" ضمن الأنظمة العامة (kit bundles)
               final hasLightKitSystem = _kitBundleData.keys.any(
-                    (key) =>
-                key.toLowerCase().contains('light') ||
+                (key) =>
+                    key.toLowerCase().contains('light') ||
                     key.contains('لايت') ||
                     key.contains('ليت'),
               );
@@ -2642,8 +3152,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   .map((i) => i.kitGroupName!)
                   .toSet();
               final isLightKitSystemActive = activeKits.any(
-                    (name) =>
-                name.toLowerCase().contains('light') ||
+                (name) =>
+                    name.toLowerCase().contains('light') ||
                     name.contains('لايت') ||
                     name.contains('ليت'),
               );
@@ -2654,9 +3164,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               final kitKeysToCheck = isMotor
                   ? ['كيت فولي موتور (Kit Volet Moteur)']
                   : [
-                'كيت فولي مانيفر (Kit Volet Manivelle)',
-                'كيت مانيفر (Kit Manivelle)',
-              ];
+                      'كيت فولي مانيفر (Kit Volet Manivelle)',
+                      'كيت مانيفر (Kit Manivelle)',
+                    ];
               for (var key in kitKeysToCheck) {
                 final shutterKit = widget.model.componentOverrides[key];
                 if (shutterKit != null) {
@@ -2674,11 +3184,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               // تجميع النتيجة النهائية: هل يوجد لايت كيت أصلًا، وهل هو مفعّل حاليًا
               final isLightKitActive =
                   isLightKitSystemActive ||
-                      (isShutterKitActive && isShutterKitLight);
+                  (isShutterKitActive && isShutterKitLight);
               final hasLightKit = hasLightKitSystem || isShutterKitLight;
               // بناء الشريط نفسه: لون مختلف حسب الحالة (أخضر=مفعّل، أزرق=متاح، رمادي=غير متاح)
               final isDark = Theme.of(context).brightness == Brightness.dark;
-              final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+              final lang = Provider.of<AppSettingsProvider>(
+                context,
+                listen: false,
+              ).language;
               return Container(
                 margin: const EdgeInsets.symmetric(
                   horizontal: 16.0,
@@ -2690,17 +3203,31 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: isLightKitActive
-                      ? (isDark ? Colors.green.shade900.withValues(alpha: 0.3) : Colors.green.shade50)
+                      ? (isDark
+                            ? Colors.green.shade900.withValues(alpha: 0.3)
+                            : Colors.green.shade50)
                       : (hasLightKit
-                      ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50)
-                      : (isDark ? Colors.blueGrey.shade900.withValues(alpha: 0.3) : Colors.blueGrey.shade50)),
+                            ? (isDark
+                                  ? Colors.blue.shade900.withValues(alpha: 0.3)
+                                  : Colors.blue.shade50)
+                            : (isDark
+                                  ? Colors.blueGrey.shade900.withValues(
+                                      alpha: 0.3,
+                                    )
+                                  : Colors.blueGrey.shade50)),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isLightKitActive
-                        ? (isDark ? Colors.green.shade700 : Colors.green.shade200)
+                        ? (isDark
+                              ? Colors.green.shade700
+                              : Colors.green.shade200)
                         : (hasLightKit
-                        ? (isDark ? Colors.blue.shade700 : Colors.blue.shade200)
-                        : (isDark ? Colors.blueGrey.shade700 : Colors.blueGrey.shade200)),
+                              ? (isDark
+                                    ? Colors.blue.shade700
+                                    : Colors.blue.shade200)
+                              : (isDark
+                                    ? Colors.blueGrey.shade700
+                                    : Colors.blueGrey.shade200)),
                   ),
                 ),
                 child: Column(
@@ -2711,7 +3238,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         // أيقونة وأبعاد النافذة (عرض × ارتفاع)
                         Icon(
                           Icons.straighten,
-                          color: isDark ? Colors.white60 : Colors.blueGrey.shade500,
+                          color: isDark
+                              ? Colors.white60
+                              : Colors.blueGrey.shade500,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
@@ -2719,15 +3248,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           text: TextSpan(
                             style: TextStyle(
                               fontSize: 14,
-                              color: isDark ? Colors.white70 : Colors.blueGrey.shade800,
+                              color: isDark
+                                  ? Colors.white70
+                                  : Colors.blueGrey.shade800,
                               fontWeight: FontWeight.bold,
                             ),
                             children: [
-                              TextSpan(text: '${Localization.translate('العرض:', lang)} '),
                               TextSpan(
-                                text: '${widget.model.width.toStringAsFixed(0)} mm',
+                                text:
+                                    '${Localization.translate('العرض:', lang)} ',
+                              ),
+                              TextSpan(
+                                text:
+                                    '${widget.model.width.toStringAsFixed(0)} mm',
                                 style: TextStyle(
-                                  color: isDark ? Colors.white : const Color(0xFF1A237E),
+                                  color: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF1A237E),
                                   fontSize: 15,
                                 ),
                               ),
@@ -2738,12 +3275,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                   fontWeight: FontWeight.normal,
                                 ),
                               ),
-                              TextSpan(text: '${Localization.translate('الارتفاع:', lang)} '),
                               TextSpan(
                                 text:
-                                '${widget.model.height.toStringAsFixed(0)} mm',
+                                    '${Localization.translate('الارتفاع:', lang)} ',
+                              ),
+                              TextSpan(
+                                text:
+                                    '${widget.model.height.toStringAsFixed(0)} mm',
                                 style: TextStyle(
-                                  color: isDark ? Colors.white : const Color(0xFF1A237E),
+                                  color: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF1A237E),
                                   fontSize: 15,
                                 ),
                               ),
@@ -2761,59 +3303,75 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           const SizedBox(width: 12),
                           Icon(
                             isLightKitActive
-                                ? Icons.check_circle // أخضر = مفعّل فعليًا
-                                : Icons.info_outline, // أزرق = متاح لكن غير مفعّل
-                            color: isLightKitActive ? Colors.green : Colors.blue,
+                                ? Icons
+                                      .check_circle // أخضر = مفعّل فعليًا
+                                : Icons
+                                      .info_outline, // أزرق = متاح لكن غير مفعّل
+                            color: isLightKitActive
+                                ? Colors.green
+                                : Colors.blue,
                             size: 18,
                           ),
                         ],
                       ],
                     ),
-                    if (widget.model.systemMode == 'sliding') (() {
-                      final hasSlidingSash = widget.model.zones.any((z) => z.content == ZoneContent.slidingSash);
-                      if (!hasSlidingSash) return const SizedBox.shrink();
-                      final useClassicHandle = widget.model.zones.any((z) => z.content == ZoneContent.slidingSash && z.useClassicHandle == true);
-                      return Column(
-                        children: [
-                          const SizedBox(height: 6),
-                          Container(
-                            height: 1,
-                            color: Colors.blueGrey.shade100.withValues(alpha: 0.5),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.lock_outline_rounded,
-                                color: Colors.blueGrey.shade500,
-                                size: 16,
+                    if (widget.model.systemMode == 'sliding')
+                      (() {
+                        final hasSlidingSash = widget.model.zones.any(
+                          (z) => z.content == ZoneContent.slidingSash,
+                        );
+                        if (!hasSlidingSash) return const SizedBox.shrink();
+                        final useClassicHandle = widget.model.zones.any(
+                          (z) =>
+                              z.content == ZoneContent.slidingSash &&
+                              z.useClassicHandle == true,
+                        );
+                        return Column(
+                          children: [
+                            const SizedBox(height: 6),
+                            Container(
+                              height: 1,
+                              color: Colors.blueGrey.shade100.withValues(
+                                alpha: 0.5,
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${Localization.translate('نوع القفل:', lang)} ',
-                                style: TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 12,
-                                  color: Colors.blueGrey.shade700,
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: Colors.blueGrey.shade500,
+                                  size: 16,
                                 ),
-                              ),
-                              Text(
-                                useClassicHandle
-                                    ? Localization.translate('مقبض كلاسيكي (فتح)', lang)
-                                    : '${Localization.translate('مقبض منزلق (جرار)', lang)} / ${Localization.translate('أودراماتيك', lang)}',
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1A237E),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${Localization.translate('نوع القفل:', lang)} ',
+                                  style: TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 12,
+                                    color: Colors.blueGrey.shade700,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    })(),
+                                Text(
+                                  useClassicHandle
+                                      ? Localization.translate(
+                                          'مقبض كلاسيكي (فتح)',
+                                          lang,
+                                        )
+                                      : '${Localization.translate('مقبض منزلق (جرار)', lang)} / ${Localization.translate('أودراماتيك', lang)}',
+                                  style: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1A237E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      })(),
                   ],
                 ),
               );
@@ -2823,15 +3381,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 horizontal: 8.0,
                 vertical: 8.0,
               ),
-              child: _buildUnifiedTable(items), // بناء الجدول الرئيسي بكل الأقسام
+              child: _buildUnifiedTable(
+                items,
+              ), // بناء الجدول الرئيسي بكل الأقسام
             ),
-            const SizedBox(height: 100), // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
+            const SizedBox(
+              height: 100,
+            ), // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomBar(items), // الشريط السفلي الثابت (السعر النهائي وزر الحفظ)
+      bottomNavigationBar: _buildBottomBar(
+        items,
+      ), // الشريط السفلي الثابت (السعر النهائي وزر الحفظ)
     );
   }
+
   // ==========================================================================
   // دالة: _calculateTotals ⭐
   // الغرض: حساب مجاميع التكلفة وسعر البيع لكل قسم (بروفيلات/زجاج/ستار/إكسسوارات)
@@ -2842,16 +3407,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     double glassCost = 0.0; // إجمالي تكلفة الزجاج
     double shutterCost = 0.0; // إجمالي تكلفة الستار وملحقاته
     double accessoryCost = 0.0; // إجمالي تكلفة الإكسسوارات
-    double accessorySellingCost = 0.0; // جزء من تكلفة الإكسسوارات المحدد كـ "قابل للربح" (is_selling_calculated)
+    double accessorySellingCost =
+        0.0; // جزء من تكلفة الإكسسوارات المحدد كـ "قابل للربح" (is_selling_calculated)
     double jointCost = 0.0; // إجمالي تكلفة الجوينات
-    double mainProfileMeters = 0.0; // إجمالي الأمتار الخطية للبروفيلات الرئيسية (إطار/ظلفة/تقسيم/باتمو)
-    double otherProfileCost = 0.0; // تكلفة البروفيلات الأخرى (غير محسوبة بالمتر الخطي)
-    final activeItems = items.where((i) => i.isActive).toList(); // فقط العناصر المفعّلة تدخل الحساب
+    double mainProfileMeters =
+        0.0; // إجمالي الأمتار الخطية للبروفيلات الرئيسية (إطار/ظلفة/تقسيم/باتمو)
+    double otherProfileCost =
+        0.0; // تكلفة البروفيلات الأخرى (غير محسوبة بالمتر الخطي)
+    final activeItems = items
+        .where((i) => i.isActive)
+        .toList(); // فقط العناصر المفعّلة تدخل الحساب
     // دالة داخلية: تحدد هل العنصر ملحق ستار عادي (وليس الشريحة نفسها أو غطاء الشفرات)
     bool isShutterAccessory(BomItem i) {
       if (i.category != 'shutter') return false;
       final nameLower = i.originalName.toLowerCase();
-      if (i.originalName == 'الشرائح (Lames)') return false; // الشريحة نفسها تُستثنى من هذا التصنيف
+      if (i.originalName == 'الشرائح (Lames)')
+        return false; // الشريحة نفسها تُستثنى من هذا التصنيف
       if (nameLower.contains('bouchons lames') ||
           nameLower.contains('bouchon lame') ||
           i.originalName.contains('أغطية الشفرات')) {
@@ -2859,11 +3430,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       return true;
     }
+
     // دالة داخلية: تحدد هل العنصر هو "غطاء شفرات" تحديدًا
     bool isBouchonLame(BomItem i) =>
         i.originalName.contains('أغطية الشفرات') ||
-            i.originalName.toLowerCase().contains('bouchons lames') ||
-            i.originalName.toLowerCase().contains('bouchon lame');
+        i.originalName.toLowerCase().contains('bouchons lames') ||
+        i.originalName.toLowerCase().contains('bouchon lame');
     // الحلقة الرئيسية: تصنيف كل عنصر مفعّل حسب فئته وتجميع تكلفته في المتغيرات أعلاه
     for (var item in activeItems) {
       if (item.category == 'profile') {
@@ -2872,25 +3444,25 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // تصنيف نوع البروفيل بالاعتماد على اسمه (عربي/فرنسي)
         final isFrame =
             nameLower.contains('إطار') ||
-                nameLower.contains('cadre') ||
-                nameLower.contains('frame');
+            nameLower.contains('cadre') ||
+            nameLower.contains('frame');
         final isSash =
             nameLower.contains('درفة') ||
-                nameLower.contains('ouvrant') ||
-                nameLower.contains('sash');
+            nameLower.contains('ouvrant') ||
+            nameLower.contains('sash');
         final isMullion =
             nameLower.contains('تقسيم') || nameLower.contains('mullion');
         final isBatmo =
             nameLower.contains('باتمو') ||
-                nameLower.contains('batmo') ||
-                nameLower.contains('batbo') ||
-                nameLower.contains('باتبو');
+            nameLower.contains('batmo') ||
+            nameLower.contains('batbo') ||
+            nameLower.contains('باتبو');
         final isRenfort =
             nameLower.contains('حديد') || nameLower.contains('renfort');
         final isPareClose =
             nameLower.contains('pare-close') ||
-                nameLower.contains('pareclose') ||
-                nameLower.contains('pare close');
+            nameLower.contains('pareclose') ||
+            nameLower.contains('pare close');
         if (isRenfort || isPareClose) {
           // الحديد والباركلوز يُضافان فقط لإجمالي التكلفة العامة (لا يدخلان حساب الأمتار الخطية الرئيسية)
         } else if (isFrame || isSash || isMullion || isBatmo) {
@@ -2898,10 +3470,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           if (item.pieces != null) {
             mainProfileMeters += item.pieces!.fold<double>(
               0.0,
-                  (sum, p) => sum + p,
+              (sum, p) => sum + p,
             ); // جمع أطوال كل القطع المقصوصة لهذا العنصر
           } else if (item.length != null) {
-            mainProfileMeters += (item.length! / 1000.0) * item.quantity; // تحويل من مم إلى متر × الكمية
+            mainProfileMeters +=
+                (item.length! / 1000.0) *
+                item.quantity; // تحويل من مم إلى متر × الكمية
           }
         } else {
           otherProfileCost += item.total; // بروفيلات أخرى غير مصنّفة كرئيسية
@@ -2967,11 +3541,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     double effectiveShutterSqmPrice =
         _shutterSqmPriceOverride ?? _shutterSqmPriceFromDb;
     bool hasShutter = items.any(
-          (item) => item.isActive && item.category == 'shutter',
+      (item) => item.isActive && item.category == 'shutter',
     );
     double areaSqm = // مساحة النافذة بالمتر المربع
-    (widget.model.width / 1000.0) * (widget.model.height / 1000.0);
-    double shutterAreaPrice = hasShutter // سعر بيع الستار محسوبًا بالمتر المربع (يُستخدم في طريقتين من الثلاث)
+        (widget.model.width / 1000.0) * (widget.model.height / 1000.0);
+    double shutterAreaPrice =
+        hasShutter // سعر بيع الستار محسوبًا بالمتر المربع (يُستخدم في طريقتين من الثلاث)
         ? (effectiveShutterSqmPrice * areaSqm * widget.model.quantity)
         : 0.0;
     // ---- طريقة 1: النسبة المئوية — سعر البيع = التكلفة × (1 + نسبة الربح) ----
@@ -2983,42 +3558,47 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       shutterSelling = shutterCost * factor;
       accessorySelling =
           (accessorySellingCost * factor) +
-              specialAccessoryInstallFees +
-              motorCrankInstallFees;
+          specialAccessoryInstallFees +
+          motorCrankInstallFees;
       jointSelling = jointCost * factor;
       // ---- طريقة 2: سعر المتر المربع الكلي للنافذة (يُطرح منه الزجاج ليبقى نصيب البروفيل) ----
     } else if (_costMethod == CostMethod.squareMeter) {
       double windowSellingPrice =
           _pricePerSqm * areaSqm * widget.model.quantity;
-      glassSelling =
-          glassCost; // الزجاج يبقى بسعر التكلفة
-      profileSelling = windowSellingPrice - glassCost; // الباقي بعد طرح الزجاج يُنسب للبروفيل
+      glassSelling = glassCost; // الزجاج يبقى بسعر التكلفة
+      profileSelling =
+          windowSellingPrice -
+          glassCost; // الباقي بعد طرح الزجاج يُنسب للبروفيل
       if (profileSelling < 0.0) profileSelling = 0.0; // حماية من قيمة سالبة
       shutterSelling = shutterAreaPrice;
       accessorySelling =
           accessorySellingCost +
-              specialAccessoryInstallFees +
-              motorCrankInstallFees;
+          specialAccessoryInstallFees +
+          motorCrankInstallFees;
       jointSelling = jointCost;
       // ---- طريقة 3: سعر المتر الخطي للبروفيلات الرئيسية + تكلفة البروفيلات الأخرى كما هي ----
     } else if (_costMethod == CostMethod.linearMeter) {
       profileSelling =
           (mainProfileMeters *
               (_pricePerLinearMeterOverride ?? _pricePerLinearMeterFromDb)) +
-              otherProfileCost;
-      glassSelling =
-          glassCost;
+          otherProfileCost;
+      glassSelling = glassCost;
       shutterSelling = shutterAreaPrice;
       accessorySelling =
           accessorySellingCost +
-              specialAccessoryInstallFees +
-              motorCrankInstallFees;
+          specialAccessoryInstallFees +
+          motorCrankInstallFees;
       jointSelling = jointCost;
     }
     // المجاميع الكلية للتكلفة وسعر البيع
-    double totalCost = profileCost + glassCost + shutterCost + accessoryCost + jointCost;
+    double totalCost =
+        profileCost + glassCost + shutterCost + accessoryCost + jointCost;
     double totalSelling =
-        profileSelling + glassSelling + shutterSelling + accessorySelling + jointSelling;
+        profileSelling +
+        glassSelling +
+        shutterSelling +
+        accessorySelling +
+        jointSelling;
     // إرجاع كل القيم كخريطة مقسّمة حسب القسم (لكل قسم: cost و selling)
     return {
       'profile': {'cost': profileCost, 'selling': profileSelling},
@@ -3029,6 +3609,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       'total': {'cost': totalCost, 'selling': totalSelling},
     };
   }
+
   // ==========================================================================
   // دالة: _buildCostMethodSelector
   // تبني بطاقة (Card) تحوي: اختيار طريقة الحساب، حقل الإدخال الخاص بها،
@@ -3040,15 +3621,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       listen: false,
     ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final items = ComponentCalculator.generateBom( // إعادة توليد القائمة للحصول على أحدث المجاميع
+    final items = ComponentCalculator.generateBom(
+      // إعادة توليد القائمة للحصول على أحدث المجاميع
       widget.model,
       activeVariants,
       kitBundleData: _kitBundleData,
       kitPerLeafMap: _kitPerLeafMap,
     );
     final totals = _calculateTotals(items);
-    final double totalCostNoWaste = totals['total']?['cost'] ?? 0.0; // التكلفة الصافية بدون هدر
-    final double totalCostWithWaste = totalCostNoWaste * 1.10; // إضافة هامش هدر ثابت 10%
+    final double totalCostNoWaste =
+        totals['total']?['cost'] ?? 0.0; // التكلفة الصافية بدون هدر
+    final double totalCostWithWaste =
+        totalCostNoWaste * 1.10; // إضافة هامش هدر ثابت 10%
     final double sellingPrice = totals['total']?['selling'] ?? 0.0;
     return Card(
       margin: const EdgeInsets.all(16.0),
@@ -3086,8 +3670,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       _saveCostMethod(method);
                     }
                   },
-                  selectedColor: isDark ? Colors.blue.shade900.withValues(alpha: 0.6) : Colors.blue.shade100,
-                  checkmarkColor: isDark ? Colors.blue.shade100 : Colors.blue.shade800,
+                  selectedColor: isDark
+                      ? Colors.blue.shade900.withValues(alpha: 0.6)
+                      : Colors.blue.shade100,
+                  checkmarkColor: isDark
+                      ? Colors.blue.shade100
+                      : Colors.blue.shade800,
                   labelStyle: TextStyle(
                     color: isSelected
                         ? (isDark ? Colors.blue.shade100 : Colors.blue.shade900)
@@ -3125,7 +3713,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: Localization.translate('سعر المتر المربع (دج)', lang),
+                  labelText: Localization.translate(
+                    'سعر المتر المربع (دج)',
+                    lang,
+                  ),
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.aspect_ratio),
                 ),
@@ -3136,44 +3727,51 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 },
               )
             else if (_costMethod == CostMethod.linearMeter) ...[
-                TextField(
-                  controller: _pricePerLinearMeterController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: Localization.translate('سعر المتر الخطي (دج) — تعديل يدوي', lang),
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(
-                      Icons.linear_scale,
-                      color: Colors.blue,
-                    ),
-                    // زر إلغاء التعديل اليدوي (يرجع للقيمة من قاعدة البيانات) أو زر إعادة تحميل إذا لا يوجد تعديل
-                    suffixIcon: _pricePerLinearMeterOverride != null
-                        ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          _pricePerLinearMeterOverride = null;
-                          _pricePerLinearMeterController.text =
-                              _pricePerLinearMeterFromDb.toStringAsFixed(0);
-                        });
-                      },
-                    )
-                        : IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.blue),
-                      tooltip: Localization.translate('إعادة تحميل من قاعدة البيانات', lang),
-                      onPressed: _loadPricesFromDb,
-                    ),
-                  ),
-                  onChanged: (val) {
-                    final parsed = double.tryParse(val);
-                    setState(() {
-                      _pricePerLinearMeterOverride = parsed; // أي تعديل يدوي هنا يتجاوز قيمة القاعدة
-                    });
-                  },
+              TextField(
+                controller: _pricePerLinearMeterController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-              ],
+                decoration: InputDecoration(
+                  labelText: Localization.translate(
+                    'سعر المتر الخطي (دج) — تعديل يدوي',
+                    lang,
+                  ),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(
+                    Icons.linear_scale,
+                    color: Colors.blue,
+                  ),
+                  // زر إلغاء التعديل اليدوي (يرجع للقيمة من قاعدة البيانات) أو زر إعادة تحميل إذا لا يوجد تعديل
+                  suffixIcon: _pricePerLinearMeterOverride != null
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.red),
+                          onPressed: () {
+                            setState(() {
+                              _pricePerLinearMeterOverride = null;
+                              _pricePerLinearMeterController.text =
+                                  _pricePerLinearMeterFromDb.toStringAsFixed(0);
+                            });
+                          },
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.refresh, color: Colors.blue),
+                          tooltip: Localization.translate(
+                            'إعادة تحميل من قاعدة البيانات',
+                            lang,
+                          ),
+                          onPressed: _loadPricesFromDb,
+                        ),
+                ),
+                onChanged: (val) {
+                  final parsed = double.tryParse(val);
+                  setState(() {
+                    _pricePerLinearMeterOverride =
+                        parsed; // أي تعديل يدوي هنا يتجاوز قيمة القاعدة
+                  });
+                },
+              ),
+            ],
             // حقل سعر متر الستار وحقل معامل العزم — يظهران فقط إذا كان في النافذة ستار أصلًا
             if (widget.model.hasShutter) ...[
               const SizedBox(height: 10),
@@ -3183,7 +3781,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: Localization.translate('سعر المتر المربع للستار (دج) — تعديل يدوي', lang),
+                  labelText: Localization.translate(
+                    'سعر المتر المربع للستار (دج) — تعديل يدوي',
+                    lang,
+                  ),
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(
                     Icons.view_quilt,
@@ -3191,15 +3792,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   ),
                   suffixIcon: _shutterSqmPriceOverride != null
                       ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.red),
-                    onPressed: () {
-                      setState(() {
-                        _shutterSqmPriceOverride = null;
-                        _shutterSqmPriceController.text =
-                            _shutterSqmPriceFromDb.toStringAsFixed(0);
-                      });
-                    },
-                  )
+                          icon: const Icon(Icons.clear, color: Colors.red),
+                          onPressed: () {
+                            setState(() {
+                              _shutterSqmPriceOverride = null;
+                              _shutterSqmPriceController.text =
+                                  _shutterSqmPriceFromDb.toStringAsFixed(0);
+                            });
+                          },
+                        )
                       : null,
                 ),
                 onChanged: (val) {
@@ -3298,7 +3899,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1E1E2C) : Colors.grey.shade50,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: isDark ? Colors.blue.withValues(alpha: 0.15) : Colors.grey.shade200),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.blue.withValues(alpha: 0.15)
+                      : Colors.grey.shade200,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3343,14 +3948,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       ),
     );
   }
+
   // ودجت مساعد صغير: يبني صفًا موحد الشكل (أيقونة + نص + قيمة) لعرض عناصر ملخص التسعير
   Widget _priceRow(
-      IconData icon,
-      String label,
-      String value,
-      Color color, {
-        bool isBig = false,
-      }) {
+    IconData icon,
+    String label,
+    String value,
+    Color color, {
+    bool isBig = false,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
@@ -3377,6 +3983,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       ],
     );
   }
+
   // ==========================================================================
   // دالة: _buildKitDropdown
   // تبني قائمة منسدلة (PopupMenu) لترقية/تغيير كيت الستار الحالي، مع تطبيق
@@ -3392,7 +3999,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         final rows = await dbInstance.query(
           'ShutterComponents',
           where:
-          "(LOWER(name) LIKE '%kit%' OR name LIKE '%كيت%') AND (is_active = 1 OR is_active IS NULL)",
+              "(LOWER(name) LIKE '%kit%' OR name LIKE '%كيت%') AND (is_active = 1 OR is_active IS NULL)",
         );
         return rows.map((r) => Map<String, dynamic>.from(r)).toList();
       }(),
@@ -3429,7 +4036,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             if (currentKitSize == 18.0) currentKitSize = 180.0;
             if (currentKitSize == 20.0) currentKitSize = 200.0;
             if (currentKitSize < 100.0) {
-              currentKitSize = currentKitSize * 10.0; // مقاسات صغيرة جدًا تُضرب ×10 لتصحيح الوحدة
+              currentKitSize =
+                  currentKitSize *
+                  10.0; // مقاسات صغيرة جدًا تُضرب ×10 لتصحيح الوحدة
             }
           }
         }
@@ -3465,7 +4074,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           ),
           tooltip: 'تغيير كيت الستار (ترقية فقط)',
           onSelected: (selectedKit) async {
-            await _handleKitSelection(selectedKit); // تفويض المعالجة الفعلية لدالة _handleKitSelection
+            await _handleKitSelection(
+              selectedKit,
+            ); // تفويض المعالجة الفعلية لدالة _handleKitSelection
           },
           itemBuilder: (context) {
             return allowedKits.map((k) {
@@ -3496,6 +4107,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       },
     );
   }
+
   // ==========================================================================
   // دالة: _buildKitGroups
   // تبني صفوف الجدول الخاصة بمجموعات الكيت (قابلة للطي/التوسعة)، حيث يظهر
@@ -3503,7 +4115,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // ==========================================================================
   List<Widget> _buildKitGroups(List<BomItem> kitItems) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     if (kitItems.isEmpty) return []; // لا شيء لعرضه
     // تجميع العناصر حسب اسم مجموعة الكيت (kitGroupName)
     final Map<String, List<BomItem>> grouped = {};
@@ -3516,25 +4131,29 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     for (final entry in grouped.entries) {
       final kitName = entry.key;
       final children = entry.value;
-      final isExpanded = _kitGroupExpanded[kitName] ?? false; // حالة الطي/التوسعة الحالية
-      final totalPrice = children.fold<double>(0, (sum, i) => sum + i.total); // مجموع تكلفة كل عناصر المجموعة
+      final isExpanded =
+          _kitGroupExpanded[kitName] ?? false; // حالة الطي/التوسعة الحالية
+      final totalPrice = children.fold<double>(
+        0,
+        (sum, i) => sum + i.total,
+      ); // مجموع تكلفة كل عناصر المجموعة
       // دالة داخلية: تحدد هل عنصر معين هو "رأس كيت" (وليس عنصرًا فرعيًا داخله)
       bool isKitItem(String name) =>
           name == 'كيت (Kit)' ||
-              name == 'كيت فولي موتور (Kit Volet Moteur)' ||
-              name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
-              name == 'كيت مانيفر (Kit Manivelle)' ||
-              name == 'كيت حزام (Kit Sangle)' ||
-              name == 'كيت فولي (Kit Volet)';
+          name == 'كيت فولي موتور (Kit Volet Moteur)' ||
+          name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
+          name == 'كيت مانيفر (Kit Manivelle)' ||
+          name == 'كيت حزام (Kit Sangle)' ||
+          name == 'كيت فولي (Kit Volet)';
       // عدد العناصر المرئية الفعلية داخل المجموعة (باستثناء رأس الكيت وعناصر OB/Verrou الخاصة)
       final visibleCount = children
           .where(
             (c) =>
-        !isKitItem(c.originalName) &&
-            c.originalName != 'System OB' &&
-            c.originalName != 'Demi System OB' &&
-            c.originalName != 'Verrou Central',
-      )
+                !isKitItem(c.originalName) &&
+                c.originalName != 'System OB' &&
+                c.originalName != 'Demi System OB' &&
+                c.originalName != 'Verrou Central',
+          )
           .length;
       // دالة داخلية: تطابق مرن لاسم المجموعة مع مجموعة من الأسماء البديلة (aliases) بعد تطبيع النص
       bool isMatch(String baseName, List<String> aliases) {
@@ -3553,6 +4172,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         }
         return false;
       }
+
       // تحديد نوع هذه المجموعة تحديدًا (Demi OB / System OB / Verrou Central / كيت ستار عادي)
       final isDemiOb = isMatch('Demi System OB', [
         'demi system ob',
@@ -3566,7 +4186,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       ]);
       final isSystemOb =
           !isDemiOb &&
-              isMatch('System OB', ['system ob', 'system_ob', 'systemob']);
+          isMatch('System OB', ['system ob', 'system_ob', 'systemob']);
       final isVerrouCentral = isMatch('Verrou Central', [
         'verrou central',
         'verrou_central',
@@ -3578,7 +4198,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final isShutterKit = !isSystemOb && !isDemiOb && !isVerrouCentral;
       // العنصر الذي يمثل "رأس" هذه المجموعة (أول رأس كيت موجود، أو أول عنصر كخطة بديلة)
       final kitItem = children.firstWhere(
-            (c) => isKitItem(c.originalName),
+        (c) => isKitItem(c.originalName),
         orElse: () => children.first,
       );
       // هل المجموعة مفعّلة حاليًا؟ (تُحدد من activeVariants حسب نوعها)
@@ -3600,7 +4220,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           child: Container(
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
-              border: Border(bottom: BorderSide(color: isDark ? Colors.blue.withValues(alpha: 0.15) : Colors.grey.shade200)),
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark
+                      ? Colors.blue.withValues(alpha: 0.15)
+                      : Colors.grey.shade200,
+                ),
+              ),
             ),
             child: IntrinsicHeight(
               child: Row(
@@ -3610,7 +4236,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   _cell(
                     Container(
                       height: 28,
-                      color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                      color: isDark
+                          ? Colors.grey.shade800
+                          : Colors.grey.shade200,
                       child: Icon(
                         Icons.inventory_2_outlined,
                         color: isDark ? Colors.white54 : Colors.grey,
@@ -3628,7 +4256,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                               ? Icons.keyboard_arrow_up
                               : Icons.keyboard_arrow_down,
                           size: 20,
-                          color: isDark ? Colors.purple.shade300 : Colors.deepPurple,
+                          color: isDark
+                              ? Colors.purple.shade300
+                              : Colors.deepPurple,
                         ),
                         const SizedBox(width: 4),
                         Expanded(
@@ -3639,7 +4269,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
-                              color: isDark ? Colors.purple.shade300 : Colors.deepPurple,
+                              color: isDark
+                                  ? Colors.purple.shade300
+                                  : Colors.deepPurple,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -3647,7 +4279,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         if (isShutterKit && isGroupActive)
                           Padding(
                             padding: const EdgeInsets.only(right: 4.0),
-                            child: _buildKitDropdown(kitItem), // زر تغيير الكيت فقط لكيتات الستار المفعّلة
+                            child: _buildKitDropdown(
+                              kitItem,
+                            ), // زر تغيير الكيت فقط لكيتات الستار المفعّلة
                           ),
                       ],
                     ),
@@ -3763,25 +4397,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // نفس منطق فلترة visibleCount أعلاه بالضبط، لضمان توافق العدد المعروض مع العناصر الفعلية
         bool isKitHeader(String name) =>
             name == 'كيت (Kit)' ||
-                name == 'كيت فولي موتور (Kit Volet Moteur)' ||
-                name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
-                name == 'كيت مانيفر (Kit Manivelle)' ||
-                name == 'كيت حزام (Kit Sangle)' ||
-                name == 'كيت فولي (Kit Volet)';
+            name == 'كيت فولي موتور (Kit Volet Moteur)' ||
+            name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
+            name == 'كيت مانيفر (Kit Manivelle)' ||
+            name == 'كيت حزام (Kit Sangle)' ||
+            name == 'كيت فولي (Kit Volet)';
         final visibleChildren = children
             .where(
               (c) =>
-          !isKitHeader(c.originalName) &&
-              c.originalName != 'System OB' &&
-              c.originalName != 'Demi System OB' &&
-              c.originalName != 'Verrou Central',
-        )
+                  !isKitHeader(c.originalName) &&
+                  c.originalName != 'System OB' &&
+                  c.originalName != 'Demi System OB' &&
+                  c.originalName != 'Verrou Central',
+            )
             .toList();
-        widgets.addAll(visibleChildren.map(_row)); // بناء صف عادي لكل عنصر فرعي عبر _row
+        widgets.addAll(
+          visibleChildren.map(_row),
+        ); // بناء صف عادي لكل عنصر فرعي عبر _row
       }
     }
     return widgets;
   }
+
   // ==========================================================================
   // دالة: _buildUnifiedTable
   // تبني الجدول الكامل: رأس الجدول + كل الأقسام (بروفيلات/إكسسوارات/ستار/زجاج)
@@ -3793,30 +4430,36 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // دالة داخلية: تحدد هل العنصر "غطاء شفرات" (لأنه يُنقل من قسم accessory إلى قسم shutter في العرض)
     bool isBouchonLame(BomItem i) =>
         i.originalName.contains('أغطية الشفرات') ||
-            i.originalName.toLowerCase().contains('bouchons lames') ||
-            i.originalName.toLowerCase().contains('bouchon lame');
+        i.originalName.toLowerCase().contains('bouchons lames') ||
+        i.originalName.toLowerCase().contains('bouchon lame');
     // تقسيم كل العناصر إلى مجموعات حسب القسم الذي ستظهر فيه بالجدول
     final Map<String, List<BomItem>> groups = {
       'profile': items.where((i) => i.category == 'profile').toList(),
       'accessory': items
-          .where((i) => (i.category == 'accessory' && !isBouchonLame(i)) || 
-                        (i.category == 'other'))
+          .where(
+            (i) =>
+                (i.category == 'accessory' && !isBouchonLame(i)) ||
+                (i.category == 'other'),
+          )
           .toList(),
-      'joint': items
-          .where((i) => i.category == 'joint')
-          .toList(),
+      'joint': items.where((i) => i.category == 'joint').toList(),
       // كل مكونات الستار (ما عدا الجوانات) تُعرض معًا في قسم واحد
       'shutter': items
           .where(
             (i) =>
-        i.category == 'shutter' ||
-            (i.category == 'accessory' && isBouchonLame(i)),
-      )
+                i.category == 'shutter' ||
+                (i.category == 'accessory' && isBouchonLame(i)),
+          )
           .toList(),
-      'glass': items.where((i) => i.category == 'glass' || i.category == 'panneau').toList(),
+      'glass': items
+          .where((i) => i.category == 'glass' || i.category == 'panneau')
+          .toList(),
     };
-    final totals = _calculateTotals(items); // حساب مجاميع كل قسم لعرضها في عناوين الأقسام
-    return Stack( // Stack لوضع العمود الثابت (overlay) فوق الجدول عند التمرير
+    final totals = _calculateTotals(
+      items,
+    ); // حساب مجاميع كل قسم لعرضها في عناوين الأقسام
+    return Stack(
+      // Stack لوضع العمود الثابت (overlay) فوق الجدول عند التمرير
       children: [
         Container(
           decoration: BoxDecoration(
@@ -3824,11 +4467,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             borderRadius: BorderRadius.circular(4),
           ),
           child: SingleChildScrollView(
-            controller: _scrollController, // نفس الكونترولر المستخدم لمراقبة موضع التمرير
-            scrollDirection: Axis.horizontal, // تمرير أفقي لأن الجدول أعرض من الشاشة
+            controller:
+                _scrollController, // نفس الكونترولر المستخدم لمراقبة موضع التمرير
+            scrollDirection:
+                Axis.horizontal, // تمرير أفقي لأن الجدول أعرض من الشاشة
             child: SizedBox(
               width: _minW, // عرض ثابت = مجموع عرض كل الأعمدة
-              child: Column(
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _header(), // صف رأس الجدول (أسماء الأعمدة)
@@ -3887,7 +4534,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ...groups['glass']!.map(_row),
                   ],
                   // قسم الجوينات (Gaskets)
-                  if (groups['joint'] != null && groups['joint']!.isNotEmpty) ...[
+                  if (groups['joint'] != null &&
+                      groups['joint']!.isNotEmpty) ...[
                     _sectionTitle(
                       'الجوينات',
                       Colors.purple.shade50,
@@ -3897,6 +4545,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ...groups['joint']!.map(_row),
                   ],
                 ],
+                ),
               ),
             ),
           ),
@@ -3912,15 +4561,43 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       ],
     );
   }
+
   // ==========================================================================
   // دالة: _buildMinimalOverlay
   // تبني عمودًا مصغّرًا (يحتوي فقط أسماء الأقسام والعناصر) يظهر ثابتًا على
   // يسار/يمين الشاشة عندما يكون المستخدم قد مرّر الجدول أفقيًا، لتبقى أسماء
   // العناصر مرئية دائمًا أثناء التمرير.
   // ==========================================================================
+  // العمود الثابت هو قصّ من الصف الأصلي نفسه، لذلك يبقى بمحاذاة الصف
+  // المقابل مهما اختلف ارتفاع النص أو عدد الأسطر.
+  Widget _frozenTableSlice(Widget fullRow) {
+    return SizedBox(
+      width: _frozenWidth,
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: _minW,
+          maxWidth: _minW,
+          child: IgnorePointer(
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: Transform.translate(
+                offset: const Offset(-_wImg, 0),
+                child: SizedBox(width: _minW, child: fullRow),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildMinimalKitGroups(List<BomItem> kitItems) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     if (kitItems.isEmpty) return [];
     final Map<String, List<BomItem>> grouped = {};
     for (final item in kitItems) {
@@ -3935,28 +4612,49 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final isExpanded = _kitGroupExpanded[kitName] ?? false;
       bool isKitItem(String name) =>
           name == 'كيت (Kit)' ||
-              name == 'كيت فولي موتور (Kit Volet Moteur)' ||
-              name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
-              name == 'كيت مانيفر (Kit Manivelle)' ||
-              name == 'كيت حزام (Kit Sangle)' ||
-              name == 'كيت فولي (Kit Volet)';
+          name == 'كيت فولي موتور (Kit Volet Moteur)' ||
+          name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
+          name == 'كيت مانيفر (Kit Manivelle)' ||
+          name == 'كيت حزام (Kit Sangle)' ||
+          name == 'كيت فولي (Kit Volet)';
       bool isMatch(String baseName, List<String> aliases) {
-        final normalizedKitName = kitName.toLowerCase().replaceAll(RegExp(r'[\s_-]'), '');
+        final normalizedKitName = kitName.toLowerCase().replaceAll(
+          RegExp(r'[\s_-]'),
+          '',
+        );
         for (final alias in aliases) {
-          final normalizedAlias = alias.toLowerCase().replaceAll(RegExp(r'[\s_-]'), '');
+          final normalizedAlias = alias.toLowerCase().replaceAll(
+            RegExp(r'[\s_-]'),
+            '',
+          );
           if (normalizedKitName == normalizedAlias) return true;
         }
         return false;
       }
+
       final isDemiOb = isMatch('Demi System OB', [
-        'demi system ob', 'demi_system_ob', 'system_dim_ob', 'system dim ob', 'systemdimob', 'demisystemob', 'demisystemeob', 'systemedimob'
+        'demi system ob',
+        'demi_system_ob',
+        'system_dim_ob',
+        'system dim ob',
+        'systemdimob',
+        'demisystemob',
+        'demisystemeob',
+        'systemedimob',
       ]);
-      final isSystemOb = !isDemiOb && isMatch('System OB', ['system ob', 'system_ob', 'systemob']);
+      final isSystemOb =
+          !isDemiOb &&
+          isMatch('System OB', ['system ob', 'system_ob', 'systemob']);
       final isVerrouCentral = isMatch('Verrou Central', [
-        'verrou central', 'verrou_central', 'vero_central', 'vero central', 'verroucentral', 'verocentral'
+        'verrou central',
+        'verrou_central',
+        'vero_central',
+        'vero central',
+        'verroucentral',
+        'verocentral',
       ]);
       final kitItem = children.firstWhere(
-            (c) => isKitItem(c.originalName),
+        (c) => isKitItem(c.originalName),
         orElse: () => children.first,
       );
       final isGroupActive = isSystemOb
@@ -3973,18 +4671,26 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         InkWell(
           onTap: () => setState(() => _kitGroupExpanded[kitName] = !isExpanded),
           child: Container(
-            height: _rowHeight + 1, // Added 1 pixel to match the main table row + border height!
+            constraints: const BoxConstraints(minHeight: _rowMinHeight),
             width: 140, // Match the narrow width
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
-              border: Border(bottom: BorderSide(color: isDark ? Colors.blue.withValues(alpha: 0.15) : Colors.grey.shade200)),
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark
+                      ? Colors.blue.withValues(alpha: 0.15)
+                      : Colors.grey.shade200,
+                ),
+              ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             alignment: Alignment.centerLeft,
             child: Row(
               children: [
                 Icon(
-                  isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                  isExpanded
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_right,
                   color: isDark ? Colors.purple.shade300 : Colors.grey,
                   size: 16,
                 ),
@@ -4003,8 +4709,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.purple.shade300 : (isGroupActive ? Colors.deepPurple.shade900 : Colors.grey),
-                      decoration: !isGroupActive ? TextDecoration.lineThrough : null,
+                      color: isDark
+                          ? Colors.purple.shade300
+                          : (isGroupActive
+                                ? Colors.deepPurple.shade900
+                                : Colors.grey),
+                      decoration: !isGroupActive
+                          ? TextDecoration.lineThrough
+                          : null,
                     ),
                   ),
                 ),
@@ -4015,26 +4727,72 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       );
       if (isExpanded) {
         final visibleChildren = children
-            .where((c) =>
-                !isKitItem(c.originalName) &&
-                c.originalName != 'System OB' &&
-                c.originalName != 'Demi System OB' &&
-                c.originalName != 'Verrou Central')
+            .where(
+              (c) =>
+                  !isKitItem(c.originalName) &&
+                  c.originalName != 'System OB' &&
+                  c.originalName != 'Demi System OB' &&
+                  c.originalName != 'Verrou Central',
+            )
             .toList();
         widgets.addAll(visibleChildren.map(_minimalRow));
       }
     }
     return widgets;
   }
-Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
+
+  Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final totals = _calculateTotals(
+      groups.values.expand((group) => group).toList(),
+    );
+
+    List<Widget> section(
+      String title,
+      Color color,
+      String key, {
+      bool includeKits = false,
+    }) {
+      final groupItems = groups[key] ?? const <BomItem>[];
+      if (groupItems.isEmpty) return const <Widget>[];
+      final rows = <Widget>[
+        _frozenTableSlice(
+          _sectionTitle(
+            title,
+            color,
+            cost: totals[key]?['cost'],
+            selling: totals[key]?['selling'],
+          ),
+        ),
+      ];
+      if (includeKits) {
+        rows.addAll(
+          _buildKitGroups(
+            groupItems.where((item) => item.kitGroupName != null).toList(),
+          ).map(_frozenTableSlice),
+        );
+      }
+      rows.addAll(
+        groupItems
+            .where((item) => !includeKits || item.kitGroupName == null)
+            .map((item) => _frozenTableSlice(_row(item))),
+      );
+      return rows;
+    }
+
     return Container(
-      width: 140, // Reduced width as requested
+      width: _frozenWidth,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161622).withValues(alpha: 0.95) : Colors.white.withValues(alpha: 0.95), // شبه شفاف قليلًا حتى يبدو طبقة فوق الجدول
+        color: isDark
+            ? const Color(0xFF161622).withValues(alpha: 0.98)
+            : Colors.white.withValues(alpha: 0.98),
         border: Border(
-          right: BorderSide(color: isDark ? Colors.blue.withValues(alpha: 0.35) : Colors.grey.shade400, width: 2),
+          right: BorderSide(
+            color: isDark
+                ? Colors.blue.withValues(alpha: 0.35)
+                : Colors.grey.shade400,
+            width: 2,
+          ),
         ),
         boxShadow: const [
           BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(2, 0)),
@@ -4043,59 +4801,27 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: _rowHeight, // Enforce strict fixed height (no bottom border on header)
-            width: double.infinity,
-            color: isDark ? Colors.blueGrey.shade900 : Colors.blueGrey.shade800,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            alignment: Alignment.centerRight,
-            child: Text(
-              Localization.translate('البيان', lang),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: Colors.white,
-              ),
-            ),
+          _frozenTableSlice(_header()),
+          ...section('البروفيلات', Colors.blue.shade100, 'profile'),
+          ...section(
+            'الإكسسوارات',
+            Colors.orange.shade100,
+            'accessory',
+            includeKits: true,
           ),
-          if (groups['profile']!.isNotEmpty) ...[
-            _minimalSectionTitle(Localization.translate('البروفيلات', lang), isDark ? Colors.blue.shade900.withValues(alpha: 0.4) : Colors.blue.shade100),
-            ...groups['profile']!.map(_minimalRow),
-          ],
-          if (groups['accessory']!.isNotEmpty) ...[
-            _minimalSectionTitle(Localization.translate('الإكسسوارات', lang), isDark ? Colors.orange.shade900.withValues(alpha: 0.4) : Colors.orange.shade100),
-            ..._buildMinimalKitGroups(
-              groups['accessory']!
-                  .where((i) => i.kitGroupName != null)
-                  .toList(),
-            ),
-            ...groups['accessory']!
-                .where((i) => i.kitGroupName == null)
-                .map(_minimalRow),
-          ],
-          if (groups['shutter']!.isNotEmpty) ...[
-            _minimalSectionTitle(Localization.translate('ستار', lang), isDark ? Colors.purple.shade900.withValues(alpha: 0.4) : Colors.purple.shade100),
-            ..._buildMinimalKitGroups(
-              groups['shutter']!
-                  .where((i) => i.kitGroupName != null)
-                  .toList(),
-            ),
-            ...groups['shutter']!
-                .where((i) => i.kitGroupName == null)
-                .map(_minimalRow),
-          ],
-          if (groups['glass']!.isNotEmpty) ...[
-            _minimalSectionTitle(Localization.translate('الزجاج', lang), isDark ? Colors.teal.shade900.withValues(alpha: 0.4) : Colors.teal.shade100),
-            ...groups['glass']!.map(_minimalRow),
-          ],
-          if (groups['joint'] != null && groups['joint']!.isNotEmpty) ...[
-            _minimalSectionTitle(Localization.translate('الجوينات', lang), isDark ? Colors.purple.shade900.withValues(alpha: 0.2) : Colors.purple.shade50),
-            ...groups['joint']!.map(_minimalRow),
-          ],
+          ...section(
+            'مكوّنات الستار',
+            Colors.purple.shade100,
+            'shutter',
+            includeKits: true,
+          ),
+          ...section('الزجاج', Colors.teal.shade100, 'glass'),
+          ...section('الجوينات', Colors.purple.shade50, 'joint'),
         ],
       ),
     );
   }
+
   // عنوان قسم مصغّر (بدون أرقام التكلفة) للعمود الثابت
   Widget _minimalSectionTitle(String title, Color color) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -4114,22 +4840,29 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       ),
     );
   }
+
   // صف مصغّر يعرض فقط اسم العنصر (وربما اسمه الفرعي وقائمة القص) في العمود الثابت
   Widget _minimalRow(BomItem item) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isScrews =
         item.name.contains('براغي') ||
-            item.originalName.contains('حديد') ||
-            item.originalName.contains('Renfort') ||
-            item.name.contains('حديد') ||
-            item.name.contains('Renfort');
+        item.originalName.contains('حديد') ||
+        item.originalName.contains('Renfort') ||
+        item.name.contains('حديد') ||
+        item.name.contains('Renfort');
     return Container(
-      height: _rowHeight + 1, // Added 1 pixel to match the main table row + border height!
+      constraints: const BoxConstraints(minHeight: _rowMinHeight),
       width: 140, // Reduced width as requested
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: isDark ? Colors.blue.withValues(alpha: 0.15) : Colors.grey.shade200)),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.blue.withValues(alpha: 0.15)
+                : Colors.grey.shade200,
+          ),
+        ),
       ),
       child: Text(
         item.getLocalizedName(_lang),
@@ -4138,14 +4871,20 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,
-          color: isScrews ? Colors.orange : (isDark ? Colors.white70 : Colors.black87),
+          color: isScrews
+              ? Colors.orange
+              : (isDark ? Colors.white70 : Colors.black87),
           decoration: !item.isActive ? TextDecoration.lineThrough : null,
         ),
       ),
     );
   }
+
   Future<int?> _showQuantityDialog(BuildContext context, int currentQty) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final controller = TextEditingController(text: '$currentQty');
     return showDialog<int>(
       context: context,
@@ -4180,30 +4919,53 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       },
     );
   }
+
   // نافذة تعرض تفصيل أسعار البيع لكل قسم (بروفيلات/زجاج/ستار/إكسسوارات) + المجموع
   void _showCalculationDetails(
-      double profileSelling,
-      double glassSelling,
-      double shutterSelling,
-      double accessorySelling,
-      double finalSellingPrice,
-      ) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    double profileSelling,
+    double glassSelling,
+    double shutterSelling,
+    double accessorySelling,
+    double finalSellingPrice,
+  ) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(Localization.translate('تفاصيل الحساب', lang), textDirection: TextDirection.rtl),
+        title: Text(
+          Localization.translate('تفاصيل الحساب', lang),
+          textDirection: TextDirection.rtl,
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _detailRow(Localization.translate('سعر البروفيلات:', lang), profileSelling),
-              _detailRow(Localization.translate('سعر الزجاج:', lang), glassSelling),
-              _detailRow(Localization.translate('سعر الستار:', lang), shutterSelling),
-              _detailRow(Localization.translate('سعر الإكسسوارات:', lang), accessorySelling),
+              _detailRow(
+                Localization.translate('سعر البروفيلات:', lang),
+                profileSelling,
+              ),
+              _detailRow(
+                Localization.translate('سعر الزجاج:', lang),
+                glassSelling,
+              ),
+              _detailRow(
+                Localization.translate('سعر الستار:', lang),
+                shutterSelling,
+              ),
+              _detailRow(
+                Localization.translate('سعر الإكسسوارات:', lang),
+                accessorySelling,
+              ),
               const Divider(thickness: 2),
-              _detailRow(Localization.translate('المجموع الإجمالي:', lang), finalSellingPrice, isBold: true),
+              _detailRow(
+                Localization.translate('المجموع الإجمالي:', lang),
+                finalSellingPrice,
+                isBold: true,
+              ),
             ],
           ),
         ),
@@ -4216,6 +4978,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       ),
     );
   }
+
   // صف تفصيلي واحد في نافذة "تفاصيل الحساب" — يُخفى تلقائيًا إذا كانت القيمة صفر (وليس صفًا رئيسيًا)
   Widget _detailRow(String label, double price, {bool isBold = false}) {
     if (price == 0 && !isBold) return const SizedBox.shrink();
@@ -4243,6 +5006,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       ),
     );
   }
+
   // ==========================================================================
   // دالة: _buildBottomBar
   // تبني الشريط السفلي الثابت: زر فتح/طي إعدادات السعر، زر "تفاصيل"، ملخص
@@ -4251,7 +5015,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
   // ==========================================================================
   Widget _buildBottomBar(List<BomItem> items) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final currency = Localization.translate('دج', lang);
     final totals = _calculateTotals(items);
     final double totalCostWithWaste = totals['total']?['cost'] ?? 0.0;
@@ -4259,14 +5026,17 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
     // سعر القطعة الواحدة = السعر الإجمالي ÷ الكمية (بحد أدنى 1 لتفادي القسمة على صفر)
     final double unitPrice = sellingPrice / math.max(1, widget.model.quantity);
     return SafeArea(
-      child: AnimatedContainer( // تحريك سلس عند تغيّر ارتفاع الشريط (طي/توسعة)
+      child: AnimatedContainer(
+        // تحريك سلس عند تغيّر ارتفاع الشريط (طي/توسعة)
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           boxShadow: [
             BoxShadow(
-              color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.10),
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.10),
               blurRadius: 12,
               offset: const Offset(0, -4),
             ),
@@ -4282,7 +5052,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 children: [
                   GestureDetector(
                     onTap: () => setState(
-                          () => _isBottomBarExpanded = !_isBottomBarExpanded,
+                      () => _isBottomBarExpanded = !_isBottomBarExpanded,
                     ),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -4290,9 +5060,15 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF2D2D44) : Colors.grey.shade100,
+                        color: isDark
+                            ? const Color(0xFF2D2D44)
+                            : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: isDark ? const Color(0xFF3D3D5C) : Colors.grey.shade300),
+                        border: Border.all(
+                          color: isDark
+                              ? const Color(0xFF3D3D5C)
+                              : Colors.grey.shade300,
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -4300,13 +5076,19 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                             _isBottomBarExpanded
                                 ? Icons.keyboard_arrow_down
                                 : Icons.keyboard_arrow_up,
-                            color: isDark ? Colors.white70 : Colors.grey.shade700,
+                            color: isDark
+                                ? Colors.white70
+                                : Colors.grey.shade700,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _isBottomBarExpanded ? Localization.translate('إخفاء', lang) : Localization.translate('إعدادات السعر', lang),
+                            _isBottomBarExpanded
+                                ? Localization.translate('إخفاء', lang)
+                                : Localization.translate('إعدادات السعر', lang),
                             style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.grey.shade800,
+                              color: isDark
+                                  ? Colors.white70
+                                  : Colors.grey.shade800,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -4323,7 +5105,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                       totals['accessory']?['selling'] ?? 0.0,
                       sellingPrice,
                     ),
-                    icon: Icon(Icons.info_outline, color: isDark ? Colors.blue.shade300 : Colors.blue),
+                    icon: Icon(
+                      Icons.info_outline,
+                      color: isDark ? Colors.blue.shade300 : Colors.blue,
+                    ),
                     label: Text(
                       Localization.translate('تفاصيل', lang),
                       style: TextStyle(
@@ -4339,7 +5124,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             if (_isBottomBarExpanded)
               ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.35, // حد أقصى للارتفاع (35% من الشاشة)
+                  maxHeight:
+                      MediaQuery.of(context).size.height *
+                      0.35, // حد أقصى للارتفاع (35% من الشاشة)
                 ),
                 child: SingleChildScrollView(
                   child: Column(
@@ -4360,7 +5147,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                               children: [
                                 Text(
                                   Localization.translate('سعر التكلفة:', lang),
-                                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
                                   textDirection: TextDirection.rtl,
                                 ),
                                 const SizedBox(width: 8),
@@ -4371,7 +5161,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                                     showCostPrice
                                         ? Icons.visibility
                                         : Icons.visibility_off,
-                                    color: isDark ? Colors.white60 : Colors.grey.shade600,
+                                    color: isDark
+                                        ? Colors.white60
+                                        : Colors.grey.shade600,
                                     size: 20,
                                   ),
                                   onPressed: () {
@@ -4389,7 +5181,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white70 : Colors.grey.shade800,
+                                color: isDark
+                                    ? Colors.white70
+                                    : Colors.grey.shade800,
                               ),
                               textDirection: TextDirection.rtl,
                             ),
@@ -4408,7 +5202,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                           children: [
                             Text(
                               '${Localization.translate('السعر الإجمالي', lang)} (${widget.model.quantity} ${Localization.translate('قطع', lang)}):',
-                              style: const TextStyle(fontSize: 14, color: Colors.grey),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
                               textDirection: TextDirection.rtl,
                             ),
                             Text(
@@ -4416,7 +5213,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.green.shade400 : Colors.green.shade700,
+                                color: isDark
+                                    ? Colors.green.shade400
+                                    : Colors.green.shade700,
                               ),
                               textDirection: TextDirection.rtl,
                             ),
@@ -4426,7 +5225,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                       // بطاقة اختيار طريقة الحساب كاملة (مضمّنة هنا)
                       Container(
                         padding: const EdgeInsets.all(16),
-                        color: isDark ? const Color(0xFF25283D) : Colors.grey.shade50,
+                        color: isDark
+                            ? const Color(0xFF25283D)
+                            : Colors.grey.shade50,
                         child: _buildCostMethodSelector(),
                       ),
                     ],
@@ -4476,7 +5277,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                         Navigator.pop(context, true);
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isDark ? Colors.blue.shade700 : const Color(0xFF1976D2),
+                        backgroundColor: isDark
+                            ? Colors.blue.shade700
+                            : const Color(0xFF1976D2),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -4500,9 +5303,13 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       ),
     );
   }
+
   // رأس الجدول: صف ثابت يحمل عناوين كل الأعمدة (الصورة/البيان/الكمية/سعر الوحدة/التكلفة/الطول/اللون/تفعيل)
   Widget _header() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     const s = TextStyle(
       fontWeight: FontWeight.bold,
@@ -4515,27 +5322,53 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _cell(Text(Localization.translate('الصورة', lang), style: s), _wImg),
-            _cell(Text(Localization.translate('البيان', lang), style: s), _wName),
-            _cell(Text(Localization.translate('الكمية', lang), style: s), _wQty),
-            _cell(Text(Localization.translate('سعر الوحدة', lang), style: s), _wPrice),
-            _cell(Text(Localization.translate('التكلفة', lang), style: s), _wTotal),
+            _cell(
+              Text(Localization.translate('الصورة', lang), style: s),
+              _wImg,
+            ),
+            _cell(
+              Text(Localization.translate('البيان', lang), style: s),
+              _wName,
+            ),
+            _cell(
+              Text(Localization.translate('الكمية', lang), style: s),
+              _wQty,
+            ),
+            _cell(
+              Text(Localization.translate('سعر الوحدة', lang), style: s),
+              _wPrice,
+            ),
+            _cell(
+              Text(Localization.translate('التكلفة', lang), style: s),
+              _wTotal,
+            ),
             _cell(Text(Localization.translate('الطول', lang), style: s), _wLen),
-            _cell(Text(Localization.translate('اللون', lang), style: s), _wColor),
-            _cell(Text(Localization.translate('تفعيل', lang), style: s), _wCheck, isLast: true),
+            _cell(
+              Text(Localization.translate('اللون', lang), style: s),
+              _wColor,
+            ),
+            _cell(
+              Text(Localization.translate('تفعيل', lang), style: s),
+              _wCheck,
+              isLast: true,
+            ),
           ],
         ),
       ),
     );
   }
+
   // صف عنوان قسم في الجدول (البروفيلات/الإكسسوارات/الستار/الزجاج) مع عرض التكلفة والبيع الاختياريين
   Widget _sectionTitle(
-      String title,
-      Color color, {
-        double? cost,
-        double? selling,
-      }) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    String title,
+    Color color, {
+    double? cost,
+    double? selling,
+  }) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final translatedTitle = Localization.translate(title, lang);
     final currency = Localization.translate('دج', lang);
@@ -4561,7 +5394,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -4579,7 +5414,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: isDark ? Colors.green.shade900.withValues(alpha: 0.4) : Colors.green.shade700.withValues(alpha: 0.15),
+                color: isDark
+                    ? Colors.green.shade900.withValues(alpha: 0.4)
+                    : Colors.green.shade700.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -4595,50 +5432,76 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       ),
     );
   }
+
   // ودجت مساعد عام: يبني خلية جدول واحدة بعرض ثابت وحد فاصل يمين (إلا إذا كانت آخر خلية isLast)
   Widget _cell(
-      Widget child,
-      double width, {
-        bool isLast = false,
-        Color? backgroundColor,
-      }) {
+    Widget child,
+    double width, {
+    bool isLast = false,
+    Color? backgroundColor,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: width,
-      height: _rowHeight, // Enforce strict fixed height
+      constraints: const BoxConstraints(minHeight: _rowMinHeight),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: backgroundColor,
         border: isLast
             ? null
-            : BorderDirectional(end: BorderSide(color: isDark ? Colors.blue.withValues(alpha: 0.35) : Colors.grey.shade300)),
+            : BorderDirectional(
+                end: BorderSide(
+                  color: isDark
+                      ? Colors.blue.withValues(alpha: 0.35)
+                      : Colors.grey.shade300,
+                ),
+              ),
       ),
       alignment: Alignment.centerLeft,
       child: child,
     );
   }
+
   Widget _row(BomItem item) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final currency = Localization.translate('دج', lang);
     final inactive = !item.isActive; // العنصر معطّل حاليًا
-    final warning = item.isMissing && item.isActive; // العنصر مفعّل لكنه "ناقص" (لم يُربط بمكوّن فعلي بعد)
+    final warning =
+        item.isMissing &&
+        item.isActive; // العنصر مفعّل لكنه "ناقص" (لم يُربط بمكوّن فعلي بعد)
     // تمييز البراغي/الحديد بلون برتقالي مميز
     final isScrews =
         item.originalName.contains('براغي') ||
-            item.originalName.contains('حديد') ||
-            item.originalName.contains('Renfort') ||
-            item.name.contains('حديد') ||
-            item.name.contains('Renfort');
-    final bool isKitElement = item.kitGroupName != null; // هل هذا الصف عنصر فرعي داخل كيت
+        item.originalName.contains('حديد') ||
+        item.originalName.contains('Renfort') ||
+        item.name.contains('حديد') ||
+        item.name.contains('Renfort');
+    final bool isKitElement =
+        item.kitGroupName != null; // هل هذا الصف عنصر فرعي داخل كيت
     return Container(
       decoration: BoxDecoration(
         color: inactive
-            ? (isDark ? Colors.red.shade900.withValues(alpha: 0.3) : Colors.red.shade50) // خلفية حمراء خفيفة للعناصر المعطّلة
+            ? (isDark
+                  ? Colors.red.shade900.withValues(alpha: 0.3)
+                  : Colors.red.shade50) // خلفية حمراء خفيفة للعناصر المعطّلة
             : (isKitElement
-            ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50.withValues(alpha: 0.5)) // خلفية زرقاء خفيفة لعناصر الكيت الفرعية
-            : (isDark ? const Color(0xFF1E1E2C) : Colors.white)),
-        border: Border(bottom: BorderSide(color: isDark ? Colors.blue.withValues(alpha: 0.15) : Colors.grey.shade200)),
+                  ? (isDark
+                        ? Colors.blue.shade900.withValues(alpha: 0.3)
+                        : Colors.blue.shade50.withValues(
+                            alpha: 0.5,
+                          )) // خلفية زرقاء خفيفة لعناصر الكيت الفرعية
+                  : (isDark ? const Color(0xFF1E1E2C) : Colors.white)),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.blue.withValues(alpha: 0.15)
+                : Colors.grey.shade200,
+          ),
+        ),
       ),
       child: IntrinsicHeight(
         child: Row(
@@ -4651,7 +5514,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 imagePath: item.imagePath,
                 size: isKitElement ? 32.0 : 28.0,
                 fallbackIcon: isKitElement ? Icons.extension : Icons.image,
-                fallbackColor: isKitElement ? (isDark ? Colors.blue.shade300 : Colors.blue.shade700) : Colors.grey,
+                fallbackColor: isKitElement
+                    ? (isDark ? Colors.blue.shade300 : Colors.blue.shade700)
+                    : Colors.grey,
               ),
               _wImg,
             ),
@@ -4672,15 +5537,23 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          isKitElement ? item.name : item.getLocalizedName(_lang), // عناصر الكيت تعرض اسمها الأصلي دائمًا
+                          isKitElement
+                              ? item.name
+                              : item.getLocalizedName(
+                                  _lang,
+                                ), // عناصر الكيت تعرض اسمها الأصلي دائمًا
                           style: TextStyle(
                             fontSize: isKitElement ? 13.5 : 12,
                             fontWeight: FontWeight.bold,
                             color: isScrews
                                 ? Colors.orange
                                 : (isKitElement
-                                ? (isDark ? Colors.blue.shade300 : Colors.blue.shade900)
-                                : (isDark ? Colors.white70 : Colors.black87)),
+                                      ? (isDark
+                                            ? Colors.blue.shade300
+                                            : Colors.blue.shade900)
+                                      : (isDark
+                                            ? Colors.white70
+                                            : Colors.black87)),
                             decoration: inactive
                                 ? TextDecoration.lineThrough
                                 : null,
@@ -4693,7 +5566,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.blue.shade200 : Colors.blue.shade700,
+                              color: isDark
+                                  ? Colors.blue.shade200
+                                  : Colors.blue.shade700,
                               decoration: inactive
                                   ? TextDecoration.lineThrough
                                   : null,
@@ -4704,11 +5579,16 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                           (() {
                             final parts = item.name.split('\n');
                             final namePart = parts[0];
-                            final subparts = parts.length > 1 ? parts.sublist(1) : <String>[];
+                            final subparts = parts.length > 1
+                                ? parts.sublist(1)
+                                : <String>[];
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (namePart != item.originalName && (_lang == 'ar' || !_hasArabic(namePart)))
+                                if (namePart != item.originalName &&
+                                    (_lang == 'ar' ||
+                                        item.category == 'glass' ||
+                                        !_hasArabic(namePart)))
                                   Text(
                                     namePart,
                                     style: TextStyle(
@@ -4717,28 +5597,36 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                                           ? FontWeight.bold
                                           : FontWeight.normal,
                                       color: item.category == 'glass'
-                                          ? (isDark ? Colors.white70 : Colors.black87)
-                                          : (isDark ? Colors.white54 : Colors.grey.shade700),
+                                          ? (isDark
+                                                ? Colors.white70
+                                                : Colors.black87)
+                                          : (isDark
+                                                ? Colors.white54
+                                                : Colors.grey.shade700),
                                       decoration: inactive
                                           ? TextDecoration.lineThrough
                                           : null,
                                     ),
                                   ),
-                                ...subparts.map((subText) => Padding(
-                                      padding: const EdgeInsets.only(top: 2.0),
-                                      child: Text(
-                                        subText,
-                                        style: TextStyle(
-                                          fontSize: 9.0,
-                                          fontWeight: FontWeight.normal,
-                                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                                          height: 1.1,
-                                          decoration: inactive
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                        ),
+                                ...subparts.map(
+                                  (subText) => Padding(
+                                    padding: const EdgeInsets.only(top: 2.0),
+                                    child: Text(
+                                      subText,
+                                      style: TextStyle(
+                                        fontSize: 9.0,
+                                        fontWeight: FontWeight.normal,
+                                        color: isDark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
+                                        height: 1.1,
+                                        decoration: inactive
+                                            ? TextDecoration.lineThrough
+                                            : null,
                                       ),
-                                    )),
+                                    ),
+                                  ),
+                                ),
                               ],
                             );
                           })(),
@@ -4767,13 +5655,13 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                       child: item.originalName == 'كيت (Kit)'
                           ? _buildKitDropdown(item)
                           : GestureDetector(
-                        onTap: () => _showSwapDialog(item),
-                        child: const Icon(
-                          Icons.swap_horiz,
-                          color: Colors.orange,
-                          size: 18,
-                        ),
-                      ),
+                              onTap: () => _showSwapDialog(item),
+                              child: const Icon(
+                                Icons.swap_horiz,
+                                color: Colors.orange,
+                                size: 18,
+                              ),
+                            ),
                     ),
                 ],
               ),
@@ -4783,7 +5671,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             _cell(
               Text(
                 '${item.quantity} ${item.unit}',
-                style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
               ),
               _wQty,
             ),
@@ -4835,8 +5726,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 (item.category == 'glass' && item.glassHeight != null)
                     ? '${item.length?.toStringAsFixed(0)} × ${item.glassHeight?.toStringAsFixed(0)}'
                     : (item.length != null
-                    ? '${item.length?.toStringAsFixed(1)}m'
-                    : '-'),
+                          ? '${item.length?.toStringAsFixed(1)}m'
+                          : '-'),
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: item.category == 'glass'
@@ -4852,7 +5743,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             _cell(
               Text(
                 item.category == 'glass' ? '-' : (item.colorName ?? '-'),
-                style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
               ),
               _wColor,
             ),
@@ -4860,18 +5754,18 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             _cell(
               item.isInteractive
                   ? Checkbox(
-                value: item.isActive,
-                onChanged:
-                (widget.model.isCaissonTunnel &&
-                    item.originalName ==
-                        'أغطية الشفرات (Bouchons Lames)')
-                    ? null // معطّل تمامًا (إلزامي) في حالة التونيل
-                    : (v) => _handleVariantToggle(
-                  item.originalName,
-                  item.exclusionGroup,
-                  v ?? false,
-                ),
-              )
+                      value: item.isActive,
+                      onChanged:
+                          (widget.model.isCaissonTunnel &&
+                              item.originalName ==
+                                  'أغطية الشفرات (Bouchons Lames)')
+                          ? null // معطّل تمامًا (إلزامي) في حالة التونيل
+                          : (v) => _handleVariantToggle(
+                              item.originalName,
+                              item.exclusionGroup,
+                              v ?? false,
+                            ),
+                    )
                   : const SizedBox.shrink(), // عنصر غير تفاعلي: لا يوجد Checkbox
               _wCheck,
               isLast: true,
@@ -4881,6 +5775,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       ),
     );
   }
+
   // ==========================================================================
   // دالة: _showSwapDialog ⭐ (دالة ضخمة ومعقدة)
   // الغرض: عند الضغط على زر التبديل بجانب أي عنصر، تفتح نافذة اختيار بديل
@@ -4889,9 +5784,19 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
   // تلقائيًا (مثل: تغيير الشريحة يستدعي تغيير المحور، الأطاش، السيبورات...).
   // ==========================================================================
   void _showSwapDialog(BomItem item) async {
-    String pType = item.originalName; // النوع المبدئي المرسل لنافذة الاختيار (سيُعاد تعيينه أدناه حسب الفئة)
+    String pType = item
+        .originalName; // النوع المبدئي المرسل لنافذة الاختيار (سيُعاد تعيينه أدناه حسب الفئة)
     String pCategory = item.category;
-    bool isFrameClicked = false; // هل الزر المضغوط يخص "الإطار" تحديدًا (معالجة خاصة)
+    final espagnoletteLengthMatch = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(
+      item.originalName,
+    );
+    final double? maxEspagnoletteLength = espagnoletteLengthMatch == null
+        ? null
+        : double.tryParse(
+            espagnoletteLengthMatch.group(1)!.replaceAll(',', '.'),
+          );
+    bool isFrameClicked =
+        false; // هل الزر المضغوط يخص "الإطار" تحديدًا (معالجة خاصة)
     bool isSashClicked = false; // هل يخص "الظلفة"
     bool isSideCoverClicked = false; // هل يخص "الغطاء الجانبي"
     // ---- التعرف على الإطار: إما بالاسم الثابت أو بمطابقة الاسم المعروض الحالي ----
@@ -4899,10 +5804,12 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       isFrameClicked = true;
     } else if (widget.model.frameOverride != null) {
       String frameDisplay =
-      '${widget.model.frameOverride!['code'] ?? ''} - ${widget.model.frameOverride!['name']}'
-          .trim();
+          '${widget.model.frameOverride!['code'] ?? ''} - ${widget.model.frameOverride!['name']}'
+              .trim();
       if (frameDisplay.startsWith('- ')) {
-        frameDisplay = frameDisplay.substring(2); // إزالة "- " إذا لم يكن هناك كود
+        frameDisplay = frameDisplay.substring(
+          2,
+        ); // إزالة "- " إذا لم يكن هناك كود
       }
       if (pType == frameDisplay) isFrameClicked = true;
     }
@@ -4911,8 +5818,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       isSashClicked = true;
     } else if (widget.model.sashOverride != null) {
       String sashDisplay =
-      '${widget.model.sashOverride!['code'] ?? ''} - ${widget.model.sashOverride!['name']}'
-          .trim();
+          '${widget.model.sashOverride!['code'] ?? ''} - ${widget.model.sashOverride!['name']}'
+              .trim();
       if (sashDisplay.startsWith('- ')) sashDisplay = sashDisplay.substring(2);
       if (pType == sashDisplay) isSashClicked = true;
     }
@@ -4921,8 +5828,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       isSideCoverClicked = true;
     } else if (widget.model.sideCoverOverride != null) {
       String sideCoverDisplay =
-      '${widget.model.sideCoverOverride!['code'] ?? ''} - ${widget.model.sideCoverOverride!['name']}'
-          .trim();
+          '${widget.model.sideCoverOverride!['code'] ?? ''} - ${widget.model.sideCoverOverride!['name']}'
+              .trim();
       if (sideCoverDisplay.startsWith('- ')) {
         sideCoverDisplay = sideCoverDisplay.substring(2);
       }
@@ -4947,7 +5854,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         if (widget.model.selectedDbColor != null) {
           int colorId = widget.model.selectedDbColor!['id'];
           final db = SqlDatabase();
-          price = await db.getSectionPrice(selected['id'], colorId); // جلب السعر حسب اللون
+          price = await db.getSectionPrice(
+            selected['id'],
+            colorId,
+          ); // جلب السعر حسب اللون
         }
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['calculated_price'] = price;
@@ -4978,7 +5888,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
           } else {
             widget.model.frameOverride = mutableSelected;
           }
-          widget.model.updateProfileThickness(); // إعادة حساب السماكات المرتبطة بعد تغيير الإطار
+          widget.model
+              .updateProfileThickness(); // إعادة حساب السماكات المرتبطة بعد تغيير الإطار
           widget.model.refreshUI();
         });
       }
@@ -5025,10 +5936,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             final mifsalRes = await dbInstance.query(
               'Sections',
               where:
-              'series_id = ? AND (name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?)',
+                  'series_id = ? AND (name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ?)',
               whereArgs: [
                 (widget.model.systemMode == 'sliding' &&
-                    widget.model.activeSlidingSeries != null)
+                        widget.model.activeSlidingSeries != null)
                     ? widget.model.activeSlidingSeries!.id
                     : widget.model.activeSeries?.id,
                 '%مفصل%',
@@ -5067,7 +5978,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
           } else {
             widget.model.sashOverride = mutableSelected;
           }
-          widget.model.updateAllSashThicknesses(); // إعادة حساب سماكات كل الظلف بعد التغيير
+          widget.model
+              .updateAllSashThicknesses(); // إعادة حساب سماكات كل الظلف بعد التغيير
           widget.model.refreshUI();
         });
       }
@@ -5137,9 +6049,12 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
     } else if (pCategory == 'accessory') {
       if (pType.contains('قاش دوبل') || pType.contains('Gache Double')) {
         pType = 'is_gache_double';
-      } else if (pType.contains('قاش سامبل') || pType.contains('Gache Simple')) {
+      } else if (pType.contains('قاش سامبل') ||
+          pType.contains('Gache Simple')) {
         pType = 'is_gache_simple';
-      } else if (pType.contains('قاش بورت') || pType.contains('Gache Porte') || pType.contains('Gâche Porte')) {
+      } else if (pType.contains('قاش بورت') ||
+          pType.contains('Gache Porte') ||
+          pType.contains('Gâche Porte')) {
         pType = 'is_gache_porte';
       } else if (pType.contains('كاش كوليسون') ||
           pType.toLowerCase().contains('gache coulisse') ||
@@ -5155,7 +6070,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         pType = 'is_canon';
       } else if (pType.contains('قفل بمفتاح') || pType.contains('Clef')) {
         pType = 'is_lock_clef';
-      } else if (pType.contains('Serrure Condamnation') || pType.contains('قفل الباب Condamnation') || pType.contains('Condamnation')) {
+      } else if (pType.contains('Serrure Condamnation') ||
+          pType.contains('قفل الباب Condamnation') ||
+          pType.contains('Condamnation')) {
         pType = 'is_lock_condamnation';
       } else if (pType.contains('قفل الباب') || pType.contains('Serrure')) {
         pType = 'is_lock_clef';
@@ -5166,6 +6083,12 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       } else if ((pType.contains('فيرو') || pType.contains('Verrou')) &&
           !pType.contains('Central')) {
         pType = 'فيرو';
+      } else if (pType.contains('المقبض (Handle)') ||
+          pType.contains('مقبض نافذة') ||
+          pType.toLowerCase().contains('poignée fenêtre') ||
+          pType.toLowerCase().contains('poignee fenetre')) {
+        // مقبض النافذة لا يشارك قائمة مقابض الأبواب أو Calimaster أو Rotax.
+        pType = 'is_window_handle';
       } else if (pType.contains('مقبض') ||
           pType.contains('Handle') ||
           pType.contains('Poignée')) {
@@ -5262,18 +6185,21 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
     // إذا كانت الشريحة (Lames) مختارة، نمرر معرّفها (bladeId) لنافذة الاختيار لفلترة الخيارات المتوافقة معها
     final bladeObj = widget.model.componentOverrides['الشرائح (Lames)'];
     final int? bladeId = bladeObj != null ? bladeObj['id'] as int? : null;
+    final accessoryDrawingMode = _accessoryDrawingModeForItem(item);
     // فتح نافذة الاختيار العامة بالمعطيات المحسوبة أعلاه
     final selected = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => ProfileSelectorDialog(
         profileType: pType,
         category: pCategory,
-        seriesId: widget.model.systemMode == 'sliding'
-            ? widget.model.activeSlidingSeries?.id
-            : widget.model.activeSeries?.id,
-        materialType: widget.model.isPVC ? 'PVC' : 'Aluminium',
+        seriesId: _seriesIdForItem(item),
+        materialType: _materialTypeForItem(item),
+        accessoryDrawingMode: accessoryDrawingMode,
         windowHeight: widget.model.height,
         targetSize: widget.model.shutterBoxHeight,
+        maxAccessoryLength: pType == 'اسبانيوليت'
+            ? maxEspagnoletteLength
+            : null,
         bladeId: bladeId,
       ),
     );
@@ -5295,7 +6221,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         if (price > 0) mutableSelected['calculated_price'] = price;
         final isKitItem =
             item.originalName.contains('Kit') ||
-                item.originalName.contains('كيت');
+            item.originalName.contains('كيت');
         final isCaisson = item.originalName == 'الصندوق (Caisson)';
         // إذا كان العنصر المُبدَّل هو "الصندوق"، حدد وضع التونيل حسب id خاص (-999 يعني تونيل)
         if (isCaisson) {
@@ -5305,7 +6231,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             widget.model.toggleCaissonTunnel(false);
           }
         }
-        Map<String, dynamic>? companionCaissonToSet; // صندوق مرافق يجب ضبطه إذا اخترنا كيتًا
+        Map<String, dynamic>?
+        companionCaissonToSet; // صندوق مرافق يجب ضبطه إذا اخترنا كيتًا
         // ---- محاذاة الصندوق مع الكيت المناسب (بالاتجاهين: صندوق→كيت أو كيت→صندوق) ----
         if (isCaisson || isKitItem) {
           final selectedDigits = getComponentSize(mutableSelected);
@@ -5317,8 +6244,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 final isMotor = widget.model.shutterMechanism == 'محرك';
                 final isCrankSwap =
                     widget.model.shutterMechanism == 'منايفال' ||
-                        widget.model.shutterMechanism == 'مانيفال' ||
-                        widget.model.shutterMechanism == 'مانيفر';
+                    widget.model.shutterMechanism == 'مانيفال' ||
+                    widget.model.shutterMechanism == 'مانيفر';
                 final List<String> activeKitKeys;
                 if (isMotor) {
                   activeKitKeys = ['كيت فولي موتور (Kit Volet Moteur)'];
@@ -5379,7 +6306,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                   final compRes = await dbInstance.query(
                     'ShutterComponents',
                     where:
-                    "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
+                        "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
                     whereArgs: args,
                   );
                   for (var row in compRes) {
@@ -5401,7 +6328,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 final compRes = await dbInstance.query(
                   'ShutterComponents',
                   where:
-                  "(LOWER(name) LIKE '%box%' OR name LIKE '%صندوق%' OR LOWER(name) LIKE '%caisson%') AND (is_active = 1 OR is_active IS NULL)",
+                      "(LOWER(name) LIKE '%box%' OR name LIKE '%صندوق%' OR LOWER(name) LIKE '%caisson%') AND (is_active = 1 OR is_active IS NULL)",
                 );
                 for (var row in compRes) {
                   if (getComponentSize(row) == selectedDigits) {
@@ -5432,18 +6359,18 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               // 1. إيجاد "شريحة" مرافقة (بأقرب مقاس ونفس subtype) إذا لم يكن العنصر المُبدَّل هو الشريحة نفسها
               if (item.originalName != 'الشرائح (Lames)') {
                 final targetSubtype =
-                (item.originalName == 'الشريحة النهائية (Lame Finale)')
+                    (item.originalName == 'الشريحة النهائية (Lame Finale)')
                     ? (mutableSelected['shutter_subtype']?.toString() ??
-                    'normal')
+                          'normal')
                     : (widget
-                    .model
-                    .componentOverrides['الشرائح (Lames)']?['shutter_subtype']
-                    ?.toString() ??
-                    'normal');
+                              .model
+                              .componentOverrides['الشرائح (Lames)']?['shutter_subtype']
+                              ?.toString() ??
+                          'normal');
                 final res = await dbInstance.query(
                   'ShutterComponents',
                   where:
-                  "(LOWER(name) LIKE '%lame%' OR name LIKE '%شريح%') AND shutter_subtype = ? AND (is_active = 1 OR is_active IS NULL)",
+                      "(LOWER(name) LIKE '%lame%' OR name LIKE '%شريح%') AND shutter_subtype = ? AND (is_active = 1 OR is_active IS NULL)",
                   whereArgs: [targetSubtype],
                 );
                 final targetSize = double.tryParse(selectedDigits) ?? 0.0;
@@ -5480,7 +6407,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                   final resFallback = await dbInstance.query(
                     'ShutterComponents',
                     where:
-                    "(LOWER(name) LIKE '%lame%' OR name LIKE '%شريح%') AND (is_active = 1 OR is_active IS NULL)",
+                        "(LOWER(name) LIKE '%lame%' OR name LIKE '%شريح%') AND (is_active = 1 OR is_active IS NULL)",
                   );
                   for (var row in resFallback) {
                     final rowName = row['name'].toString();
@@ -5504,7 +6431,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 final res = await dbInstance.query(
                   'ShutterComponents',
                   where:
-                  "(LOWER(name) LIKE '%coulisse%' OR name LIKE '%سك%') AND (is_active = 1 OR is_active IS NULL)",
+                      "(LOWER(name) LIKE '%coulisse%' OR name LIKE '%سك%') AND (is_active = 1 OR is_active IS NULL)",
                 );
                 for (var row in res) {
                   if (getComponentSize(row) == selectedDigits) {
@@ -5521,12 +6448,12 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               if (item.originalName != 'الشريحة النهائية (Lame Finale)') {
                 final targetSubtype = (item.originalName == 'الشرائح (Lames)')
                     ? (mutableSelected['shutter_subtype']?.toString() ??
-                    'normal')
+                          'normal')
                     : (widget
-                    .model
-                    .componentOverrides['الشرائح (Lames)']?['shutter_subtype']
-                    ?.toString() ??
-                    'normal');
+                              .model
+                              .componentOverrides['الشرائح (Lames)']?['shutter_subtype']
+                              ?.toString() ??
+                          'normal');
                 final targetSize = double.tryParse(selectedDigits) ?? 0.0;
                 if (targetSize > 0) {
                   companionFinale = await _findClosestFinalBlade(
@@ -5610,7 +6537,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               final axeRes = await dbInstance.query(
                 'ShutterComponents',
                 where:
-                "(component_type = 'Axe' OR name LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
+                    "(component_type = 'Axe' OR name LIKE '%axe%' OR name LIKE '%محور%') AND (is_active = 1 OR is_active IS NULL)",
               );
               for (final row in axeRes) {
                 final axeName = row['name'].toString();
@@ -5630,18 +6557,27 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         }
         // ---- تطبيق كل التغييرات: إما مسار الكيت (معالجة خاصة) أو المسار العام لتحديث componentOverrides ----
         if (isKitItem) {
-          await _handleKitSelection(mutableSelected); // كيت: نمرر المعالجة كاملة لدالة مخصصة
+          await _handleKitSelection(
+            mutableSelected,
+          ); // كيت: نمرر المعالجة كاملة لدالة مخصصة
         } else {
           setState(() {
             widget.model.componentOverrides[item.originalName] =
                 mutableSelected; // حفظ الاختيار الجديد كـ override
             // Bidirectional synchronization between B.O.M. profile selection and drawer stiles/montants checkboxes
-            if (item.originalName == 'قائم جانبي (Sash Lateral)' || item.originalName == 'قائم جانبي (Lateral)') {
+            if (item.originalName == 'قائم جانبي (Sash Lateral)' ||
+                item.originalName == 'قائم جانبي (Lateral)') {
               final String code = (mutableSelected['code'] ?? '').toString();
-              final String name = (mutableSelected['name'] ?? '').toString().toLowerCase();
-              final String type = (mutableSelected['type'] ?? '').toString().toLowerCase();
-              bool isRenforce = code.endsWith('108') ||
-                  name.contains('معزز') || name.contains('renforc') ||
+              final String name = (mutableSelected['name'] ?? '')
+                  .toString()
+                  .toLowerCase();
+              final String type = (mutableSelected['type'] ?? '')
+                  .toString()
+                  .toLowerCase();
+              bool isRenforce =
+                  code.endsWith('108') ||
+                  name.contains('معزز') ||
+                  name.contains('renforc') ||
                   type.contains('renforc');
               for (var zone in widget.model.zones) {
                 if (zone.content == ZoneContent.slidingSash) {
@@ -5649,16 +6585,25 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                   zone.slidingMontantReinforced['lateral_1'] = isRenforce;
                 }
               }
-            } else if (item.originalName == 'قائم وسطي (Sash Central)' || item.originalName == 'قائم وسطي (Central)') {
+            } else if (item.originalName == 'قائم وسطي (Sash Central)' ||
+                item.originalName == 'قائم وسطي (Central)') {
               final String code = (mutableSelected['code'] ?? '').toString();
-              final String name = (mutableSelected['name'] ?? '').toString().toLowerCase();
-              final String type = (mutableSelected['type'] ?? '').toString().toLowerCase();
-              bool isRenforce = code.endsWith('107') ||
-                  name.contains('معزز') || name.contains('renforc') ||
+              final String name = (mutableSelected['name'] ?? '')
+                  .toString()
+                  .toLowerCase();
+              final String type = (mutableSelected['type'] ?? '')
+                  .toString()
+                  .toLowerCase();
+              bool isRenforce =
+                  code.endsWith('107') ||
+                  name.contains('معزز') ||
+                  name.contains('renforc') ||
                   type.contains('renforc');
               for (var zone in widget.model.zones) {
                 if (zone.content == ZoneContent.slidingSash) {
-                  final int sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
+                  final int sashes = zone.slidingSashesCount > 0
+                      ? zone.slidingSashesCount
+                      : 2;
                   final int centralCount = (sashes * 2) - 2;
                   for (int s = 0; s < centralCount; s++) {
                     zone.slidingMontantReinforced['central_$s'] = isRenforce;
@@ -5666,14 +6611,15 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 }
               }
             }
-            widget.model.updateGlassGasket(); // تحديث جوان الزجاج (إن كان مرتبطًا بتغييرات البروفيل)
+            widget.model
+                .updateGlassGasket(); // تحديث جوان الزجاج (إن كان مرتبطًا بتغييرات البروفيل)
             // إذا كانت الشريحة الجديدة "extruded"، فرض الآلية على محرك (لأن الإكسترودي ثقيل ويحتاج محركًا)
             if (item.originalName == 'الشرائح (Lames)') {
               widget.model.shutterLame =
                   mutableSelected['name']?.toString() ?? '';
               final bladeSubtype =
-              (mutableSelected['shutter_subtype']?.toString() ?? '')
-                  .toLowerCase();
+                  (mutableSelected['shutter_subtype']?.toString() ?? '')
+                      .toLowerCase();
               final bladeName = (mutableSelected['name']?.toString() ?? '')
                   .toLowerCase();
               if (bladeSubtype == 'extruded' ||
@@ -5697,8 +6643,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             }
             if (companionFinale != null) {
               widget
-                  .model
-                  .componentOverrides['الشريحة النهائية (Lame Finale)'] =
+                      .model
+                      .componentOverrides['الشريحة النهائية (Lame Finale)'] =
                   companionFinale;
             }
             if (companionAxe != null) {
@@ -5718,8 +6664,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             }
             if (companionSupportRoulement != null) {
               widget
-                  .model
-                  .componentOverrides['سيبور رولمو (Support Roulement)'] =
+                      .model
+                      .componentOverrides['سيبور رولمو (Support Roulement)'] =
                   companionSupportRoulement;
             }
             if (companionTandem != null) {
@@ -5728,8 +6674,8 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
             }
             if (companionBouchonLame != null) {
               widget
-                  .model
-                  .componentOverrides['أغطية الشفرات (Bouchons Lames)'] =
+                      .model
+                      .componentOverrides['أغطية الشفرات (Bouchons Lames)'] =
                   companionBouchonLame;
             }
             // تحديث مفتاح تتبع آخر محاذاة للشريحة النهائية (لتفادي إعادة الحساب في _fetchDefaults لاحقًا)
@@ -5738,17 +6684,20 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               final targetSubtype =
                   lames['shutter_subtype']?.toString() ?? 'normal';
               _lastAlignedLameKey =
-              "${lames['id']}_${getComponentSize(lames)}_$targetSubtype";
+                  "${lames['id']}_${getComponentSize(lames)}_$targetSubtype";
             }
           });
           // إعادة حساب الافتراضيات الشاملة (لأن التغيير قد يؤثر على المحرك المناسب حسب الوزن مثلًا)
           await _fetchDefaults();
         }
       } catch (e) {
-        print("Error handling swap selection: $e"); // تسجيل الخطأ دون كسر الشاشة
+        print(
+          "Error handling swap selection: $e",
+        ); // تسجيل الخطأ دون كسر الشاشة
       }
     }
   }
+
   // ==========================================================================
   // دالة: _updatePriceInDatabase
   // تحفظ سعرًا جديدًا "بشكل دائم" في قاعدة البيانات (وليس فقط كـ override
@@ -5758,19 +6707,29 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
     final db = await SqlDatabase().db;
     if (db == null) return;
     // البحث عن معرف العنصر في جميع المصادر الممكنة
-    Map<String, dynamic>? override = widget.model.componentOverrides[item.originalName];
+    Map<String, dynamic>? override =
+        widget.model.componentOverrides[item.originalName];
     // إذا لم يُوجد في componentOverrides، ابحث في frameOverride/sashOverride وما إلى ذلك
     if (override == null) {
       final origLower = item.originalName.toLowerCase();
-      if (origLower.contains('إطار') || origLower.contains('frame') || origLower.contains('cadre')) {
-        override = widget.model.frameOverride ?? widget.model.slidingFrameOverride;
-      } else if (origLower.contains('ظلف') || origLower.contains('sash') || origLower.contains('ouvrant')) {
-        override = widget.model.sashOverride ?? widget.model.slidingSashOverride;
-      } else if (origLower.contains('side_cover') || origLower.contains('تغطية')) {
+      if (origLower.contains('إطار') ||
+          origLower.contains('frame') ||
+          origLower.contains('cadre')) {
+        override =
+            widget.model.frameOverride ?? widget.model.slidingFrameOverride;
+      } else if (origLower.contains('ظلف') ||
+          origLower.contains('sash') ||
+          origLower.contains('ouvrant')) {
+        override =
+            widget.model.sashOverride ?? widget.model.slidingSashOverride;
+      } else if (origLower.contains('side_cover') ||
+          origLower.contains('تغطية')) {
         override = widget.model.sideCoverOverride;
       }
     }
-    final int? dbId = override?['id'] as int?; // معرّف السجل في قاعدة البيانات (إن كان مرتبطًا)
+    final int? dbId =
+        override?['id']
+            as int?; // معرّف السجل في قاعدة البيانات (إن كان مرتبطًا)
     final colorId = widget.model.selectedDbColor?['id'];
     String? errorMsg; // رسالة خطأ تُعرض للمستخدم إن فشلت العملية
     bool success = false;
@@ -5871,10 +6830,10 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
               String n = g['name'].toString().toLowerCase();
               String c = (g['color'] ?? '').toString().toLowerCase();
               bool matchesFinish = finishKws.any(
-                    (kw) => t.contains(kw) || n.contains(kw),
+                (kw) => t.contains(kw) || n.contains(kw),
               );
               bool matchesColor = colorKws.any(
-                    (kw) => kw.isEmpty ? c.isEmpty : (c == kw || c.contains(kw)),
+                (kw) => kw.isEmpty ? c.isEmpty : (c == kw || c.contains(kw)),
               );
               if (matchesFinish && matchesColor) {
                 matchedGlassId = g['id'] as int?;
@@ -5887,7 +6846,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                 String t = g['type'].toString().toLowerCase();
                 String n = g['name'].toString().toLowerCase();
                 bool matchesFinish = finishKws.any(
-                      (kw) => t.contains(kw) || n.contains(kw),
+                  (kw) => t.contains(kw) || n.contains(kw),
                 );
                 if (matchesFinish) {
                   matchedGlassId = g['id'] as int?;
@@ -5909,7 +6868,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
           } else {
             // زجاج مزدوج (Double Glazing): لا يمكن تعديل سعره من هنا مباشرة، لأنه مكوّن من عدة أجزاء
             errorMsg =
-            'لأن هذا زجاج مزدوج، يرجى تعديل أسعار مكوناته في إدارة الأسعار لتحديث قاعدة البيانات بشكل دائم';
+                'لأن هذا زجاج مزدوج، يرجى تعديل أسعار مكوناته في إدارة الأسعار لتحديث قاعدة البيانات بشكل دائم';
           }
         } else {
           errorMsg = 'لا توجد مواصفات زجاج';
@@ -5932,9 +6891,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
           content: Text(
             success
                 ? Localization.translate(
-              'تم تحديث السعر بنجاح في قاعدة البيانات',
-              lang,
-            )
+                    'تم تحديث السعر بنجاح في قاعدة البيانات',
+                    lang,
+                  )
                 : Localization.translate(errorMsg ?? 'فشل التحديث', lang),
           ),
           backgroundColor: success ? Colors.green : Colors.red,
@@ -5942,13 +6901,17 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
       );
     }
   }
+
   // ==========================================================================
   // دالة: _showEditPriceDialog
   // تفتح نافذة بسيطة لتعديل سعر عنصر واحد، مع خيار "حفظ في قاعدة البيانات
   // أيضًا" (وإلا فالتعديل يبقى محليًا لهذا الطلب فقط عبر componentOverrides).
   // ==========================================================================
   void _showEditPriceDialog(BomItem item) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final controller = TextEditingController(text: '${item.unitPrice}');
     bool saveToDb = false; // هل نحفظ التعديل بشكل دائم في قاعدة البيانات
     showDialog(
@@ -5957,7 +6920,9 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return AlertDialog(
-              title: Text('${Localization.translate('تعديل سعر', lang)} ${Localization.translate(item.name, lang)}'),
+              title: Text(
+                '${Localization.translate('تعديل سعر', lang)} ${Localization.translate(item.name, lang)}',
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -5967,14 +6932,20 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
                       decimal: true,
                     ),
                     decoration: InputDecoration(
-                      labelText: Localization.translate('السعر الجديد (دج)', lang),
+                      labelText: Localization.translate(
+                        'السعر الجديد (دج)',
+                        lang,
+                      ),
                       border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
                   CheckboxListTile(
                     title: Text(
-                      Localization.translate('حفظ في قاعدة البيانات أيضاً', lang),
+                      Localization.translate(
+                        'حفظ في قاعدة البيانات أيضاً',
+                        lang,
+                      ),
                       style: const TextStyle(fontSize: 14),
                     ),
                     value: saveToDb,
@@ -6037,6 +7008,7 @@ Widget _buildMinimalOverlay(Map<String, List<BomItem>> groups) {
     );
   }
 }
+
 // ==========================================================================
 // دالة عامة خارج الكلاس: _safeDouble
 // تحويل آمن لأي قيمة (num/String/null) إلى double، بدون رمي استثناء أبدًا
@@ -6046,6 +7018,7 @@ double _safeDouble(dynamic value) {
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString()) ?? 0.0;
 }
+
 // دالة عامة: تستخرج أول رقم (صحيح أو عشري) موجود داخل نص، وتزيل النقطة العشرية من الناتج
 String? extractSizeDigits(String name) {
   final regExp = RegExp(r'\d+(\.\d+)?');
@@ -6053,11 +7026,14 @@ String? extractSizeDigits(String name) {
   if (match == null) return null;
   return match.group(0)!.replaceAll('.', '');
 }
+
 // دالة عامة: تستخرج "مقاس" مكوّن من حقل measurement إن وُجد، وإلا من اسمه مباشرة
 String? getComponentSize(Map<String, dynamic> component) {
   final meas = (component['measurement'] ?? '').toString().trim();
   if (meas.isNotEmpty) {
-    return meas.replaceAll('.', '').replaceAll(',', ''); // إزالة النقطة والفاصلة لتوحيد صيغة المقارنة
+    return meas
+        .replaceAll('.', '')
+        .replaceAll(',', ''); // إزالة النقطة والفاصلة لتوحيد صيغة المقارنة
   }
   return extractSizeDigits(component['name'].toString());
 }

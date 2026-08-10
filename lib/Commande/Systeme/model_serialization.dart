@@ -192,6 +192,7 @@ extension WindowZoneSerialization on WindowZone {
       'cellIsPanel': cellIsPanel,
       'cellSashOverrides': cellSashOverrides,
       'doubleSashRatio': doubleSashRatio,
+      'doubleSashHasTwoHandles': doubleSashHasTwoHandles,
       'middleHingeDragOffset': middleHingeDragOffset,
       'primaryDivisionAxis': primaryDivisionAxis,
       'rightPrimaryDivisionAxis': rightPrimaryDivisionAxis,
@@ -248,6 +249,9 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     useOctoHandle: map['useOctoHandle'] ?? false,
     usePvcHandleOnAlu: map['usePvcHandleOnAlu'] ?? false,
     doubleSashRatio: (map['doubleSashRatio'] as num?)?.toDouble() ?? 0.5,
+    doubleSashHasTwoHandles:
+        map['doubleSashHasTwoHandles'] == true ||
+        map['doubleSashHasTwoHandles'] == 1,
     innerH: map['innerH'] ?? 0,
     innerV: map['innerV'] ?? 0,
     slidingSashesCount: map['slidingSashesCount'] ?? 2,
@@ -615,11 +619,11 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   if (map['groovedMullionCavityOnPositiveSide'] is Map) {
     model.groovedMullionCavityOnPositiveSide =
         (map['groovedMullionCavityOnPositiveSide'] as Map).map(
-      (key, value) => MapEntry(
-        key.toString(),
-        value is bool ? value : value.toString().toLowerCase() == 'true',
-      ),
-    );
+          (key, value) => MapEntry(
+            key.toString(),
+            value is bool ? value : value.toString().toLowerCase() == 'true',
+          ),
+        );
   }
 
   if (map['mullionSectionOverrides'] is Map) {

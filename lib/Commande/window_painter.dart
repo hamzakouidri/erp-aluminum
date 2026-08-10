@@ -2233,18 +2233,14 @@ class WindowPainter extends CustomPainter {
     final endInset = math.max(1.0, frameWidth * 0.06);
 
     if (isHorizontal) {
-      final y = onPositiveSide
-          ? frame.bottom - inset
-          : frame.top + inset;
+      final y = onPositiveSide ? frame.bottom - inset : frame.top + inset;
       canvas.drawLine(
         Offset(frame.left + endInset, y),
         Offset(frame.right - endInset, y),
         cavityPaint,
       );
     } else {
-      final x = onPositiveSide
-          ? frame.right - inset
-          : frame.left + inset;
+      final x = onPositiveSide ? frame.right - inset : frame.left + inset;
       canvas.drawLine(
         Offset(x, frame.top + endInset),
         Offset(x, frame.bottom - endInset),
@@ -2297,7 +2293,6 @@ class WindowPainter extends CustomPainter {
 
   void _drawInnerDimensions(Canvas canvas, WindowZone zone) {
     final r = zone.boundary;
-    final double t = model.profileThickness;
     if (r.width < 150 || r.height < 150) return;
     bool isFullWidth =
         (r.width >= model.width - model.profileThickness * 2 - 2);
@@ -2308,6 +2303,18 @@ class WindowPainter extends CustomPainter {
       fontSize: 69,
       fontWeight: FontWeight.bold,
     );
+    final sashThickness =
+        zone.sashThickness ?? model.getSectionThickness('sash', fallback: 45.0);
+    // Sash cutting widths belong in the upper sash profile, not in the glass
+    // area.  Use a compact label so it remains inside even a thin sash.
+    final sashTextStyle = textStyle.copyWith(
+      fontSize: math.max(20.0, math.min(46.0, sashThickness * 0.75)),
+    );
+
+    double sashTopLabelY(double textHeight) {
+      final profileCenterY = r.top + sashThickness / 2;
+      return profileCenterY - textHeight / 2;
+    }
 
     // Calculate real cutting sizes if there's a sash in this zone
     double displayWidth = r.width;
@@ -2402,12 +2409,12 @@ class WindowPainter extends CustomPainter {
           : (1.0 - zone.doubleSashRatio);
 
       final leftText = TextPainter(
-        text: TextSpan(text: "${displayWLeft.toInt()}", style: textStyle),
+        text: TextSpan(text: "${displayWLeft.toInt()}", style: sashTextStyle),
         textDirection: TextDirection.ltr,
       )..layout();
 
       final rightText = TextPainter(
-        text: TextSpan(text: "${displayWRight.toInt()}", style: textStyle),
+        text: TextSpan(text: "${displayWRight.toInt()}", style: sashTextStyle),
         textDirection: TextDirection.ltr,
       )..layout();
 
@@ -2417,24 +2424,40 @@ class WindowPainter extends CustomPainter {
           (r.width * effectiveRatio) +
           (r.width * (1.0 - effectiveRatio)) / 2;
 
-      final leftOffset = Offset(leftX - (leftText.width / 2), r.top + 5);
-      final rightOffset = Offset(rightX - (rightText.width / 2), r.top + 5);
+      // Put each sash width inside its upper profile.  The glass centre must
+      // stay clear for the drawing and for handles/divisions.
+      final leftOffset = Offset(
+        leftX - (leftText.width / 2),
+        sashTopLabelY(leftText.height),
+      );
+      final rightOffset = Offset(
+        rightX - (rightText.width / 2),
+        sashTopLabelY(rightText.height),
+      );
 
       leftText.paint(canvas, leftOffset);
       rightText.paint(canvas, rightOffset);
     } else {
       if (!isFullWidth) {
         final widthText = TextPainter(
-          text: TextSpan(text: "${displayWidth.toInt()}", style: textStyle),
+          text: TextSpan(
+            text: "${displayWidth.toInt()}",
+            style: zone.content == ZoneContent.singleSash ||
+                    zone.content == ZoneContent.slidingSash
+                ? sashTextStyle
+                : textStyle,
+          ),
           textDirection: TextDirection.ltr,
         )..layout();
-        bool isBottomBound =
-            (r.bottom - (model.height - (model.hasBottomFrame ? t : 0.0)))
-                .abs() <
-            5.0;
-        final double labelY = (_isSlantedOrArched && isBottomBound)
-            ? (model.height + 10.0)
-            : (r.bottom - widthText.height - 12.0);
+        final isSash =
+            zone.content == ZoneContent.singleSash ||
+            zone.content == ZoneContent.slidingSash;
+        // Frame measurements stay centred. Sash measurements sit in the top
+        // sash profile, above the glass, for the same reading position as a
+        // double sash.
+        final double labelY = isSash
+            ? sashTopLabelY(widthText.height)
+            : r.center.dy - (widthText.height / 2);
         final wOffset = Offset(r.center.dx - (widthText.width / 2), labelY);
         widthText.paint(canvas, wOffset);
       }
@@ -2527,16 +2550,13 @@ class WindowPainter extends CustomPainter {
         final midX = r.left + r.width * effectiveRatio;
         final leftR = Rect.fromLTRB(r.left, r.top, midX - sep / 2, r.bottom);
         final rightR = Rect.fromLTRB(midX + sep / 2, r.top, r.right, r.bottom);
-        bool isLeftActive = (zone.openDirection == OpenDirection.left);
-        bool isRightActive = (zone.openDirection == OpenDirection.right);
-        if (zone.doubleSashRatio > 0.5) {
-          isLeftActive = true;
-          isRightActive = false;
-        } else if (zone.doubleSashRatio < 0.5) {
-          isLeftActive = false;
+        final drawBothHandles = zone.doubleSashHasTwoHandles;
+        var isLeftActive = zone.openDirection == OpenDirection.left;
+        var isRightActive = zone.openDirection == OpenDirection.right;
+        // Old saved drawings can have no direction.  Keep the historical
+        // default of one handle on the right leaf in that case.
+        if (!isLeftActive && !isRightActive) {
           isRightActive = true;
-        } else {
-          if (!isLeftActive && !isRightActive) isRightActive = true;
         }
         if (isInternal) {
           _renderSash(
@@ -2544,7 +2564,9 @@ class WindowPainter extends CustomPainter {
             leftR,
             zone.copyWith(openDirection: OpenDirection.right),
             leftR,
-            forceHandle: isLeftActive,
+            // By default, draw only the selected/active leaf.  A second
+            // handle is an explicit customer option.
+            forceHandle: drawBothHandles || isLeftActive,
             isRightSash: false,
           );
           _renderSash(
@@ -2552,7 +2574,7 @@ class WindowPainter extends CustomPainter {
             rightR,
             zone.copyWith(openDirection: OpenDirection.left),
             rightR,
-            forceHandle: isRightActive,
+            forceHandle: drawBothHandles || isRightActive,
             isRightSash: true,
           );
         } else {
@@ -2562,7 +2584,7 @@ class WindowPainter extends CustomPainter {
             leftR,
             zone.copyWith(openDirection: OpenDirection.left),
             leftR,
-            forceHandle: isRightActive,
+            forceHandle: drawBothHandles || isRightActive,
             isRightSash: true,
           );
           _renderSash(
@@ -2570,7 +2592,7 @@ class WindowPainter extends CustomPainter {
             rightR,
             zone.copyWith(openDirection: OpenDirection.right),
             rightR,
-            forceHandle: isLeftActive,
+            forceHandle: drawBothHandles || isLeftActive,
             isRightSash: false,
           );
         }
@@ -4268,40 +4290,12 @@ class WindowPainter extends CustomPainter {
     }
 
     final isInternal = overrideIsInternalView ?? model.isInternalView;
-    final bool hasLock =
-        zone.lockType == LockType.clef ||
-        zone.lockType == LockType.condamnation;
 
-    bool has104105Option = false;
-    if (model.activeSeries != null) {
-      for (var sec in model.activeSeries!.sections) {
-        if (sec.code.contains('104') || sec.code.contains('105')) {
-          has104105Option = true;
-          break;
-        }
-      }
-    }
-    bool isDoorHandle = false;
-    if (has104105Option) {
-      isDoorHandle = (zone.isSash105 == true) || hasLock;
-    } else {
-      if (model.isPVC) {
-        isDoorHandle = (zone.isSash105 == true) || (sashT > 60.0) || hasLock;
-      } else {
-        isDoorHandle = (zone.isSash105 == true) || (sashT > 50.0) || hasLock;
-      }
-    }
-    if (zone.content == ZoneContent.slidingSash) {
-      isDoorHandle = false;
-    }
-    if (zone.lockType == LockType.none ||
-        zone.useOctoHandle == true ||
-        zone.usePvcHandleOnAlu == true) {
-      isDoorHandle = false;
-    }
-
+    // The selected handle style must be visible on both leaves of a double
+    // sash, regardless of whether it is a door lock, cremone or window
+    // handle.  Single sashes keep their existing external-view path.
     final bool shouldDrawHandle =
-        isInternal || (isDoorHandle && zone.content == ZoneContent.doubleSash);
+        isInternal || zone.content == ZoneContent.doubleSash;
 
     if (shouldDrawHandle && zone.openDirection != null) {
       if (isInternal) {

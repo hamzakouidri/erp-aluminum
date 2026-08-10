@@ -52,7 +52,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   List<Map<String, dynamic>> kitBundlesList = [];
   List<Map<String, dynamic>> caissonTunnelPricesList = [];
 
-
   Map<int, Map<int, double>> seriesColorPrices = {};
   Map<int, Map<int, double>> sectionColorPrices = {};
   Map<int, Map<int, double>> accessoryColorPrices = {};
@@ -63,7 +62,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   List<String> shutterLamesList = [];
   List<String> shutterGlissieresList = [];
   int _shutterPricingMode = 0; // 0: Components, 1: Square Meter Prices
-  int _accessoryPricingMode = 0; // 0: standard/color prices, 1: included in selling price
+  int _accessoryPricingMode =
+      0; // 0: standard/color prices, 1: included in selling price
   String _shutterSearchQuery = '';
   String _jointSearchQuery = '';
 
@@ -75,6 +75,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   int? selectedSeriesForSections;
 
   StreamSubscription? _dbSubscription;
+  Timer? _reloadDebounce;
+  final PageStorageBucket _scrollStorage = PageStorageBucket();
+  int _loadRequestId = 0;
 
   @override
   void initState() {
@@ -86,13 +89,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
     _loadAllData();
     _dbSubscription = CloudSyncService().dbUpdateStream.listen((_) {
-      if (mounted) {
-        _loadAllData();
-      }
+      _scheduleDataReload();
+    });
+  }
+
+  /// A catalogue import can emit many database-change events in a short time.
+  /// Reloading the whole screen for every one rebuilt the price lists while the
+  /// user was scrolling and made them appear to jump back to the first item.
+  void _scheduleDataReload() {
+    if (!mounted) return;
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) _loadAllData();
     });
   }
 
   Future<void> _loadAllData() async {
+    // Ignore a slower, older reload if a more recent database event arrives
+    // while it is still reading.  Otherwise its late setState can replace the
+    // current list and reset the user's visible position.
+    final requestId = ++_loadRequestId;
     final dbInstance = (await db.db)!;
 
     Future<List<Map<String, dynamic>>> safeQuery(String table) async {
@@ -109,6 +125,17 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               color_id INTEGER NOT NULL,
               price REAL NOT NULL DEFAULT 0.0,
               UNIQUE(series_id, color_id)
+            )
+          ''');
+          return await dbInstance.query(table);
+        } else if (table == 'SectionColorPrices') {
+          await dbInstance.execute('''
+            CREATE TABLE IF NOT EXISTS SectionColorPrices (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              section_id INTEGER NOT NULL,
+              color_id INTEGER NOT NULL,
+              price REAL NOT NULL DEFAULT 0.0,
+              UNIQUE(section_id, color_id)
             )
           ''');
           return await dbInstance.query(table);
@@ -366,7 +393,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       tempGlissieres = ['Glissière 25', 'Glissière 120', 'Glissière 100'];
     }
 
-    if (!mounted) return;
+    if (!mounted || requestId != _loadRequestId) return;
     setState(() {
       seriesList = sList;
       allColorList = cList;
@@ -391,10 +418,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       profileColorsMap = tempProfColors;
 
       if (seriesList.isNotEmpty) {
-        if (selectedSeriesId == null || !seriesList.any((s) => s['id'] == selectedSeriesId)) {
+        if (selectedSeriesId == null ||
+            !seriesList.any((s) => s['id'] == selectedSeriesId)) {
           selectedSeriesId = seriesList.first['id'] as int;
         }
-        if (selectedSeriesForSections == null || !seriesList.any((s) => s['id'] == selectedSeriesForSections)) {
+        if (selectedSeriesForSections == null ||
+            !seriesList.any((s) => s['id'] == selectedSeriesForSections)) {
           selectedSeriesForSections = seriesList.first['id'] as int;
         }
       } else {
@@ -402,14 +431,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         selectedSeriesForSections = null;
       }
       if (profilesList.isNotEmpty) {
-        if (selectedProfileId == null || !profilesList.any((p) => p['id'] == selectedProfileId)) {
+        if (selectedProfileId == null ||
+            !profilesList.any((p) => p['id'] == selectedProfileId)) {
           selectedProfileId = profilesList.first['id'] as int;
         }
       } else {
         selectedProfileId = null;
       }
       if (accessoryList.isNotEmpty) {
-        if (selectedAccessoryId == null || !accessoryList.any((a) => a['id'] == selectedAccessoryId)) {
+        if (selectedAccessoryId == null ||
+            !accessoryList.any((a) => a['id'] == selectedAccessoryId)) {
           selectedAccessoryId = accessoryList.first['id'] as int;
         }
       } else {
@@ -418,10 +449,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
       isLoading = false;
     });
-    await _updateFilteredColors();
+    await _updateFilteredColors(requestId: requestId);
   }
 
-  Future<void> _updateFilteredColors() async {
+  Future<void> _updateFilteredColors({int? requestId}) async {
     if (selectedSeriesId == null) return;
     final series = seriesList.firstWhere(
       (s) => s['id'] == selectedSeriesId,
@@ -430,7 +461,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     if (series.isNotEmpty) {
       int profileId = series['profile_id'] as int;
       final filtered = await db.getColorsForProfile(profileId);
-      if (mounted) {
+      if (mounted && (requestId == null || requestId == _loadRequestId)) {
         setState(() {
           filteredColorListForSeries = filtered;
         });
@@ -450,7 +481,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         .replaceAll('ى', 'ي')
         .replaceAll('ة', 'ه');
 
-    final isWood = cleanName.contains('خشب') ||
+    final isWood =
+        cleanName.contains('خشب') ||
         cleanName.contains('wood') ||
         cleanName.contains('bois') ||
         cleanName.contains('╪«╪┤╪¿') ||
@@ -655,6 +687,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ),
         Expanded(
           child: ListView.builder(
+            key: const PageStorageKey<String>('price-series-colors-list'),
             padding: EdgeInsets.all(16),
             itemCount: filteredColorListForSeries.length,
             itemBuilder: (context, index) {
@@ -671,7 +704,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   orElse: () => {},
                 );
                 if (s.isNotEmpty) {
-                  currentPrice = (s['price_per_meter'] as num?)?.toDouble() ?? 0.0;
+                  currentPrice =
+                      (s['price_per_meter'] as num?)?.toDouble() ?? 0.0;
                 }
               }
 
@@ -750,14 +784,18 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: _shutterPricingMode == 0 ? Colors.deepPurple : Colors.transparent,
+                        color: _shutterPricingMode == 0
+                            ? Colors.deepPurple
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         Localization.translate('أسعار المكونات والقطع', lang),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: _shutterPricingMode == 0 ? Colors.white : Colors.black,
+                          color: _shutterPricingMode == 0
+                              ? Colors.white
+                              : Colors.black,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -770,14 +808,18 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: _shutterPricingMode == 1 ? Colors.deepPurple : Colors.transparent,
+                        color: _shutterPricingMode == 1
+                            ? Colors.deepPurple
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         Localization.translate('سعر المتر المربع للستار', lang),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: _shutterPricingMode == 1 ? Colors.white : Colors.black,
+                          color: _shutterPricingMode == 1
+                              ? Colors.white
+                              : Colors.black,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -793,7 +835,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: TextField(
               decoration: InputDecoration(
-                hintText: Localization.translate('بحث في مكونات الستار...', lang),
+                hintText: Localization.translate(
+                  'بحث في مكونات الستار...',
+                  lang,
+                ),
                 prefixIcon: const Icon(Icons.search),
                 isDense: true,
                 border: const OutlineInputBorder(
@@ -839,21 +884,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
     if (filteredShutters.isEmpty) {
       return Center(
-        child: Text(Localization.translate('لا توجد نتائج مطابقة للبحث.', lang)),
+        child: Text(
+          Localization.translate('لا توجد نتائج مطابقة للبحث.', lang),
+        ),
       );
     }
 
     return ListView.builder(
+      key: const PageStorageKey<String>('price-shutter-components-list'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: filteredShutters.length,
       itemBuilder: (context, index) {
         final shutter = filteredShutters[index];
         final shutterId = shutter['id'] as int;
         final shutterName = shutter['name'].toString();
-        
+
         final sColors = shutterColorPrices[shutterId] ?? {};
         final hasColorPrices = sColors.isNotEmpty;
-        final singlePrice = (shutter['price'] is num) ? (shutter['price'] as num).toDouble() : 0.0;
+        final singlePrice = (shutter['price'] is num)
+            ? (shutter['price'] as num).toDouble()
+            : 0.0;
 
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
@@ -861,7 +911,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: Colors.deepPurple.withValues(alpha: 0.35), width: 1),
+              color: Colors.deepPurple.withValues(alpha: 0.35),
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.grey.withValues(alpha: 0.08),
@@ -894,7 +946,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     // Badge: with colors or single price
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: hasColorPrices
                             ? Colors.deepPurple.withValues(alpha: 0.1)
@@ -928,8 +982,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   final colorIdx = entry.key;
                   final cId = entry.value;
                   final colorMap = allColorList.firstWhere(
-                      (c) => c['id'] == cId,
-                      orElse: () => {'name': 'Color $cId'});
+                    (c) => c['id'] == cId,
+                    orElse: () => {'name': 'Color $cId'},
+                  );
                   final cName = colorMap['name'].toString();
                   final currentPrice = sColors[cId] ?? 0.0;
 
@@ -967,7 +1022,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   currentPrice: singlePrice,
                   canChangePrices: canChangePrices,
                   onSave: (parsed) {
-                    _updatePrice('ShutterComponents', shutterId, 'price', parsed);
+                    _updatePrice(
+                      'ShutterComponents',
+                      shutterId,
+                      'price',
+                      parsed,
+                    );
                   },
                 ),
               ],
@@ -983,9 +1043,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final lang = Provider.of<AppSettingsProvider>(context).language;
 
     // ── colour constants ──────────────────────────────────────────────────
-    const Color lamePurple    = Color(0xFF7C3AED);
-    const Color coulisseBlue  = Color(0xFF1D4ED8);
-    const Color moteurOrange  = Color(0xFFD97706);
+    const Color lamePurple = Color(0xFF7C3AED);
+    const Color coulisseBlue = Color(0xFF1D4ED8);
+    const Color moteurOrange = Color(0xFFD97706);
     const Color manivelleGreen = Color(0xFF059669);
 
     // ── helper: section card ──────────────────────────────────────────────
@@ -1063,11 +1123,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         children: [
           // Existing color rows
           ...assignedColorIds.asMap().entries.map((entry) {
-            final idx   = entry.key;
-            final cId   = entry.value;
+            final idx = entry.key;
+            final cId = entry.value;
             final colMap = allColorList.firstWhere(
               (c) => c['id'] == cId,
-              orElse: () => {'id': cId, 'name': 'Color $cId', 'hex_code': '#9E9E9E'},
+              orElse: () => {
+                'id': cId,
+                'name': 'Color $cId',
+                'hex_code': '#9E9E9E',
+              },
             );
             double currentPrice = colorMap[cId] ?? 0.0;
             if (currentPrice == 0.0) {
@@ -1102,8 +1166,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       if (canChangePrices)
                         IconButton(
                           tooltip: Localization.translate('حذف', lang),
-                          icon: Icon(Icons.delete_outline,
-                              color: Colors.red.shade300, size: 20),
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: Colors.red.shade300,
+                            size: 20,
+                          ),
                           onPressed: () async {
                             await db.deleteShutterSqmPrice(bladeKey, cId);
                             _loadAllData();
@@ -1130,7 +1197,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
               child: Center(
                 child: Text(
-                  Localization.translate('لم تُضف ألوان بعد. اضغط + لإضافة لون.', lang),
+                  Localization.translate(
+                    'لم تُضف ألوان بعد. اضغط + لإضافة لون.',
+                    lang,
+                  ),
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
@@ -1142,10 +1212,17 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             const Divider(height: 1, thickness: 0.5),
             TextButton.icon(
               onPressed: () => _showAddSqmColorDialog(bladeKey, accentColor),
-              icon: Icon(Icons.add_circle_outline, size: 18, color: accentColor),
+              icon: Icon(
+                Icons.add_circle_outline,
+                size: 18,
+                color: accentColor,
+              ),
               label: Text(
                 Localization.translate('+ إضافة لون', lang),
-                style: TextStyle(color: accentColor, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: accentColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -1163,7 +1240,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (i > 0) const Divider(height: 1, thickness: 0.8, color: Color(0xFFE9D5FF)),
+            if (i > 0)
+              const Divider(
+                height: 1,
+                thickness: 0.8,
+                color: Color(0xFFE9D5FF),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Text(
@@ -1186,15 +1268,23 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     }
 
     // ── Caisson Tunnel section ───────────────────────────────────────────
-    final caissonDbNames = shutterList.where((item) {
-      final name = (item['name'] ?? '').toString().toLowerCase();
-      final type = (item['component_type'] ?? '').toString().toLowerCase();
-      return type == 'caisson_tunnel' || name.contains('caisson');
-    }).map((item) => (item['name'] ?? '').toString()).where((n) => n.isNotEmpty).toSet();
+    final caissonDbNames = shutterList
+        .where((item) {
+          final name = (item['name'] ?? '').toString().toLowerCase();
+          final type = (item['component_type'] ?? '').toString().toLowerCase();
+          return type == 'caisson_tunnel' || name.contains('caisson');
+        })
+        .map((item) => (item['name'] ?? '').toString())
+        .where((n) => n.isNotEmpty)
+        .toSet();
 
     final List<String> caissonTypesList = caissonDbNames.isNotEmpty
         ? caissonDbNames.toList()
-        : ['Caisson Tunnel 25 cm', 'Caisson Tunnel 30 cm', 'Caisson Tunnel 40 cm'];
+        : [
+            'Caisson Tunnel 25 cm',
+            'Caisson Tunnel 30 cm',
+            'Caisson Tunnel 40 cm',
+          ];
 
     final List<Widget> caissonSubSections = [];
     const Color caissonOrange = Colors.deepOrange;
@@ -1205,12 +1295,21 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (i > 0) const Divider(height: 1, thickness: 0.8, color: Color(0xFFFFCC80)),
+            if (i > 0)
+              const Divider(
+                height: 1,
+                thickness: 0.8,
+                color: Color(0xFFFFCC80),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Row(
                 children: [
-                  const Icon(Icons.view_in_ar_rounded, size: 16, color: caissonOrange),
+                  const Icon(
+                    Icons.view_in_ar_rounded,
+                    size: 16,
+                    color: caissonOrange,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     caissonName,
@@ -1238,30 +1337,35 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         (shutterSqmPrices['Moteur_Install']?[0]) ?? 0.0;
 
     // ── Manivelle price ───────────────────────────────────────────────────
-    final double manivellePrice =
-        (shutterSqmPrices['Manivelle']?[0]) ?? 0.0;
+    final double manivellePrice = (shutterSqmPrices['Manivelle']?[0]) ?? 0.0;
 
     // ── Special Accessories Prices ────────────────────────────────────────
-    final double obInstallPrice =
-        (shutterSqmPrices['OB_Install']?[0]) ?? 0.0;
+    final double obInstallPrice = (shutterSqmPrices['OB_Install']?[0]) ?? 0.0;
     final double demiOBInstallPrice =
         (shutterSqmPrices['DemiOB_Install']?[0]) ?? 0.0;
     final double verrouInstallPrice =
         (shutterSqmPrices['Verrou_Install']?[0]) ?? 0.0;
 
     return ListView(
+      key: const PageStorageKey<String>('price-shutter-sqm-list'),
       padding: const EdgeInsets.only(bottom: 16),
       children: [
         // ── 1. Lames ──────────────────────────────────────────────────────
         sectionCard(
-          title: Localization.translate('الشرائح (Lames) — سعر المتر المربع', lang),
+          title: Localization.translate(
+            'الشرائح (Lames) — سعر المتر المربع',
+            lang,
+          ),
           icon: Icons.curtains_closed,
           color: lamePurple,
           body: lameSubSections.isEmpty
               ? Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
-                    Localization.translate('لا توجد أنواع لام. أضف من إعدادات الستار.', lang),
+                    Localization.translate(
+                      'لا توجد أنواع لام. أضف من إعدادات الستار.',
+                      lang,
+                    ),
                     style: TextStyle(color: Colors.grey.shade500),
                   ),
                 )
@@ -1270,14 +1374,20 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
         // ── 1.5 Caisson Tunnel ─────────────────────────────────────────────
         sectionCard(
-          title: Localization.translate('Caisson Tunnel — سعر المتر الخطي', lang),
+          title: Localization.translate(
+            'Caisson Tunnel — سعر المتر الخطي',
+            lang,
+          ),
           icon: Icons.view_in_ar_rounded,
           color: caissonOrange,
           body: caissonSubSections.isEmpty
               ? Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
-                    Localization.translate('لا توجد أنواع Caisson Tunnel في قاعدة البيانات.', lang),
+                    Localization.translate(
+                      'لا توجد أنواع Caisson Tunnel في قاعدة البيانات.',
+                      lang,
+                    ),
                     style: TextStyle(color: Colors.grey.shade500),
                   ),
                 )
@@ -1286,14 +1396,20 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
         // ── 2. Coulisses (by type, not color) ─────────────────────────────
         sectionCard(
-          title: Localization.translate('السكك (Coulisses) — سعر لكل نوع', lang),
+          title: Localization.translate(
+            'السكك (Coulisses) — سعر لكل نوع',
+            lang,
+          ),
           icon: Icons.linear_scale,
           color: coulisseBlue,
           body: shutterGlissieresList.isEmpty
               ? Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
-                    Localization.translate('لا توجد أنواع سكك. أضف من إعدادات الستار.', lang),
+                    Localization.translate(
+                      'لا توجد أنواع سكك. أضف من إعدادات الستار.',
+                      lang,
+                    ),
                     style: TextStyle(color: Colors.grey.shade500),
                   ),
                 )
@@ -1309,8 +1425,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       children: [
                         PriceEditRow(
                           title: railName,
-                          titleIcon: Icon(Icons.linear_scale,
-                              size: 18, color: coulisseBlue),
+                          titleIcon: Icon(
+                            Icons.linear_scale,
+                            size: 18,
+                            color: coulisseBlue,
+                          ),
                           subtitle: Localization.translate('سعر الوحدة', lang),
                           currentPrice: currentPrice,
                           canChangePrices: canChangePrices,
@@ -1343,11 +1462,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: moteurOrange.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: moteurOrange.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: moteurOrange.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -1368,7 +1492,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               ),
               PriceEditRow(
                 title: Localization.translate('سعر التركيب', lang),
-                titleIcon: Icon(Icons.build_outlined, size: 18, color: moteurOrange),
+                titleIcon: Icon(
+                  Icons.build_outlined,
+                  size: 18,
+                  color: moteurOrange,
+                ),
                 subtitle: Localization.translate('يُضاف إلى سعر المحرك', lang),
                 currentPrice: moteurInstallPrice,
                 canChangePrices: canChangePrices,
@@ -1390,7 +1518,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             children: [
               PriceEditRow(
                 title: Localization.translate('سعر تركيب المانيفال', lang),
-                titleIcon: Icon(Icons.rotate_right, size: 18, color: manivelleGreen),
+                titleIcon: Icon(
+                  Icons.rotate_right,
+                  size: 18,
+                  color: manivelleGreen,
+                ),
                 subtitle: Localization.translate('يُضاف إلى سعر القطعة', lang),
                 currentPrice: manivellePrice,
                 canChangePrices: canChangePrices,
@@ -1412,26 +1544,41 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             children: [
               PriceEditRow(
                 title: Localization.translate('سعر الكيت OB', lang),
-                titleIcon: const Icon(Icons.build_circle_outlined, size: 18, color: Colors.blueGrey),
+                titleIcon: const Icon(
+                  Icons.build_circle_outlined,
+                  size: 18,
+                  color: Colors.blueGrey,
+                ),
                 currentPrice: obInstallPrice,
                 canChangePrices: canChangePrices,
-                onSave: (parsed) => _updateShutterSqmPrice('OB_Install', 0, parsed),
+                onSave: (parsed) =>
+                    _updateShutterSqmPrice('OB_Install', 0, parsed),
               ),
               const SizedBox(height: 4),
               PriceEditRow(
                 title: Localization.translate('سعر ديمي OB', lang),
-                titleIcon: const Icon(Icons.build_circle_outlined, size: 18, color: Colors.blueGrey),
+                titleIcon: const Icon(
+                  Icons.build_circle_outlined,
+                  size: 18,
+                  color: Colors.blueGrey,
+                ),
                 currentPrice: demiOBInstallPrice,
                 canChangePrices: canChangePrices,
-                onSave: (parsed) => _updateShutterSqmPrice('DemiOB_Install', 0, parsed),
+                onSave: (parsed) =>
+                    _updateShutterSqmPrice('DemiOB_Install', 0, parsed),
               ),
               const SizedBox(height: 4),
               PriceEditRow(
                 title: Localization.translate('سعر الفيرو سنترال', lang),
-                titleIcon: const Icon(Icons.build_circle_outlined, size: 18, color: Colors.blueGrey),
+                titleIcon: const Icon(
+                  Icons.build_circle_outlined,
+                  size: 18,
+                  color: Colors.blueGrey,
+                ),
                 currentPrice: verrouInstallPrice,
                 canChangePrices: canChangePrices,
-                onSave: (parsed) => _updateShutterSqmPrice('Verrou_Install', 0, parsed),
+                onSave: (parsed) =>
+                    _updateShutterSqmPrice('Verrou_Install', 0, parsed),
               ),
               const SizedBox(height: 4),
             ],
@@ -1442,8 +1589,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   }
 
   /// Dialog to pick any color freely and assign it to a blade_type in ShutterSqmPrices
-  Future<void> _showAddSqmColorDialog(String bladeKey, Color accentColor) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+  Future<void> _showAddSqmColorDialog(
+    String bladeKey,
+    Color accentColor,
+  ) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final alreadyAdded = shutterSqmPrices[bladeKey]?.keys.toSet() ?? {};
 
     await showDialog(
@@ -1456,7 +1609,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 .toList();
 
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Row(
                 children: [
                   Icon(Icons.palette_outlined, color: accentColor),
@@ -1464,7 +1619,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   Expanded(
                     child: Text(
                       Localization.translate('اختر لوناً لـ $bladeKey', lang),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -1475,7 +1633,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 child: available.isEmpty
                     ? Center(
                         child: Text(
-                          Localization.translate('كل الألوان المتاحة مضافة بالفعل.', lang),
+                          Localization.translate(
+                            'كل الألوان المتاحة مضافة بالفعل.',
+                            lang,
+                          ),
                           style: const TextStyle(color: Colors.grey),
                           textAlign: TextAlign.center,
                         ),
@@ -1484,7 +1645,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         itemCount: available.length,
                         itemBuilder: (_, i) {
                           final color = available[i];
-                          final cId   = color['id'] as int;
+                          final cId = color['id'] as int;
                           return ListTile(
                             leading: _buildColorCircle(color, size: 28),
                             title: Text(color['name'].toString()),
@@ -1494,7 +1655,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                             ),
                             onTap: () async {
                               // Add with price = 0 so user can fill it in the list
-                              await db.insertOrUpdateShutterSqmPrice(bladeKey, cId, 0.0);
+                              await db.insertOrUpdateShutterSqmPrice(
+                                bladeKey,
+                                cId,
+                                0.0,
+                              );
                               await _loadAllData();
                               if (dialogContext.mounted) {
                                 Navigator.pop(dialogContext);
@@ -1516,8 +1681,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       },
     );
   }
-
-
 
   Future<void> _updateShutterSqmPrice(
     String bladeType,
@@ -1586,7 +1749,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: _accessoryPricingMode == 0 ? Colors.deepPurple : Colors.transparent,
+                        color: _accessoryPricingMode == 0
+                            ? Colors.deepPurple
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -1608,11 +1773,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: _accessoryPricingMode == 1 ? Colors.deepPurple : Colors.transparent,
+                        color: _accessoryPricingMode == 1
+                            ? Colors.deepPurple
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        Localization.translate('الإكسسوارات المحتسبة في البيع', lang),
+                        Localization.translate(
+                          'الإكسسوارات المحتسبة في البيع',
+                          lang,
+                        ),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _accessoryPricingMode == 1
@@ -1644,12 +1814,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       return Center(
         child: Text(
           Localization.translate('لم يتم العثور على أكسسوارات.', lang),
-          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+          style: TextStyle(
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+          ),
         ),
       );
     }
 
     return ListView.builder(
+      key: const PageStorageKey<String>('price-accessories-standard-list'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: accessoryList.length,
       itemBuilder: (context, index) {
@@ -1666,13 +1839,21 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Theme.of(context).cardColor,
+            color: isDark
+                ? const Color(0xFF1E1E1E)
+                : Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: Colors.amber.shade700.withValues(alpha: isDark ? 0.5 : 0.35), width: 1),
+              color: Colors.amber.shade700.withValues(
+                alpha: isDark ? 0.5 : 0.35,
+              ),
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: isDark ? Colors.black.withValues(alpha: 0.25) : Colors.grey.withValues(alpha: 0.08),
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.25)
+                    : Colors.grey.withValues(alpha: 0.08),
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 3),
@@ -1687,7 +1868,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 child: Row(
                   children: [
-                    Icon(Icons.category, color: Colors.amber.shade700, size: 18),
+                    Icon(
+                      Icons.category,
+                      color: Colors.amber.shade700,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1702,16 +1887,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     // Badge: with colors or single price
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: hasColorPrices
-                            ? Colors.deepPurple.withValues(alpha: isDark ? 0.25 : 0.1)
-                            : (isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade100),
+                            ? Colors.deepPurple.withValues(
+                                alpha: isDark ? 0.25 : 0.1,
+                              )
+                            : (isDark
+                                  ? const Color(0xFF2C2C2C)
+                                  : Colors.grey.shade100),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: hasColorPrices
-                              ? (isDark ? Colors.deepPurple.shade300 : Colors.deepPurple.shade200)
-                              : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                              ? (isDark
+                                    ? Colors.deepPurple.shade300
+                                    : Colors.deepPurple.shade200)
+                              : (isDark
+                                    ? Colors.grey.shade700
+                                    : Colors.grey.shade300),
                         ),
                       ),
                       child: Text(
@@ -1721,8 +1916,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         style: TextStyle(
                           fontSize: 11,
                           color: hasColorPrices
-                              ? (isDark ? Colors.purple.shade200 : Colors.deepPurple)
-                              : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                              ? (isDark
+                                    ? Colors.purple.shade200
+                                    : Colors.deepPurple)
+                              : (isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1737,8 +1936,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   final colorIdx = entry.key;
                   final cId = entry.value;
                   final colorMap = allColorList.firstWhere(
-                      (c) => c['id'] == cId,
-                      orElse: () => {'name': 'Color $cId'});
+                    (c) => c['id'] == cId,
+                    orElse: () => {'name': 'Color $cId'},
+                  );
                   final cName = colorMap['name'].toString();
                   final currentPrice = aColors[cId] ?? 0.0;
 
@@ -1810,12 +2010,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       return Center(
         child: Text(
           Localization.translate('لم يتم العثور على أكسسوارات.', lang),
-          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.black87),
+          style: TextStyle(
+            color: isDark ? Colors.grey.shade400 : Colors.black87,
+          ),
         ),
       );
     }
 
     return ListView.builder(
+      key: const PageStorageKey<String>('price-accessories-calculated-list'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: totalItemsCount,
       itemBuilder: (context, index) {
@@ -1830,7 +2033,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
               side: BorderSide(
-                color: isDark ? Colors.purple.shade700 : Colors.deepPurple.shade100,
+                color: isDark
+                    ? Colors.purple.shade700
+                    : Colors.deepPurple.shade100,
                 width: 1,
               ),
             ),
@@ -1906,8 +2111,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-
-  Future<void> _updateKitBundleSellingCalculation(int kitId, bool isChecked) async {
+  Future<void> _updateKitBundleSellingCalculation(
+    int kitId,
+    bool isChecked,
+  ) async {
     final dbInstance = await db.db;
     await dbInstance!.update(
       'KitBundles',
@@ -1918,7 +2125,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     _loadAllData();
   }
 
-  Future<void> _updateAccessorySellingCalculation(int accId, bool isChecked) async {
+  Future<void> _updateAccessorySellingCalculation(
+    int accId,
+    bool isChecked,
+  ) async {
     final dbInstance = await db.db;
     await dbInstance!.update(
       'Accessories',
@@ -1938,16 +2148,28 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       context,
       listen: false,
     ).language;
-    await db.setSectionColorPrice(sectionId, colorId, price);
-    if (context.mounted) {
+    try {
+      await db.setSectionColorPrice(sectionId, colorId, price);
+      if (!mounted) return;
+      setState(() {
+        sectionColorPrices.putIfAbsent(sectionId, () => {})[colorId] = price;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
           backgroundColor: Colors.green,
         ),
       );
+      await _loadAllData();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر حفظ سعر القطاع: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-    _loadAllData();
   }
 
   Future<void> _toggleProfileColor(
@@ -2059,6 +2281,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               }
 
               return ListView.builder(
+                key: const PageStorageKey<String>('price-profile-colors-list'),
                 padding: EdgeInsets.all(16),
                 itemCount: profileColors.length,
                 itemBuilder: (context, index) {
@@ -2230,6 +2453,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ),
         Expanded(
           child: ListView.builder(
+            key: const PageStorageKey<String>('price-sections-list'),
             padding: EdgeInsets.all(16),
             itemCount: filteredSections.length,
             itemBuilder: (context, index) {
@@ -2279,7 +2503,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                 sectionColorPrices[secId]?[cId] ?? 0.0;
                           }
                           if (currentPrice == 0.0) {
-                            currentPrice = (section['price_per_meter'] as num?)?.toDouble() ?? 0.0;
+                            currentPrice =
+                                (section['price_per_meter'] as num?)
+                                    ?.toDouble() ??
+                                0.0;
                           }
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),
@@ -2287,9 +2514,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                               title: color['name'].toString(),
                               currentPrice: currentPrice,
                               canChangePrices: canChangePrices,
-                              onSave: (parsed) {
-                                _updateSectionColorPrice(secId, cId, parsed);
-                              },
+                              onSave: (parsed) =>
+                                  _updateSectionColorPrice(secId, cId, parsed),
                             ),
                           );
                         }),
@@ -2323,7 +2549,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     List<GlassDisplayItem> displayItems = [];
     for (var g in glassList) {
       final typeLower = g['type'].toString().toLowerCase();
-      final hasColors = typeLower == 'panneau' || typeLower == 'baguette' || typeLower == 'rosette';
+      final hasColors =
+          typeLower == 'panneau' ||
+          typeLower == 'baguette' ||
+          typeLower == 'rosette';
       if (hasColors) {
         final colorsStr = g['color']?.toString() ?? '';
         if (colorsStr.isNotEmpty) {
@@ -2331,7 +2560,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           for (var col in colorsList) {
             final trimmedCol = col.trim();
             if (trimmedCol.isEmpty) continue;
-            final specificPrice = glassColorPrices[g['id']]?[trimmedCol] ??
+            final specificPrice =
+                glassColorPrices[g['id']]?[trimmedCol] ??
                 (g['price_per_sqm'] as num?)?.toDouble() ??
                 0.0;
             displayItems.add(
@@ -2374,6 +2604,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     }
 
     return ListView.builder(
+      key: const PageStorageKey<String>('price-glass-list'),
       padding: const EdgeInsets.all(16),
       itemCount: displayItems.length,
       itemBuilder: (context, index) {
@@ -2393,7 +2624,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           }
         }
 
-        String displaySubtitle = Localization.translate('سعر المتر المربع', lang);
+        String displaySubtitle = Localization.translate(
+          'سعر المتر المربع',
+          lang,
+        );
         if (glassType.isNotEmpty) {
           final t = glassType.toLowerCase();
           if (t == 'baguette') {
@@ -2442,7 +2676,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-
   Widget _buildList(
     BuildContext context,
     List<Map<String, dynamic>> list,
@@ -2481,17 +2714,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             decoration: InputDecoration(
               hintText: Localization.translate('بحث...', lang),
-              prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+              prefixIcon: Icon(
+                Icons.search,
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
               isDense: true,
               filled: true,
-              fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
+              fillColor: isDark
+                  ? const Color(0xFF1E1E1E)
+                  : Colors.grey.shade100,
               border: OutlineInputBorder(
                 borderRadius: const BorderRadius.all(Radius.circular(20)),
-                borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                borderSide: BorderSide(
+                  color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: const BorderRadius.all(Radius.circular(20)),
-                borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                borderSide: BorderSide(
+                  color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                ),
               ),
             ),
             onChanged: (val) {
@@ -2506,10 +2748,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               ? Center(
                   child: Text(
                     Localization.translate('لا توجد نتائج مطابقة للبحث.', lang),
-                    style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey),
+                    style: TextStyle(
+                      color: isDark ? Colors.grey.shade400 : Colors.grey,
+                    ),
                   ),
                 )
               : ListView.builder(
+                  key: PageStorageKey<String>(
+                    'price-${tableName.toLowerCase()}-list',
+                  ),
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
@@ -2522,7 +2769,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       decoration: BoxDecoration(
                         border: Border.all(
                           width: 1,
-                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                          color: isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade300,
                         ),
                         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                         borderRadius: BorderRadius.circular(20),
@@ -2554,7 +2803,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-
   Widget _buildShutterBoxLimitsTab(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2571,23 +2819,41 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.crop_square_outlined, size: 64, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.crop_square_outlined,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(height: 16),
                   Text(
-                    Localization.translate('لا توجد حدود مسجلة للصناديق.', lang),
-                    style: TextStyle(fontSize: 16, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                    Localization.translate(
+                      'لا توجد حدود مسجلة للصناديق.',
+                      lang,
+                    ),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDark
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade600,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: () => _showAddEditShutterBoxLimitDialog(null),
                     icon: const Icon(Icons.add),
-                    label: Text(Localization.translate('إضافة قاعدة جديدة', lang)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                    label: Text(
+                      Localization.translate('إضافة قاعدة جديدة', lang),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ],
               ),
             )
           : ListView.builder(
+              key: const PageStorageKey<String>('price-shutter-limits-list'),
               padding: const EdgeInsets.all(12),
               itemCount: shutterBoxLimitsList.length,
               itemBuilder: (context, index) {
@@ -2595,17 +2861,23 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 final id = limit['id'] as int;
                 final boxSize = limit['box_size'] as int;
                 final maxHeight = limit['max_height'] as double;
-                final bladeName = limit['blade_name']?.toString() ?? 'شفرة غير معروفة';
+                final bladeName =
+                    limit['blade_name']?.toString() ?? 'شفرة غير معروفة';
 
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25), width: 1),
+                    border: Border.all(
+                      color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25),
+                      width: 1,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: isDark ? Colors.black.withValues(alpha: 0.25) : Colors.grey.withValues(alpha: 0.08),
+                        color: isDark
+                            ? Colors.black.withValues(alpha: 0.25)
+                            : Colors.grey.withValues(alpha: 0.08),
                         spreadRadius: 1,
                         blurRadius: 6,
                         offset: const Offset(0, 3),
@@ -2613,14 +2885,21 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     ],
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     leading: const CircleAvatar(
                       backgroundColor: Colors.blueAccent,
                       child: Icon(Icons.settings_overscan, color: Colors.white),
                     ),
                     title: Text(
                       bladeName,
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                     ),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 6.0),
@@ -2629,25 +2908,47 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         runSpacing: 6,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E3A5F) : Colors.blue.shade50,
+                              color: isDark
+                                  ? const Color(0xFF1E3A5F)
+                                  : Colors.blue.shade50,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               '${Localization.translate('الصندوق:', lang)} $boxSize ${Localization.translate('ملم', lang)}',
-                              style: TextStyle(color: isDark ? Colors.blue.shade200 : Colors.blue.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.blue.shade200
+                                    : Colors.blue.shade900,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF3E2723) : Colors.orange.shade50,
+                              color: isDark
+                                  ? const Color(0xFF3E2723)
+                                  : Colors.orange.shade50,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               '${Localization.translate('أقصى ارتفاع:', lang)} ${maxHeight.toStringAsFixed(0)} ${Localization.translate('ملم', lang)}',
-                              style: TextStyle(color: isDark ? Colors.orange.shade200 : Colors.orange.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.orange.shade200
+                                    : Colors.orange.shade900,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ],
@@ -2658,7 +2959,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () => _showAddEditShutterBoxLimitDialog(limit),
+                          onPressed: () =>
+                              _showAddEditShutterBoxLimitDialog(limit),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
@@ -2673,7 +2975,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-
   // ══════════════════════════════════════════════════════════════════════════
   // Caisson Tunnel Pricing Tab
   // ══════════════════════════════════════════════════════════════════════════
@@ -2683,15 +2984,23 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     const Color caissonColor = Color(0xFFE65100); // deep orange
 
     // Get all Caisson Tunnel items from database (shutterList)
-    final caissonDbNames = shutterList.where((item) {
-      final name = (item['name'] ?? '').toString().toLowerCase();
-      final type = (item['component_type'] ?? '').toString().toLowerCase();
-      return type == 'caisson_tunnel' || name.contains('caisson');
-    }).map((item) => (item['name'] ?? '').toString()).where((n) => n.isNotEmpty).toSet();
+    final caissonDbNames = shutterList
+        .where((item) {
+          final name = (item['name'] ?? '').toString().toLowerCase();
+          final type = (item['component_type'] ?? '').toString().toLowerCase();
+          return type == 'caisson_tunnel' || name.contains('caisson');
+        })
+        .map((item) => (item['name'] ?? '').toString())
+        .where((n) => n.isNotEmpty)
+        .toSet();
 
     final List<String> caissonTypesList = caissonDbNames.isNotEmpty
         ? caissonDbNames.toList()
-        : ['Caisson Tunnel 25 cm', 'Caisson Tunnel 30 cm', 'Caisson Tunnel 40 cm'];
+        : [
+            'Caisson Tunnel 25 cm',
+            'Caisson Tunnel 30 cm',
+            'Caisson Tunnel 40 cm',
+          ];
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -2702,7 +3011,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [caissonColor.withValues(alpha: 0.12), caissonColor.withValues(alpha: 0.03)],
+                colors: [
+                  caissonColor.withValues(alpha: 0.12),
+                  caissonColor.withValues(alpha: 0.03),
+                ],
               ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: caissonColor.withValues(alpha: 0.25)),
@@ -2715,7 +3027,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     color: caissonColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.view_in_ar_rounded, color: caissonColor, size: 28),
+                  child: const Icon(
+                    Icons.view_in_ar_rounded,
+                    color: caissonColor,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2724,12 +3040,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     children: [
                       const Text(
                         'Caisson Tunnel — Prix au mètre linéaire',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Cairo'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          fontFamily: 'Cairo',
+                        ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         'Saisissez le prix au mètre linéaire (DA/ml) pour chaque type de Caisson Tunnel.',
-                        style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey.shade700,
+                        ),
                       ),
                     ],
                   ),
@@ -2739,12 +3062,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ),
           Expanded(
             child: ListView.builder(
+              key: const PageStorageKey<String>('price-caisson-tunnel-list'),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               itemCount: caissonTypesList.length,
               itemBuilder: (context, index) {
                 final caissonName = caissonTypesList[index];
 
-                double currentPrice = (shutterSqmPrices[caissonName]?[0]) ?? 0.0;
+                double currentPrice =
+                    (shutterSqmPrices[caissonName]?[0]) ?? 0.0;
                 if (currentPrice == 0.0) {
                   final comp = shutterList.firstWhere(
                     (c) => c['name'] == caissonName,
@@ -2760,7 +3085,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: caissonColor.withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: caissonColor.withValues(alpha: 0.2),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.grey.withValues(alpha: 0.06),
@@ -2771,8 +3098,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   ),
                   child: PriceEditRow(
                     title: caissonName,
-                    titleIcon: const Icon(Icons.view_in_ar_rounded, size: 20, color: caissonColor),
-                    subtitle: Localization.translate('سعر المتر الخطي (DA/ml)', lang),
+                    titleIcon: const Icon(
+                      Icons.view_in_ar_rounded,
+                      size: 20,
+                      color: caissonColor,
+                    ),
+                    subtitle: Localization.translate(
+                      'سعر المتر الخطي (DA/ml)',
+                      lang,
+                    ),
                     currentPrice: currentPrice,
                     canChangePrices: canChangePrices,
                     onSave: (parsed) {
@@ -2788,15 +3122,21 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-
-
   Future<void> _confirmDeleteShutterBoxLimit(int id) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Localization.translate('حذف القاعدة', lang)),
-        content: Text(Localization.translate('هل أنت متأكد من رغبتك في حذف هذه القاعدة؟', lang)),
+        content: Text(
+          Localization.translate(
+            'هل أنت متأكد من رغبتك في حذف هذه القاعدة؟',
+            lang,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2804,7 +3144,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: Text(Localization.translate('حذف', lang)),
           ),
         ],
@@ -2817,29 +3160,51 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     }
   }
 
-  Future<void> _showAddEditShutterBoxLimitDialog(Map<String, dynamic>? existingLimit) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+  Future<void> _showAddEditShutterBoxLimitDialog(
+    Map<String, dynamic>? existingLimit,
+  ) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
 
     // Filter blades
     final blades = shutterList.where((s) {
       final name = s['name'].toString().toLowerCase();
       return (name.contains('lame') || name.contains('شريح')) &&
-             !name.contains('final') && !name.contains('نهائي') &&
-             !name.contains('box') && !name.contains('صندوق') && !name.contains('caisson') &&
-             !name.contains('kit') && !name.contains('كيت');
+          !name.contains('final') &&
+          !name.contains('نهائي') &&
+          !name.contains('box') &&
+          !name.contains('صندوق') &&
+          !name.contains('caisson') &&
+          !name.contains('kit') &&
+          !name.contains('كيت');
     }).toList();
 
     if (blades.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(Localization.translate('الرجاء إضافة شفرات في قائمة الستائر أولاً.', lang))),
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              'الرجاء إضافة شفرات في قائمة الستائر أولاً.',
+              lang,
+            ),
+          ),
+        ),
       );
       return;
     }
 
-    int? selectedBladeId = existingLimit != null ? existingLimit['blade_id'] as int : blades.first['id'] as int;
-    int selectedBoxSize = existingLimit != null ? existingLimit['box_size'] as int : 155;
+    int? selectedBladeId = existingLimit != null
+        ? existingLimit['blade_id'] as int
+        : blades.first['id'] as int;
+    int selectedBoxSize = existingLimit != null
+        ? existingLimit['box_size'] as int
+        : 155;
     final heightCtrl = TextEditingController(
-      text: existingLimit != null ? (existingLimit['max_height'] as double).toStringAsFixed(0) : '1800',
+      text: existingLimit != null
+          ? (existingLimit['max_height'] as double).toStringAsFixed(0)
+          : '1800',
     );
 
     final boxSizes = [155, 185, 205];
@@ -2850,7 +3215,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Text(
                 existingLimit == null
                     ? Localization.translate('إضافة قاعدة حدود الصندوق', lang)
@@ -2866,7 +3233,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       value: selectedBladeId,
                       decoration: InputDecoration(
                         labelText: Localization.translate('نوع الشفرة', lang),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       items: blades.map((b) {
                         return DropdownMenuItem<int>(
@@ -2888,7 +3257,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       value: selectedBoxSize,
                       decoration: InputDecoration(
                         labelText: Localization.translate('مقاس الصندوق', lang),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       items: boxSizes.map((size) {
                         return DropdownMenuItem<int>(
@@ -2910,8 +3281,13 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       controller: heightCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: Localization.translate('أقصى ارتفاع يحتمله الصندوق (ملم)', lang),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        labelText: Localization.translate(
+                          'أقصى ارتفاع يحتمله الصندوق (ملم)',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ],
@@ -2927,16 +3303,32 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     final maxHeight = double.tryParse(heightCtrl.text);
                     if (maxHeight == null || maxHeight <= 0) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text(Localization.translate('الرجاء إدخال قيمة صحيحة للارتفاع.', lang))),
+                        SnackBar(
+                          content: Text(
+                            Localization.translate(
+                              'الرجاء إدخال قيمة صحيحة للارتفاع.',
+                              lang,
+                            ),
+                          ),
+                        ),
                       );
                       return;
                     }
 
                     if (existingLimit == null) {
-                      await db.insertShutterBoxLimit(selectedBoxSize, selectedBladeId!, maxHeight);
+                      await db.insertShutterBoxLimit(
+                        selectedBoxSize,
+                        selectedBladeId!,
+                        maxHeight,
+                      );
                     } else {
                       final id = existingLimit['id'] as int;
-                      await db.updateShutterBoxLimit(id, selectedBoxSize, selectedBladeId!, maxHeight);
+                      await db.updateShutterBoxLimit(
+                        id,
+                        selectedBoxSize,
+                        selectedBladeId!,
+                        maxHeight,
+                      );
                     }
 
                     Navigator.pop(ctx);
@@ -2945,7 +3337,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: Text(Localization.translate('حفظ', lang)),
                 ),
@@ -2989,34 +3383,40 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           ],
         ),
       ),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildSeriesColorTab(context),
-                _buildProfileColorsTab(context),
-                _buildGlassList(context),
-                _buildShutterPricingTab(context),
-                _buildList(
-                  context,
-                  jointList,
-                  'Joints',
-                  'name',
-                  'price_per_meter',
-                  Localization.translate('سعر المتر الطولي', lang),
-                ),
-                _buildAccessoryColorTab(context),
-                _buildSectionPricingTab(context),
-                _buildShutterBoxLimitsTab(context),
-                _buildCaissonTunnelPricingTab(context),
-              ],
-            ),
+      body: PageStorage(
+        bucket: _scrollStorage,
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildSeriesColorTab(context),
+                  _buildProfileColorsTab(context),
+                  _buildGlassList(context),
+                  _buildShutterPricingTab(context),
+                  _buildList(
+                    context,
+                    jointList,
+                    'Joints',
+                    'name',
+                    'price_per_meter',
+                    Localization.translate('سعر المتر الطولي', lang),
+                  ),
+                  _buildAccessoryColorTab(context),
+                  _buildSectionPricingTab(context),
+                  _buildShutterBoxLimitsTab(context),
+                  _buildCaissonTunnelPricingTab(context),
+                ],
+              ),
+      ),
     );
   }
 
   Future<void> _showCustomizeAccessoryColorsDialog() async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     int? selectedAccId;
 
     await showDialog(
@@ -3025,8 +3425,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         String searchQuery = '';
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
-            final aColors = selectedAccId != null 
-                ? (accessoryColorPrices[selectedAccId] ?? {}) 
+            final aColors = selectedAccId != null
+                ? (accessoryColorPrices[selectedAccId] ?? {})
                 : {};
 
             // Filter accessoryList by searchQuery
@@ -3036,15 +3436,21 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             }).toList();
 
             // Ensure selected item stays in the list to avoid dropdown assertion error
-            if (selectedAccId != null && !filteredAccList.any((acc) => acc['id'] == selectedAccId)) {
-              final selectedAcc = accessoryList.firstWhere((acc) => acc['id'] == selectedAccId, orElse: () => {});
+            if (selectedAccId != null &&
+                !filteredAccList.any((acc) => acc['id'] == selectedAccId)) {
+              final selectedAcc = accessoryList.firstWhere(
+                (acc) => acc['id'] == selectedAccId,
+                orElse: () => {},
+              );
               if (selectedAcc.isNotEmpty) {
                 filteredAccList.insert(0, selectedAcc);
               }
             }
 
             return AlertDialog(
-              title: Text(Localization.translate('تخصيص ألوان الإكسسوارات', lang)),
+              title: Text(
+                Localization.translate('تخصيص ألوان الإكسسوارات', lang),
+              ),
               content: SizedBox(
                 width: double.maxFinite,
                 child: Column(
@@ -3052,7 +3458,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   children: [
                     TextField(
                       decoration: InputDecoration(
-                        labelText: Localization.translate('بحث عن إكسسوار...', lang),
+                        labelText: Localization.translate(
+                          'بحث عن إكسسوار...',
+                          lang,
+                        ),
                         prefixIcon: const Icon(Icons.search),
                         border: const OutlineInputBorder(),
                       ),
@@ -3066,7 +3475,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     DropdownButtonFormField<int>(
                       isExpanded: true,
                       decoration: InputDecoration(
-                        labelText: Localization.translate('اختر الإكسسوار', lang),
+                        labelText: Localization.translate(
+                          'اختر الإكسسوار',
+                          lang,
+                        ),
                         border: const OutlineInputBorder(),
                       ),
                       value: selectedAccId,
@@ -3087,7 +3499,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Text(
-                          Localization.translate('الرجاء اختيار إكسسوار أولاً لتخصيص ألوانه.', lang),
+                          Localization.translate(
+                            'الرجاء اختيار إكسسوار أولاً لتخصيص ألوانه.',
+                            lang,
+                          ),
                           style: const TextStyle(color: Colors.grey),
                           textAlign: TextAlign.center,
                         ),
@@ -3096,7 +3511,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       Expanded(
                         child: allColorList.isEmpty
                             ? Center(
-                                child: Text(Localization.translate('لا توجد ألوان.', lang)),
+                                child: Text(
+                                  Localization.translate(
+                                    'لا توجد ألوان.',
+                                    lang,
+                                  ),
+                                ),
                               )
                             : ListView.builder(
                                 shrinkWrap: true,
@@ -3108,13 +3528,20 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
                                   return CheckboxListTile(
                                     title: Text(color['name'].toString()),
-                                    secondary: _buildColorCircle(color, size: 24),
+                                    secondary: _buildColorCircle(
+                                      color,
+                                      size: 24,
+                                    ),
                                     value: isMapped,
                                     onChanged: (val) async {
                                       final dbInstance = (await db.db)!;
                                       if (val == true) {
-                                        final acc = accessoryList.firstWhere((a) => a['id'] == selectedAccId);
-                                        final basePrice = (acc['price'] is num) ? (acc['price'] as num).toDouble() : 0.0;
+                                        final acc = accessoryList.firstWhere(
+                                          (a) => a['id'] == selectedAccId,
+                                        );
+                                        final basePrice = (acc['price'] is num)
+                                            ? (acc['price'] as num).toDouble()
+                                            : 0.0;
                                         await dbInstance.insert(
                                           'AccessoryColorPrices',
                                           {
@@ -3122,12 +3549,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                             'color_id': cId,
                                             'price': basePrice,
                                           },
-                                          conflictAlgorithm: ConflictAlgorithm.replace,
+                                          conflictAlgorithm:
+                                              ConflictAlgorithm.replace,
                                         );
                                       } else {
                                         await dbInstance.delete(
                                           'AccessoryColorPrices',
-                                          where: 'accessory_id = ? AND color_id = ?',
+                                          where:
+                                              'accessory_id = ? AND color_id = ?',
                                           whereArgs: [selectedAccId, cId],
                                         );
                                       }
@@ -3135,7 +3564,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                       await _loadAllData();
                                       setStateDialog(() {});
                                     },
-                                    controlAffinity: ListTileControlAffinity.leading,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
                                   );
                                 },
                               ),
@@ -3157,7 +3587,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   }
 
   Future<void> _showCustomizeShutterColorsDialog() async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     int? selectedShutId;
 
     await showDialog(
@@ -3165,12 +3598,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
-            final sColors = selectedShutId != null 
-                ? (shutterColorPrices[selectedShutId] ?? {}) 
+            final sColors = selectedShutId != null
+                ? (shutterColorPrices[selectedShutId] ?? {})
                 : {};
 
             return AlertDialog(
-              title: Text(Localization.translate('تخصيص ألوان مركبات ستائر', lang)),
+              title: Text(
+                Localization.translate('تخصيص ألوان مركبات ستائر', lang),
+              ),
               content: SizedBox(
                 width: double.maxFinite,
                 child: Column(
@@ -3200,7 +3635,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Text(
-                          Localization.translate('الرجاء اختيار مكون أولاً لتخصيص ألوانه.', lang),
+                          Localization.translate(
+                            'الرجاء اختيار مكون أولاً لتخصيص ألوانه.',
+                            lang,
+                          ),
                           style: const TextStyle(color: Colors.grey),
                           textAlign: TextAlign.center,
                         ),
@@ -3209,7 +3647,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       Expanded(
                         child: allColorList.isEmpty
                             ? Center(
-                                child: Text(Localization.translate('لا توجد ألوان.', lang)),
+                                child: Text(
+                                  Localization.translate(
+                                    'لا توجد ألوان.',
+                                    lang,
+                                  ),
+                                ),
                               )
                             : ListView.builder(
                                 shrinkWrap: true,
@@ -3221,12 +3664,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
                                   return CheckboxListTile(
                                     title: Text(color['name'].toString()),
-                                    secondary: _buildColorCircle(color, size: 24),
+                                    secondary: _buildColorCircle(
+                                      color,
+                                      size: 24,
+                                    ),
                                     value: isMapped,
                                     onChanged: (val) async {
                                       if (val == true) {
-                                        final shut = shutterList.firstWhere((s) => s['id'] == selectedShutId);
-                                        final basePrice = (shut['price'] is num) ? (shut['price'] as num).toDouble() : 0.0;
+                                        final shut = shutterList.firstWhere(
+                                          (s) => s['id'] == selectedShutId,
+                                        );
+                                        final basePrice = (shut['price'] is num)
+                                            ? (shut['price'] as num).toDouble()
+                                            : 0.0;
                                         await db.setShutterColorForComponent(
                                           shutterComponentId: selectedShutId!,
                                           colorId: cId,
@@ -3243,7 +3693,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                       await _loadAllData();
                                       setStateDialog(() {});
                                     },
-                                    controlAffinity: ListTileControlAffinity.leading,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
                                   );
                                 },
                               ),
@@ -3266,6 +3717,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
   @override
   void dispose() {
+    _reloadDebounce?.cancel();
     _tabController.dispose();
     _dbSubscription?.cancel();
     super.dispose();
@@ -3332,7 +3784,10 @@ class _PriceEditRowState extends State<PriceEditRow> {
               children: [
                 Row(
                   children: [
-                    if (widget.titleIcon != null) ...[widget.titleIcon!, const SizedBox(width: 6)],
+                    if (widget.titleIcon != null) ...[
+                      widget.titleIcon!,
+                      const SizedBox(width: 6),
+                    ],
                     Expanded(
                       child: Text(
                         widget.title,
@@ -3348,7 +3803,12 @@ class _PriceEditRowState extends State<PriceEditRow> {
                 if (widget.subtitle.isNotEmpty)
                   Text(
                     widget.subtitle,
-                    style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade600,
+                    ),
                   ),
               ],
             ),
@@ -3372,14 +3832,22 @@ class _PriceEditRowState extends State<PriceEditRow> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: _isEditing ? Colors.blue : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                    color: _isEditing
+                        ? Colors.blue
+                        : (isDark
+                              ? Colors.grey.shade700
+                              : Colors.grey.shade300),
                     width: _isEditing ? 2 : 1,
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: _isEditing ? Colors.blue : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                    color: _isEditing
+                        ? Colors.blue
+                        : (isDark
+                              ? Colors.grey.shade700
+                              : Colors.grey.shade300),
                     width: _isEditing ? 2 : 1,
                   ),
                 ),
@@ -3388,7 +3856,9 @@ class _PriceEditRowState extends State<PriceEditRow> {
                   vertical: 8,
                 ),
                 suffixText: 'DZD',
-                suffixStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                suffixStyle: TextStyle(
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                ),
                 filled: true,
                 fillColor: _isEditing
                     ? (isDark ? const Color(0xFF2A2A2A) : Colors.white)
@@ -3411,15 +3881,24 @@ class _PriceEditRowState extends State<PriceEditRow> {
                   _isEditing ? Icons.save : Icons.edit,
                   color: _isEditing ? Colors.green : Colors.blue,
                 ),
-                onPressed: () {
+                onPressed: () async {
                   if (_isEditing) {
-                    double? parsed = double.tryParse(_ctrl.text);
+                    final normalizedPrice = _ctrl.text
+                        .trim()
+                        .replaceAll(',', '.')
+                        .replaceAll('٫', '.');
+                    double? parsed = double.tryParse(normalizedPrice);
                     if (parsed != null) {
-                      widget.onSave(parsed);
+                      final result = widget.onSave(parsed);
+                      if (result is Future) {
+                        await result;
+                      }
                     }
-                    setState(() {
-                      _isEditing = false;
-                    });
+                    if (mounted) {
+                      setState(() {
+                        _isEditing = false;
+                      });
+                    }
                   } else {
                     setState(() {
                       _isEditing = true;

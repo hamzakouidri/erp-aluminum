@@ -3,6 +3,124 @@ import 'package:flutter/material.dart';
 import '../../widgets/section_image.dart';
 import '../../sql_database.dart';
 
+/// The component row that opened the selector belongs either to an opening
+/// sash or to a sliding sash.  It must not be inferred from a commercial
+/// series name: a PVC catalogue can contain both kinds of hardware.
+enum AccessoryDrawingMode { opening, sliding }
+
+String _accessorySearchText(Map<String, dynamic> accessory) =>
+    '${accessory['name'] ?? ''} ${accessory['type'] ?? ''}'.toLowerCase();
+
+bool _containsAny(String value, Iterable<String> terms) =>
+    terms.any((term) => value.contains(term));
+
+/// A catalogue item is linked to a series only through [series_id] or
+/// [series_ids]. Text in its name/type must never make it appear in another
+/// series.
+bool catalogItemMatchesSeries(Map<String, dynamic> item, int seriesId) {
+  final directId = int.tryParse((item['series_id'] ?? '').toString().trim());
+  final linkedIds = (item['series_ids'] ?? '')
+      .toString()
+      .split(',')
+      .map((value) => int.tryParse(value.trim()))
+      .whereType<int>()
+      .where((id) => id > 0)
+      .toSet();
+
+  final hasExplicitSeries = (directId ?? 0) > 0 || linkedIds.isNotEmpty;
+  if (hasExplicitSeries) {
+    return directId == seriesId || linkedIds.contains(seriesId);
+  }
+
+  // A malformed "Unique" record without an assigned series is not global.
+  // Hiding it is safer than leaking it into every selector.
+  return (item['scope'] ?? '').toString().trim().toLowerCase() != 'unique';
+}
+
+bool isEspagnoletteAccessory(Map<String, dynamic> accessory) =>
+    _containsAny(_accessorySearchText(accessory), const [
+      'espagnol',
+      'إسبانيول',
+      'اسبانيول',
+      'سبانيول',
+    ]);
+
+bool isHingeAccessory(Map<String, dynamic> accessory) =>
+    _containsAny(_accessorySearchText(accessory), const [
+      'paumelle',
+      'pomelle',
+      'charniere',
+      'charnière',
+      'hinge',
+      'mifsal',
+      'mifsel',
+      'مفصل',
+      'مفاص',
+    ]);
+
+bool isSlidingAccessory(Map<String, dynamic> accessory) =>
+    _containsAny(_accessorySearchText(accessory), const [
+      'couliss',
+      'sliding',
+      'منزلق',
+      'جرار',
+      'كوليس',
+      'كوريس',
+      'roulette',
+      'عجلات',
+    ]);
+
+bool _isHandleAccessory(Map<String, dynamic> accessory) =>
+    _containsAny(_accessorySearchText(accessory), const [
+      'poignée',
+      'poignee',
+      'handle',
+      'مقبض',
+      'بواني',
+    ]);
+
+/// Filters hardware using the actual sash type that produced its BOM row.
+/// In particular, an unqualified espagnolette or window handle is an opening
+/// component; sliding variants must be explicitly labelled as sliding.
+bool accessoryMatchesDrawingMode(
+  Map<String, dynamic> accessory,
+  AccessoryDrawingMode drawingMode,
+) {
+  final isSliding = isSlidingAccessory(accessory);
+
+  if (isEspagnoletteAccessory(accessory) || _isHandleAccessory(accessory)) {
+    return drawingMode == AccessoryDrawingMode.sliding
+        ? isSliding
+        : !isSliding;
+  }
+
+  if (isHingeAccessory(accessory)) {
+    return drawingMode == AccessoryDrawingMode.opening;
+  }
+
+  // Rollers, sliding strikes and other components explicitly labelled as
+  // sliding never belong in an opening-sash selector.
+  if (drawingMode == AccessoryDrawingMode.opening && isSliding) return false;
+
+  // Hardware that exists only for opening sashes must not leak into sliding
+  // dialogs, even in a mixed drawing.
+  final text = _accessorySearchText(accessory);
+  final isOpeningOnly = _containsAny(text, const [
+    'system ob',
+    'demi system ob',
+    'verrou central',
+    'gache simple',
+    'gâche simple',
+    'gache double',
+    'gâche double',
+    'ouvrant',
+    'frappe',
+    'battant',
+    'فتح',
+  ]);
+  return drawingMode != AccessoryDrawingMode.sliding || !isOpeningOnly;
+}
+
 class ProfileSelectorDialog extends StatefulWidget {
   final String profileType; // مثلاً 'Cadre'
   final String category; // 'profile', 'accessory', 'shutter'
@@ -10,6 +128,12 @@ class ProfileSelectorDialog extends StatefulWidget {
   final String? materialType;
   final double? windowHeight;
   final double? targetSize;
+  /// الحد الأقصى لطول الإسبانيوليت المطلوب للرسم. لا تعرض النافذة
+  /// الإسبانيوليت الأطول منه لأنها لا تصلح للتركيب في هذه النافذة.
+  final double? maxAccessoryLength;
+  /// The mode of the sash that owns the component being replaced.  This is
+  /// supplied by the BOM row and is more reliable than a series label.
+  final AccessoryDrawingMode? accessoryDrawingMode;
   final int? bladeId;
 
   const ProfileSelectorDialog({
@@ -20,6 +144,8 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.materialType,
     this.windowHeight,
     this.targetSize,
+    this.maxAccessoryLength,
+    this.accessoryDrawingMode,
     this.bladeId,
   });
 
@@ -43,18 +169,20 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
     // Fetch active series name first so it is available globally in _loadProfiles
     String activeSeriesName = '';
+    String activeSeriesType = '';
     final myDbInstance = await db.db;
     if (myDbInstance != null && widget.seriesId != null) {
       try {
         final sRes = await myDbInstance.query(
           'Series',
-          columns: ['name'],
+          columns: ['name', 'type'],
           where: 'id = ?',
           whereArgs: [widget.seriesId],
           limit: 1,
         );
         if (sRes.isNotEmpty) {
           activeSeriesName = (sRes.first['name'] ?? '').toString().toLowerCase();
+          activeSeriesType = (sRes.first['type'] ?? '').toString().toLowerCase();
         }
       } catch (_) {}
     }
@@ -63,49 +191,67 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
       final myDb = myDbInstance;
       if (myDb != null) {
 
-        // دالة مساعدة للاستعلام الذكي عن الإكسسوارات
-        // القاعدة: إذا حُدِّدت سلاسل لإكسسوار → يظهر فقط في تلك السلاسل
-        //          إذا لم تُحدَّد أي سلسلة → يظهر في كل السلاسل (عام)
-        Future<List<Map<String, dynamic>>> queryAccessories(String customWhere, List<dynamic> baseArgs) async {
+        // الإكسسوار المرتبط بسلسلة يظهر لتلك السلسلة فقط. أما الإكسسوار
+        // العام (بلا سلسلة) فيظهر لكل سلسلة تتطابق مادتها معه.
+        Future<List<Map<String, dynamic>>> queryAccessories(
+          String customWhere,
+          List<dynamic> baseArgs,
+        ) async {
+          // A selector without a selected series must not become a catalogue
+          // wide selector.  Showing unrelated parts is worse than showing an
+          // empty list and prompting the user to choose a series first.
+          if (widget.seriesId == null) {
+            return const <Map<String, dynamic>>[];
+          }
+
           List<dynamic> args = List.from(baseArgs);
           String where = customWhere;
 
-          if (widget.seriesId != null) {
-            // يظهر إذا:
-            // (أ) series_id = السلسلة الحالية
-            // (ب) series_ids يحتوي السلسلة الحالية
-            // (ج) لا توجد أي سلسلة محددة (series_id IS NULL أو 0) ولا series_ids محددة → عام حقيقي
-            where += ' AND ('
-                'series_id = ? '
-                'OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE ?) '
-                'OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR series_ids = \'\'))'
-                ')';
-            args.add(widget.seriesId);
-            args.add('%,' + widget.seriesId.toString() + ',%');
-          }
+          // يظهر إذا كان مرتبطاً بالسلسلة مباشرة أو ضمن قائمة سلاسلها.
+          // REPLACE handles old catalogues that stored "12, 13" with spaces.
+          const seriesConstraint =
+              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
+          const globalConstraint =
+              "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')";
+          where += ' AND ($seriesConstraint OR ($globalConstraint))';
+          args.add(widget.seriesId);
+          args.add('%,' + widget.seriesId.toString() + ',%');
 
           if (widget.materialType != null) {
             final mat = widget.materialType!.toLowerCase().trim();
             if (mat == 'pvc') {
               // PVC: يظهر فقط ما هو pvc أو both. الـ NULL/فارغ = ألمنيوم بالافتراضي → لا يظهر في PVC
-              where += " AND (LOWER(material_type) = 'pvc' OR LOWER(material_type) = 'both')";
+              where +=
+                  " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')";
             } else {
               // Aluminium: يظهر ما هو aluminium أو both أو NULL/فارغ (الافتراضي = ألمنيوم)
-              where += " AND (LOWER(material_type) = 'aluminium' OR LOWER(material_type) = 'aluminum' OR LOWER(material_type) = 'both' OR material_type IS NULL OR material_type = '')";
+              where +=
+                  " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
             }
           }
 
           String? orderBy;
           if (widget.seriesId != null) {
             final sid = widget.seriesId;
-            orderBy = 'CASE WHEN series_id = $sid OR (series_ids IS NOT NULL AND series_ids != \'\' AND \',\' || series_ids || \',\' LIKE \'%,$sid,%\') THEN 0 ELSE 1 END ASC, id ASC';
+            orderBy = 'CASE WHEN series_id = $sid OR (series_ids IS NOT NULL AND TRIM(series_ids) != \'\' AND \',\' || REPLACE(series_ids, \' \', \'\') || \',\' LIKE \'%,$sid,%\') THEN 0 ELSE 1 END ASC, id ASC';
           }
 
           final rawRows = await myDb.query('Accessories', where: where, whereArgs: args, orderBy: orderBy);
 
           return rawRows.where((a) {
+            if (!catalogItemMatchesSeries(a, widget.seriesId!)) return false;
+
             final n = a['name'].toString().toLowerCase();
             final ty = (a['type'] ?? '').toString().toLowerCase();
+
+            final drawingMode = widget.accessoryDrawingMode ??
+                ((activeSeriesType.contains('couliss') ||
+                        activeSeriesType.contains('sliding') ||
+                        activeSeriesType.contains('منزلق') ||
+                        activeSeriesType.contains('جرار'))
+                    ? AccessoryDrawingMode.sliding
+                    : AccessoryDrawingMode.opening);
+            if (!accessoryMatchesDrawingMode(a, drawingMode)) return false;
 
             // 1. Material Exclusions
             final mat = (widget.materialType ?? '').toLowerCase().trim();
@@ -149,32 +295,6 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 }
               }
 
-              // 3. System Mode (Sliding vs Opening) Exclusions
-              final isSliding = sName.contains('67000') || sName.contains('76000') || sName.contains('67') || sName.contains('76');
-              if (isSliding) {
-                if (n.contains('paumelle') || ty.contains('paumelle') ||
-                    n.contains('mifsal') || ty.contains('mifsal') ||
-                    n.contains('مفاصل') || ty.contains('مفاصل') ||
-                    n.contains('مفصل') || ty.contains('مفصل') ||
-                    n.contains('system ob') || ty.contains('system ob') ||
-                    n.contains('demi system ob') || ty.contains('demi system ob') ||
-                    n.contains('verrou central') || ty.contains('verrou central') ||
-                    n.contains('gache simple') || ty.contains('gache simple') ||
-                    n.contains('gache double') || ty.contains('gache double') ||
-                    n.contains('قاش دوبل') || ty.contains('قاش دوبل') ||
-                    n.contains('قاش سامبل') || ty.contains('قاش سامبل') ||
-                    n.contains('فتح') || ty.contains('فتح') ||
-                    n.contains('ouvrant') || ty.contains('ouvrant')) {
-                  return false;
-                }
-              } else {
-                if (n.contains('couliss') || ty.contains('couliss') ||
-                    n.contains('roulette') || ty.contains('roulette') ||
-                    n.contains('عجلات') || ty.contains('عجلات') ||
-                    n.contains('منزلق') || ty.contains('منزلق')) {
-                  return false;
-                }
-              }
             }
 
             // 4. Kit Clamp/Clan Exclusions (Exclude clamp from kit matching, and vice versa)
@@ -243,7 +363,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             else if (kw.contains('screw'))
               kw = 'براغي';
 
-            final allAcc = await queryAccessories('is_active = 1 OR is_active IS NULL', []);
+            final allAcc = await queryAccessories(
+              'is_active = 1 OR is_active IS NULL',
+              [],
+            );
 
             data = allAcc.where((a) {
               final n = a['name'].toString().toLowerCase();
@@ -270,6 +393,21 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                     (n.contains('screw') ||
                         n.contains('براغي') ||
                         n.contains('vis'));
+              }
+              if (t == 'is_gache_simple') {
+                final isGache = n.contains('gache') ||
+                    n.contains('gâche') ||
+                    ty.contains('gache') ||
+                    ty.contains('gâche') ||
+                    n.contains('قاش') ||
+                    ty.contains('قاش');
+                return isGache &&
+                    !n.contains('double') &&
+                    !ty.contains('double') &&
+                    !n.contains('doub') &&
+                    !ty.contains('doub') &&
+                    !n.contains('porte') &&
+                    !ty.contains('porte');
               }
               if (t == 'is_gache_porte') {
                 final bool containsGache = n.contains('gache') || n.contains('gâche') || n.contains('قاش') || n.contains('كاش') || n.contains('gage') ||
@@ -333,13 +471,68 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             final n = a['name'].toString().toLowerCase();
             final ty = (a['type'] ?? '').toString().toLowerCase();
 
+            if (tLower == 'is_window_handle') {
+              final hasHandle = n.contains('poignée') ||
+                  ty.contains('poignée') ||
+                  n.contains('poignee') ||
+                  ty.contains('poignee') ||
+                  n.contains('handle') ||
+                  ty.contains('handle') ||
+                  n.contains('مقبض') ||
+                  ty.contains('مقبض');
+              final isDoorOnly = n.contains('porte') ||
+                  ty.contains('porte') ||
+                  n.contains('door') ||
+                  ty.contains('door') ||
+                  n.contains('clé') ||
+                  ty.contains('clé') ||
+                  n.contains('clef') ||
+                  ty.contains('clef') ||
+                  n.contains('condamnation') ||
+                  ty.contains('condamnation') ||
+                  n.contains('rotax') ||
+                  ty.contains('rotax') ||
+                  n.contains('calimaster') ||
+                  ty.contains('calimaster') ||
+                  n.contains('maréchal') ||
+                  ty.contains('maréchal') ||
+                  n.contains('marechal') ||
+                  ty.contains('marechal');
+              return hasHandle && !isDoorOnly;
+            }
+
+            if (tLower == 'فيرو' ||
+                tLower == 'verrou' ||
+                tLower == 'viro') {
+              return n.contains('verrou') ||
+                  ty.contains('verrou') ||
+                  n.contains('verro') ||
+                  ty.contains('verro') ||
+                  n.contains('viro') ||
+                  ty.contains('viro') ||
+                  n.contains('فيرو') ||
+                  ty.contains('فيرو');
+            }
+
             if (tLower == 'اسبانيوليت' || tLower == 'espagnolette' || tLower.contains('اسبانيول') || tLower.contains('إسبانيول')) {
-              return n.contains('espagnol') ||
+              final isEspagnolette = n.contains('espagnol') ||
                   ty.contains('espagnol') ||
                   n.contains('اسبانيول') ||
                   ty.contains('اسبانيول') ||
                   n.contains('سبانيول') ||
                   ty.contains('سبانيول');
+              if (!isEspagnolette) return false;
+              final maxLength = widget.maxAccessoryLength;
+              if (maxLength == null || maxLength <= 0) return true;
+              final rawSize = (a['measurement'] ?? '').toString();
+              final sizeMatch = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(
+                rawSize.isNotEmpty ? rawSize : '${a['name'] ?? ''} ${a['type'] ?? ''}',
+              );
+              final length = sizeMatch == null
+                  ? null
+                  : double.tryParse(sizeMatch.group(1)!.replaceAll(',', '.'));
+              // القيم بلا طول صريح لا تعد بديلاً آمناً لإسبانيوليت محسوب.
+              return length != null && length <= maxLength;
             }
             if (tLower == 'kit' || tLower.contains('كيت')) {
               final isKit = n.contains('kit') || ty.contains('kit') || n.contains('كيت') || ty.contains('كيت');
@@ -433,14 +626,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 tLower == 'hinges' ||
                 tLower == 'paumelle' ||
                 tLower == 'paumelles') {
-              return n.contains('paumelle') ||
-                  ty.contains('paumelle') ||
-                  n.contains('paumelles') ||
-                  ty.contains('paumelles') ||
-                  n.contains('مفاصل') ||
-                  ty.contains('مفاصل') ||
-                  n.contains('مفصلة') ||
-                  ty.contains('مفصلة');
+              return isHingeAccessory(a);
             }
             if (tLower == 'مقبض' ||
                 tLower == 'handle' ||
@@ -557,42 +743,63 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
     } else if (widget.category == 'joint') {
       final myDb = await db.db;
       if (myDb != null) {
-        final allJoints = await myDb.query('Joints');
-        final t = widget.profileType.toLowerCase();
-        final isGlassGasket = t.contains('vitrage') || t.contains('زجاج');
-        final isBrushGasket = t.contains('brosse') || t.contains('بروس');
+        // Apply the exact same scope rule used for accessories: a joint that
+        // has one or more series is exclusive to them; a joint without a
+        // series is global only for its material.
+        if (widget.seriesId != null) {
+          final isPvc = widget.materialType?.trim().toLowerCase() == 'pvc';
+          const seriesConstraint =
+              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
+          const globalConstraint =
+              "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')";
+          final materialConstraint = isPvc
+              ? "TRIM(LOWER(type)) = 'pvc' OR TRIM(LOWER(type)) = 'both'"
+              : "TRIM(LOWER(type)) = 'aluminium' OR TRIM(LOWER(type)) = 'aluminum' OR TRIM(LOWER(type)) = 'both' OR type IS NULL OR TRIM(type) = '' OR TRIM(LOWER(type)) = 'global'";
+          final allJoints = await myDb.query(
+            'Joints',
+            where:
+                '($seriesConstraint OR ($globalConstraint)) AND ($materialConstraint)',
+            whereArgs: [widget.seriesId, '%,${widget.seriesId},%'],
+          );
+          final t = widget.profileType.toLowerCase();
+          final isGlassGasket = t.contains('vitrage') || t.contains('زجاج');
+          final isBrushGasket = t.contains('brosse') || t.contains('بروس');
 
-        data = allJoints.where((a) {
-          final n = a['name'].toString().toLowerCase();
-          final ty = a['type'].toString().toLowerCase();
-          final gType = a['gasket_type']?.toString().toLowerCase() ?? '';
+          data = allJoints.where((a) {
+            if (!catalogItemMatchesSeries(a, widget.seriesId!)) return false;
 
-          if (isGlassGasket) {
-            return gType == 'جوان فيتراج' ||
-                   gType == 'joint_vitrage' ||
-                   n.contains('vitrage') ||
-                   n.contains('زجاج');
-          }
-          if (isBrushGasket) {
-            return gType == 'جوان بروس' ||
-                   gType == 'joint_brosse' ||
-                   n.contains('brosse') ||
-                   n.contains('بروس') ||
-                   n.contains('brush');
-          }
+            final n = a['name'].toString().toLowerCase();
+            final ty = a['type'].toString().toLowerCase();
+            final gType = a['gasket_type']?.toString().toLowerCase() ?? '';
 
-          // Fallback to general keyword match
-          List<String> keywords = [t];
-          for (var kw in keywords) {
-            if (n.contains(kw) ||
-                ty.contains(kw) ||
-                kw.contains(n) ||
-                kw.contains(ty) ||
-                gType.contains(kw))
-              return true;
-          }
-          return false;
-        }).toList();
+            if (isGlassGasket) {
+              return gType == 'جوان فيتراج' ||
+                  gType == 'joint_vitrage' ||
+                  n.contains('vitrage') ||
+                  n.contains('زجاج');
+            }
+            if (isBrushGasket) {
+              return gType == 'جوان بروس' ||
+                  gType == 'joint_brosse' ||
+                  n.contains('brosse') ||
+                  n.contains('بروس') ||
+                  n.contains('brush');
+            }
+
+            // Fallback to general keyword match.
+            final keywords = <String>[t];
+            for (final keyword in keywords) {
+              if (n.contains(keyword) ||
+                  ty.contains(keyword) ||
+                  keyword.contains(n) ||
+                  keyword.contains(ty) ||
+                  gType.contains(keyword)) {
+                return true;
+              }
+            }
+            return false;
+          }).toList();
+        }
       }
     } else if (widget.category == 'shutter') {
       final myDb = await db.db;
@@ -761,7 +968,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           else if (t.contains('أغطية الشفرات') || t.contains('bouchon lame') || t.contains('bouchons lames'))
             keywords.addAll(['bouchon_lame', 'أغطية الشفرات', 'غطاء']);
 
-          final initialFiltered = allShut.where((a) {
+          var initialFiltered = allShut.where((a) {
             final n = a['name'].toString().toLowerCase();
             final ty = (a['component_type'] ?? '').toString().toLowerCase();
 
@@ -821,6 +1028,38 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             }
             return false;
           }).toList();
+
+        // If the manager configured shutter components for this series, use
+        // that definition before falling back to global/name-based matching.
+        if (widget.seriesId != null) {
+          String? role;
+          if (t.contains('caisson') || t.contains('box') || t.contains('صندوق')) {
+            role = 'box';
+          } else if (t.contains('lame') || t.contains('blade') || t.contains('شريحة')) {
+            role = 'blade';
+          } else if (t.contains('coulisse') || t.contains('track') || t.contains('سكة')) {
+            role = 'rail';
+          } else if (t.contains('moteur') || t.contains('motor') || t.contains('محرك')) {
+            role = 'motor';
+          } else if (t.contains('manivelle') || t.contains('crank') || t.contains('مانيفيل')) {
+            role = 'crank';
+          } else if (t.contains('axe') || t.contains('axis') || t.contains('محور')) {
+            role = 'axis';
+          }
+          if (role != null) {
+            final configuredRules = await db.getSeriesShutterRules(widget.seriesId!);
+            final allowedIds = configuredRules
+                .where((rule) => rule['component_role'] == role)
+                .map((rule) => (rule['component_id'] as num?)?.toInt())
+                .whereType<int>()
+                .toSet();
+            if (allowedIds.isNotEmpty) {
+              initialFiltered = initialFiltered
+                  .where((component) => allowedIds.contains((component['id'] as num?)?.toInt()))
+                  .toList();
+            }
+          }
+        }
 
         if (widget.targetSize != null) {
           final targetDigits = widget.targetSize!.toStringAsFixed(0);
@@ -954,6 +1193,33 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           }
           return ty.contains(t) || t.contains(ty) || name.contains(t) || t.contains(name);
         }).toList();
+
+        // Prefer the explicit role mapping created by the administrator in
+        // "Définition intelligente de la série".  Name and code matching
+        // above remains a fallback for older, not-yet-configured series.
+        final roleKeys = <String>[];
+        if (t == 'frame' || t == 'cadre' || t == 'Ø¥Ø·Ø§Ø±') {
+          roleKeys.addAll(const ['frame', 'frame_extension']);
+        } else if (t == 'sash' || t == 'ouvrant' || t == 'Ø¶Ù„ÙØ©') {
+          roleKeys.addAll(const ['sash', 'sash_extension']);
+        } else if (t == 'parclose') {
+          roleKeys.add('glazing_bead');
+        } else if (t == 'mullion' || t == 'traverse') {
+          roleKeys.add('mullion');
+        } else if (t.contains('couvre') || t.contains('side cover')) {
+          roleKeys.add('side_cover');
+        } else if (t == 'rail' || t.contains('rail')) {
+          roleKeys.add('rail');
+        } else if (t.contains('central') || t.contains('chicane')) {
+          roleKeys.add('chicane');
+        }
+        if (widget.seriesId != null && roleKeys.isNotEmpty) {
+          final configured = await db.getDesignSectionsForRoles(
+            widget.seriesId!,
+            roleKeys,
+          );
+          if (configured.isNotEmpty) data = configured;
+        }
       } else {
         data = [];
       }
@@ -979,9 +1245,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
     }).toList();
 
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       title: Text('اختر ${widget.profileType}'),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 450),
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 380),
         child: SizedBox(
           width: double.maxFinite,
           child: Column(

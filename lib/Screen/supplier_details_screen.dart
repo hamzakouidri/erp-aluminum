@@ -184,9 +184,12 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                   _tr('طباعة الوصل', 'Imprimer reçu', 'Print Receipt', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ReceiptPdfService.printReceipt(item);
+                  await ReceiptPdfService.printReceiptWithFeedback(
+                    item,
+                    context,
+                  );
                 },
               ),
               ListTile(
@@ -195,9 +198,12 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                   _tr('مشاركة', 'Partager', 'Share', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ReceiptPdfService.shareReceipt(item);
+                  await ReceiptPdfService.shareReceiptWithFeedback(
+                    item,
+                    context,
+                  );
                 },
               ),
               ListTile(
@@ -206,9 +212,12 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                   _tr('حفظ الوصل', 'Enregistrer reçu', 'Save Receipt', lang),
                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ReceiptPdfService.saveReceipt(item, context);
+                  await ReceiptPdfService.saveReceiptWithFeedback(
+                    item,
+                    context,
+                  );
                 },
               ),
             ],

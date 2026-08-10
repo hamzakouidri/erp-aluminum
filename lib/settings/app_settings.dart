@@ -66,8 +66,12 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool get isManager =>
       _userRole == 'manager' ||
-      _userRole == 'co_manager' ||
       _userRole == 'admin' ||
+      (_userRole == 'co_manager' &&
+          (_isPermissionTrue(
+                _workerPermissions['full_manager_permissions'],
+              ) ||
+              _isPermissionTrue(_workerPermissions['co_manager']))) ||
       isAdmin;
 
   bool get isCoManager => _userRole == 'co_manager';

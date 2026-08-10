@@ -412,7 +412,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               final cjMatches = cjRes.where((s) {
                 final t = (s['type'] ?? '').toString().toLowerCase();
                 final n = (s['name'] ?? '').toString().toLowerCase();
-                return t.contains('couvre') || n.contains('couvre') || n.contains('غطاء') || t.contains('side_cover');
+                return t.contains('couvre') ||
+                    n.contains('couvre') ||
+                    n.contains('غطاء') ||
+                    t.contains('side_cover');
               }).toList();
               if (cjMatches.isNotEmpty) {
                 final mutableItem = Map<String, dynamic>.from(cjMatches.first);
@@ -423,7 +426,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     colorId,
                   );
                 } else {
-                  price = _safeDouble(cjMatches.first['price_dzd'] ?? cjMatches.first['price']);
+                  price = _safeDouble(
+                    cjMatches.first['price_dzd'] ?? cjMatches.first['price'],
+                  );
                 }
                 mutableItem['calculated_price'] = price;
                 model.componentOverrides[item.originalName] = mutableItem;
@@ -623,8 +628,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     }
 
-    await model.loadSeriesTableConfig();
-
     final generatedBom = ComponentCalculator.generateBom(
       model,
       activeVariants,
@@ -632,89 +635,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       kitPerLeafMap: kitPerLeafMap,
     );
 
-    return await _applySeriesTableConfigFilter(model, generatedBom);
-  }
-
-  Future<List<BomItem>> _applySeriesTableConfigFilter(
-    WindowModel model,
-    List<BomItem> items,
-  ) async {
-    int? seriesId = model.activeSeries?.id;
-    if (seriesId == null &&
-        model.loadedSeriesName != null &&
-        model.loadedSeriesName!.isNotEmpty) {
-      try {
-        final dbInstance = await widget.db.db;
-        if (dbInstance != null) {
-          final res = await dbInstance.query(
-            'Series',
-            where: 'name = ?',
-            whereArgs: [model.loadedSeriesName],
-          );
-          if (res.isNotEmpty) {
-            seriesId = res.first['id'] as int?;
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (seriesId == null) return items;
-
-    final config = await widget.db.getSeriesTableConfig(seriesId);
-    if (config == null) return items;
-
-    final allowedAccIdsStr = (config['allowed_accessory_ids'] ?? '').toString();
-    final exclAccIdsStr = (config['excluded_accessory_ids'] ?? '').toString();
-
-    final allowedAccIds = allowedAccIdsStr.isEmpty
-        ? <int>{}
-        : allowedAccIdsStr
-              .split(',')
-              .map((e) => int.tryParse(e.trim()))
-              .whereType<int>()
-              .toSet();
-    final exclAccIds = exclAccIdsStr.isEmpty
-        ? <int>{}
-        : exclAccIdsStr
-              .split(',')
-              .map((e) => int.tryParse(e.trim()))
-              .whereType<int>()
-              .toSet();
-
-    if (allowedAccIds.isEmpty && exclAccIds.isEmpty) return items;
-
-    final filtered = <BomItem>[];
-    for (var item in items) {
-      final origLower = item.originalName.toLowerCase();
-      final nameLower = item.name.toLowerCase();
-      final isSideCoverItem =
-          origLower.contains('الغطاء الجانبي') ||
-          origLower.contains('side cover') ||
-          origLower.contains('couvre joint') ||
-          origLower.contains('couvre-joint') ||
-          nameLower.contains('الغطاء الجانبي') ||
-          nameLower.contains('couvre-joint');
-
-      if (isSideCoverItem) {
-        final bool showSideCover = !model.isIntegratedFrame;
-        if (!showSideCover) {
-          continue; // إزالة الغطاء الجانبي فقط إذا كان الإطار مدمجاً
-        }
-      }
-
-      if (item.category == 'accessory') {
-        final override = model.componentOverrides[item.originalName];
-        final accId = override != null ? (override['id'] as int?) : null;
-
-        if (accId != null) {
-          if (exclAccIds.contains(accId)) continue;
-          if (allowedAccIds.isNotEmpty && !allowedAccIds.contains(accId))
-            continue;
-        }
-      }
-      filtered.add(item);
-    }
-    return filtered;
+    // The series-configuration page is being redesigned.  Until the new
+    // table rules are defined, the quantity table must use its direct
+    // calculation without any configuration-page filter.
+    return generatedBom;
   }
 
   Future<void> _loadAndAggregate() async {
@@ -995,11 +919,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       final sorted = aggregationMap.values.toList();
       sorted.sort((a, b) {
         const order = [
-          'frame',
-          'sash',
+          'profile',
           'glass',
           'shutter',
           'accessory',
+          'joint',
+          'other',
           'misc',
         ];
         final ai = order.indexOf(a.category);
@@ -1062,6 +987,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   // ─────────────────────────────────────────────────────────────────
   String _categoryLabel(String category) {
     switch (category) {
+      case 'profile':
+        return '📐 البروفيلات';
       case 'frame':
         return '🪟 بروفيل الإطار';
       case 'sash':
@@ -1083,6 +1010,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
   Color _categoryColor(String category) {
     switch (category) {
+      case 'profile':
+        return Colors.blueGrey.shade700;
       case 'frame':
         return Colors.blue.shade700;
       case 'sash':
@@ -1460,7 +1389,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             c.endsWith('108') ||
             c.endsWith('104') ||
             ((t.contains('sash') || t.contains('ouvrant')) &&
-                (n.contains('latéral') || n.contains('lateral') || n.contains('جانبي')) &&
+                (n.contains('latéral') ||
+                    n.contains('lateral') ||
+                    n.contains('جانبي')) &&
                 !n.contains('central') &&
                 !n.contains('chicane') &&
                 !c.contains('105') &&
@@ -1897,9 +1828,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       Text(
                         item.name != item.originalName
                             ? '${item.profileCode != null && item.profileCode!.isNotEmpty ? "[${item.profileCode}] " : ""}${item.name} • ${item.unitPrice > 0 ? "${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}" : ""}'
-                            : (item.profileCode != null && item.profileCode!.isNotEmpty
-                                ? '[${item.profileCode}] ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
-                                : (item.unitPrice > 0 ? '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}' : '📌 انقر هنا لاختيار القطاع المناسب')),
+                            : (item.profileCode != null &&
+                                      item.profileCode!.isNotEmpty
+                                  ? '[${item.profileCode}] ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
+                                  : (item.unitPrice > 0
+                                        ? '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
+                                        : '📌 انقر هنا لاختيار القطاع المناسب')),
                         style: TextStyle(
                           fontWeight: FontWeight.w400,
                           color: isDark ? Colors.white60 : Colors.grey.shade700,

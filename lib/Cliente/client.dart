@@ -85,7 +85,9 @@ class _CustomersState extends State<Customers> {
 
         switch (colKey) {
           case 'id':
-            final idStr = (d['id'] ?? '').toString().toLowerCase();
+            final idStr = (d['display_number'] ?? d['id'] ?? '')
+                .toString()
+                .toLowerCase();
             if (!idStr.contains(filterVal)) return false;
             break;
           case 'name':
@@ -137,8 +139,12 @@ class _CustomersState extends State<Customers> {
         int cmp = 0;
         switch (_clientSortColumn) {
           case 'id':
-            final idA = (a['id'] as num?)?.toInt() ?? 0;
-            final idB = (b['id'] as num?)?.toInt() ?? 0;
+            final idA = (a['display_number'] as num?)?.toInt() ??
+                (a['id'] as num?)?.toInt() ??
+                0;
+            final idB = (b['display_number'] as num?)?.toInt() ??
+                (b['id'] as num?)?.toInt() ??
+                0;
             cmp = idA.compareTo(idB);
             break;
           case 'name':
@@ -261,8 +267,8 @@ class _CustomersState extends State<Customers> {
 
   void _refreshData() {
     final future = _searchQuery.isEmpty
-        ? db.readClient()
-        : db.searchClient(_searchQuery);
+        ? db.readClientsForDisplay()
+        : db.searchClientsForDisplay(_searchQuery);
     _data = future.then((list) {
       if (mounted) {
         setState(() {
@@ -457,8 +463,8 @@ class _CustomersState extends State<Customers> {
                       setState(() {
                         _searchQuery = val;
                         _data = val.isEmpty
-                            ? db.readClient()
-                            : db.searchClient(val);
+                            ? db.readClientsForDisplay()
+                            : db.searchClientsForDisplay(val);
                       });
                     },
                     decoration: InputDecoration(
@@ -1399,6 +1405,9 @@ class _CustomersState extends State<Customers> {
                     itemBuilder: (context, index) {
                       final client = data[index];
                       final clientId = (client['id'] as num?)?.toInt() ?? 0;
+                      final clientNumber =
+                          (client['display_number'] as num?)?.toInt() ??
+                          clientId;
                       final firstName = (client['firstname'] ?? '')
                           .toString()
                           .trim();
@@ -1452,7 +1461,7 @@ class _CustomersState extends State<Customers> {
                             Expanded(
                               flex: 1,
                               child: Text(
-                                '#$clientId',
+                                '#$clientNumber',
                                 style: const TextStyle(
                                   color: Color(0xFF0EA5E9),
                                   fontFamily: 'Cairo',
@@ -1464,7 +1473,9 @@ class _CustomersState extends State<Customers> {
                             Expanded(
                               flex: 3,
                               child: Text(
-                                fullName.isEmpty ? 'زبون #$clientId' : fullName,
+                                fullName.isEmpty
+                                    ? 'زبون #$clientNumber'
+                                    : fullName,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Color(0xFF0EA5E9),
