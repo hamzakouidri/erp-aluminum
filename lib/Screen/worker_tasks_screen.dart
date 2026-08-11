@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
-import '../Commande/add_commande.dart';
+import '../Commande/order_workspace_screen.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/lazy_window_image.dart';
 import 'worker_archive_screen.dart';
@@ -726,14 +726,10 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 GestureDetector(
                   onTap: () {
                     if (settings.canViewOrderDetails() && commandeId > 0) {
-                      Navigator.push(
+                      openOrderInWorkspaceTab(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => CommandePage(
-                            editCommandeId: commandeId,
-                            db: widget.db,
-                          ),
-                        ),
+                        editCommandeId: commandeId,
+                        db: widget.db,
                       );
                     }
                   },

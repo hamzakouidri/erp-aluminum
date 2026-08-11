@@ -20,8 +20,16 @@ class ShuttersScreen extends StatefulWidget {
 class _ShuttersScreenState extends State<ShuttersScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _showArchived = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   StreamSubscription<String>? _dbSubscription;
   Timer? _reloadDebounce;
+
+  bool _isEnabledFlag(dynamic value) {
+    if (value is num) return value != 0;
+    final normalized = value?.toString().trim().toLowerCase();
+    return normalized == 'true' || normalized == '1' || normalized == 'yes';
+  }
 
   @override
   void initState() {
@@ -39,6 +47,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
   void dispose() {
     _reloadDebounce?.cancel();
     _dbSubscription?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -56,10 +65,12 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     final nameCtrl = TextEditingController();
     final barLengthCtrl = TextEditingController();
     final measurementCtrl = TextEditingController();
+    final trackMeasurementCtrl = TextEditingController();
     final motorDiameterCtrl = TextEditingController();
     final capThicknessCtrl = TextEditingController();
     String selectedType = 'box';
     String selectedUnit = 'bar';
+    bool motorHasEmergencyCrank = false;
 
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -89,7 +100,11 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
         'أغطية الشفرات (Bouchons Lames)',
         lang,
       ),
-      'rouleau': Localization.translate('رولو (Rouleau)', lang),
+      'rouleau': Localization.translate('رولمان (Roulement)', lang),
+      'tulip': Localization.translate('توليب (Tulip)', lang),
+      // `rouleau` remains the stored value for legacy catalogues; only the
+      // displayed component name changes to the requested bearing label.
+      'rouleau': Localization.translate('رولمان (Roulement)', lang),
       'tulip': Localization.translate('توليب (Tulip)', lang),
     };
 
@@ -150,12 +165,14 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   onChanged: (val) {
                     setStateDialog(() {
                       selectedType = val!;
-                      if (!['laxe', 'bouchon_lame', 'rouleau', 'tulip']
-                          .contains(selectedType)) {
+                      if (selectedType != 'bouchon_lame') {
                         selectedLinkedBlade = null;
                       }
                       if (selectedType == 'kit') {
                         selectedUnit = 'piece';
+                      }
+                      if (selectedType != 'motor') {
+                        motorHasEmergencyCrank = false;
                       }
                     });
                   },
@@ -201,6 +218,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 ],
                 if ([
                   'blade',
+                  'laxe',
                   'final_blade',
                   'attache',
                   'support_moteur',
@@ -237,7 +255,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     },
                   ),
                 ],
-                if (selectedType == 'laxe' || selectedType == 'bouchon_lame' || selectedType == 'rouleau' || selectedType == 'tulip') ...[
+                // Only blade end caps are tied to a particular blade.
+                if (selectedType == 'bouchon_lame') ...[
                   SizedBox(height: 10),
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: SqlDatabase().db.then(
@@ -287,10 +306,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   ),
                 ],
                 if (![
-                  'laxe',
                   'attache',
                   'support_roulement',
-                  'tandem',
                   'bouchon_lame',
                 ].contains(selectedType)) ...[
                   SizedBox(height: 10),
@@ -298,11 +315,33 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     controller: measurementCtrl,
                     decoration: InputDecoration(
                       labelText: Localization.translate(
-                        selectedType == 'motor'
+                        selectedType == 'blade'
+                            ? 'ارتفاع الشفرة (مم)'
+                            : selectedType == 'track'
+                            ? 'قياس السكة (مم)'
+                            : selectedType == 'motor'
                             ? 'قياس المحرك (مثال: 10Nm أو 20Nm)'
                             : selectedType == 'laxe'
                             ? 'قطر المحور (مثال: 40 أو 60 مم)'
+                            : selectedType == 'tandem'
+                            ? 'قياس المحور المتوافق (مثال: 40 أو 60 مم)'
                             : 'القياس (مثال: 185 أو 55)',
+                        lang,
+                      ),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+                if (selectedType == 'blade') ...[
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: trackMeasurementCtrl,
+                    keyboardType: TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: Localization.translate(
+                        'قياس السكة المطابق (مم)',
                         lang,
                       ),
                       border: OutlineInputBorder(),
@@ -319,6 +358,30 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         lang,
                       ),
                       border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  DropdownButtonFormField<bool>(
+                    initialValue: motorHasEmergencyCrank,
+                    decoration: InputDecoration(
+                      labelText: Localization.translate(
+                        'هل يحتوي المحرك على مانيفيل احتياطي؟',
+                        lang,
+                      ),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: true,
+                        child: Text(Localization.translate('نعم', lang)),
+                      ),
+                      DropdownMenuItem(
+                        value: false,
+                        child: Text(Localization.translate('لا', lang)),
+                      ),
+                    ],
+                    onChanged: (value) => setStateDialog(
+                      () => motorHasEmergencyCrank = value ?? false,
                     ),
                   ),
                 ],
@@ -350,19 +413,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
-                  if (selectedType == 'laxe' && selectedLinkedBlade == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          Localization.translate(
-                            'اختر الشفرة المرتبطة بالمحور قبل الحفظ',
-                            lang,
-                          ),
-                        ),
-                      ),
-                    );
-                    return;
-                  }
                   try {
                     await widget.db.insertShutterComponent(
                       nameCtrl.text,
@@ -374,19 +424,25 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           [
                             'attache',
                             'support_roulement',
-                            'tandem',
                             'bouchon_lame',
                           ].contains(selectedType)
                           ? null
                           : (measurementCtrl.text.trim().isEmpty
                                 ? null
                                 : measurementCtrl.text.trim()),
+                      trackMeasurement: selectedType == 'blade'
+                          ? (trackMeasurementCtrl.text.trim().isEmpty
+                                ? null
+                                : trackMeasurementCtrl.text.trim())
+                          : null,
                       shutterSubtype: selectedLinkedBlade ?? selectedSubtype,
                       motorDiameter: selectedType == 'motor'
                           ? (motorDiameterCtrl.text.trim().isEmpty
                                 ? null
                                 : motorDiameterCtrl.text.trim())
                           : null,
+                      motorHasEmergencyCrank:
+                          selectedType == 'motor' && motorHasEmergencyCrank,
                       capThickness: selectedType == 'bouchon_lame'
                           ? (double.tryParse(capThicknessCtrl.text) ?? 0.0)
                           : 0.0,
@@ -418,6 +474,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     final measurementCtrl = TextEditingController(
       text: item['measurement']?.toString() ?? '',
     );
+    final trackMeasurementCtrl = TextEditingController(
+      text: item['track_measurement']?.toString() ?? '',
+    );
     final motorDiameterCtrl = TextEditingController(
       text: item['motor_diameter']?.toString() ?? '',
     );
@@ -426,6 +485,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     );
     String selectedType = item['component_type']?.toString() ?? 'box';
     String selectedUnit = item['unit']?.toString() ?? 'piece';
+    bool motorHasEmergencyCrank = _isEnabledFlag(
+      item['motor_has_emergency_crank'],
+    );
     if (selectedUnit != 'piece' && selectedUnit != 'bar') {
       selectedUnit = 'piece';
     }
@@ -458,7 +520,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
         'أغطية الشفرات (Bouchons Lames)',
         lang,
       ),
-      'rouleau': Localization.translate('رولو (Rouleau)', lang),
+      'rouleau': Localization.translate('رولمان (Roulement)', lang),
       'tulip': Localization.translate('توليب (Tulip)', lang),
     };
 
@@ -467,11 +529,18 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
       'bar': Localization.translate('بالبارة', lang),
     };
 
-    String selectedSubtype = item['shutter_subtype']?.toString() ?? 'normal';
-    String? selectedLinkedBlade =
-        ['laxe', 'bouchon_lame', 'rouleau', 'tulip'].contains(selectedType) &&
-            !['normal', 'extruded'].contains(selectedSubtype.toLowerCase())
-        ? selectedSubtype
+    final storedSubtype = item['shutter_subtype']?.toString() ?? 'normal';
+    // Legacy Tulip/Rouleau/Axe records sometimes stored a blade name here.
+    // They are no longer blade-linked, so return them to their normal type
+    // as soon as the item is edited.
+    String selectedSubtype = ['normal', 'extruded'].contains(
+      storedSubtype.toLowerCase(),
+    )
+        ? storedSubtype
+        : 'normal';
+    String? selectedLinkedBlade = selectedType == 'bouchon_lame' &&
+            !['normal', 'extruded'].contains(storedSubtype.toLowerCase())
+        ? storedSubtype
         : null;
 
     showDialog(
@@ -517,12 +586,14 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                   onChanged: (val) {
                     setStateDialog(() {
                       selectedType = val!;
-                      if (!['laxe', 'bouchon_lame', 'rouleau', 'tulip']
-                          .contains(selectedType)) {
+                      if (selectedType != 'bouchon_lame') {
                         selectedLinkedBlade = null;
                       }
                       if (selectedType == 'kit') {
                         selectedUnit = 'piece';
+                      }
+                      if (selectedType != 'motor') {
+                        motorHasEmergencyCrank = false;
                       }
                     });
                   },
@@ -574,6 +645,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 ],
                 if ([
                   'blade',
+                  'laxe',
                   'final_blade',
                   'attache',
                   'support_moteur',
@@ -610,7 +682,25 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     },
                   ),
                 ],
-                if (selectedType == 'laxe' || selectedType == 'bouchon_lame' || selectedType == 'rouleau' || selectedType == 'tulip') ...[
+                if (selectedType == 'blade') ...[
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: trackMeasurementCtrl,
+                    keyboardType: TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: Localization.translate(
+                        'قياس السكة المطابق (مم)',
+                        lang,
+                      ),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+                // Tulip is not linked to a blade; this selector belongs only
+                // to blade end caps.
+                if (selectedType == 'bouchon_lame') ...[
                   SizedBox(height: 10),
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: SqlDatabase().db.then(
@@ -662,7 +752,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 if (![
                   'attache',
                   'support_roulement',
-                  'tandem',
                   'bouchon_lame',
                 ].contains(selectedType)) ...[
                   SizedBox(height: 10),
@@ -670,10 +759,16 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     controller: measurementCtrl,
                     decoration: InputDecoration(
                       labelText: Localization.translate(
-                        selectedType == 'motor'
+                        selectedType == 'blade'
+                            ? 'ارتفاع الشفرة (مم)'
+                            : selectedType == 'track'
+                            ? 'قياس السكة (مم)'
+                            : selectedType == 'motor'
                             ? 'قياس المحرك (مثال: 10Nm أو 20Nm)'
                             : selectedType == 'laxe'
                             ? 'قطر المحور (مثال: 40 أو 60 مم)'
+                            : selectedType == 'tandem'
+                            ? 'قياس المحور المتوافق (مثال: 40 أو 60 مم)'
                             : 'القياس (مثال: 185 أو 55)',
                         lang,
                       ),
@@ -691,6 +786,30 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         lang,
                       ),
                       border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  DropdownButtonFormField<bool>(
+                    initialValue: motorHasEmergencyCrank,
+                    decoration: InputDecoration(
+                      labelText: Localization.translate(
+                        'هل يحتوي المحرك على مانيفيل احتياطي؟',
+                        lang,
+                      ),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: true,
+                        child: Text(Localization.translate('نعم', lang)),
+                      ),
+                      DropdownMenuItem(
+                        value: false,
+                        child: Text(Localization.translate('لا', lang)),
+                      ),
+                    ],
+                    onChanged: (value) => setStateDialog(
+                      () => motorHasEmergencyCrank = value ?? false,
                     ),
                   ),
                 ],
@@ -721,19 +840,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
-                  if (selectedType == 'laxe' && selectedLinkedBlade == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          Localization.translate(
-                            'اختر الشفرة المرتبطة بالمحور قبل الحفظ',
-                            lang,
-                          ),
-                        ),
-                      ),
-                    );
-                    return;
-                  }
                   try {
                     await widget.db.updateShutterComponent(
                       item['id'],
@@ -746,19 +852,25 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           [
                             'attache',
                             'support_roulement',
-                            'tandem',
                             'bouchon_lame',
                           ].contains(selectedType)
                           ? null
                           : (measurementCtrl.text.trim().isEmpty
                                 ? null
                                 : measurementCtrl.text.trim()),
+                      trackMeasurement: selectedType == 'blade'
+                          ? (trackMeasurementCtrl.text.trim().isEmpty
+                                ? null
+                                : trackMeasurementCtrl.text.trim())
+                          : null,
                       shutterSubtype: selectedLinkedBlade ?? selectedSubtype,
                       motorDiameter: selectedType == 'motor'
                           ? (motorDiameterCtrl.text.trim().isEmpty
                                 ? null
                                 : motorDiameterCtrl.text.trim())
                           : null,
+                      motorHasEmergencyCrank:
+                          selectedType == 'motor' && motorHasEmergencyCrank,
                       capThickness: selectedType == 'bouchon_lame'
                           ? (double.tryParse(capThicknessCtrl.text) ?? 0.0)
                           : 0.0,
@@ -869,6 +981,41 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
   Widget build(BuildContext context) {
     final bool isUserAdmin = isAdmin; // from app_settings
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    final searchQuery = _searchQuery.trim().toLowerCase();
+    const typeAliases = <String, String>{
+      'box': 'box caisson صندوق',
+      'caisson_tunnel': 'caisson tunnel صندوق نفق',
+      'blade': 'blade lame شريحة شفرة',
+      'track': 'track coulisse سكة مسار',
+      'motor': 'motor moteur محرك',
+      'kit': 'kit كيت',
+      'laxe': 'laxe axe محور أنبوب',
+      'final_blade': 'final blade lame finale شفرة نهائية',
+      'bouchon_lame': 'bouchon lame bouchons lames أغطية الشفرات',
+      'attache': 'attache أطاش',
+      'support_moteur': 'support moteur سيبور موتور',
+      'embout': 'embout امبو',
+      'support_roulement': 'support roulement سيبور رولمان',
+      'tandem': 'tandem طانديم',
+      'rouleau': 'roulement رولمان',
+      'tulip': 'tulip توليب',
+    };
+    final filteredItems = searchQuery.isEmpty
+        ? _items
+        : _items.where((item) {
+            final name = (item['name'] ?? '').toString().toLowerCase();
+            final type = (item['component_type'] ?? '')
+                .toString()
+                .toLowerCase();
+            final subtype = (item['shutter_subtype'] ?? '')
+                .toString()
+                .toLowerCase();
+            final aliases = typeAliases[type] ?? '';
+            return name.contains(searchQuery) ||
+                type.contains(searchQuery) ||
+                aliases.contains(searchQuery) ||
+                subtype.contains(searchQuery);
+          }).toList();
 
     final typeOrder = [
       'box',
@@ -889,11 +1036,13 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
 
     Map<String, List<Map<String, dynamic>>> grouped = {};
     for (var type in typeOrder) {
-      grouped[type] = _items.where((i) => i['component_type'] == type).toList();
+      grouped[type] = filteredItems
+          .where((i) => i['component_type'] == type)
+          .toList();
     }
 
     // Add any types that might be missing from the order list
-    for (var item in _items) {
+    for (var item in filteredItems) {
       if (!typeOrder.contains(item['component_type'])) {
         grouped
             .putIfAbsent(
@@ -947,6 +1096,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
       'support_roulement': Colors.deepOrange,
       'tandem': Colors.pink,
       'bouchon_lame': Colors.blueGrey,
+      'rouleau': Colors.deepPurple,
+      'tulip': Colors.lime.shade700,
       'other': Colors.grey,
     };
 
@@ -1018,7 +1169,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
           'tulip',
         ].contains(item['component_type'])) {
           final sub = item['shutter_subtype']?.toString() ?? 'normal';
-          if (['laxe', 'bouchon_lame', 'rouleau', 'tulip'].contains(item['component_type'])) {
+          if (item['component_type'] == 'bouchon_lame') {
             subtypeStr = ' - ${Localization.translate("مرتبط بـ:", lang)} $sub';
           } else {
             subtypeStr =
@@ -1041,10 +1192,22 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
           if (item['component_type'] == 'motor') {
             measStr =
                 ' - ${Localization.translate("قياس المحرك:", lang)} $mVal';
+          } else if (item['component_type'] == 'blade') {
+            measStr =
+                ' - ${Localization.translate("ارتفاع الشفرة:", lang)} $mVal ${Localization.translate("مم", lang)}';
           } else {
             measStr = ' - ${Localization.translate("القياس:", lang)} $mVal';
           }
         }
+
+        final trackMeasurement = item['track_measurement']?.toString().trim();
+        final trackMeasurementStr =
+            item['component_type'] == 'blade' &&
+                trackMeasurement != null &&
+                trackMeasurement.isNotEmpty &&
+                trackMeasurement.toLowerCase() != 'null'
+            ? ' - ${Localization.translate("قياس السكة المطابق:", lang)} $trackMeasurement ${Localization.translate("مم", lang)}'
+            : '';
 
         final dVal = item['motor_diameter']?.toString().trim();
         String diamStr = '';
@@ -1054,6 +1217,12 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             dVal.toLowerCase() != 'null') {
           diamStr = ' - ${Localization.translate("قطر المحرك:", lang)} $dVal';
         }
+
+        final emergencyCrankStr =
+            item['component_type'] == 'motor' &&
+                _isEnabledFlag(item['motor_has_emergency_crank'])
+            ? ' - ${Localization.translate("مانيفيل احتياطي", lang)}: ${Localization.translate("نعم", lang)}'
+            : '';
 
         final capTh = item['cap_thickness'] != null
             ? (item['cap_thickness'] as num).toDouble()
@@ -1087,7 +1256,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                 ),
               ),
               subtitle: Text(
-                '${Localization.translate("الوحدة:", lang)} $unitAr$subtypeStr$barLenStr$measStr$diamStr$capStr',
+                '${Localization.translate("الوحدة:", lang)} $unitAr$subtypeStr$barLenStr$measStr$trackMeasurementStr$diamStr$emergencyCrankStr$capStr',
                 style: TextStyle(color: isArchived ? Colors.grey : null),
               ),
               trailing: isUserAdmin
@@ -1159,9 +1328,36 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ),
         ],
       ),
-      body: _items.isEmpty
-          ? Center(child: Text(Localization.translate('لا توجد بيانات', lang)))
-          : ListView(children: sections),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                hintText: Localization.translate('بحث بالاسم أو النوع', lang),
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ),
+          Expanded(
+            child: filteredItems.isEmpty
+                ? Center(child: Text(Localization.translate('لا توجد نتائج', lang)))
+                : ListView(children: sections),
+          ),
+        ],
+      ),
       floatingActionButton: isUserAdmin
           ? FloatingActionButton(
               onPressed: _showAddDialog,

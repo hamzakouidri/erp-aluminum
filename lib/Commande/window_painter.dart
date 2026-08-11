@@ -11,13 +11,20 @@ import 'package:database_data/Commande/Systeme/model.dart';
 class WindowPainter extends CustomPainter {
   final WindowModel model;
   final bool? overrideIsInternalView;
+  /// Technical dimensions are reserved for the interactive drawing editor.
+  /// Previews, PDFs and customer-facing images stay clean.
+  final bool showDrawingDimensions;
 
   // Optimized wood rendering states computed once per repaint to avoid lag
   late final bool _isWood;
   late final ui.Shader? _woodShader;
   late final ColorFilter? _woodColorFilter;
 
-  WindowPainter({required this.model, this.overrideIsInternalView})
+  WindowPainter({
+    required this.model,
+    this.overrideIsInternalView,
+    this.showDrawingDimensions = false,
+  })
     : super(repaint: model) {
     _initWoodShader();
   }
@@ -232,26 +239,6 @@ class WindowPainter extends CustomPainter {
           );
         }
 
-        // Draw workshop name centered on the tunnel box
-        final String nameToDraw = model.workshopName ?? 'ورشة الألمنيوم';
-        final textStyle = const TextStyle(
-          color: Colors.black,
-          fontSize: 70.0,
-          fontWeight: FontWeight.bold,
-        );
-        final textPainter = TextPainter(
-          text: TextSpan(text: nameToDraw, style: textStyle),
-          textDirection: TextDirection.rtl,
-        )..layout();
-        final double centerX = w / 2;
-        final double centerY = topOffset - model.shutterBoxHeight / 2;
-        textPainter.paint(
-          canvas,
-          Offset(
-            centerX - textPainter.width / 2,
-            centerY - textPainter.height / 2,
-          ),
-        );
       }
     }
 
@@ -326,7 +313,11 @@ class WindowPainter extends CustomPainter {
               _frameForCover.couvreJointWidth > 0;
           if (_hasBuiltInCoverBand ||
               (model.hasSideCovers && model.isSideCoverAllowed)) {
-            _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
+            if (model.useCustomSideCoverLayout) {
+              _drawCustomSideCovers(canvas, w, h, 0.0);
+            } else {
+              _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
+            }
           }
         }
 
@@ -353,6 +344,7 @@ class WindowPainter extends CustomPainter {
           }
         }
         canvas.restore();
+        _drawMainZoneHinges(canvas, h, t);
         // Draw Octo handles OUTSIDE the clip so the keeper (on frame side) is visible
         for (final zone in model.zones) {
           if (zone.content == ZoneContent.singleSash &&
@@ -408,7 +400,11 @@ class WindowPainter extends CustomPainter {
           if ((_hasBuiltInCoverBand2 ||
                   (model.hasSideCovers && model.isSideCoverAllowed)) &&
               !model.showWall) {
-            _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
+            if (model.useCustomSideCoverLayout) {
+              _drawCustomSideCovers(canvas, w, h, 0.0);
+            } else {
+              _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
+            }
           }
         }
       }
@@ -453,6 +449,7 @@ class WindowPainter extends CustomPainter {
           }
         }
         canvas.restore();
+        _drawMainZoneHinges(canvas, h, t);
         // Draw Octo handles OUTSIDE the clip so the keeper (on frame side) is visible
         for (final zone in model.zones) {
           if (zone.content == ZoneContent.singleSash &&
@@ -505,6 +502,12 @@ class WindowPainter extends CustomPainter {
           _drawShutterBox(canvas, w, topOffset, h);
         }
       }
+    }
+
+    if (model.hasShutter &&
+        !isSlantedOrArched &&
+        model.shutterMechanism == 'محرك') {
+      _drawMotorControls(canvas, w, h, t, topOffset);
     }
 
     for (final zone in model.zones) {
@@ -573,10 +576,14 @@ class WindowPainter extends CustomPainter {
           );
         }
       }
-      _drawInnerDimensions(canvas, zone);
+      if (showDrawingDimensions) _drawInnerDimensions(canvas, zone);
     }
 
-    if (model.drawingStart != null && model.drawingCurrent != null) {
+    // Adding an outer frame uses the same solid blue rectangle preview as
+    // the first frame. Dashed lines remain reserved for splitting a frame.
+    if (model.drawingMode != 'add_frame' &&
+        model.drawingStart != null &&
+        model.drawingCurrent != null) {
       final p1 = model.drawingStart!;
       final p2 = model.drawingCurrent!;
       double dx = (p2.dx - p1.dx).abs();
@@ -1531,9 +1538,15 @@ class WindowPainter extends CustomPainter {
       _drawOuterFrame(canvas, w, h, t, topOffset);
     } else {
       for (final r in frameRects) {
+        // A frame rectangle already starts below the shutter box.  Drawing it
+        // with the global [topOffset] after translating only partly on Y made
+        // its height lose the shutter-box height a second time.  In a
+        // multi-frame shutter drawing this left a transparent/short frame
+        // behind the new frame.  Use the frame's own local coordinate system
+        // instead: (0, 0) → (r.width, r.height).
         canvas.save();
-        canvas.translate(r.left, r.top - topOffset);
-        _drawOuterFrame(canvas, r.width, r.height, t, topOffset);
+        canvas.translate(r.left, r.top);
+        _drawOuterFrame(canvas, r.width, r.height, t, 0.0);
         canvas.restore();
       }
     }
@@ -1580,7 +1593,12 @@ class WindowPainter extends CustomPainter {
     final outerRect = Rect.fromLTRB(0, topY, w, h);
     canvas.drawPath(path, _buildPaint(outerRect));
 
-    if (model.selection.type == SelectionType.frame && model.isDrawingMode) {
+    final isWholeDrawingFrameSelected =
+        model.selection.type == SelectionType.frame &&
+        model.selection.zoneId == null &&
+        model.isDrawingMode;
+
+    if (isWholeDrawingFrameSelected) {
       canvas.drawPath(
         path,
         Paint()
@@ -1591,12 +1609,12 @@ class WindowPainter extends CustomPainter {
 
     final bp = Paint()
       ..color =
-          (model.selection.type == SelectionType.frame && model.isDrawingMode)
+          isWholeDrawingFrameSelected
           ? Colors.green
           : _fb
       ..style = PaintingStyle.stroke
       ..strokeWidth =
-          (model.selection.type == SelectionType.frame && model.isDrawingMode)
+          isWholeDrawingFrameSelected
           ? 3.0
           : 1.5;
 
@@ -1606,8 +1624,7 @@ class WindowPainter extends CustomPainter {
         innerPath,
         bp
           ..strokeWidth =
-              (model.selection.type == SelectionType.frame &&
-                  model.isDrawingMode)
+              isWholeDrawingFrameSelected
               ? 1.5
               : 0.8,
       );
@@ -1659,8 +1676,7 @@ class WindowPainter extends CustomPainter {
         innerOpen,
         bp
           ..strokeWidth =
-              (model.selection.type == SelectionType.frame &&
-                  model.isDrawingMode)
+              isWholeDrawingFrameSelected
               ? 1.5
               : 0.8,
       );
@@ -1719,6 +1735,130 @@ class WindowPainter extends CustomPainter {
     if (model.hasBottomFrame) {
       canvas.drawLine(outer.bottomLeft, inner.bottomLeft, p);
       canvas.drawLine(outer.bottomRight, inner.bottomRight, p);
+    }
+  }
+
+  void _drawCustomSideCovers(
+    Canvas canvas,
+    double w,
+    double h,
+    double topY,
+  ) {
+    final segments = model.effectiveSideCoverSegments;
+    if (!model.hasSideCovers || segments.isEmpty) return;
+
+    final paint = Paint();
+    if (_isWoodColor() && TextureCache.woodTexture != null) {
+      _applyWoodShader(paint, Rect.fromLTRB(-100, -100, w + 100, h + 100));
+    } else {
+      paint.color = _fc[1];
+    }
+    final borderPaint = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.15;
+
+    // Normalise every visible segment once, then use the adjacent segments to
+    // decide whether an endpoint is welded at 45° or simply cut at 90°.
+    // A partial cover must not change the cut of the unrelated sides.
+    final geometry = <String, Map<String, double>>{};
+    for (final segment in segments) {
+      final isVertical =
+          segment.side == 'left' || segment.side == 'right';
+      final sideLength = isVertical ? h - topY : w;
+      if (sideLength <= 0) continue;
+
+      final start = segment.startOffset.clamp(0.0, sideLength).toDouble();
+      final end = segment.endOffset.clamp(0.0, sideLength).toDouble();
+      if (end <= start) continue;
+      final visible = segment.visibleWidth > 0
+          ? segment.visibleWidth
+          : model.sideCoverWidth;
+      if (visible <= 0) continue;
+      geometry[segment.side] = {
+        'start': start,
+        'end': end,
+        'visible': visible,
+      };
+    }
+    if (geometry.isEmpty) return;
+
+    bool reachesStart(String side) =>
+        (geometry[side]?['start'] ?? double.infinity) <= 0.1;
+    bool reachesEnd(String side) {
+      final data = geometry[side];
+      if (data == null) return false;
+      final sideLength =
+          (side == 'left' || side == 'right') ? h - topY : w;
+      return (sideLength - (data['end'] ?? 0.0)).abs() <= 0.1;
+    }
+
+    // A 45° joint exists only where both covers really meet at the outside
+    // corner. For example, a right cover ending halfway down is 45° at the
+    // top (if the top cover is enabled), but its lower end stays a 90° cut.
+    final joinTopLeft = reachesStart('top') && reachesStart('left');
+    final joinTopRight = reachesEnd('top') && reachesStart('right');
+    final joinBottomLeft =
+        model.hasBottomFrame && reachesStart('bottom') && reachesEnd('left');
+    final joinBottomRight =
+        model.hasBottomFrame && reachesEnd('bottom') && reachesEnd('right');
+
+    for (final entry in geometry.entries) {
+      final side = entry.key;
+      final data = entry.value;
+      final start = data['start']!;
+      final end = data['end']!;
+      final visible = data['visible']!;
+      final Path path;
+
+      switch (side) {
+        case 'left':
+          path = Path()
+            ..moveTo(0, topY + start)
+            ..lineTo(-visible, topY + start - (joinTopLeft ? visible : 0))
+            ..lineTo(
+              -visible,
+              topY + end + (joinBottomLeft ? visible : 0),
+            )
+            ..lineTo(0, topY + end)
+            ..close();
+          break;
+        case 'right':
+          path = Path()
+            ..moveTo(w, topY + start)
+            ..lineTo(
+              w + visible,
+              topY + start - (joinTopRight ? visible : 0),
+            )
+            ..lineTo(
+              w + visible,
+              topY + end + (joinBottomRight ? visible : 0),
+            )
+            ..lineTo(w, topY + end)
+            ..close();
+          break;
+        case 'top':
+          path = Path()
+            ..moveTo(start, topY)
+            ..lineTo(end, topY)
+            ..lineTo(end + (joinTopRight ? visible : 0), topY - visible)
+            ..lineTo(start - (joinTopLeft ? visible : 0), topY - visible)
+            ..close();
+          break;
+        case 'bottom':
+          if (!model.hasBottomFrame) continue;
+          path = Path()
+            ..moveTo(start, h)
+            ..lineTo(end, h)
+            ..lineTo(end + (joinBottomRight ? visible : 0), h + visible)
+            ..lineTo(start - (joinBottomLeft ? visible : 0), h + visible)
+            ..close();
+          break;
+        default:
+          continue;
+      }
+      canvas.drawPath(path, paint);
+      canvas.drawPath(path, borderPaint);
     }
   }
 
@@ -2294,26 +2434,83 @@ class WindowPainter extends CustomPainter {
   void _drawInnerDimensions(Canvas canvas, WindowZone zone) {
     final r = zone.boundary;
     if (r.width < 150 || r.height < 150) return;
-    bool isFullWidth =
-        (r.width >= model.width - model.profileThickness * 2 - 2);
-    bool isFullHeight =
-        (r.height >= model.height - model.profileThickness * 2 - 2);
-    final textStyle = const TextStyle(
-      color: Color(0xFF1565C0),
-      fontSize: 69,
-      fontWeight: FontWeight.bold,
-    );
+    final isSash =
+        zone.content == ZoneContent.singleSash ||
+        zone.content == ZoneContent.doubleSash ||
+        zone.content == ZoneContent.slidingSash;
+    // Every sash cutting measurement belongs to the sash profile itself,
+    // never to the glass area.  The width sits in the top sash bar and the
+    // height sits in an outer vertical sash bar, just like frame and side-
+    // cover dimensions.  This keeps the glazing area visually clean.
+    if (!isSash) return;
     final sashThickness =
         zone.sashThickness ?? model.getSectionThickness('sash', fallback: 45.0);
-    // Sash cutting widths belong in the upper sash profile, not in the glass
-    // area.  Use a compact label so it remains inside even a thin sash.
-    final sashTextStyle = textStyle.copyWith(
-      fontSize: math.max(20.0, math.min(46.0, sashThickness * 0.75)),
+    final sashOverride = model.usesSlidingPrimaryProfiles
+        ? model.slidingSashOverride
+        : model.sashOverride;
+    final overriddenSashCode = (sashOverride?['code'] ?? '')
+        .toString()
+        .trim();
+    final sashCode = overriddenSashCode.isNotEmpty
+        ? overriddenSashCode
+        : (model.getSectionByType('sash')?.code ?? '').trim();
+    // Use clear blue labels so cutting sizes remain readable without hiding
+    // the drawing. The section code travels with the size, never as a long
+    // profile name.
+    final sashTextStyle = TextStyle(
+      color: const Color(0xFF1565C0),
+      fontSize: math.max(15.0, math.min(30.0, sashThickness * 0.62)),
+      fontWeight: FontWeight.w600,
     );
 
-    double sashTopLabelY(double textHeight) {
-      final profileCenterY = r.top + sashThickness / 2;
-      return profileCenterY - textHeight / 2;
+    String dimensionLabel(double value) {
+      final rounded = (value * 10).round() / 10;
+      final size = (rounded - rounded.round()).abs() < 0.001
+          ? rounded.round().toString()
+          : rounded.toStringAsFixed(1);
+      return sashCode.isEmpty ? size : '$size ($sashCode)';
+    }
+
+    void paintWidthInSashProfile(TextPainter text, Rect sashRect) {
+      final profile = Rect.fromLTRB(
+        sashRect.left + 4,
+        sashRect.top + 2,
+        sashRect.right - 4,
+        sashRect.top + sashThickness - 2,
+      );
+      if (profile.width < text.width + 8 ||
+          profile.height < text.height + 4) {
+        return;
+      }
+      text.paint(
+        canvas,
+        Offset(
+          profile.center.dx - text.width / 2,
+          profile.center.dy - text.height / 2,
+        ),
+      );
+    }
+
+    void paintHeightInSashProfile(
+      TextPainter text,
+      Rect sashRect, {
+      required bool onRight,
+    }) {
+      final profile = Rect.fromLTRB(
+        onRight ? sashRect.right - sashThickness + 2 : sashRect.left + 2,
+        sashRect.top + sashThickness + 4,
+        onRight ? sashRect.right - 2 : sashRect.left + sashThickness - 2,
+        sashRect.bottom - sashThickness - 4,
+      );
+      if (profile.height < text.width + 8 ||
+          profile.width < text.height + 4) {
+        return;
+      }
+      canvas.save();
+      canvas.translate(profile.center.dx, profile.center.dy);
+      canvas.rotate(-math.pi / 2);
+      text.paint(canvas, Offset(-text.width / 2, -text.height / 2));
+      canvas.restore();
     }
 
     // Calculate real cutting sizes if there's a sash in this zone
@@ -2322,22 +2519,29 @@ class WindowPainter extends CustomPainter {
     double displayWLeft = 0.0;
     double displayWRight = 0.0;
 
-    double overlap = model.sashOverride != null
-        ? (model.sashOverride!['sash_overlap'] ?? 8.0).toDouble()
-        : 8.0;
-    double weld = model.isPVC ? 5.0 : 0.0;
+    // The selected thick sash must not change cutting dimensions. Read the
+    // configured series overlap, add it to both sides of the whole clear
+    // opening, then distribute that total width between the leaves.
+    final double overlap = model.openingSashOverlap;
+    // Sash profiles are cut without an added welding allowance. PVC loses
+    // 5 mm only after welding, so the dimension shown beside the glazed
+    // opening represents the finished frame; aluminium keeps its cut size.
+    final finishedSashWeldLoss = model.isPVC ? 5.0 : 0.0;
 
     if (zone.content == ZoneContent.singleSash) {
-      displayWidth = r.width + overlap * 2 + weld;
-      displayHeight = r.height + overlap * 2 + weld;
+      displayWidth = r.width + overlap * 2 - finishedSashWeldLoss;
+      displayHeight = r.height + overlap * 2 - finishedSashWeldLoss;
     } else if (zone.content == ZoneContent.doubleSash) {
       final isInternal = overrideIsInternalView ?? model.isInternalView;
       final double effectiveRatio = isInternal
           ? zone.doubleSashRatio
           : (1.0 - zone.doubleSashRatio);
-      displayWLeft = r.width * effectiveRatio + overlap + weld;
-      displayWRight = r.width * (1.0 - effectiveRatio) + overlap + weld;
-      displayHeight = r.height + overlap * 2 + weld;
+      final totalCutWidth = r.width + overlap * 2;
+      displayWLeft =
+          totalCutWidth * effectiveRatio - finishedSashWeldLoss;
+      displayWRight = totalCutWidth * (1.0 - effectiveRatio) -
+          finishedSashWeldLoss;
+      displayHeight = r.height + overlap * 2 - finishedSashWeldLoss;
     } else if (zone.content == ZoneContent.slidingSash) {
       final slidingSashOverride =
           model.slidingSashOverride ?? model.sashOverride;
@@ -2409,72 +2613,59 @@ class WindowPainter extends CustomPainter {
           : (1.0 - zone.doubleSashRatio);
 
       final leftText = TextPainter(
-        text: TextSpan(text: "${displayWLeft.toInt()}", style: sashTextStyle),
+        text: TextSpan(
+          text: dimensionLabel(displayWLeft),
+          style: sashTextStyle,
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
 
       final rightText = TextPainter(
-        text: TextSpan(text: "${displayWRight.toInt()}", style: sashTextStyle),
+        text: TextSpan(
+          text: dimensionLabel(displayWRight),
+          style: sashTextStyle,
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
 
-      final leftX = r.left + (r.width * effectiveRatio) / 2;
-      final rightX =
-          r.left +
-          (r.width * effectiveRatio) +
-          (r.width * (1.0 - effectiveRatio)) / 2;
-
-      // Put each sash width inside its upper profile.  The glass centre must
-      // stay clear for the drawing and for handles/divisions.
-      final leftOffset = Offset(
-        leftX - (leftText.width / 2),
-        sashTopLabelY(leftText.height),
-      );
-      final rightOffset = Offset(
-        rightX - (rightText.width / 2),
-        sashTopLabelY(rightText.height),
-      );
-
-      leftText.paint(canvas, leftOffset);
-      rightText.paint(canvas, rightOffset);
+      final splitX = r.left + r.width * effectiveRatio;
+      final leftSash = Rect.fromLTRB(r.left, r.top, splitX - 2, r.bottom);
+      final rightSash = Rect.fromLTRB(splitX + 2, r.top, r.right, r.bottom);
+      paintWidthInSashProfile(leftText, leftSash);
+      paintWidthInSashProfile(rightText, rightSash);
     } else {
-      if (!isFullWidth) {
-        final widthText = TextPainter(
-          text: TextSpan(
-            text: "${displayWidth.toInt()}",
-            style: zone.content == ZoneContent.singleSash ||
-                    zone.content == ZoneContent.slidingSash
-                ? sashTextStyle
-                : textStyle,
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final isSash =
-            zone.content == ZoneContent.singleSash ||
-            zone.content == ZoneContent.slidingSash;
-        // Frame measurements stay centred. Sash measurements sit in the top
-        // sash profile, above the glass, for the same reading position as a
-        // double sash.
-        final double labelY = isSash
-            ? sashTopLabelY(widthText.height)
-            : r.center.dy - (widthText.height / 2);
-        final wOffset = Offset(r.center.dx - (widthText.width / 2), labelY);
-        widthText.paint(canvas, wOffset);
-      }
-    }
-    if (!isFullHeight) {
-      final heightText = TextPainter(
-        text: TextSpan(text: "${displayHeight.toInt()}", style: textStyle),
+      final widthText = TextPainter(
+        text: TextSpan(
+          text: dimensionLabel(displayWidth),
+          style: sashTextStyle,
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
-      canvas.save();
-      canvas.translate(
-        r.left + 5 + heightText.height,
-        r.center.dy + (heightText.width / 2),
-      );
-      canvas.rotate(-3.1415926535897932 / 2);
-      heightText.paint(canvas, Offset(0, -heightText.height));
-      canvas.restore();
+      paintWidthInSashProfile(widthText, r);
+    }
+    // The two leaves share their height, but each gets its own label inside
+    // its outer vertical profile.  A single sash uses its left profile.
+    {
+      final heightText = TextPainter(
+        text: TextSpan(
+          text: dimensionLabel(displayHeight),
+          style: sashTextStyle,
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      if (zone.content == ZoneContent.doubleSash) {
+        final isInternal = overrideIsInternalView ?? model.isInternalView;
+        final effectiveRatio = isInternal
+            ? zone.doubleSashRatio
+            : (1.0 - zone.doubleSashRatio);
+        final splitX = r.left + r.width * effectiveRatio;
+        final leftSash = Rect.fromLTRB(r.left, r.top, splitX - 2, r.bottom);
+        final rightSash = Rect.fromLTRB(splitX + 2, r.top, r.right, r.bottom);
+        paintHeightInSashProfile(heightText, leftSash, onRight: false);
+        paintHeightInSashProfile(heightText, rightSash, onRight: true);
+      } else {
+        paintHeightInSashProfile(heightText, r, onRight: false);
+      }
     }
   }
 
@@ -3033,6 +3224,103 @@ class WindowPainter extends CustomPainter {
 
   void _drawSingleSash(Canvas canvas, Rect r, WindowZone zone) =>
       _renderSash(canvas, r, zone, r, isRightSash: false);
+
+  /// Paints hinges after the content clip has been removed.  A hinge is placed
+  /// in the narrow reveal between the sash and its frame, which is partly
+  /// outside the inner glass-opening clip.  Keeping this pass separate makes
+  /// it visible on every normal sash as well as on coupled frames.
+  void _drawMainZoneHinges(Canvas canvas, double h, double t) {
+    final isInternal = overrideIsInternalView ?? model.isInternalView;
+    final topOffset = _topOffset;
+
+    void drawForSash(
+      Rect sashRect,
+      WindowZone sashZone,
+      bool isHandleSash,
+      bool isTopBound,
+    ) {
+      final direction = sashZone.openDirection;
+      if (direction == null) return;
+      final hingesOnRight = isInternal
+          ? direction == OpenDirection.left
+          : direction == OpenDirection.right;
+      final hingesOnLeft = isInternal
+          ? direction == OpenDirection.right
+          : direction == OpenDirection.left;
+      _drawHinges(
+        canvas,
+        sashRect,
+        hingesOnRight,
+        hingesOnLeft,
+        direction == OpenDirection.bottom,
+        direction == OpenDirection.top,
+        sashZone,
+        isHandleSash,
+        t: t,
+        topOffset: topOffset,
+        isTopBound: isTopBound,
+      );
+    }
+
+    for (final zone in model.zones) {
+      if (zone.content != ZoneContent.singleSash &&
+          zone.content != ZoneContent.doubleSash) {
+        continue;
+      }
+      final r = _getEffectiveZoneRect(zone.boundary, h, t);
+      final isTopBound = _isTopZone(zone);
+
+      if (zone.content == ZoneContent.singleSash) {
+        drawForSash(r, zone, true, isTopBound);
+        continue;
+      }
+
+      final sep = 4.0;
+      final effectiveRatio = isInternal
+          ? zone.doubleSashRatio
+          : (1.0 - zone.doubleSashRatio);
+      final splitX = r.left + r.width * effectiveRatio;
+      final leftSash = Rect.fromLTRB(r.left, r.top, splitX - sep / 2, r.bottom);
+      final rightSash = Rect.fromLTRB(
+        splitX + sep / 2,
+        r.top,
+        r.right,
+        r.bottom,
+      );
+      final drawBothHandles = zone.doubleSashHasTwoHandles;
+      var isLeftActive = zone.openDirection == OpenDirection.left;
+      var isRightActive = zone.openDirection == OpenDirection.right;
+      if (!isLeftActive && !isRightActive) isRightActive = true;
+
+      if (isInternal) {
+        drawForSash(
+          leftSash,
+          zone.copyWith(openDirection: OpenDirection.right),
+          drawBothHandles || isLeftActive,
+          isTopBound,
+        );
+        drawForSash(
+          rightSash,
+          zone.copyWith(openDirection: OpenDirection.left),
+          drawBothHandles || isRightActive,
+          isTopBound,
+        );
+      } else {
+        drawForSash(
+          leftSash,
+          zone.copyWith(openDirection: OpenDirection.left),
+          drawBothHandles || isRightActive,
+          isTopBound,
+        );
+        drawForSash(
+          rightSash,
+          zone.copyWith(openDirection: OpenDirection.right),
+          drawBothHandles || isLeftActive,
+          isTopBound,
+        );
+      }
+    }
+  }
 
   void _drawSlidingSash(
     Canvas canvas,
@@ -4297,25 +4585,11 @@ class WindowPainter extends CustomPainter {
     final bool shouldDrawHandle =
         isInternal || zone.content == ZoneContent.doubleSash;
 
-    if (shouldDrawHandle && zone.openDirection != null) {
-      if (isInternal) {
-        bool hingesOnRight = (zone.openDirection == OpenDirection.left);
-        bool hingesOnLeft = (zone.openDirection == OpenDirection.right);
-        _drawHinges(
-          canvas,
-          sashR,
-          hingesOnRight,
-          hingesOnLeft,
-          (zone.openDirection == OpenDirection.bottom),
-          (zone.openDirection == OpenDirection.top),
-          zone,
-          forceHandle,
-          t: t,
-          topOffset: topOffset,
-          isTopBound: isTopBound,
-        );
-      }
-      if (forceHandle) {
+    if (zone.openDirection != null) {
+      // Hinges are painted after the window's inner area has been unclipped.
+      // They sit partly on the outer frame reveal, so painting them here would
+      // cut off the normal-window hinges at the external edges.
+      if (shouldDrawHandle && forceHandle) {
         OpenDirection handleSide = zone.openDirection!;
         if (!isInternal) {
           if (handleSide == OpenDirection.left) {
@@ -5416,12 +5690,27 @@ class WindowPainter extends CustomPainter {
       hingeCount += 1;
     }
 
-    if ((model.useSystemOB || model.useDemiOB) && isHandleSash) {
+    // Full System OB replaces the ordinary hinge layout only on the leaf that
+    // carries the handle. Demi-OB has its own hardware and must not be drawn
+    // as a full OB leaf.
+    final bool isFullObHandleSash = model.useSystemOB && isHandleSash;
+    if (isFullObHandleSash) {
       hingeCount = 2;
     }
 
-    final paint = Paint()..color = model.accessoryColor;
-    final shadow = Paint()..color = Colors.black45;
+    // Hinge hardware must remain readable on a white profile. Use the selected
+    // accessory colour when it is dark enough; otherwise use a neutral grey,
+    // then give it a dark outline and a central pin line.
+    final accessoryColor = model.accessoryColor;
+    final hingeColor = accessoryColor.computeLuminance() > 0.62
+        ? const Color(0xFFB0B7C0)
+        : Color.lerp(accessoryColor, Colors.black, 0.18)!;
+    final paint = Paint()..color = hingeColor;
+    final shadow = Paint()..color = Colors.black54;
+    final outlinePaint = Paint()
+      ..color = Colors.black87
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.35;
 
     void drawHinge(Offset center, bool horizontal) {
       final rect = horizontal
@@ -5435,11 +5724,14 @@ class WindowPainter extends CustomPainter {
         RRect.fromRectAndRadius(rect, const Radius.circular(2)),
         paint,
       );
-      // Draw a black line in the middle of the hinge to make it look like a real aluminum hinge
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+        outlinePaint,
+      );
+      // The central black pin visually separates the two leaves of the hinge.
       final linePaint = Paint()
-        ..color = Colors
-            .black // pure black line
-        ..strokeWidth = 1.5;
+        ..color = Colors.black
+        ..strokeWidth = 1.7;
       if (horizontal) {
         // Inset by 5 pixels on each side so the line remains strictly inside the rounded rectangle of the hinge
         canvas.drawLine(
@@ -5458,9 +5750,17 @@ class WindowPainter extends CustomPainter {
     }
 
     if (onLeft || onRight) {
-      double x = onRight ? sashR.right - 2 : sashR.left + 2;
-      double startY = getSashTopY(x, sashR.top, t, topOffset, isTopBound) + 100,
-          step = (sashR.bottom - 100 - startY) / (hingeCount - 1);
+      // The hinge belongs in the narrow frame/sash reveal, not on top of the
+      // sash face. Its offset is scaled from the profile thickness so it is
+      // also correct for the wider series.
+      final revealOffset = (t * 0.28).clamp(9.0, 18.0).toDouble();
+      double x = onRight ? sashR.right + revealOffset : sashR.left - revealOffset;
+      // OB keeps only the upper and lower hinges, positioned directly at the
+      // ends of the sash rather than at the usual 100 mm inset.
+      final double endInset = isFullObHandleSash ? 44.0 : 100.0;
+      double startY =
+          getSashTopY(x, sashR.top, t, topOffset, isTopBound) + endInset,
+          step = (sashR.bottom - endInset - startY) / (hingeCount - 1);
       for (int i = 0; i < hingeCount; i++) {
         double yPos = startY + (step * i);
         if (hingeCount >= 3) {
@@ -5477,9 +5777,11 @@ class WindowPainter extends CustomPainter {
         drawHinge(Offset(x, yPos), false);
       }
     } else if (onTop || onBottom) {
-      double y = onBottom ? sashR.bottom - 2 : sashR.top + 2;
-      double startX = sashR.left + 100,
-          step = (sashR.right - 100 - startX) / (hingeCount - 1);
+      final revealOffset = (t * 0.28).clamp(9.0, 18.0).toDouble();
+      double y = onBottom ? sashR.bottom + revealOffset : sashR.top - revealOffset;
+      final double endInset = isFullObHandleSash ? 44.0 : 100.0;
+      double startX = sashR.left + endInset,
+          step = (sashR.right - endInset - startX) / (hingeCount - 1);
       for (int i = 0; i < hingeCount; i++) {
         double xPos = startX + (step * i);
         if (hingeCount >= 3) {
@@ -5495,7 +5797,8 @@ class WindowPainter extends CustomPainter {
         }
         double finalY = y;
         if (onTop) {
-          finalY = getSashTopY(xPos, sashR.top, t, topOffset, isTopBound) + 2;
+          finalY = getSashTopY(xPos, sashR.top, t, topOffset, isTopBound) -
+              revealOffset;
         }
         drawHinge(Offset(xPos, finalY), true);
       }
@@ -5643,6 +5946,121 @@ class WindowPainter extends CustomPainter {
       );
     }
     canvas.restore();
+  }
+
+  /// Renders the motor controls independently from the shutter box so they
+  /// also remain visible with a tunnel box. The remote is placed inside the
+  /// frame; the wall switch is shown only when a wall is enabled.
+  void _drawMotorControls(
+    Canvas canvas,
+    double w,
+    double h,
+    double t,
+    double topOffset,
+  ) {
+    final controlTop = (model.isCaissonTunnel ? 0.0 : topOffset) + t + 18.0;
+    final controlBottom = h - t - 18.0;
+    if (controlBottom <= controlTop) return;
+
+    final isRight = model.shutterDriveSide == 'right';
+    if (model.motorHasTelecommande) {
+      const remoteWidth = 21.0;
+      const remoteHeight = 42.0;
+      final remoteX = isRight ? w - t - remoteWidth - 18.0 : t + 18.0;
+      final remoteY = math.min(controlTop, controlBottom - remoteHeight);
+      final remoteRect = Rect.fromLTWH(
+        remoteX,
+        remoteY,
+        remoteWidth,
+        remoteHeight,
+      );
+      final border = Paint()
+        ..color = const Color(0xFF475569)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          remoteRect.translate(1.5, 1.5),
+          const Radius.circular(4),
+        ),
+        Paint()..color = Colors.black26,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(remoteRect, const Radius.circular(4)),
+        Paint()..color = Colors.white,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(remoteRect, const Radius.circular(4)),
+        border,
+      );
+      for (final entry in <MapEntry<double, Color>>[
+        const MapEntry(10.0, Color(0xFFDC2626)),
+        const MapEntry(21.0, Color(0xFF64748B)),
+        const MapEntry(32.0, Color(0xFF64748B)),
+      ]) {
+        canvas.drawCircle(
+          Offset(remoteRect.center.dx, remoteRect.top + entry.key),
+          2.6,
+          Paint()..color = entry.value,
+        );
+      }
+    }
+
+    if (model.motorHasInterrupteur && model.showWall) {
+      const switchWidth = 36.0;
+      const switchHeight = 56.0;
+      final switchX = isRight ? w + 48.0 : -48.0 - switchWidth;
+      final switchY = math.max(
+        controlTop,
+        math.min(
+          controlBottom - switchHeight,
+          controlTop + (controlBottom - controlTop) * 0.55,
+        ),
+      );
+      final switchRect = Rect.fromLTWH(
+        switchX,
+        switchY,
+        switchWidth,
+        switchHeight,
+      );
+      final cableEnd = isRight ? switchRect.left : switchRect.right;
+      canvas.drawLine(
+        Offset(isRight ? w : 0.0, switchRect.center.dy),
+        Offset(cableEnd, switchRect.center.dy),
+        Paint()
+          ..color = const Color(0xFF334155)
+          ..strokeWidth = 2.0,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          switchRect.translate(1.5, 1.5),
+          const Radius.circular(5),
+        ),
+        Paint()..color = Colors.black26,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(switchRect, const Radius.circular(5)),
+        Paint()..color = const Color(0xFFF8FAFC),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(switchRect, const Radius.circular(5)),
+        Paint()
+          ..color = const Color(0xFF475569)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4,
+      );
+      final symbolPaint = Paint()
+        ..color = const Color(0xFF1E3A5F)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round;
+      canvas.drawCircle(switchRect.center, 8.0, symbolPaint);
+      canvas.drawLine(
+        Offset(switchRect.center.dx, switchRect.center.dy - 12.0),
+        Offset(switchRect.center.dx, switchRect.center.dy - 2.0),
+        symbolPaint,
+      );
+    }
   }
 
   void _drawShutterBox(
@@ -5846,49 +6264,6 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    // Draw remote control receiver icon if motorHasTelecommande is true
-    if (mechanism == 'محرك' && model.motorHasTelecommande) {
-      double rx = startX + 20.0;
-      double ry = 15.0; // on the shutter box
-      final remoteRect = Rect.fromLTWH(rx, ry, 15, 30);
-
-      // Draw remote shadow
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          remoteRect.translate(1, 1),
-          const Radius.circular(3),
-        ),
-        Paint()..color = Colors.black26,
-      );
-      // Draw remote body
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(remoteRect, const Radius.circular(3)),
-        Paint()..color = Colors.white,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(remoteRect, const Radius.circular(3)),
-        Paint()
-          ..color = const Color(0xFF64748B)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
-      );
-      // Draw buttons inside the remote control
-      canvas.drawCircle(
-        Offset(rx + 7.5, ry + 7),
-        2.2,
-        Paint()..color = Colors.red,
-      );
-      canvas.drawCircle(
-        Offset(rx + 7.5, ry + 15),
-        2.2,
-        Paint()..color = Colors.grey.shade600,
-      );
-      canvas.drawCircle(
-        Offset(rx + 7.5, ry + 23),
-        2.2,
-        Paint()..color = Colors.grey.shade600,
-      );
-    }
   }
 
   void _drawRealisticParclose(

@@ -15,7 +15,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
-import '../Commande/add_commande.dart';
+import '../Commande/order_workspace_screen.dart';
 import '../Commande/Systeme/model.dart';
 
 class MeasurementsScreen extends StatefulWidget {
@@ -356,14 +356,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   Future<void> _convertMeasurementToOrder(Map<String, dynamic> item) async {
     final model = await _createWindowModelFromMeasurement(item);
     if (!mounted) return;
-    Navigator.push(
+    openOrderInWorkspaceTab(
       context,
-      MaterialPageRoute(
-        builder: (context) => CommandePage(
-          db: widget.db,
-          initialProducts: [model],
-        ),
-      ),
+      db: widget.db,
+      initialProducts: [model],
     );
   }
 
@@ -386,14 +382,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         Navigator.pop(context);
       }
       if (!mounted) return;
-      Navigator.push(
+      openOrderInWorkspaceTab(
         context,
-        MaterialPageRoute(
-          builder: (context) => CommandePage(
-            db: widget.db,
-            initialProducts: models,
-          ),
-        ),
+        db: widget.db,
+        initialProducts: models,
       );
     } catch (e) {
       if (mounted && Navigator.canPop(context)) {

@@ -940,7 +940,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: sashOverlapCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'تداخل الضلفة / Recouvrement (mm) (مثال: 20)',
+                        labelText: 'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1475,7 +1475,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: sashOverlapCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'تداخل الضلفة / Recouvrement (mm) (مثال: 20)',
+                        labelText: 'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
                       ),
                     ),
                     SizedBox(height: 12),

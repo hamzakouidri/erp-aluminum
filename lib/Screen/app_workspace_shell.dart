@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -100,8 +102,11 @@ class WorkspaceController extends ChangeNotifier {
     required String title,
     required IconData icon,
     required Widget content,
+    String? entryId,
   }) {
-    final existingIndex = _entries.indexWhere((entry) => entry.title == title);
+    final existingIndex = entryId == null
+        ? _entries.indexWhere((entry) => entry.title == title)
+        : _entries.indexWhere((entry) => entry.id == entryId);
     if (existingIndex != -1) {
       _activeIndex = existingIndex;
       notifyListeners();
@@ -109,9 +114,10 @@ class WorkspaceController extends ChangeNotifier {
     }
 
     final index = _entries.length;
+    final resolvedId = entryId ?? 'entry_${DateTime.now().microsecondsSinceEpoch}';
     _entries.add(
       WorkspaceEntry(
-        id: 'entry_${DateTime.now().microsecondsSinceEpoch}',
+        id: resolvedId,
         title: title,
         icon: icon,
         content: content,
@@ -120,6 +126,11 @@ class WorkspaceController extends ChangeNotifier {
     );
     _activeIndex = _entries.length - 1;
     notifyListeners();
+  }
+
+  void closeById(String entryId) {
+    final index = _entries.indexWhere((entry) => entry.id == entryId);
+    if (index != -1) close(index);
   }
 
   void activate(int index) {
@@ -671,7 +682,12 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
           if (firestoreName != null && firestoreName.isNotEmpty) {
             _workshopName = firestoreName;
           }
-          if (firestoreLogo != null && firestoreLogo.isNotEmpty) {
+          // A workshop document can change often during a background sync.
+          // Recreating a MemoryImage on every snapshot briefly clears the
+          // navigation-tab logo, even though its bytes have not changed.
+          if (firestoreLogo != null &&
+              firestoreLogo.isNotEmpty &&
+              firestoreLogo != _logoUrl) {
             _logoUrl = firestoreLogo;
             _updateLogoProvider(firestoreLogo);
           }
@@ -874,11 +890,67 @@ class _TabbedWorkspaceView extends StatefulWidget {
 
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   bool _isSidebarOpen = true;
+  final ScrollController _tabsScrollController = ScrollController();
+  final Map<String, GlobalKey> _tabKeys = {};
+  String? _lastEnsuredActiveTabId;
+
+  GlobalKey _tabKeyFor(String entryId) =>
+      _tabKeys.putIfAbsent(entryId, GlobalKey.new);
+
+  @override
+  void dispose() {
+    _tabsScrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleTabsPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_tabsScrollController.hasClients) {
+      return;
+    }
+
+    final delta = event.scrollDelta.dx.abs() > 0
+        ? event.scrollDelta.dx
+        : event.scrollDelta.dy;
+    if (delta == 0) return;
+
+    final position = _tabsScrollController.position;
+    final target = (_tabsScrollController.offset + delta)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    if ((target - _tabsScrollController.offset).abs() < 0.5) return;
+
+    // Desktop mouse wheels emit a vertical delta. Claim it here and use it to
+    // move the horizontal tab strip instead of letting a parent consume it.
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (_tabsScrollController.hasClients) {
+        _tabsScrollController.jumpTo(target);
+      }
+    });
+  }
+
+  void _ensureActiveTabVisible(String entryId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final tabContext = _tabKeys[entryId]?.currentContext;
+      if (tabContext == null) return;
+      Scrollable.ensureVisible(
+        tabContext,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        alignment: 0.5,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
     final isDesktop = _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+    final activeEntryId = workspace.entries[workspace.activeIndex].id;
+    if (_lastEnsuredActiveTabId != activeEntryId) {
+      _lastEnsuredActiveTabId = activeEntryId;
+      _ensureActiveTabVisible(activeEntryId);
+    }
 
     final mainContent = PopScope(
       canPop: false,
@@ -919,24 +991,46 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                       ),
                       const SizedBox(width: 4),
                       Expanded(
-                        child: ListView.builder(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                            isDesktop ? 0 : 8,
-                            10,
-                            12,
-                            0,
+                        child: ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context).copyWith(
+                            scrollbars: true,
+                            dragDevices: const {
+                              PointerDeviceKind.touch,
+                              PointerDeviceKind.mouse,
+                              PointerDeviceKind.trackpad,
+                              PointerDeviceKind.stylus,
+                              PointerDeviceKind.invertedStylus,
+                              PointerDeviceKind.unknown,
+                            },
                           ),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: workspace.entries.length,
-                          itemBuilder: (context, index) {
-                            final entry = workspace.entries[index];
-                            final active = index == workspace.activeIndex;
+                          child: Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerSignal: _handleTabsPointerSignal,
+                            child: Scrollbar(
+                              controller: _tabsScrollController,
+                              interactive: true,
+                              thumbVisibility: isDesktop,
+                              child: ListView.builder(
+                                controller: _tabsScrollController,
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                  isDesktop ? 0 : 8,
+                                  10,
+                                  12,
+                                  0,
+                                ),
+                                scrollDirection: Axis.horizontal,
+                                itemCount: workspace.entries.length,
+                                itemBuilder: (context, index) {
+                                  final entry = workspace.entries[index];
+                                  final active = index == workspace.activeIndex;
 
-                            return GestureDetector(
-                              onTap: () {
-                                workspace.activate(index);
-                              },
-                              child: AnimatedContainer(
+                                  return KeyedSubtree(
+                                    key: _tabKeyFor(entry.id),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        workspace.activate(index);
+                                      },
+                                      child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 180),
                                 margin: const EdgeInsetsDirectional.only(end: 8),
                                 padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1001,9 +1095,13 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                                           ],
                                         ],
                                       ),
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
+                            ),
+                          ),
                         ),
                       ),
                     ],

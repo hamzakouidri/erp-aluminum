@@ -3227,10 +3227,15 @@ This action cannot be undone!''',
     AppLanguage.french: 'Bouchons Lames',
     AppLanguage.english: 'Blade end caps',
   },
-  'رولو (Rouleau)': {
-    AppLanguage.arabic: 'رولو (Rouleau)',
-    AppLanguage.french: 'Rouleau',
-    AppLanguage.english: 'Roller',
+  'رولمان (Roulement)': {
+    AppLanguage.arabic: 'رولمان (Roulement)',
+    AppLanguage.french: 'Roulement',
+    AppLanguage.english: 'Bearing',
+  },
+  'قياس المحور المتوافق (مثال: 40 أو 60 مم)': {
+    AppLanguage.arabic: 'قياس المحور المتوافق (مثال: 40 أو 60 مم)',
+    AppLanguage.french: 'Diamètre d’axe compatible (ex. : 40 ou 60 mm)',
+    AppLanguage.english: 'Compatible axle diameter (e.g. 40 or 60 mm)',
   },
   'توليب (Tulip)': {
     AppLanguage.arabic: 'توليب (Tulip)',
@@ -3276,6 +3281,41 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'القياس (مثال: 185 أو 55)',
     AppLanguage.french: 'Mesure (Ex : 185 ou 55)',
     AppLanguage.english: 'Measurement (e.g. 185 ou 55)',
+  },
+  'ارتفاع الشفرة (مم)': {
+    AppLanguage.arabic: 'ارتفاع الشفرة (مم)',
+    AppLanguage.french: 'Hauteur de lame (mm)',
+    AppLanguage.english: 'Blade height (mm)',
+  },
+  'قياس السكة (مم)': {
+    AppLanguage.arabic: 'قياس السكة (مم)',
+    AppLanguage.french: 'Mesure de coulisse (mm)',
+    AppLanguage.english: 'Track measurement (mm)',
+  },
+  'قياس السكة المطابق (مم)': {
+    AppLanguage.arabic: 'قياس السكة المطابق (مم)',
+    AppLanguage.french: 'Mesure de coulisse correspondante (mm)',
+    AppLanguage.english: 'Matching track measurement (mm)',
+  },
+  'ارتفاع الشفرة:': {
+    AppLanguage.arabic: 'ارتفاع الشفرة:',
+    AppLanguage.french: 'Hauteur de lame :',
+    AppLanguage.english: 'Blade height:',
+  },
+  'قياس السكة المطابق:': {
+    AppLanguage.arabic: 'قياس السكة المطابق:',
+    AppLanguage.french: 'Mesure de coulisse correspondante :',
+    AppLanguage.english: 'Matching track measurement:',
+  },
+  'بحث بالاسم أو النوع': {
+    AppLanguage.arabic: 'بحث بالاسم أو النوع',
+    AppLanguage.french: 'Rechercher par nom ou type',
+    AppLanguage.english: 'Search by name or type',
+  },
+  'لا توجد نتائج': {
+    AppLanguage.arabic: 'لا توجد نتائج',
+    AppLanguage.french: 'Aucun résultat',
+    AppLanguage.english: 'No results',
   },
   'سمك أغطية الشفرات (مم)': {
     AppLanguage.arabic: 'سمك أغطية الشفرات (مم)',
@@ -6416,6 +6456,11 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'سعر الوحدة',
     AppLanguage.french: 'Prix unitaire',
     AppLanguage.english: 'Unit price',
+  },
+  'المطلوب الفعلي': {
+    AppLanguage.arabic: 'المطلوب الفعلي',
+    AppLanguage.french: 'Besoin réel',
+    AppLanguage.english: 'Actual requirement',
   },
   'البيع': {
     AppLanguage.arabic: 'البيع',

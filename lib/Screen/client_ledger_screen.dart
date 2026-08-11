@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../sql_database.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
-import '../Commande/add_commande.dart'; // CommandePage for edit
+import '../Commande/order_workspace_screen.dart';
 import 'client_ledger_pdf_service.dart';
 import 'receipt_pdf_service.dart';
 
@@ -578,16 +578,12 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                                       );
                                       return;
                                     }
-                                    // Navigate to order details screen
-                                    Navigator.push(
+                                    openOrderInWorkspaceTab(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (context) => CommandePage(db: db, editCommandeId: item['id'] as int),
-                                      ),
-                                    ).then((_) {
-                                      // Reload ledger data on return in case order details changed
-                                      _loadLedgerData();
-                                    });
+                                      db: db,
+                                      editCommandeId: item['id'] as int,
+                                      onSaved: _loadLedgerData,
+                                    );
                                   } else {
                                     // Open options dialog for payment/refund receipt print
                                     _showReceiptOptions(context, item['rawData'] as Map<String, dynamic>);

@@ -104,18 +104,15 @@ class CuttingCalculator {
     // 2. تحليل الدرف (Zones) للزجاج والألمنيوم (Ouvrant)
     // هنا نجلب عرض الإطار الخارجي (الـ Dormant) من قاعدة البيانات (إذا لم نجده نستخدم 45 مم افتراضياً)
     // العرض والارتفاع الداخلي: يتم حسابه بطرح عرض الإطار الخارجي من الجهتين
-    double innerWidth = model.width - (dormantThickness * 2);
-    double innerHeight =
-        model.height - (dormantThickness * (model.hasBottomFrame ? 2 : 1));
 
     // هنا نمر على كل الفراغات لتقطيع الضلف والزجاج حسب نوع الفتح
     for (var zone in model.zones) {
       if (zone.content == ZoneContent.singleSash) {
         // --- ضلفة واحدة ---
         // هنا نقوم بحساب ألمنيوم الضلفة بزيادة تداخل الضلفة (Recouvrement)
-        double sashOverlap = model.activeSeries!.sections.firstWhere((s) => s.type == 'sash', orElse: () => AluminumSection(id: 0, seriesId: 0, code: '', name: '', type: '', thickness: 0, glassDeduction: 0, weightPerMeter: 0)).sashOverlap;
-        double sashWidth = innerWidth + sashOverlap;
-        double sashHeight = innerHeight + sashOverlap;
+        final sashOverlap = model.openingSashOverlap;
+        double sashWidth = zone.boundary.width + (sashOverlap * 2);
+        double sashHeight = zone.boundary.height + (sashOverlap * 2);
 
         items.add(
           CuttingItem(
@@ -138,10 +135,18 @@ class CuttingCalculator {
           ),
         );
 
-        // هنا نحسب مقاسات الزجاج بخصم قيمة ألمنيوم الضلفة (تقريباً 194 مم للعرض)
-        // وإذا كانت هناك ستارة (Shutter) نخصم مساحة صندوق الستارة (349 مم بدلاً من 194 مم).
-        double glassWidth = model.width - 194.0;
-        double glassHeight = model.height - (model.hasShutter ? 349.0 : 194.0);
+        // The zone already represents the clear opening after the outer frame
+        // and shutter box. The sash is cut with no welding addition; only a
+        // PVC finished sash loses 5 mm after welding. Glass then loses both
+        // sash faces and a 10 mm installation clearance.
+        final double sashFace =
+            (model.sashOverride?['visible_width'] as num?)?.toDouble() ??
+                model.getSectionThickness('sash', fallback: 60.0);
+        final finishedWeldLoss = model.isPVC ? 5.0 : 0.0;
+        double glassWidth =
+            sashWidth - finishedWeldLoss - (sashFace * 2) - 10.0;
+        double glassHeight =
+            sashHeight - finishedWeldLoss - (sashFace * 2) - 10.0;
 
         items.add(
           CuttingItem(
@@ -181,10 +186,13 @@ class CuttingCalculator {
         );
       } else if (zone.content == ZoneContent.doubleSash) {
         // --- ضلفتين ---
-        // هنا نقوم بتقسيم العرض الداخلي على 2 (للضلفتين)، مع إضافة التداخل.
-        double sashOverlap = model.activeSeries!.sections.firstWhere((s) => s.type == 'sash', orElse: () => AluminumSection(id: 0, seriesId: 0, code: '', name: '', type: '', thickness: 0, glassDeduction: 0, weightPerMeter: 0)).sashOverlap;
-        double sashWidth = (innerWidth + sashOverlap) / 2;
-        double sashHeight = innerHeight + sashOverlap;
+        // Add the overlap on both sides of the clear opening first, then
+        // distribute the resulting cutting width according to the leaf ratio.
+        final sashOverlap = model.openingSashOverlap;
+        double sashWidth =
+            (zone.boundary.width + sashOverlap * 2) *
+                zone.doubleSashRatio;
+        double sashHeight = zone.boundary.height + (sashOverlap * 2);
 
         items.add(
           CuttingItem(
@@ -207,9 +215,16 @@ class CuttingCalculator {
           ),
         );
 
-        // زجاج (القياس من الخارج): (العرض - 324) / 2
-        double glassWidth = (model.width - 324.0) / 2;
-        double glassHeight = model.height - (model.hasShutter ? 349.0 : 194.0);
+        // Use the finished sash dimensions instead of fixed deductions. This
+        // gives, for example, 570 − 120 − 10 − 5 = 435 mm for PVC.
+        final double sashFace =
+            (model.sashOverride?['visible_width'] as num?)?.toDouble() ??
+                model.getSectionThickness('sash', fallback: 60.0);
+        final finishedWeldLoss = model.isPVC ? 5.0 : 0.0;
+        double glassWidth =
+            sashWidth - finishedWeldLoss - (sashFace * 2) - 10.0;
+        double glassHeight =
+            sashHeight - finishedWeldLoss - (sashFace * 2) - 10.0;
 
         items.add(
           CuttingItem(
@@ -228,7 +243,7 @@ class CuttingCalculator {
         if (!model.hasBottomFrame) {
           batmoDeduction = batmoDeduction / 2;
         }
-        double batmoHeight = innerHeight - batmoDeduction;
+        double batmoHeight = zone.boundary.height - batmoDeduction;
         items.add(
           CuttingItem(
             name: "باتمو (Batmo)",

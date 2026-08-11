@@ -380,10 +380,26 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
     try {
       final accPricesData = await safeQuery('AccessoryColorPrices');
+      // Build set of valid color IDs for quick lookup
+      final validColorIds = cList.map((c) => c['id'] as int).toSet();
+
       for (var row in accPricesData) {
         int aId = row['accessory_id'] as int;
         int cId = row['color_id'] as int;
         double p = (row['price'] as num).toDouble();
+
+        if (!validColorIds.contains(cId)) {
+          // Color no longer exists in Colors table → delete orphaned entry
+          try {
+            await dbInstance.delete(
+              'AccessoryColorPrices',
+              where: 'accessory_id = ? AND color_id = ?',
+              whereArgs: [aId, cId],
+            );
+          } catch (_) {}
+          continue; // Skip adding to tempAccPrices
+        }
+
         if (!tempAccPrices.containsKey(aId)) {
           tempAccPrices[aId] = {};
         }
@@ -2180,6 +2196,33 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         ),
                       ),
                     ),
+                    const SizedBox(width: 4),
+                    // Button to open color picker for this accessory
+                    Tooltip(
+                      message: Localization.translate('تخصيص الألوان', lang),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => _showCustomizeAccessoryColorsDialog(
+                          initialAccId: accId,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: hasColorPrices
+                                ? Colors.deepPurple.withValues(alpha: isDark ? 0.2 : 0.08)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Icon(
+                            Icons.palette_outlined,
+                            size: 18,
+                            color: hasColorPrices
+                                ? (isDark ? Colors.purple.shade200 : Colors.deepPurple)
+                                : (isDark ? Colors.grey.shade400 : Colors.grey.shade500),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3666,12 +3709,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-  Future<void> _showCustomizeAccessoryColorsDialog() async {
+  Future<void> _showCustomizeAccessoryColorsDialog({int? initialAccId}) async {
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
     ).language;
-    int? selectedAccId;
+    int? selectedAccId = initialAccId;
 
     await showDialog(
       context: context,

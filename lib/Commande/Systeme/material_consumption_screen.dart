@@ -33,7 +33,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       true; // إظهار/إخفاء سعر التكلفة (TODO: لاحقًا يُربط بصلاحية المدير)
   final ScrollController _scrollController =
       ScrollController(); // للتحكم بتمرير الجدول أفقيًا ومعرفة موضع السكرول
-  bool _isScrolled = false; // هل تم التمرير أفقيًا (لإظهار عمود ثابت "overlay")
   bool _isBottomBarExpanded = false; // هل شريط الإعدادات السفلي مفتوح أو مطوي
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
   String get _lang =>
@@ -237,7 +236,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (blade == null) return false;
     final text = '${blade['name'] ?? ''} ${blade['shutter_subtype'] ?? ''}'
         .toLowerCase();
-    return text.contains('x3d');
+    return text.contains('x3d') ||
+        text.contains('extrud') ||
+        text.contains('إكسترودي') ||
+        text.contains('اكسترودي');
+  }
+
+  bool _motorHasEmergencyCrank(Map<String, dynamic>? motor) {
+    final raw = motor?['motor_has_emergency_crank'];
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    final value = raw?.toString().trim().toLowerCase() ?? '';
+    return value == '1' ||
+        value == 'true' ||
+        value == 'yes' ||
+        value == 'oui' ||
+        value == 'نعم';
   }
 
   /// Finds a shutter axis after applying the same compatibility rules used by
@@ -366,6 +380,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     'سيبور موتور (Support Moteur)': false,
     'أغطية الشفرات (Bouchons Lames)': false,
   };
+  final Set<String> _userDisabledMotorDefaults = <String>{};
   String?
   _lastAlignedLameKey; // مفتاح تتبع (id+مقاس+subtype) لآخر "شريحة" تمت محاذاة الشريحة النهائية معها، لتفادي إعادة الحساب بلا داعٍ
   // ------------------ ثوابت أبعاد أعمدة الجدول (بالبكسل) ------------------
@@ -377,10 +392,19 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   static const double _wLen = 100; // عرض عمود الطول
   static const double _wQty = 80; // عرض عمود الكمية
   static const double _wPrice = 120; // عرض عمود سعر الوحدة
+  static const double _wRequired = 110; // عرض عمود المطلوب الفعلي
   static const double _wTotal = 120; // عرض عمود التكلفة الإجمالية للصف
   static const double _wCheck = 80; // عرض عمود مربع التفعيل (Checkbox)
   static const double _minW = // العرض الكلي الأدنى للجدول = مجموع كل الأعمدة
-      _wImg + _wName + _wColor + _wLen + _wQty + _wPrice + _wTotal + _wCheck;
+      _wImg +
+      _wName +
+      _wColor +
+      _wLen +
+      _wQty +
+      _wPrice +
+      _wRequired +
+      _wTotal +
+      _wCheck;
   static const double _frozenWidth = _wName;
   // ==========================================================================
   // دالة: _fetchDefaults  ⭐ (الدالة الأهم في الملف)
@@ -426,6 +450,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         widget.model.shutterMechanism == 'منايفال' ||
         widget.model.shutterMechanism == 'مانيفال' ||
         widget.model.shutterMechanism == 'مانيفر';
+    final isX3dPvc =
+        !isTunnel && widget.model.isPVC && _isX3dBlade(widget.model.componentOverrides['الشرائح (Lames)']);
     // ضبط تفعيل الكيتات المختلفة حسب نوع الآلية وحالة التونيل
     activeVariants['كيت (Kit)'] = false;
     activeVariants['كيت فولي موتور (Kit Volet Moteur)'] = isTunnel
@@ -445,14 +471,24 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (isMotor) {
       activeVariants['الامبو (Embout)'] = true;
       activeVariants['سيبور رولمو (Support Roulement)'] = true;
-      activeVariants['سيبور موتور (Support Moteur)'] = true;
+      activeVariants['سيبور موتور (Support Moteur)'] = !isX3dPvc ||
+          !_motorHasEmergencyCrank(
+            widget.model.componentOverrides['المحرك (Moteur)'],
+          );
     } else {
       activeVariants['الامبو (Embout)'] = false;
       activeVariants['سيبور رولمو (Support Roulement)'] = false;
       activeVariants['سيبور موتور (Support Moteur)'] =
           isTunnel; // في التونيل قد يلزم سيبور موتور حتى بدون محرك
     }
-    activeVariants['أغطية الشفرات (Bouchons Lames)'] = isTunnel || isMotor;
+    if (!isMotor) {
+      _userDisabledMotorDefaults.remove('أغطية الشفرات (Bouchons Lames)');
+    }
+    activeVariants['أغطية الشفرات (Bouchons Lames)'] = isTunnel ||
+        (isMotor &&
+            !_userDisabledMotorDefaults.contains(
+              'أغطية الشفرات (Bouchons Lames)',
+            ));
     // تنظيف الـ overrides اللي ما عادت منطقية (مثلاً قطع محرك محفوظة رغم إن الآلية تغيّرت لغير محرك)
     if (!isMotor) {
       widget.model.componentOverrides.remove('الامبو (Embout)');
@@ -641,31 +677,35 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             }
           }
 
-          // محاذاة كل القطع المرتبطة بالشريحة (المحور، الأطاش، سيبور موتور، الامبو...)
-          final compatibleAxis = await _findCompatibleShutterAxis(
-            blade: Map<String, dynamic>.from(lames),
-            motor: widget.model.componentOverrides['المحرك (Moteur)'],
-          );
-          if (compatibleAxis != null) {
-            widget.model.componentOverrides['المحور (Axe)'] = compatibleAxis;
-          }
-          await alignComponent('أطاش (Attache)', 'attache');
-          await alignComponent(
-            'سيبور موتور (Support Moteur)',
-            'support_moteur',
-          );
-          await alignComponent('الامبو (Embout)', 'embout');
-          await alignComponent(
-            'سيبور رولمو (Support Roulement)',
-            'support_roulement',
-          );
-          await alignComponent('طانديم (Tandem)', 'tandem');
-          await alignComponent(
-            'أغطية الشفرات (Bouchons Lames)',
-            'bouchon_lame',
-          );
-          // -------- حساب المحرك المناسب تلقائيًا (حسب الوزن والعزم المطلوب) --------
-          if (widget.model.shutterMechanism == 'محرك') {
+          // X3D/Extrudé on PVC has its own complete assembly rule in the
+          // model.  Generic self-healing must not overwrite its CPR,
+          // Embout Galva, axis or motor with a merely similar component.
+          if (!isX3dPvc) {
+            // محاذاة كل القطع المرتبطة بالشريحة (المحور، الأطاش، سيبور موتور، الامبو...)
+            final compatibleAxis = await _findCompatibleShutterAxis(
+              blade: Map<String, dynamic>.from(lames),
+              motor: widget.model.componentOverrides['المحرك (Moteur)'],
+            );
+            if (compatibleAxis != null) {
+              widget.model.componentOverrides['المحور (Axe)'] = compatibleAxis;
+            }
+            await alignComponent('أطاش (Attache)', 'attache');
+            await alignComponent(
+              'سيبور موتور (Support Moteur)',
+              'support_moteur',
+            );
+            await alignComponent('الامبو (Embout)', 'embout');
+            await alignComponent(
+              'سيبور رولمو (Support Roulement)',
+              'support_roulement',
+            );
+            await alignComponent('طانديم (Tandem)', 'tandem');
+            await alignComponent(
+              'أغطية الشفرات (Bouchons Lames)',
+              'bouchon_lame',
+            );
+            // -------- حساب المحرك المناسب تلقائيًا (حسب الوزن والعزم المطلوب) --------
+            if (widget.model.shutterMechanism == 'محرك') {
             // 1. حساب معامل الوزن (كغ/م²) حسب نوع الشريحة ومقاسها
             final bladeSubtype =
                 lames['shutter_subtype']?.toString() ?? 'normal';
@@ -723,17 +763,37 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               return null;
             }
 
+            // Keep a motor intentionally selected from the cost table as
+            // long as it can carry this shutter and has a compatible axis.
+            // A refresh must never silently replace a valid user choice.
+            final currentMotor =
+                widget.model.componentOverrides['المحرك (Moteur)'];
+            if (currentMotor != null) {
+              final currentTorque = parseTorque(currentMotor);
+              if (currentTorque != null && currentTorque >= requiredNm) {
+                final compatibleAxis = await _findCompatibleShutterAxis(
+                  blade: Map<String, dynamic>.from(lames),
+                  motor: currentMotor,
+                );
+                if (compatibleAxis != null) {
+                  selectedMotor = Map<String, dynamic>.from(currentMotor);
+                }
+              }
+            }
+
             // اختيار المحرك الأقرب من فوق (أصغر عزم يكفي الحاجة، وليس أقل منها)
-            for (final row in motorRes) {
-              final nm = parseTorque(row);
-              if (nm != null) {
-                if (nm >= requiredNm) {
-                  // المحرك يكفي (عزمه ≥ العزم المطلوب)
-                  final diff = nm - requiredNm;
-                  if (diff < bestNmDifference) {
-                    // نفضّل الأقرب لتفادي "مبالغة" في القوة
-                    bestNmDifference = diff;
-                    selectedMotor = row;
+            if (selectedMotor == null) {
+              for (final row in motorRes) {
+                final nm = parseTorque(row);
+                if (nm != null) {
+                  if (nm >= requiredNm) {
+                    // المحرك يكفي (عزمه ≥ العزم المطلوب)
+                    final diff = nm - requiredNm;
+                    if (diff < bestNmDifference) {
+                      // نفضّل الأقرب لتفادي "مبالغة" في القوة
+                      bestNmDifference = diff;
+                      selectedMotor = row;
+                    }
                   }
                 }
               }
@@ -764,6 +824,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               if (matchedAxe != null) {
                 widget.model.componentOverrides['المحور (Axe)'] = matchedAxe;
               }
+            }
             }
           }
         }
@@ -837,6 +898,41 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           final id = override['id'];
           if (id != null && colorId != null) {
             final mutable = Map<String, dynamic>.from(override);
+            // IDs are local to every table. Shutter rows carry
+            // `component_type`, so resolve them before Accessories: an
+            // identical numeric ID in both tables must not borrow an
+            // accessory price instead of the selected shutter-colour price.
+            if (mutable.containsKey('component_type')) {
+              final shutterRows = await dbInstance.query(
+                'ShutterComponents',
+                where: 'id = ?',
+                whereArgs: [id],
+                limit: 1,
+              );
+              if (shutterRows.isNotEmpty) {
+                final shutterColorPrices = await dbInstance.query(
+                  'ShutterColorPrices',
+                  where: 'shutter_component_id = ? AND color_id = ?',
+                  whereArgs: [id, colorId],
+                  limit: 1,
+                );
+                final colorPrice = shutterColorPrices.isEmpty
+                    ? 0.0
+                    : _safeDouble(shutterColorPrices.first['price']);
+                final defaultPrice = _safeDouble(
+                  shutterRows.first['price_dzd'] ??
+                      shutterRows.first['price_per_meter'] ??
+                      shutterRows.first['price'],
+                );
+                // A colour table can contain prices for other colours only.
+                // In that case (or when its value is zero), keep the product
+                // default instead of clearing the price in the BOM.
+                mutable['calculated_price'] =
+                    colorPrice > 0 ? colorPrice : defaultPrice;
+                widget.model.componentOverrides[key] = mutable;
+                continue;
+              }
+            }
             // محاولة 1: جدول أسعار الإكسسوارات حسب اللون
             // IDs are local to each table. Resolve an accessory first so a
             // missing price cannot be borrowed from a shutter or section.
@@ -852,19 +948,21 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 where: 'accessory_id = ?',
                 whereArgs: [id],
               );
-              if (accessoryColorPrices.isEmpty) {
-                mutable['calculated_price'] = _safeDouble(
-                  accessoryRows.first['price_dzd'] ??
-                      accessoryRows.first['price'],
-                );
-              } else {
-                final selectedPrice = accessoryColorPrices.where(
-                  (row) => row['color_id']?.toString() == colorId.toString(),
-                );
-                mutable['calculated_price'] = selectedPrice.isEmpty
-                    ? 0.0
-                    : _safeDouble(selectedPrice.first['price']);
-              }
+              final selectedColorRows = accessoryColorPrices.where(
+                (row) => row['color_id']?.toString() == colorId.toString(),
+              );
+              final colorPrice = selectedColorRows.isEmpty
+                  ? 0.0
+                  : _safeDouble(selectedColorRows.first['price']);
+              final defaultPrice = _safeDouble(
+                accessoryRows.first['price_dzd'] ??
+                    accessoryRows.first['price'],
+              );
+              // Do not turn a valid default price into zero merely because
+              // this colour has no special price row. This is what made kit
+              // screw prices appear and disappear between recalculations.
+              mutable['calculated_price'] =
+                  colorPrice > 0 ? colorPrice : defaultPrice;
               widget.model.componentOverrides[key] = mutable;
               continue;
             }
@@ -917,31 +1015,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         return val != null && val is Map && val['id'] != null;
       }
 
-      // 1. جلب حديد الإطار الافتراضي المرتبط بالبروفيل المختار (linked_renfort_id)
-      if (!isLinked('حديد الإطار (Renfort Frame)')) {
-        // نحدد الإطار الفعّال حسب وضع النظام (منزلق/عادي)
-        final activeFrameMap = widget.model.systemMode == 'sliding'
-            ? widget.model.slidingFrameOverride
-            : widget.model.frameOverride;
-        if (activeFrameMap != null &&
-            activeFrameMap['linked_renfort_id'] != null) {
-          int rId = activeFrameMap['linked_renfort_id'] as int;
-          final res = await dbInstance.query(
-            'Sections',
-            where: 'id = ?',
-            whereArgs: [rId],
-          );
-          if (res.isNotEmpty) {
-            final rMap = Map<String, dynamic>.from(res.first);
-            double price = _safeDouble(rMap['price_dzd'] ?? rMap['price']);
-            rMap['calculated_price'] = price;
-            widget.model.componentOverrides['حديد الإطار (Renfort Frame)'] =
-                rMap;
-            if (mounted)
-              setState(() {}); // تحديث فوري للواجهة بمجرد إيجاد الحديد
-          }
-        }
-      }
+      // Always synchronize the frame reinforcement with the selected frame.
+      // Merely checking for an existing row leaves the reinforcement from a
+      // previously selected frame in place and makes its price fluctuate.
+      await widget.model.syncFrameReinforcement();
       // 2. جلب حديد الظلفة الافتراضي المرتبط + بحث عن حديد المفاصل (Mifsal) الخاص
       if (!isLinked('حديد الظلفة (Renfort Sash)')) {
         final activeSashMap = widget.model.systemMode == 'sliding'
@@ -1032,6 +1109,27 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           return rows.isNotEmpty;
         }
 
+        // A missing colour-specific price means "use the normal price", not
+        // "this screw costs zero". Keep this rule in the automatic selector
+        // as well as in the later price refresh.
+        Future<double> resolveScrewPrice(Map<String, dynamic> item) async {
+          final defaultPrice = _safeDouble(
+            item['price_dzd'] ?? item['price_per_meter'] ?? item['price'],
+          );
+          if (colorId == null || item['id'] == null) return defaultPrice;
+          final colorRows = await dbInstance.query(
+            'AccessoryColorPrices',
+            columns: const ['price'],
+            where: 'accessory_id = ? AND color_id = ?',
+            whereArgs: [item['id'], colorId],
+            limit: 1,
+          );
+          final colorPrice = colorRows.isEmpty
+              ? 0.0
+              : _safeDouble(colorRows.first['price']);
+          return colorPrice > 0 ? colorPrice : defaultPrice;
+        }
+
         if (!await hasValidCurrentScrew()) {
           widget.model.componentOverrides.remove(key);
           try {
@@ -1046,38 +1144,50 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     "AND (LOWER(material_type) = ? OR LOWER(material_type) = 'both')${seriesFilter['clause']}",
                 whereArgs: [matType, ...seriesFilter['args']],
                 orderBy: 'id ASC',
-                limit: 1,
               );
             } catch (_) {} // تجاهل خطأ إذا العمود غير موجود بقاعدة بيانات قديمة
             // ملاحظة مهمة: لا يوجد بحث احتياطي عشوائي للبراغي حتى لا يختلط برغي بنوع خاطئ
             if (res.isNotEmpty) {
-              final mutableItem = Map<String, dynamic>.from(res.first);
-              double price = 0.0;
-              if (colorId != null) {
-                // محاولة سعر خاص باللون أولًا
-                final colorPriceRes = await dbInstance.query(
-                  'AccessoryColorPrices',
-                  where: 'accessory_id = ? AND color_id = ?',
-                  whereArgs: [res.first['id'], colorId],
-                );
-                if (colorPriceRes.isNotEmpty &&
-                    _safeDouble(colorPriceRes.first['price']) > 0) {
-                  price = _safeDouble(colorPriceRes.first['price']);
-                } else {
-                  // وإلا استخدم السعر العام
-                  price = _safeDouble(
-                    res.first['price_dzd'] ??
-                        res.first['price_per_meter'] ??
-                        res.first['price'],
-                  );
+              final selectedSeriesId = widget.model.systemMode == 'sliding'
+                  ? (widget.model.activeSlidingSeries?.id ??
+                        widget.model.activeSeries?.id)
+                  : widget.model.activeSeries?.id;
+              final candidates = res
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList();
+              candidates.sort((a, b) {
+                int seriesPriority(Map<String, dynamic> item) {
+                  if (selectedSeriesId == null) return 1;
+                  if (item['series_id'] == selectedSeriesId) return 0;
+                  final ids = item['series_ids']
+                          ?.toString()
+                          .replaceAll(' ', '') ??
+                      '';
+                  return ids.split(',').contains(selectedSeriesId.toString())
+                      ? 0
+                      : 1;
                 }
-              } else {
-                price = _safeDouble(
-                  res.first['price_dzd'] ??
-                      res.first['price_per_meter'] ??
-                      res.first['price'],
+
+                final scoped = seriesPriority(a).compareTo(seriesPriority(b));
+                if (scoped != 0) return scoped;
+                return ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+                  (b['id'] as num?)?.toInt() ?? 0,
                 );
+              });
+
+              var selected = candidates.first;
+              var price = await resolveScrewPrice(selected);
+              // Do not keep the first matching row if it has no usable price
+              // while another valid screw for the same scope does.
+              for (final candidate in candidates) {
+                final candidatePrice = await resolveScrewPrice(candidate);
+                if (candidatePrice > 0) {
+                  selected = candidate;
+                  price = candidatePrice;
+                  break;
+                }
               }
+              final mutableItem = Map<String, dynamic>.from(selected);
               mutableItem['calculated_price'] = price;
               widget.model.componentOverrides[key] = mutableItem;
               if (mounted) {
@@ -1551,6 +1661,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       // 6. تحميل بيانات حزم الكيت (Kit Bundles) من قاعدة البيانات مع أسعار كل عنصر داخلها
       final kitBundleData = <String, List<Map<String, dynamic>>>{};
       final kitPerLeafMap = <String, bool>{};
+      final int? kitSeriesId = widget.model.systemMode == 'sliding'
+          ? (widget.model.activeSlidingSeries?.id ??
+                widget.model.activeSeries?.id)
+          : widget.model.activeSeries?.id;
+      final String kitMaterialType = widget.model.systemMode == 'sliding'
+          ? (widget.model.isSlidingPVC ? 'PVC' : 'Aluminium')
+          : (widget.model.isPVC ? 'PVC' : 'Aluminium');
       try {
         final kits = await sqlDb
             .readKitBundles(); // قراءة كل حزم الكيت المعرّفة
@@ -1574,8 +1691,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   db,
                   prodName,
                   colorId,
+                  seriesId: kitSeriesId,
+                  materialType: kitMaterialType,
                 );
-                if (resolvedPrice != null) {
+                // A zero-valued catalogue record must not erase the explicit
+                // price saved in the kit range (for example EKRO).
+                if (resolvedPrice != null && resolvedPrice > 0) {
                   rangeMap['price'] = resolvedPrice;
                 }
               }
@@ -1593,8 +1714,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   db,
                   prodName,
                   colorId,
+                  seriesId: kitSeriesId,
+                  materialType: kitMaterialType,
                 );
-                if (resolvedPrice != null) {
+                if (resolvedPrice != null && resolvedPrice > 0) {
                   variantMap['price'] = resolvedPrice;
                 }
               }
@@ -1609,8 +1732,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   db,
                   prodName,
                   colorId,
+                  seriesId: kitSeriesId,
+                  materialType: kitMaterialType,
                 );
-                if (resolvedPrice != null) {
+                if (resolvedPrice != null && resolvedPrice > 0) {
                   mutableItem['price'] = resolvedPrice;
                 }
               }
@@ -2614,15 +2739,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _fetchDefaults();
     // الاستماع لأي تغيير في النموذج (مثلاً تغيير القياسات من شاشة أخرى) لإعادة رسم الواجهة
     widget.model.addListener(_onModelChanged);
-    // إظهار العمود الثابت فور بدء السحب الأفقي، كي لا يضيع سطر العنصر عن المستخدم.
-    _scrollController.addListener(() {
-      final isScrolled = _scrollController.offset > 0.5;
-      if (isScrolled != _isScrolled) {
-        setState(() {
-          _isScrolled = isScrolled;
-        });
-      }
-    });
   }
 
   // دالة تُستدعى عند تغيّر النموذج من خارج هذه الشاشة، فقط تعيد بناء الواجهة
@@ -2973,19 +3089,60 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   Future<double?> _resolveDynamicProductPrice(
     Database db,
     String productName,
-    int? colorId,
-  ) async {
-    // 1. البحث في جدول Accessories بالاسم بالضبط
+    int? colorId, {
+    int? seriesId,
+    String? materialType,
+  }) async {
+    final normalizedMaterial = materialType?.trim().toLowerCase();
+    final seriesFilter = _buildSeriesFilterClause(seriesId: seriesId);
+
+    // 1. Search matching accessories only within the selected series and
+    // material. Several catalog entries can share a name (such as CACHE OB),
+    // and the old `limit: 1` could select an unrelated zero-price record.
+    final materialClause = normalizedMaterial == null || normalizedMaterial.isEmpty
+        ? ''
+        : " AND (LOWER(TRIM(material_type)) = ? OR LOWER(TRIM(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
+    final accessoryArgs = <dynamic>[
+      productName,
+      if (normalizedMaterial != null && normalizedMaterial.isNotEmpty)
+        normalizedMaterial,
+      ...(seriesFilter['args'] as List<dynamic>),
+    ];
     final accRows = await db.query(
       'Accessories',
-      columns: ['id', 'price'],
-      where: 'name = ? AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [productName],
-      limit: 1,
+      columns: ['id', 'price', 'series_id', 'series_ids'],
+      where:
+          'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)$materialClause${seriesFilter['clause']}',
+      whereArgs: accessoryArgs,
     );
-    if (accRows.isNotEmpty) {
-      final accId = accRows.first['id'] as int;
-      final defaultPrice = _safeDouble(accRows.first['price']);
+
+    // Prefer an accessory linked directly to the active series over a global
+    // one with the same name. If it has no price, continue looking instead of
+    // returning zero and overwriting the kit's own range/variant price.
+    final sortedAccessories = List<Map<String, dynamic>>.from(accRows);
+    sortedAccessories.sort((a, b) {
+      int priority(Map<String, dynamic> row) {
+        if (seriesId == null) return 1;
+        if (row['series_id'] == seriesId) return 0;
+        final ids = row['series_ids']?.toString().replaceAll(' ', '') ?? '';
+        return ids.split(',').contains(seriesId.toString()) ? 0 : 1;
+      }
+
+      final scoped = priority(a).compareTo(priority(b));
+      if (scoped != 0) return scoped;
+      final priced = (_safeDouble(b['price']) > 0 ? 1 : 0).compareTo(
+        _safeDouble(a['price']) > 0 ? 1 : 0,
+      );
+      if (priced != 0) return priced;
+      return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
+        (a['id'] as num?)?.toInt() ?? 0,
+      );
+    });
+
+    for (final accessory in sortedAccessories) {
+      final accId = (accessory['id'] as num?)?.toInt();
+      if (accId == null) continue;
+      final defaultPrice = _safeDouble(accessory['price']);
       if (colorId != null) {
         final colorPriceRes = await db.query(
           'AccessoryColorPrices',
@@ -2996,22 +3153,26 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         );
         if (colorPriceRes.isNotEmpty) {
           final p = _safeDouble(colorPriceRes.first['price']);
-          if (p > 0) return p; // السعر اللوني له الأولوية إذا كان أكبر من صفر
+          if (p > 0) return p;
         }
       }
-      return defaultPrice;
+      if (defaultPrice > 0) return defaultPrice;
     }
-    // 2. إذا لم يوجد في Accessories، ابحث في جدول ShutterComponents
+
+    // 2. If no usable accessory price exists, check shutter components. Do
+    // not return a zero here either: the price saved on the kit range/variant
+    // remains the final fallback.
     final shutRows = await db.query(
       'ShutterComponents',
       columns: ['id', 'price'],
-      where: 'name = ? AND (is_active = 1 OR is_active IS NULL)',
+      where:
+          'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)',
       whereArgs: [productName],
-      limit: 1,
     );
-    if (shutRows.isNotEmpty) {
-      final shutId = shutRows.first['id'] as int;
-      final defaultPrice = _safeDouble(shutRows.first['price']);
+    for (final shutterComponent in shutRows) {
+      final shutId = (shutterComponent['id'] as num?)?.toInt();
+      if (shutId == null) continue;
+      final defaultPrice = _safeDouble(shutterComponent['price']);
       if (colorId != null) {
         final colorPriceRes = await db.query(
           'ShutterColorPrices',
@@ -3025,9 +3186,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           if (p > 0) return p;
         }
       }
-      return defaultPrice;
+      if (defaultPrice > 0) return defaultPrice;
     }
-    return null; // المنتج غير موجود في أي من الجدولين
+    return null;
   }
 
   // حفظ إعداد تسعير رقمي واحد في SharedPreferences (بالمفتاح المعطى)
@@ -3052,6 +3213,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     setState(() {
       activeVariants[name] = value; // تحديث الحالة الأساسية أولًا
       final isTunnel = widget.model.isCaissonTunnel;
+      final isMotor = widget.model.shutterMechanism == 'محرك';
       // تحقق: هل الاسم هو أحد مفاتيح الكيتات؟
       final isAnyKitKey =
           name == 'كيت (Kit)' ||
@@ -3119,6 +3281,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // في حالة التونيل، أغطية الشفرات إلزامية دائمًا (لا يمكن تعطيلها)
         if (isTunnel) {
           activeVariants['أغطية الشفرات (Bouchons Lames)'] = true;
+        } else if (isMotor) {
+          if (value) {
+            _userDisabledMotorDefaults.remove('أغطية الشفرات (Bouchons Lames)');
+          } else {
+            _userDisabledMotorDefaults.add('أغطية الشفرات (Bouchons Lames)');
+          }
         }
       }
       // مزامنة نهائية: إعادة قراءة الحالة الفعلية من النموذج (احتياطًا لأي تعارض)
@@ -3692,7 +3860,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // ==========================================================================
   // دالة: _buildCostMethodSelector
   // تبني بطاقة (Card) تحوي: اختيار طريقة الحساب، حقل الإدخال الخاص بها،
-  // إعداد الكمية، وملخص التسعير النهائي (تكلفة بدون/مع هدر + سعر البيع).
+  // إعداد الكمية، وملخص التسعير النهائي (تكلفة بدون هدر + سعر البيع).
   // ==========================================================================
   Widget _buildCostMethodSelector() {
     final lang = Provider.of<AppSettingsProvider>(
@@ -3710,8 +3878,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final totals = _calculateTotals(items);
     final double totalCostNoWaste =
         totals['total']?['cost'] ?? 0.0; // التكلفة الصافية بدون هدر
-    final double totalCostWithWaste =
-        totalCostNoWaste * 1.10; // إضافة هامش هدر ثابت 10%
     final double sellingPrice = totals['total']?['selling'] ?? 0.0;
     return Card(
       margin: const EdgeInsets.all(16.0),
@@ -3972,7 +4138,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            // بطاقة ملخص التسعير النهائي (تكلفة بدون هدر / مع هدر / سعر البيع المقترح)
+            // بطاقة ملخص التسعير النهائي (تكلفة بدون هدر / سعر البيع المقترح)
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -3998,16 +4164,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   const SizedBox(height: 10),
                   _priceRow(
                     Icons.monetization_on_outlined,
-                    Localization.translate('سعر التكلفة بدون هدر', lang),
+                    Localization.translate('سعر التكلفة (بدون هدر)', lang),
                     '${totalCostNoWaste.toStringAsFixed(0)} ${Localization.translate('دج', lang)}',
                     Colors.orange.shade700,
-                  ),
-                  const SizedBox(height: 8),
-                  _priceRow(
-                    Icons.warning_amber_rounded,
-                    Localization.translate('سعر التكلفة مع هدر 10%', lang),
-                    '${totalCostWithWaste.toStringAsFixed(0)} ${Localization.translate('دج', lang)}',
-                    Colors.deepOrange,
                   ),
                   const SizedBox(height: 8),
                   const Divider(height: 1),
@@ -4400,6 +4559,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   // عمود التكلفة الإجمالية للمجموعة (مع خط شطب إذا غير مفعّلة)
                   _cell(
                     Text(
+                      '-',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.grey,
+                      ),
+                    ),
+                    _wRequired,
+                  ),
+                  _cell(
+                    Text(
                       '${totalPrice.toStringAsFixed(1)} ${Localization.translate('دج', lang)}',
                       style: TextStyle(
                         fontSize: 12,
@@ -4537,10 +4706,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final totals = _calculateTotals(
       items,
     ); // حساب مجاميع كل قسم لعرضها في عناوين الأقسام
-    return Stack(
-      // Stack لوضع العمود الثابت (overlay) فوق الجدول عند التمرير
-      children: [
-        Container(
+    // Keep one single scrolling table.  The frozen overlay duplicated a slice
+    // of the rows above the real table and could become misaligned on phones.
+    return Container(
           decoration: BoxDecoration(
             border: Border.all(color: Colors.grey.shade300),
             borderRadius: BorderRadius.circular(4),
@@ -4628,17 +4796,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ),
             ),
           ),
-        ),
-        // العمود الثابت (overlay) يظهر فقط بعد التمرير أفقيًا، ليبقى اسم العنصر ظاهرًا دائمًا
-        if (_isScrolled)
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: _buildMinimalOverlay(groups),
-          ),
-      ],
-    );
+        );
   }
 
   // ==========================================================================
@@ -5100,7 +5258,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     ).language;
     final currency = Localization.translate('دج', lang);
     final totals = _calculateTotals(items);
-    final double totalCostWithWaste = totals['total']?['cost'] ?? 0.0;
+    final double totalCostNoWaste = totals['total']?['cost'] ?? 0.0;
     final double sellingPrice = totals['total']?['selling'] ?? 0.0;
     // سعر القطعة الواحدة = السعر الإجمالي ÷ الكمية (بحد أدنى 1 لتفادي القسمة على صفر)
     final double unitPrice = sellingPrice / math.max(1, widget.model.quantity);
@@ -5255,7 +5413,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                             ),
                             Text(
                               showCostPrice
-                                  ? '${totalCostWithWaste.toStringAsFixed(2)} $currency'
+                                  ? '${totalCostNoWaste.toStringAsFixed(2)} $currency'
                                   : '*** $currency', // إخفاء الرقم بنجوم إذا showCostPrice == false
                               style: TextStyle(
                                 fontSize: 14,
@@ -5418,6 +5576,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               _wPrice,
             ),
             _cell(
+              Text(Localization.translate('المطلوب الفعلي', lang), style: s),
+              _wRequired,
+            ),
+            _cell(
               Text(Localization.translate('التكلفة', lang), style: s),
               _wTotal,
             ),
@@ -5539,6 +5701,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       alignment: Alignment.centerLeft,
       child: child,
     );
+  }
+
+  String _formatRequiredQuantity(double value) {
+    if ((value - value.roundToDouble()).abs() < 0.0001) {
+      return value.round().toString();
+    }
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   Widget _row(BomItem item) {
@@ -5787,6 +5959,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               _wPrice,
             ),
             // عمود التكلفة الإجمالية للصف (مع خط شطب إن كان معطلًا)
+            // التسعير يعتمد على الاحتياج الفعلي، مثل 1.2 bar، لا على العدد
+            // المقرب من البارات الناتج عن تنظيم القص.
+            _cell(
+              Text(
+                '${_formatRequiredQuantity(item.requiredQuantity)} ${item.unit}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+              _wRequired,
+            ),
             _cell(
               Text(
                 '${item.total.toStringAsFixed(2)} $currency',
@@ -5940,26 +6124,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         }
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['calculated_price'] = price;
-        // إذا كان الإطار الجديد مرتبطًا بحديد دعم (renfort)، اجلبه تلقائيًا
-        if (mutableSelected['linked_renfort_id'] != null) {
-          final dbInstance = await SqlDatabase().db;
-          final rRes = await dbInstance!.query(
-            'Sections',
-            where: 'id = ?',
-            whereArgs: [mutableSelected['linked_renfort_id']],
-          );
-          if (rRes.isNotEmpty) {
-            final rMap = Map<String, dynamic>.from(rRes.first);
-            rMap['calculated_price'] = _safeDouble(
-              rMap['price_dzd'] ?? rMap['price'],
-            );
-            widget.model.componentOverrides['حديد الإطار (Renfort Frame)'] =
-                rMap;
-          }
-        } else {
-          // الإطار الجديد لا يحتاج حديدًا: احذف أي حديد قديم كان مرتبطًا بالإطار السابق
-          widget.model.componentOverrides.remove('حديد الإطار (Renfort Frame)');
-        }
         setState(() {
           // تحديث الإطار حسب وضع النظام (منزلق/عادي)
           if (widget.model.systemMode == 'sliding') {
@@ -5971,6 +6135,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               .updateProfileThickness(); // إعادة حساب السماكات المرتبطة بعد تغيير الإطار
           widget.model.refreshUI();
         });
+        await widget.model.syncFrameReinforcement();
+        if (mounted) setState(() {});
       }
       return; // إنهاء الدالة هنا (لا تكمل باقي منطق التبديل العام)
     }
@@ -6265,10 +6431,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final bladeObj = widget.model.componentOverrides['الشرائح (Lames)'];
     final int? bladeId = bladeObj != null ? bladeObj['id'] as int? : null;
     final selectedBladeName = bladeObj?['name']?.toString();
-    final selectedBladeIsX3d =
-        '${bladeObj?['name'] ?? ''} ${bladeObj?['shutter_subtype'] ?? ''}'
-            .toLowerCase()
-            .contains('x3d');
+    final selectedBladeIsX3d = _isX3dBlade(bladeObj);
     final selectedMotor = widget.model.componentOverrides['المحرك (Moteur)'];
     final motorDiameter = selectedMotor == null
         ? null

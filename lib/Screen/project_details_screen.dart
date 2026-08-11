@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
-import '../Commande/add_commande.dart';
+import '../Commande/order_workspace_screen.dart';
 import 'link_existing_orders_screen.dart';
 
 class ProjectDetailsScreen extends StatefulWidget {
@@ -330,15 +330,12 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                       ),
                       ElevatedButton.icon(
                         onPressed: () {
-                          Navigator.push(
+                          openOrderInWorkspaceTab(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => CommandePage(
-                                db: widget.db,
-                                projectId: widget.projectId,
-                              ),
-                            ),
-                          ).then((_) => _loadProjectDetails());
+                            db: widget.db,
+                            projectId: widget.projectId,
+                            onSaved: _loadProjectDetails,
+                          );
                         },
                         icon: const Icon(Icons.add_shopping_cart, size: 16),
                         label: Text(Localization.translate('إضافة طلبية', lang)),
@@ -404,15 +401,12 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                             ],
                           ),
                           onTap: () {
-                            Navigator.push(
+                            openOrderInWorkspaceTab(
                               context,
-                              MaterialPageRoute(
-                                builder: (context) => CommandePage(
-                                  db: widget.db,
-                                  editCommandeId: cmd['id'] as int,
-                                ),
-                              ),
-                            ).then((_) => _loadProjectDetails());
+                              db: widget.db,
+                              editCommandeId: cmd['id'] as int,
+                              onSaved: _loadProjectDetails,
+                            );
                           },
                         ),
                       );

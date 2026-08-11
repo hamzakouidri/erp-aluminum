@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart' hide TextDirection;
-import '../Commande/add_commande.dart';
+import '../Commande/order_workspace_screen.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -467,15 +467,12 @@ class _SalesScreenState extends State<SalesScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 14),
             ),
             onTap: () {
-              Navigator.push(
+              openOrderInWorkspaceTab(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => CommandePage(
-                    db: widget.db,
-                    editCommandeId: order['id'] as int,
-                  ),
-                ),
-              ).then((_) => _loadSalesData());
+                db: widget.db,
+                editCommandeId: order['id'] as int,
+                onSaved: _loadSalesData,
+              );
             },
           ),
         );

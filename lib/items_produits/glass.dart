@@ -17,6 +17,8 @@ class GlassScreen extends StatefulWidget {
 
 class _GlassScreenState extends State<GlassScreen> {
   List<Map<String, dynamic>> _items = [];
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   List<String> _glassColors = ['بدون لون'];
   List<String> _allColors = []; // جميع الألوان (للـ Panneau)
   final ImagePicker _picker = ImagePicker();
@@ -25,6 +27,12 @@ class _GlassScreenState extends State<GlassScreen> {
   void initState() {
     super.initState();
     _loadItems();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadItems() async {
@@ -56,7 +64,15 @@ class _GlassScreenState extends State<GlassScreen> {
     });
   }
 
-  final List<String> _glassTypes = ['Glass', 'Intercall', 'Gas', 'Panneau', 'Baguette', 'Rosette'];
+  final List<String> _glassTypes = [
+    'Glass',
+    'Intercall',
+    'Gas',
+    'Tempering',
+    'Panneau',
+    'Baguette',
+    'Rosette',
+  ];
   final List<String> _panneauSubtypes = ['plexiglass', 'bardage', 'panneau sandwitch', 'panneau décor', 'aluco', 'résine'];
 
   void _showAddDialog() {
@@ -77,6 +93,7 @@ class _GlassScreenState extends State<GlassScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           final isPanneau = selectedType == 'Panneau';
+          final isTempering = selectedType == 'Tempering';
           final hasMultipleColors = selectedType == 'Panneau' || selectedType == 'Baguette' || selectedType == 'Rosette';
           return AlertDialog(
             title: Text(
@@ -117,16 +134,18 @@ class _GlassScreenState extends State<GlassScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'اسم الزجاج',
-                        Provider.of<AppSettingsProvider>(context).language,
+                  if (!isTempering) ...[
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'اسم الزجاج',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                  ],
                   DropdownButtonFormField<String>(
                     value: selectedType,
                     decoration: InputDecoration(
@@ -140,6 +159,7 @@ class _GlassScreenState extends State<GlassScreen> {
                         'Glass': 'زجاج (Glass)',
                         'Intercall': 'إنتركال (Intercall)',
                         'Gas': 'غاز (Gas)',
+                        'Tempering': 'تقسية (Trempé)',
                         'Panneau': 'مغلق (Panneau)',
                         'Baguette': 'باجيت ديكور (Baguette)',
                         'Rosette': 'وردة ديكور (Rosette)',
@@ -214,7 +234,7 @@ class _GlassScreenState extends State<GlassScreen> {
                         ),
                       ),
                     ),
-                  ] else ...[
+                  ] else if (!isTempering) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: selectedColor,
@@ -277,7 +297,9 @@ class _GlassScreenState extends State<GlassScreen> {
                       controller: priceCtrl,
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'سعر المتر المربع',
+                          isTempering
+                              ? 'سعر التقسية للمتر المربع'
+                              : 'سعر المتر المربع',
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
@@ -301,15 +323,19 @@ class _GlassScreenState extends State<GlassScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
-                  if (nameCtrl.text.isNotEmpty) {
+                  final thickness = double.tryParse(thicknessCtrl.text) ?? 0.0;
+                  final itemName = isTempering
+                      ? 'Trempé ${thickness.toStringAsFixed(thickness == thickness.roundToDouble() ? 0 : 1)} mm'
+                      : nameCtrl.text.trim();
+                  if (itemName.isNotEmpty && thickness > 0) {
                     // تجميع اللون/الألوان بحسب النوع
                     final String colorValue = hasMultipleColors
                         ? selectedPanneauColors.join(',')
                         : (selectedColor == 'بدون لون' ? '' : selectedColor);
                     await widget.db.insertGlass(
-                      nameCtrl.text,
+                      itemName,
                       selectedType,
-                      double.tryParse(thicknessCtrl.text) ?? 0.0,
+                      thickness,
                       isPanneau ? 0.0 : (double.tryParse(priceCtrl.text) ?? 0.0),
                       color: colorValue,
                       imagePath: imagePath ?? '',
@@ -372,6 +398,7 @@ class _GlassScreenState extends State<GlassScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           final isPanneau = selectedType == 'Panneau';
+          final isTempering = selectedType == 'Tempering';
           final hasMultipleColors = selectedType == 'Panneau' || selectedType == 'Baguette' || selectedType == 'Rosette';
           return AlertDialog(
             title: Text(
@@ -414,17 +441,19 @@ class _GlassScreenState extends State<GlassScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  TextField(
-                    controller: nameCtrl,
-                    enabled: isUserAdmin,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'اسم الزجاج',
-                        Provider.of<AppSettingsProvider>(context).language,
+                  if (!isTempering) ...[
+                    TextField(
+                      controller: nameCtrl,
+                      enabled: isUserAdmin,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'اسم الزجاج',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                  ],
                   DropdownButtonFormField<String>(
                     value: selectedType,
                     decoration: InputDecoration(
@@ -438,6 +467,7 @@ class _GlassScreenState extends State<GlassScreen> {
                         'Glass': 'زجاج (Glass)',
                         'Intercall': 'إنتركال (Intercall)',
                         'Gas': 'غاز (Gas)',
+                        'Tempering': 'تقسية (Trempé)',
                         'Panneau': 'مغلق (Panneau)',
                         'Baguette': 'باجيت ديكور (Baguette)',
                         'Rosette': 'وردة ديكور (Rosette)',
@@ -520,7 +550,7 @@ class _GlassScreenState extends State<GlassScreen> {
                         ),
                       ),
                     ),
-                  ] else ...[
+                  ] else if (!isTempering) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: selectedColor,
@@ -588,7 +618,9 @@ class _GlassScreenState extends State<GlassScreen> {
                       controller: priceCtrl,
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'سعر المتر المربع',
+                          isTempering
+                              ? 'سعر التقسية للمتر المربع'
+                              : 'سعر المتر المربع',
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
@@ -612,15 +644,19 @@ class _GlassScreenState extends State<GlassScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
-                  if (nameCtrl.text.isNotEmpty) {
+                  final thickness = double.tryParse(thicknessCtrl.text) ?? 0.0;
+                  final itemName = isTempering
+                      ? 'Trempé ${thickness.toStringAsFixed(thickness == thickness.roundToDouble() ? 0 : 1)} mm'
+                      : nameCtrl.text.trim();
+                  if (itemName.isNotEmpty && thickness > 0) {
                     final String colorValue = hasMultipleColors
                         ? selectedPanneauColors.join(',')
                         : (selectedColor == 'بدون لون' ? '' : selectedColor);
                     await widget.db.updateGlass(
                       item['id'],
-                      nameCtrl.text,
+                      itemName,
                       selectedType,
-                      double.tryParse(thicknessCtrl.text) ?? 0.0,
+                      thickness,
                       isPanneau ? 0.0 : (double.tryParse(priceCtrl.text) ?? 0.0),
                       color: colorValue,
                       imagePath: imagePath ?? '',
@@ -688,11 +724,32 @@ class _GlassScreenState extends State<GlassScreen> {
   Widget build(BuildContext context) {
     final bool isUserAdmin = isAdmin;
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    final searchQuery = _searchQuery.trim().toLowerCase();
+    const typeAliases = <String, String>{
+      'Glass': 'glass verre زجاج',
+      'Intercall': 'intercall intercalaire intercalair انتراكال فاصل',
+      'Gas': 'gas gaz غاز',
+      'Tempering': 'tempering trempe trempé تقسية ترومبي',
+      'Panneau': 'panneau panel مغلق لوحة',
+      'Baguette': 'baguette ديكور',
+      'Rosette': 'rosette وردة ديكور',
+    };
+    final filteredItems = searchQuery.isEmpty
+        ? _items
+        : _items.where((item) {
+            final name = (item['name'] ?? '').toString().toLowerCase();
+            final type = (item['type'] ?? '').toString().toLowerCase();
+            final subtype = (item['subtype'] ?? '').toString().toLowerCase();
+            return name.contains(searchQuery) ||
+                type.contains(searchQuery) ||
+                (typeAliases[item['type']] ?? '').contains(searchQuery) ||
+                subtype.contains(searchQuery);
+          }).toList();
 
     // Group items by type
     final Map<String, List<Map<String, dynamic>>> grouped = {};
     for (var type in _glassTypes) {
-      grouped[type] = _items.where((i) => i['type'] == type).toList();
+      grouped[type] = filteredItems.where((i) => i['type'] == type).toList();
     }
 
     // Build sections
@@ -701,6 +758,7 @@ class _GlassScreenState extends State<GlassScreen> {
       'Glass': Localization.translate('الزجاج (Glass)', lang),
       'Intercall': Localization.translate('الإنتركال (Intercall)', lang),
       'Gas': Localization.translate('الغاز (Gas)', lang),
+      'Tempering': Localization.translate('التقسية (Trempé)', lang),
       'Panneau': Localization.translate('مغلق (Panneau)', lang),
       'Baguette': Localization.translate('باجيت ديكور (Baguette)', lang),
       'Rosette': Localization.translate('وردة ديكور (Rosette)', lang),
@@ -709,6 +767,7 @@ class _GlassScreenState extends State<GlassScreen> {
       'Glass': Icons.layers,
       'Intercall': Icons.space_bar,
       'Gas': Icons.opacity,
+      'Tempering': Icons.local_fire_department_outlined,
       'Panneau': Icons.view_quilt,
       'Baguette': Icons.border_vertical_rounded,
       'Rosette': Icons.api_rounded,
@@ -717,6 +776,7 @@ class _GlassScreenState extends State<GlassScreen> {
       'Glass': Colors.cyan.shade800,
       'Intercall': Colors.teal.shade800,
       'Gas': Colors.amber.shade900,
+      'Tempering': Colors.deepOrange.shade800,
       'Panneau': Colors.purple.shade800,
       'Baguette': Colors.orange.shade800,
       'Rosette': Colors.pink.shade800,
@@ -793,9 +853,11 @@ class _GlassScreenState extends State<GlassScreen> {
                     ? Localization.translate('زجاج', lang)
                     : type == 'Intercall'
                         ? Localization.translate('إنتركال', lang)
-                        : type == 'Gas'
-                            ? Localization.translate('غاز', lang)
-                            : type == 'Panneau'
+                    : type == 'Gas'
+                        ? Localization.translate('غاز', lang)
+                        : type == 'Tempering'
+                            ? Localization.translate('تقسية (Trempé)', lang)
+                        : type == 'Panneau'
                                 ? Localization.translate('مغلق', lang)
                                 : type == 'Baguette'
                                     ? Localization.translate('باجيت ديكور', lang)
@@ -856,16 +918,36 @@ class _GlassScreenState extends State<GlassScreen> {
           ),
         ),
       ),
-      body: _items.isEmpty
-          ? Center(
-              child: Text(
-                Localization.translate(
-                  'لا توجد بيانات',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                hintText: Localization.translate('بحث بالاسم أو النوع', lang),
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                border: const OutlineInputBorder(),
               ),
-            )
-          : ListView(children: sections),
+            ),
+          ),
+          Expanded(
+            child: filteredItems.isEmpty
+                ? Center(child: Text(Localization.translate('لا توجد نتائج', lang)))
+                : ListView(children: sections),
+          ),
+        ],
+      ),
       floatingActionButton: !isUserAdmin
           ? null
           : FloatingActionButton(

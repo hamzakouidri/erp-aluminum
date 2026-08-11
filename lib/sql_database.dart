@@ -830,6 +830,11 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await db.execute(
+        'ALTER TABLE ShutterComponents ADD COLUMN motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
         "ALTER TABLE ShutterComponents ADD COLUMN shutter_subtype TEXT NOT NULL DEFAULT 'normal';",
       );
     } catch (_) {}
@@ -846,6 +851,11 @@ class SqlDatabase {
     try {
       await db.execute(
         "ALTER TABLE ShutterComponents ADD COLUMN weight_per_sqm REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN track_measurement TEXT DEFAULT '';",
       );
     } catch (_) {}
     try {
@@ -1924,6 +1934,7 @@ class SqlDatabase {
           series_ids TEXT,
           is_active INTEGER NOT NULL DEFAULT 1,
           measurement TEXT DEFAULT '',
+          track_measurement TEXT DEFAULT '',
           shutter_subtype TEXT NOT NULL DEFAULT 'normal',
           bar_length_m REAL NOT NULL DEFAULT 0.0,
           motor_diameter TEXT DEFAULT '',
@@ -2760,9 +2771,11 @@ class SqlDatabase {
       series_ids TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
       measurement TEXT DEFAULT '',
+      track_measurement TEXT DEFAULT '',
       shutter_subtype TEXT NOT NULL DEFAULT 'normal',
       bar_length_m REAL NOT NULL DEFAULT 0.0,
       motor_diameter TEXT DEFAULT '',
+      motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0,
       cap_thickness REAL NOT NULL DEFAULT 0.0
     )
     ''');
@@ -8681,6 +8694,16 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await myDb!.execute(
+        'ALTER TABLE ShutterComponents ADD COLUMN motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+    try {
+      await myDb!.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN track_measurement TEXT DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await myDb!.execute(
         "UPDATE ShutterComponents SET is_active = 1 WHERE is_active IS NULL;",
       );
     } catch (_) {}
@@ -8708,8 +8731,10 @@ class SqlDatabase {
     String unit, {
     double? barLengthM,
     String? measurement,
+    String? trackMeasurement,
     String? shutterSubtype,
     String? motorDiameter,
+    bool motorHasEmergencyCrank = false,
     double capThickness = 0.0,
   }) async {
     Database? myDb = await db;
@@ -8725,6 +8750,12 @@ class SqlDatabase {
             motorDiameter.trim().toLowerCase() == 'null')
         ? null
         : motorDiameter.trim();
+    final String? cleanTrackMeasurement =
+        (trackMeasurement == null ||
+            trackMeasurement.trim().isEmpty ||
+            trackMeasurement.trim().toLowerCase() == 'null')
+        ? null
+        : trackMeasurement.trim();
     var res = await myDb!.insert('ShutterComponents', {
       'name': name,
       'component_type': componentType,
@@ -8732,8 +8763,10 @@ class SqlDatabase {
       'unit': unit,
       'bar_length_m': barLengthM,
       'measurement': cleanMeasurement,
+      'track_measurement': cleanTrackMeasurement,
       'shutter_subtype': shutterSubtype ?? 'normal',
       'motor_diameter': cleanMotorDiameter,
+      'motor_has_emergency_crank': motorHasEmergencyCrank ? 1 : 0,
       'cap_thickness': capThickness,
     });
     CloudSyncService().notifyCatalogChange();
@@ -8748,8 +8781,10 @@ class SqlDatabase {
     String unit, {
     double? barLengthM,
     String? measurement,
+    String? trackMeasurement,
     String? shutterSubtype,
     String? motorDiameter,
+    bool motorHasEmergencyCrank = false,
     double capThickness = 0.0,
   }) async {
     Database? myDb = await db;
@@ -8765,6 +8800,12 @@ class SqlDatabase {
             motorDiameter.trim().toLowerCase() == 'null')
         ? null
         : motorDiameter.trim();
+    final String? cleanTrackMeasurement =
+        (trackMeasurement == null ||
+            trackMeasurement.trim().isEmpty ||
+            trackMeasurement.trim().toLowerCase() == 'null')
+        ? null
+        : trackMeasurement.trim();
     var res = await myDb!.update(
       'ShutterComponents',
       {
@@ -8774,8 +8815,10 @@ class SqlDatabase {
         'unit': unit,
         'bar_length_m': barLengthM,
         'measurement': cleanMeasurement,
+        'track_measurement': cleanTrackMeasurement,
         'shutter_subtype': shutterSubtype ?? 'normal',
         'motor_diameter': cleanMotorDiameter,
+        'motor_has_emergency_crank': motorHasEmergencyCrank ? 1 : 0,
         'cap_thickness': capThickness,
       },
       where: 'id = ?',
@@ -10038,8 +10081,11 @@ class SqlDatabase {
         visible_height_cm REAL NOT NULL DEFAULT 0.0,
         cutting_deduction_cm REAL NOT NULL DEFAULT 0.0,
         bar_length_m REAL NOT NULL DEFAULT 0.0,
+        measurement TEXT DEFAULT '',
+        track_measurement TEXT DEFAULT '',
         is_active INTEGER NOT NULL DEFAULT 1,
         shutter_subtype TEXT NOT NULL DEFAULT 'normal',
+        motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0,
         cap_thickness REAL NOT NULL DEFAULT 0.0
       )
     ''');
@@ -10127,6 +10173,9 @@ class SqlDatabase {
       "ALTER TABLE ShutterComponents ADD COLUMN visible_height_cm REAL NOT NULL DEFAULT 0.0",
       "ALTER TABLE ShutterComponents ADD COLUMN cutting_deduction_cm REAL NOT NULL DEFAULT 0.0",
       "ALTER TABLE ShutterComponents ADD COLUMN bar_length_m REAL NOT NULL DEFAULT 0.0",
+      "ALTER TABLE ShutterComponents ADD COLUMN measurement TEXT DEFAULT ''",
+      "ALTER TABLE ShutterComponents ADD COLUMN track_measurement TEXT DEFAULT ''",
+      "ALTER TABLE ShutterComponents ADD COLUMN motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE ShutterComponents ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
       "ALTER TABLE Commandes ADD COLUMN advance_payment REAL NOT NULL DEFAULT 0.0",
       "ALTER TABLE Commandes ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'Unpaid'",

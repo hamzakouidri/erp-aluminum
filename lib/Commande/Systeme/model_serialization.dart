@@ -399,6 +399,10 @@ extension WindowModelSerialization on WindowModel {
       'selectedShutterMotorId': selectedShutterMotorId,
       'hasSideCovers': hasSideCovers,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
+      'useCustomSideCoverLayout': useCustomSideCoverLayout,
+      'sideCoverSegments':
+          sideCoverSegments.map((segment) => segment.toMap()).toList(),
+      'hiddenSideCoverSegments': hiddenSideCoverSegments.toList(),
       'isFrame140': isFrame140,
       'isShutterOnly': isShutterOnly,
       'removedShutterSides': removedShutterSides.toList(),
@@ -518,6 +522,28 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       ?.toInt();
   model.hasSideCovers = map['hasSideCovers'] ?? true;
   model.sideCoverUseSecondWidth = map['sideCoverUseSecondWidth'] ?? false;
+  model.useCustomSideCoverLayout =
+      map['useCustomSideCoverLayout'] == true ||
+      map['useCustomSideCoverLayout']?.toString().toLowerCase() == 'true';
+  if (map['sideCoverSegments'] is List) {
+    model.sideCoverSegments = (map['sideCoverSegments'] as List)
+        .whereType<Map>()
+        .map(
+          (raw) => SideCoverSegment.fromMap(
+            Map<String, dynamic>.from(raw),
+          ),
+        )
+        .toList();
+    if (model.sideCoverSegments.isNotEmpty) {
+      model.useCustomSideCoverLayout = true;
+    }
+  }
+  if (map['hiddenSideCoverSegments'] is List) {
+    model.hiddenSideCoverSegments = (map['hiddenSideCoverSegments'] as List)
+        .map((side) => side.toString().toLowerCase())
+        .where((side) => const {'left', 'right', 'top', 'bottom'}.contains(side))
+        .toSet();
+  }
   model.isFrame140 = map['isFrame140'] ?? false;
   model.isShutterOnly = map['isShutterOnly'] ?? false;
   model.primaryMullionAxis = map['primaryMullionAxis'];

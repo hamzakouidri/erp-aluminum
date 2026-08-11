@@ -348,6 +348,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen> with Sing
     } catch (e) {
       debugPrint('Error bulk updating Profiles/Series: $e');
     }
+    // Keep the visibility choice identical for every user of this workshop.
+    await _syncToCloud();
   }
 
   @override

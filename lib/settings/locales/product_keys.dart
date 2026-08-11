@@ -86,6 +86,16 @@ const Map<String, Map<AppLanguage, String>> productKeys = {
     AppLanguage.french: 'Volet',
     AppLanguage.english: 'Shutter',
   },
+  'هل يحتوي المحرك على مانيفيل احتياطي؟': {
+    AppLanguage.arabic: 'هل يحتوي المحرك على مانيفيل احتياطي؟',
+    AppLanguage.french: 'Le moteur a-t-il une manivelle de secours ?',
+    AppLanguage.english: 'Does the motor have an emergency crank?',
+  },
+  'مانيفيل احتياطي': {
+    AppLanguage.arabic: 'مانيفيل احتياطي',
+    AppLanguage.french: 'Manivelle de secours',
+    AppLanguage.english: 'Emergency crank',
+  },
   'سلسلة جديدة': {
     AppLanguage.arabic: 'سلسلة جديدة',
     AppLanguage.french: 'Nouvelle série',
@@ -762,6 +772,5 @@ const Map<String, Map<AppLanguage, String>> productKeys = {
     AppLanguage.english: 'Description',
   },
 };
-
 
 

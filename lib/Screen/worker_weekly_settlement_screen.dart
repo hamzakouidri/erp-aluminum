@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
-import '../Commande/add_commande.dart';
+import '../Commande/order_workspace_screen.dart';
 import 'package:intl/intl.dart';
 import '../services/cloud_sync_service.dart';
 
@@ -928,14 +928,10 @@ class _WorkerSettlementDetailScreenState
                 TextButton.icon(
                   onPressed: () {
                     Navigator.of(dialogContext).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            CommandePage(
-                              db: widget.db,
-                              editCommandeId: commandeId,
-                            ),
-                      ),
+                    openOrderInWorkspaceTab(
+                      context,
+                      db: widget.db,
+                      editCommandeId: commandeId,
                     );
                   },
                   icon: const Icon(Icons.open_in_new, size: 18),

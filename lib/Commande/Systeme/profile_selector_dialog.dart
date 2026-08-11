@@ -125,7 +125,10 @@ bool _isX3dShutterComponent(Map<String, dynamic> component) {
   final text =
       '${component['name'] ?? ''} ${component['shutter_subtype'] ?? ''}'
           .toLowerCase();
-  return text.contains('x3d');
+  return text.contains('x3d') ||
+      text.contains('extrud') ||
+      text.contains('إكسترودي') ||
+      text.contains('اكسترودي');
 }
 
 /// Axes created before the dedicated diameter field was available often keep

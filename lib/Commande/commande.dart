@@ -4,7 +4,7 @@ import 'dart:async';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
-import 'package:database_data/Commande/add_commande.dart'; // تأكد من المسار الصحيح لصفحة CommandePage
+import 'package:database_data/Commande/order_workspace_screen.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
@@ -159,11 +159,11 @@ class _CommandeState extends State<Commande> {
   }
 
   Future<void> _openNewOrderForm() async {
-    final result = await Navigator.of(
+    await openOrderInWorkspaceTab(
       context,
-    ).push(MaterialPageRoute(builder: (context) => CommandePage(db: db)));
-    if (!mounted || result != true) return;
-    _fetchCommandes();
+      db: db,
+      onSaved: _fetchCommandes,
+    );
   }
 
   void _fetchCommandes() {
@@ -421,19 +421,12 @@ class _CommandeState extends State<Commande> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: ElevatedButton.icon(
-                onPressed: () async {
-                  final result = await Navigator.push(
+                onPressed: () {
+                  openOrderInWorkspaceTab(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => CommandePage(db: db),
-                    ),
+                    db: db,
+                    onSaved: _fetchCommandes,
                   );
-                  if (!mounted) return;
-                  if (result == true) {
-                    setState(() {
-                      _data = db.readCommandesWithClients();
-                    });
-                  }
                 },
                 icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
                 label: Text(
@@ -686,17 +679,12 @@ class _CommandeState extends State<Commande> {
                                   borderRadius: BorderRadius.circular(30),
                                 ),
                               ),
-                              onPressed: () async {
-                                final result = await Navigator.push(
+                              onPressed: () {
+                                openOrderInWorkspaceTab(
                                   context,
-                                  MaterialPageRoute(
-                                    builder: (context) => CommandePage(db: db),
-                                  ),
+                                  db: db,
+                                  onSaved: _fetchCommandes,
                                 );
-                                if (!mounted) return;
-                                if (result == true) {
-                                  _fetchCommandes();
-                                }
                               },
                               icon: const Icon(
                                 Icons.add_circle_outline,
@@ -983,17 +971,12 @@ class _CommandeState extends State<Commande> {
 
       floatingActionButton: (!isDesktop && settings.canCreateOrders())
           ? FloatingActionButton(
-              onPressed: () async {
-                final result = await Navigator.push(
+              onPressed: () {
+                openOrderInWorkspaceTab(
                   context,
-                  MaterialPageRoute(builder: (context) => CommandePage(db: db)),
+                  db: db,
+                  onSaved: _fetchCommandes,
                 );
-                if (!mounted) return;
-                if (result == true) {
-                  setState(() {
-                    _data = db.readCommandesWithClients();
-                  });
-                }
               },
               child: const Icon(Icons.add),
             )
@@ -2520,19 +2503,12 @@ class _CommandeState extends State<Commande> {
                     title: Text(Localization.translate("Edit Order", lang)),
                     onTap: () {
                       Navigator.pop(ctx);
-                      Navigator.push(
+                      openOrderInWorkspaceTab(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => CommandePage(
-                            db: db,
-                            editCommandeId: orderData['id'],
-                          ),
-                        ),
-                      ).then((_) {
-                        setState(() {
-                          _data = db.readCommandesWithClients();
-                        });
-                      });
+                        db: db,
+                        editCommandeId: (orderData['id'] as num?)?.toInt(),
+                        onSaved: _fetchCommandes,
+                      );
                     },
                   ),
 

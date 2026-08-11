@@ -28,6 +28,10 @@ class CommandePage extends StatefulWidget {
   final int? editCommandeId;
   final int? projectId;
   final List<WindowModel>? initialProducts;
+  /// When shown inside the order workspace, the tab strip owns closing and
+  /// navigation so the form itself must not pop the whole workspace route.
+  final bool embeddedInWorkspace;
+  final VoidCallback? onSavedInWorkspace;
 
   const CommandePage({
     super.key,
@@ -35,6 +39,8 @@ class CommandePage extends StatefulWidget {
     this.editCommandeId,
     this.projectId,
     this.initialProducts,
+    this.embeddedInWorkspace = false,
+    this.onSavedInWorkspace,
   });
 
   @override
@@ -964,7 +970,11 @@ class _CommandePageState extends State<CommandePage> {
           ),
         ),
       );
-      Navigator.pop(context, true);
+      if (widget.embeddedInWorkspace) {
+        widget.onSavedInWorkspace?.call();
+      } else {
+        Navigator.pop(context, true);
+      }
     } catch (e, st) {
       debugPrint('Error saving commande: $e\n$st');
       if (!mounted) return;
@@ -1362,6 +1372,7 @@ class _CommandePageState extends State<CommandePage> {
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embeddedInWorkspace,
         title: Text(
           Localization.translate(
             "New Quotation",
