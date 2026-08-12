@@ -6422,6 +6422,11 @@ This action cannot be undone!''',
     AppLanguage.french: 'Montant',
     AppLanguage.english: 'Total Cost',
   },
+  'التكلفة الفعلية': {
+    AppLanguage.arabic: 'التكلفة الفعلية',
+    AppLanguage.french: 'Coût réel',
+    AppLanguage.english: 'Actual Cost',
+  },
   'الطول': {
     AppLanguage.arabic: 'الطول',
     AppLanguage.french: 'Longueur',

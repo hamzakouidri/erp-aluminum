@@ -162,6 +162,11 @@ class _WindowViewState extends State<WindowView> {
   int? _loadedSeriesId;
   bool _loadingAvailableProfiles = false;
 
+  // Drawing actions can generate far more pointer events than the display can
+  // render.  Keep the full controls page at one refresh per frame; the canvas
+  // itself listens to the model and remains immediate.
+  bool _modelUiRefreshQueued = false;
+
   Future<void> _loadAvailableProfiles() async {
     final seriesId = activeSeriesForSystem?.id;
     if (seriesId == null) {
@@ -473,7 +478,8 @@ class _WindowViewState extends State<WindowView> {
     final currentSelectionKey =
         '${selection.type}|${selection.zoneId}|${selection.mullionPosition}|'
         '${selection.innerDivisionIndex}|${widget.model.activeSubZone ?? ''}';
-    if (currentSelectionKey != _previousSelectionKey) {
+    final selectionChanged = currentSelectionKey != _previousSelectionKey;
+    if (selectionChanged) {
       if (selection.type == null) {
         _isLeftDrawerOpen = false;
         _isDrawerOpen = false;
@@ -487,12 +493,38 @@ class _WindowViewState extends State<WindowView> {
       _previousSelectionKey = currentSelectionKey;
     }
 
-    _syncDrawerGlassFromDrawing();
-
-    if (activeSeriesForSystem?.id != _loadedSeriesId) {
-      _loadAvailableProfiles();
+    // The preview has its own repaint listener.  While drawing a new frame,
+    // rebuilding the drawers and all their controls on every mouse movement
+    // is unnecessary and was the main source of lag on Windows.
+    if (widget.model.drawingStart != null && !selectionChanged) {
+      return;
     }
-    setState(() {});
+
+    if (selectionChanged) {
+      _refreshModelDependentUi();
+      setState(() {});
+      return;
+    }
+
+    _queueModelUiRefresh();
+  }
+
+  void _queueModelUiRefresh() {
+    if (_modelUiRefreshQueued || !mounted) return;
+    _modelUiRefreshQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _modelUiRefreshQueued = false;
+      if (!mounted) return;
+      _refreshModelDependentUi();
+      setState(() {});
+    });
+  }
+
+  void _refreshModelDependentUi() {
+    _syncDrawerGlassFromDrawing();
+    if (activeSeriesForSystem?.id != _loadedSeriesId) {
+      unawaited(_loadAvailableProfiles());
+    }
   }
 
   /// Synchronise the left glass drawer with the drawing being edited. A
@@ -649,16 +681,10 @@ class _WindowViewState extends State<WindowView> {
       return;
     }
 
-    // Calculate hingeCount based on sash height
-    final double sashHeight = zone.boundary.height;
-    int hingeCount = (sashHeight > 2100)
-        ? 4
-        : (sashHeight > 1000)
-        ? 3
-        : 2;
-    if (zone.glass.structure == GlassStructure.double) {
-      hingeCount += 1;
-    }
+    final hingeCount = standardHingeCountForSash(
+      sashHeight: zone.boundary.height,
+      glassStructure: zone.glass.structure,
+    );
 
     if (hingeCount < 3) {
       // If 2 hinges, we cannot move anything!
@@ -2521,16 +2547,11 @@ class _WindowViewState extends State<WindowView> {
                                             OpenDirection.top);
                                       }
 
-                                      double sashHeight = sashRect.height;
-                                      int hingeCount = (sashHeight > 2100)
-                                          ? 4
-                                          : (sashHeight > 1000)
-                                          ? 3
-                                          : 2;
-                                      if (zone.glass.structure ==
-                                          GlassStructure.double) {
-                                        hingeCount += 1;
-                                      }
+                                      final hingeCount =
+                                      standardHingeCountForSash(
+                                        sashHeight: sashRect.height,
+                                        glassStructure: zone.glass.structure,
+                                      );
 
                                       if (hingeCount >= 3 && !hitHandle) {
                                         double hgX = 0;
@@ -7823,21 +7844,33 @@ class _WindowViewState extends State<WindowView> {
           'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
           lang,
         ),
-        child: GestureDetector(
-          onLongPress: disabledBottom
-              ? null
-              : () => _showSideCoverSegmentDialog(context, side),
-          onSecondaryTap: disabledBottom
-              ? null
-              : () => _showSideCoverSegmentDialog(context, side),
-          child: FilterChip(
-            labelStyle: const TextStyle(fontSize: 10),
-            label: Text(labelFor(side)),
-            selected: enabled && !disabledBottom,
-            onSelected: disabledBottom
-                ? null
-                : (_) => model.toggleSideCoverSegment(side),
-          ),
+        child: Stack(
+          children: [
+            FilterChip(
+              labelStyle: const TextStyle(fontSize: 10),
+              label: Text(labelFor(side)),
+              selected: enabled && !disabledBottom,
+              onSelected: (_) {},
+            ),
+            // This transparent layer is deliberately above the chip so one
+            // recognizer owns both gestures. It makes a short tap reliable
+            // on touch screens and desktop while preserving long press and
+            // right-click for the segment editor.
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: disabledBottom
+                    ? null
+                    : () => model.toggleSideCoverSegment(side),
+                onLongPress: disabledBottom
+                    ? null
+                    : () => _showSideCoverSegmentDialog(context, side),
+                onSecondaryTap: disabledBottom
+                    ? null
+                    : () => _showSideCoverSegmentDialog(context, side),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -10108,12 +10141,11 @@ class _WindowViewState extends State<WindowView> {
                         vertical: 8,
                       ),
                       child: Row(
-                        children:
-                        (_activeShutterTab == 0 || _activeShutterTab == 4)
-                            ? _buildShutterTier2Options(context)
-                            : _arrangeInTwoRows(
-                          _buildShutterTier2Options(context),
-                        ),
+                        // Caissons, blades and tracks can have long labels.
+                        // Keep every shutter option on one horizontally
+                        // scrollable row instead of forcing two tall rows
+                        // into the fixed bottom-panel height.
+                        children: _buildShutterTier2Options(context),
                       ),
                     ),
               ),

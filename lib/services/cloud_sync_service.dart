@@ -378,6 +378,26 @@ class CloudSyncService {
         );
       }
     }
+
+    // Shutter components are soft-deleted, so a healthy central catalogue
+    // keeps its historical rows (including inactive rows).  A smaller remote
+    // list is therefore a stale or incomplete upload, not a valid update.
+    // Never let the single old component visible in Firebase replace the
+    // complete local catalogue on the manager's device.
+    final remoteShutterRows = incomingCatalog['ShutterComponents'];
+    if (remoteShutterRows is! List) return;
+    final localShutterCount = await localDb.rawQuery(
+      'SELECT COUNT(*) AS count FROM ShutterComponents',
+    );
+    final localCount =
+        (localShutterCount.first['count'] as num?)?.toInt() ?? 0;
+    if (localCount > 0 && remoteShutterRows.length < localCount) {
+      throw StateError(
+        'رفضت كتالوج مركبات الستائر الناقص '
+        '(${remoteShutterRows.length} من أصل $localCount محلياً) حتى لا '
+        'يستبدل السجلّات الكاملة بنسخة قديمة.',
+      );
+    }
   }
 
   String _describeCloudWriteFailure(Object error) {

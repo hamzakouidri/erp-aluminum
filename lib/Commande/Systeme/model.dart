@@ -12,6 +12,24 @@ enum ZoneContent { empty, fixedGlass, singleSash, doubleSash, slidingSash }
 
 enum GlassStructure { simple, double, closed }
 
+/// The number of ordinary hinges is based on the height of the actual sash.
+/// Double glazing only adds one hinge from 1800 mm upwards; it must not add a
+/// hinge to every double-glazed sash regardless of its height.
+int standardHingeCountForSash({
+  required double sashHeight,
+  required GlassStructure glassStructure,
+}) {
+  var hingeCount = sashHeight > 2100
+      ? 4
+      : sashHeight > 1000
+      ? 3
+      : 2;
+  if (glassStructure == GlassStructure.double && sashHeight >= 1800) {
+    hingeCount += 1;
+  }
+  return hingeCount;
+}
+
 enum GlassFinish {
   clair,
   stopSol,
@@ -1601,6 +1619,11 @@ class WindowModel extends ChangeNotifier {
             type.contains('support moteur') ||
             name.contains('support moteur') ||
             name.contains('سيبور موتور');
+      case 'attache':
+        return type == 'attache' ||
+            type.contains('attache') ||
+            name.contains('attache') ||
+            name.contains('أطاش');
       default:
         return false;
     }
@@ -1739,6 +1762,78 @@ class WindowModel extends ChangeNotifier {
         : double.tryParse(rawPrice.toString()) ?? 0.0;
     componentOverrides['السكك (Coulisses)'] = selected;
     shutterGlissiere = selected['name']?.toString() ?? shutterGlissiere;
+  }
+
+  /// Keep the parts that are physically tied to a shutter blade in the
+  /// ShutterComponents catalogue.  Kits are intentionally absent here: they
+  /// are selected exclusively from KitBundles.
+  Future<void> _synchronizeShutterPartsWithBlade(dynamic database) async {
+    final blade = componentOverrides['الشرائح (Lames)'];
+    if (blade == null) return;
+
+    final rows = await database.query(
+      'ShutterComponents',
+      where: '(is_active = 1 OR is_active IS NULL)',
+    );
+    final catalogue = rows.map(Map<String, dynamic>.from).toList();
+    final bladeName = (blade['name'] ?? '').toString().trim().toLowerCase();
+    final isX3d = _isX3dShutterComponent(blade);
+
+    Map<String, dynamic> withPrice(Map<String, dynamic> row) {
+      final result = Map<String, dynamic>.from(row);
+      final rawPrice = result['price_dzd'] ?? result['price'] ?? 0;
+      result['calculated_price'] = rawPrice is num
+          ? rawPrice.toDouble()
+          : double.tryParse(rawPrice.toString()) ?? 0;
+      return result;
+    }
+
+    Map<String, dynamic>? selectForBlade(String role, String overrideKey) {
+      var candidates = catalogue
+          .where((row) => _matchesShutterRole(row, role))
+          .where((row) => _isX3dShutterComponent(row) == isX3d)
+          .toList();
+      if (candidates.isEmpty) return null;
+
+      final exact = candidates.where((row) {
+        return bladeName.isNotEmpty &&
+            (row['shutter_subtype'] ?? '').toString().trim().toLowerCase() ==
+                bladeName;
+      }).toList();
+      if (exact.isNotEmpty) candidates = exact;
+
+      final currentId =
+          (componentOverrides[overrideKey]?['id'] as num?)?.toInt();
+      final current = currentId == null
+          ? null
+          : candidates.where((row) => (row['id'] as num?)?.toInt() == currentId);
+      if (current != null && current.isNotEmpty) {
+        return withPrice(current.first);
+      }
+      return withPrice(candidates.first);
+    }
+
+    // Normal motor shutters use the configured component titled/type Moteur.
+    // X3D is refined later by its torque calculation in
+    // _applyX3dPvcShutterRules.
+    if (shutterMechanism == 'محرك' && !isX3d) {
+      final motor = selectForBlade('motor', 'المحرك (Moteur)');
+      if (motor == null) {
+        componentOverrides.remove('المحرك (Moteur)');
+      } else {
+        componentOverrides['المحرك (Moteur)'] = motor;
+      }
+    }
+
+    // Attaches belong to the selected blade subtype.  There is deliberately
+    // no cross-subtype fallback: normal blades never borrow X3D attaches and
+    // vice versa.
+    final attache = selectForBlade('attache', 'أطاش (Attache)');
+    if (attache == null) {
+      componentOverrides.remove('أطاش (Attache)');
+    } else {
+      componentOverrides['أطاش (Attache)'] = attache;
+    }
   }
 
   /// X3D shutters in a standard PVC caisson use a dedicated motorised
@@ -2560,6 +2655,60 @@ class WindowModel extends ChangeNotifier {
     return null;
   }
 
+  /// Keeps custom cover pieces attached to the frame edges when the overall
+  /// window size changes. A piece ending at an outer edge extends with that
+  /// edge; a piece wholly inside the frame keeps its explicitly chosen size.
+  void _resizeSideCoverSegments(
+    double oldWidth,
+    double oldHeight,
+    double newWidth,
+    double newHeight,
+  ) {
+    if (!useCustomSideCoverLayout || sideCoverSegments.isEmpty) return;
+
+    double lengthFor(String side, double windowWidth, double windowHeight) {
+      switch (side.toLowerCase()) {
+        case 'left':
+        case 'right':
+          return windowHeight;
+        case 'top':
+        case 'bottom':
+          return windowWidth;
+        default:
+          return 0.0;
+      }
+    }
+
+    bool isAtEdge(double value, double edge) => (value - edge).abs() < 0.01;
+
+    sideCoverSegments = sideCoverSegments.map((segment) {
+      final oldLength = lengthFor(segment.side, oldWidth, oldHeight);
+      final newLength = lengthFor(segment.side, newWidth, newHeight);
+      if (oldLength <= 0 || newLength <= 0) return segment;
+
+      // Offset 0 is already fixed to the leading edge. Only values that were
+      // anchored at the trailing edge should follow the resized frame.
+      final start = isAtEdge(segment.startOffset, oldLength)
+          ? newLength
+          : segment.startOffset.clamp(0.0, newLength).toDouble();
+      final end = isAtEdge(segment.endOffset, oldLength)
+          ? newLength
+          : segment.endOffset.clamp(0.0, newLength).toDouble();
+
+      if (end <= start) {
+        // If a shortened frame would otherwise cut the piece off completely,
+        // retain its existing span at the new trailing edge instead of
+        // silently turning a customised piece into a full-length cover.
+        final preservedLength = math.min(segment.length, newLength);
+        return segment.copyWith(
+          startOffset: newLength - preservedLength,
+          endOffset: newLength,
+        );
+      }
+      return segment.copyWith(startOffset: start, endOffset: end);
+    }).toList();
+  }
+
   /// Returns the cover pieces that must be drawn or costed. Older saved
   /// drawings may contain one edited side only; their other sides are the
   /// legacy full surround unless the user has explicitly switched one off.
@@ -2682,7 +2831,11 @@ class WindowModel extends ChangeNotifier {
       side: side,
       startOffset: start,
       endOffset: end,
-      visibleWidth: math.max(0.0, segment.visibleWidth),
+      // A side-specific cover may be narrower than the selected profile, but
+      // it must never project farther than that profile's visible width.
+      visibleWidth: segment.visibleWidth
+          .clamp(0.0, sideCoverWidth)
+          .toDouble(),
     );
     sideCoverSegments = [
       ...sideCoverSegments.where((item) => item.side != side),
@@ -3434,10 +3587,21 @@ class WindowModel extends ChangeNotifier {
     // unrelated component override.
     double? readPrice(Map<String, dynamic> item) {
       final raw =
-          item['price_per_sqm'] ?? item['calculated_price'] ?? item['price'];
+          item['price_per_sqm'] ??
+          item['pricePerSqm'] ??
+          item['calculated_price'] ??
+          item['price'] ??
+          item['prix'];
       return raw is num
           ? raw.toDouble()
-          : double.tryParse(raw?.toString() ?? '');
+          : double.tryParse(
+              raw
+                      ?.toString()
+                      .trim()
+                      .replaceAll(' ', '')
+                      .replaceAll(',', '.') ??
+                  '',
+            );
     }
 
     bool isTemperingItem(Map<String, dynamic> item) {
@@ -3453,20 +3617,30 @@ class WindowModel extends ChangeNotifier {
 
     double itemThickness(Map<String, dynamic> item) {
       final raw = item['thickness'];
-      return raw is num
-          ? raw.toDouble()
-          : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+      if (raw is num) return raw.toDouble();
+      final text = raw?.toString().trim() ?? '';
+      final direct = double.tryParse(text.replaceAll(',', '.'));
+      if (direct != null) return direct;
+      final number = RegExp(r'\d+(?:[.,]\d+)?').firstMatch(text)?.group(0);
+      return double.tryParse(number?.replaceAll(',', '.') ?? '') ?? 0.0;
     }
 
-    final cataloguePrice = allGlassCache.firstWhere(
+    final matchingItems = allGlassCache.where(
       (item) =>
           isTemperingItem(item) &&
           (itemThickness(item) - thickness).abs() < 0.01,
-      orElse: () => <String, dynamic>{},
     );
-    if (cataloguePrice.isNotEmpty) {
-      return readPrice(cataloguePrice) ?? 0.0;
+    // Old synchronisations can leave an earlier zero-priced duplicate beside
+    // the priced catalogue item. Prefer the first actual price, rather than
+    // returning the first matching row blindly.
+    double? fallbackPrice;
+    for (final item in matchingItems) {
+      final price = readPrice(item);
+      if (price == null) continue;
+      fallbackPrice ??= price;
+      if (price != 0) return price;
     }
+    if (fallbackPrice != null) return fallbackPrice;
 
     // Compatibility with any older catalogues that stored the service as a
     // component override rather than a Glass catalogue item.
@@ -5069,44 +5243,9 @@ class WindowModel extends ChangeNotifier {
       ]);
       await assignShutterDefault('المحور (Axe)', ['laxe', 'axe', 'محور']);
 
-      final isMotorFetch = shutterMechanism == 'محرك';
-      final isCrankFetch =
-          shutterMechanism == 'منايفال' ||
-          shutterMechanism == 'مانيفال' ||
-          shutterMechanism == 'مانيفر';
-      if (isMotorFetch) {
-        // كيت فولي موتور: DB اسمه "Kit volet Moteur 155" أو "Kit volet moteur 185"
-        await assignShutterDefault('كيت فولي موتور (Kit Volet Moteur)', [
-          'Kit volet Moteur',
-          'Kit volet moteur',
-          'kit volet moteur',
-          'Kit Moteur',
-          'kit moteur',
-        ]);
-      } else if (isCrankFetch) {
-        // كيت فولي مانيفال: DB اسمه "Kit volet manivelle"
-        await assignShutterDefault('كيت فولي مانيفر (Kit Volet Manivelle)', [
-          'Kit volet manivelle',
-          'kit volet manivelle',
-          'Kit Volet Manivelle',
-        ]);
-        // كيت مانيفال: DB اسمه "Kit Manivelle"
-        await assignShutterDefault('كيت مانيفر (Kit Manivelle)', [
-          'Kit Manivelle',
-          'kit manivelle',
-          'kit_manivelle',
-        ]);
-      } else {
-        // حزام: DB اسمه "Kit volet 155" أو "Kit volet 185" أو "Kit volet 205"
-        // نبحث عن "Kit volet 1" و"Kit volet 2" حتى لا يتطابق مع Moteur أو manivelle
-        await assignShutterDefault('كيت فولي (Kit Volet)', [
-          'Kit volet 1',
-          'Kit volet 2',
-          'kit volet 1',
-          'kit volet 2',
-          'Kit volet 0',
-        ]);
-      }
+      // Kits are loaded exclusively from KitBundles by the quantity table.
+      // Never create a kit override from ShutterComponents here: that could
+      // turn an unrelated shutter part into a false "Kit volet moteur".
     }
 
     var bouchons2 = series.sections.where((s) {
@@ -5489,6 +5628,7 @@ class WindowModel extends ChangeNotifier {
       final tunnelDatabase = await db.db;
       if (tunnelDatabase != null) {
         await _synchronizeShutterTrackWithBlade(tunnelDatabase);
+        await _synchronizeShutterPartsWithBlade(tunnelDatabase);
       }
       return;
     }
@@ -5631,49 +5771,24 @@ class WindowModel extends ChangeNotifier {
         shutterMechanism == 'منايفال' ||
         shutterMechanism == 'مانيفال' ||
         shutterMechanism == 'مانيفر';
-    List<String> activeKitKeys = [];
+    // These overrides only remember a manual choice made from KitBundles.
+    // They must never be refilled from ShutterComponents merely because the
+    // caisson size changed.
     if (isMotor) {
-      activeKitKeys.add('كيت فولي موتور (Kit Volet Moteur)');
       componentOverrides.remove('كيت (Kit)');
       componentOverrides.remove('كيت فولي مانيفر (Kit Volet Manivelle)');
       componentOverrides.remove('كيت مانيفر (Kit Manivelle)');
       componentOverrides.remove('كيت فولي (Kit Volet)');
     } else if (isCrank) {
-      activeKitKeys.addAll([
-        'كيت فولي مانيفر (Kit Volet Manivelle)',
-        'كيت مانيفر (Kit Manivelle)',
-      ]);
       componentOverrides.remove('كيت (Kit)');
       componentOverrides.remove('كيت فولي موتور (Kit Volet Moteur)');
       componentOverrides.remove('كيت فولي (Kit Volet)');
     } else {
-      // حزام (Sangle)
-      activeKitKeys.add('كيت فولي (Kit Volet)');
       componentOverrides.remove('كيت (Kit)');
       componentOverrides.remove('كيت فولي موتور (Kit Volet Moteur)');
       componentOverrides.remove('كيت فولي مانيفر (Kit Volet Manivelle)');
       componentOverrides.remove('كيت مانيفر (Kit Manivelle)');
     }
-
-    Map<String, bool> kitMismatches = {};
-    for (var key in activeKitKeys) {
-      bool mismatch = false;
-      final kit = componentOverrides[key];
-      if (kit != null) {
-        final sizeStr = getComponentSize(kit);
-        if (sizeStr != null) {
-          final cleanSize = sizeStr.replaceAll(RegExp(r'[\s.,]'), '').trim();
-          if (!isSameSize(cleanSize, targetDigits)) mismatch = true;
-        } else {
-          mismatch = true;
-        }
-      } else {
-        mismatch = true;
-      }
-      kitMismatches[key] = mismatch;
-    }
-
-    bool hasAnyMismatch = caissonMismatch || kitMismatches.values.any((m) => m);
 
     final myDb = await db.db;
     if (myDb != null) {
@@ -5782,47 +5897,13 @@ class WindowModel extends ChangeNotifier {
         }
       }
 
-      if (caissonMismatch || hasAnyMismatch) {
+      if (caissonMismatch) {
         await assignShutterDefault('الصندوق (Caisson)', [
           'box',
           'صندوق',
           'caisson',
         ]);
       }
-      for (var key in activeKitKeys) {
-        if (kitMismatches[key] == true || hasAnyMismatch) {
-          if (key == 'كيت فولي موتور (Kit Volet Moteur)') {
-            await assignShutterDefault(key, [
-              'Kit volet Moteur',
-              'Kit volet moteur',
-              'kit volet moteur',
-              'Kit Moteur',
-              'kit moteur',
-            ]);
-          } else if (key == 'كيت فولي مانيفر (Kit Volet Manivelle)') {
-            await assignShutterDefault(key, [
-              'Kit volet manivelle',
-              'kit volet manivelle',
-              'Kit Volet Manivelle',
-            ]);
-          } else if (key == 'كيت مانيفر (Kit Manivelle)') {
-            await assignShutterDefault(key, [
-              'Kit Manivelle',
-              'kit manivelle',
-              'kit_manivelle',
-            ]);
-          } else if (key == 'كيت فولي (Kit Volet)') {
-            await assignShutterDefault(key, [
-              'Kit volet 1',
-              'Kit volet 2',
-              'kit volet 1',
-              'kit volet 2',
-              'Kit volet 0',
-            ]);
-          }
-        }
-      }
-
       // Ensure Lames, Coulisse, Lame Finale, and Axe exist
       if (!componentOverrides.containsKey('الشرائح (Lames)')) {
         await assignShutterDefault('الشرائح (Lames)', [
@@ -5847,6 +5928,7 @@ class WindowModel extends ChangeNotifier {
       }
 
       await _synchronizeShutterTrackWithBlade(myDb);
+      await _synchronizeShutterPartsWithBlade(myDb);
 
       // Keep the automatic axis in sync with the selected blade first, then
       // with the motor diameter.  The old 60/40 equality rule could select an
@@ -6672,6 +6754,7 @@ class WindowModel extends ChangeNotifier {
     _rescaleZonesInternal(oldW, oldH, newW, newH);
     width = newW;
     height = newH;
+    _resizeSideCoverSegments(oldW, oldH, newW, newH);
     updateShutterDefaultsIfNeeded();
     notifyListeners();
   }
@@ -8291,9 +8374,12 @@ class WindowModel extends ChangeNotifier {
 
   void resizeWindow(double newW, double newH) {
     _saveSnapshot();
-    _rescaleZonesInternal(width, height, newW, newH);
+    final oldWidth = width;
+    final oldHeight = height;
+    _rescaleZonesInternal(oldWidth, oldHeight, newW, newH);
     width = newW;
     height = newH;
+    _resizeSideCoverSegments(oldWidth, oldHeight, newW, newH);
     lastLayoutSize = null; // أجبر إعادة حساب canvasScale عند تغيير الحجم
     updateShutterDefaultsIfNeeded();
     notifyListeners();
@@ -8412,6 +8498,8 @@ class WindowModel extends ChangeNotifier {
     final zoneIndex = zones.indexWhere((zone) => zone.id == zoneId);
     if (zoneIndex == -1) return;
     if (saveHistory) _saveSnapshot();
+    final oldWidth = width;
+    final oldHeight = height;
 
     const minInnerSize = 50.0;
 
@@ -8562,6 +8650,7 @@ class WindowModel extends ChangeNotifier {
     if (moveRight) resizeRightEdge();
     if (moveTop) resizeTopEdge();
     if (moveBottom) resizeBottomEdge();
+    _resizeSideCoverSegments(oldWidth, oldHeight, width, height);
     notifyListeners();
   }
 
@@ -10129,6 +10218,11 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
+    // Baguettes and rosettes exist only inside a double-glazing unit. Clear
+    // their active drawing data as soon as this pane becomes simple or a
+    // panel, so an old decoration can never remain in the cost table.
+    final bool clearGlassDecor = targetStructure != GlassStructure.double;
+
     if (targetCellKey != null && targetCellKey.isNotEmpty) {
       final GlassSpecification updatedSpec = baseSpec.copyWith(
         structure: structure,
@@ -10151,6 +10245,11 @@ class WindowModel extends ChangeNotifier {
         thicknessInner: resolvedThicknessInner,
         laminatedColorOuter: laminatedColorOuter,
         laminatedColorInner: laminatedColorInner,
+        decorH: clearGlassDecor ? 0 : null,
+        decorV: clearGlassDecor ? 0 : null,
+        decorHPositions: clearGlassDecor ? const [] : null,
+        decorVPositions: clearGlassDecor ? const [] : null,
+        hasRosettes: clearGlassDecor ? false : null,
       );
       final updatedCellGlass = Map<String, GlassSpecification>.from(
         selectedZone!.cellGlassSpec,
@@ -10179,6 +10278,11 @@ class WindowModel extends ChangeNotifier {
         thicknessInner: resolvedThicknessInner,
         laminatedColorOuter: laminatedColorOuter,
         laminatedColorInner: laminatedColorInner,
+        decorH: clearGlassDecor ? 0 : null,
+        decorV: clearGlassDecor ? 0 : null,
+        decorHPositions: clearGlassDecor ? const [] : null,
+        decorVPositions: clearGlassDecor ? const [] : null,
+        hasRosettes: clearGlassDecor ? false : null,
       );
       if (selectedZone!.cellGlassSpec.isNotEmpty) {
         final updatedCellGlass = <String, GlassSpecification>{};
@@ -10204,6 +10308,11 @@ class WindowModel extends ChangeNotifier {
             thicknessInner: resolvedThicknessInner,
             laminatedColorOuter: laminatedColorOuter,
             laminatedColorInner: laminatedColorInner,
+            decorH: clearGlassDecor ? 0 : null,
+            decorV: clearGlassDecor ? 0 : null,
+            decorHPositions: clearGlassDecor ? const [] : null,
+            decorVPositions: clearGlassDecor ? const [] : null,
+            hasRosettes: clearGlassDecor ? false : null,
           );
         });
         selectedZone!.cellGlassSpec = updatedCellGlass;

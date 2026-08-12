@@ -637,6 +637,26 @@ class ComponentCalculator {
       );
     }
 
+    /// A shutter kit is configured on the Kits page, never in
+    /// ShutterComponents.  The saved logical key is internal only: the
+    /// visible label remains the exact French name of the selected bundle.
+    BomItem createKitBundle(
+      String logicalKey,
+      String bundleName, {
+      required double qty,
+    }) => BomItem(
+      category: 'shutter',
+      originalName: logicalKey,
+      name: bundleName,
+      quantity: qty * window.quantity,
+      unit: 'kit',
+      unitPrice: 0,
+      isInteractive: true,
+      isActive: true,
+      exclusionGroup: bundleName,
+      kitGroupName: bundleName,
+    );
+
     BomItem createJoint(
       String originalName, {
       String? color,
@@ -741,15 +761,10 @@ class ComponentCalculator {
         window.hasSideCovers &&
         window.isSideCoverAllowed &&
         !hasIntegratedSideCover;
-    // An integrated cover is a workshop drawing detail only.  It is built
-    // into the chosen frame section, so it must never change the quantity
-    // table, cutting sizes, or frame pieces.  A custom standalone cover
-    // similarly adds its own pieces without applying the old full-surround
-    // deductions to the frame.
+    // Both integrated and standalone covers are workshop/drawing details.
+    // A standalone cover has its own cutting row; neither kind changes the
+    // selected frame profile or the frame cutting sizes.
     final bool customSideCoverLayout = window.useCustomSideCoverLayout;
-    const bool integratedCoverAffectsFrame = false;
-    final bool nonIntegratedCoverAffectsFrame =
-        hasNonIntegratedSideCover && !customSideCoverLayout;
 
     // A separate couvre-joint must always be read from the exact section that
     // was selected for this series.  Do not reuse the width of an integrated
@@ -820,14 +835,11 @@ class ComponentCalculator {
     double selectedSeparateCoverWidth() {
       final cover = selectedSeparateSideCover;
       if (cover != null) {
-        final primary = window.sideCoverUseSecondWidth
-            ? cover.visibleWidth
-            : cover.couvreJointWidth;
-        final secondary = window.sideCoverUseSecondWidth
-            ? cover.couvreJointWidth
-            : cover.visibleWidth;
-        if (primary > 0) return primary;
-        if (secondary > 0) return secondary;
+        // The cut of a separate couvre-joint always uses its visible width.
+        // The other section width is profile geometry and must not replace it
+        // merely because the drawing orientation changed.
+        if (cover.visibleWidth > 0) return cover.visibleWidth;
+        if (cover.couvreJointWidth > 0) return cover.couvreJointWidth;
       }
 
       final override = window.sideCoverOverride;
@@ -839,30 +851,15 @@ class ComponentCalculator {
               : double.tryParse(value?.toString() ?? '') ?? 0.0;
         }
 
-        final primary = window.sideCoverUseSecondWidth
-            ? read('visible_width')
-            : read('couvre_joint_width');
-        final secondary = window.sideCoverUseSecondWidth
-            ? read('couvre_joint_width')
-            : read('visible_width');
-        if (primary > 0) return primary;
-        if (secondary > 0) return secondary;
+        final visibleWidth = read('visible_width');
+        if (visibleWidth > 0) return visibleWidth;
+        return read('couvre_joint_width');
       }
 
       return 0.0;
     }
 
-    double selectedSeparateCoverThickness() {
-      final cover = selectedSeparateSideCover;
-      if (cover != null) return cover.couvreJointThickness;
-      final value = window.sideCoverOverride?['couvre_joint_thickness'];
-      return value is num
-          ? value.toDouble()
-          : double.tryParse(value?.toString() ?? '') ?? 0.0;
-    }
-
     final separateCoverWidth = selectedSeparateCoverWidth();
-    final separateCoverThickness = selectedSeparateCoverThickness();
     Map<String, dynamic>? selectedSeparateCoverMap;
     if (selectedSeparateSideCover != null) {
       selectedSeparateCoverMap = selectedSeparateSideCover.toMap();
@@ -880,16 +877,9 @@ class ComponentCalculator {
     }
 
     // حساب netHeight: الارتفاع الصافي قبل حساب الإطار
-    double netHeight;
-    if (integratedCoverAffectsFrame) {
-      // غطاء مدمج: لا نخصم صندوق الستارة
-      netHeight = window.height;
-    } else {
-      // بدون غطاء مدمج: نخصم صندوق الستارة إذا وُجد
-      netHeight = (window.hasShutter && !window.isCaissonTunnel)
-          ? window.height - window.shutterBoxHeight
-          : window.height;
-    }
+    final double netHeight = (window.hasShutter && !window.isCaissonTunnel)
+        ? window.height - window.shutterBoxHeight
+        : window.height;
 
     String colorName = window.selectedDbColor != null
         ? window.selectedDbColor!['name']
@@ -1023,15 +1013,10 @@ class ComponentCalculator {
           }
         }
 
-        int hingesPerSash = (zone.boundary.height > 2100)
-            ? 4
-            : (zone.boundary.height > 1000)
-            ? 3
-            : 2;
-
-        if (zone.glass.structure == GlassStructure.double) {
-          hingesPerSash += 1;
-        }
+        final hingesPerSash = standardHingeCountForSash(
+          sashHeight: zone.boundary.height,
+          glassStructure: zone.glass.structure,
+        );
 
         int sashesWithHinges = sashes;
         if (window.useSystemOB || window.useDemiOB) {
@@ -1229,34 +1214,11 @@ class ComponentCalculator {
     final double weldVal = isOuterFramePvc ? 5.0 : 0.0;
     final double noBottomWeldVal = isOuterFramePvc ? 5.0 : 0.0;
 
-    double frameWidth;
-    double frameNetHeight;
-
-    if (hasIntegratedSideCover) {
-      // ======= حالة 1: إطار بغطاء مدمج =======
-      double sideCoverVisibleWidth = window.sideCoverWidth;
-      // العرض: نضيف العرض الظاهر مرتين (لليمين واليسار) + تلحيم
-      frameWidth = window.width + (2 * sideCoverVisibleWidth) + weldVal;
-
-      // The integrated cover always extends on both ends of each cut. The
-      // vertical and horizontal frame pieces follow the same formula.
-      frameNetHeight = netHeight + (2 * sideCoverVisibleWidth) + weldVal;
-    } else if (nonIntegratedCoverAffectsFrame) {
-      // ======= حالة 2: إطار بدون غطاء مدمج (غطاء منفصل) =======
-      // نخصم سُمك الـ couvre-joint من العرض والارتفاع + نضيف 5 مم تلحيم
-      // العرض: نخصم السُمك من اليمين واليسار + تلحيم
-      frameWidth = window.width - (separateCoverThickness * 2) + weldVal;
-
-      // The separate cover is assembled around the frame, so remove its
-      // actual thickness on both ends before adding the 5 mm weld allowance.
-      frameNetHeight =
-          netHeight - (separateCoverThickness * 2) + weldVal;
-    } else {
-      // ======= حالة 3: بدون غطاء جانبي =======
-      frameWidth = window.width + weldVal;
-      frameNetHeight =
-          netHeight + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
-    }
+    // A cover does not change the frame cutting dimensions. Its own cuts are
+    // created below only when it is a separately selected cover.
+    final double frameWidth = window.width + weldVal;
+    final double frameNetHeight =
+        netHeight + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
 
     final String sName =
         window.activeSlidingSeries?.name.toLowerCase() ??
@@ -1276,24 +1238,6 @@ class ComponentCalculator {
           140.0;
     }
 
-    double integratedCoverW = window.sideCoverWidth;
-    if (integratedCoverW <= 0 && outerFrameOverride != null) {
-      integratedCoverW =
-          ((outerFrameOverride['couvre_joint_width'] ??
-                      outerFrameOverride['visible_width'])
-                  as num?)
-              ?.toDouble() ??
-          0.0;
-    }
-    if (integratedCoverW <= 0) {
-      final sec = window.getSectionByType('frame');
-      if (sec != null) {
-        integratedCoverW = sec.couvreJointWidth > 0
-            ? sec.couvreJointWidth
-            : (sec.visibleWidth ?? 0.0);
-      }
-    }
-
     for (final r in frameRects) {
       // A complete window is cut from the real drawing dimensions.  For a
       // multi-frame drawing, retain each group's own dimensions while using
@@ -1303,16 +1247,6 @@ class ComponentCalculator {
       double fHeight = isCompleteFrame
           ? frameNetHeight
           : r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
-
-      if (!isCompleteFrame && integratedCoverAffectsFrame) {
-        // Integrated PVC covers always count twice in both directions; they
-        // are part of the selected frame, not optional shutter-side pieces.
-        fWidth = r.width + (2 * integratedCoverW) + weldVal;
-        fHeight = r.height + (2 * integratedCoverW) + weldVal;
-      } else if (!isCompleteFrame && nonIntegratedCoverAffectsFrame) {
-        fWidth = r.width - (2 * separateCoverThickness) + weldVal;
-        fHeight = r.height - (2 * separateCoverThickness) + weldVal;
-      }
 
       double hPiece = fHeight / 1000.0;
       double wPiece = fWidth / 1000.0;
@@ -1422,9 +1356,9 @@ class ComponentCalculator {
         }
       } else {
         final double w = separateCoverWidth;
-        // The standalone PVC couvre-joint is welded as a complete surround.
-        // It needs a 5 mm welding allowance. Aluminium covers are cut without
-        // this allowance, but both materials include the cover width twice.
+        // The standalone couvre-joint is cut using its visible width: that
+        // width is included at both ends. PVC also needs 5 mm for welding;
+        // aluminium does not. An integrated cover never enters this branch.
 
         // The legacy full-cover setting still keeps its previous behaviour.
         final checkShutterRemoval = window.removedShutterSides.isNotEmpty;
@@ -2663,14 +2597,19 @@ class ComponentCalculator {
         void addAndExpandKit(
           String uiKey,
           List<String> defaultKeywords,
-          bool isMotorized, {
+          bool _isMotorized, {
           bool filterAxeItems = true,
         }) {
           String? matchedKitName;
           String? actualKitName;
           if (window.componentOverrides.containsKey(uiKey)) {
             final overrideItem = window.componentOverrides[uiKey];
-            actualKitName = overrideItem['name']?.toString();
+            // Ignore legacy values that were incorrectly saved from
+            // ShutterComponents.  Only a KitBundles selection is allowed to
+            // override the actual bundle chosen below.
+            if (overrideItem['catalog_source'] == 'KitBundles') {
+              actualKitName = overrideItem['name']?.toString();
+            }
           }
 
           List<String> searchPriority = [];
@@ -2690,47 +2629,42 @@ class ComponentCalculator {
 
           // Pass 2: Partial substring match — handles 'Kit volet 1' → 'Kit volet 155'
           if (matchedKitName == null) {
-            outer:
+            final candidates = <String>[];
             for (final keyword in searchPriority) {
               final lowerKw = keyword.toLowerCase();
               for (final bundleKey in kitBundleData.keys) {
                 if (bundleKey.toLowerCase().contains(lowerKw) &&
                     (kitBundleData[bundleKey]?.isNotEmpty ?? false)) {
-                  matchedKitName = bundleKey;
-                  break outer;
+                  candidates.add(bundleKey);
                 }
               }
             }
+            if (candidates.isNotEmpty) {
+              final targetBoxSize = window.shutterBoxHeight.round();
+              matchedKitName = candidates.firstWhere(
+                (name) {
+                  final size = RegExp(r'(?<!\d)(\d{3})(?!\d)')
+                      .firstMatch(name)
+                      ?.group(1);
+                  return size != null && int.tryParse(size) == targetBoxSize;
+                },
+                orElse: () => candidates.first,
+              );
+            }
           }
 
-          // groupName used only for display fallback when bundle not found
-          final String groupName = matchedKitName ?? uiKey;
+          // A kit must always come from KitBundles.  If it is not configured
+          // there, show the French catalogue query instead of inventing an
+          // Arabic component or borrowing a similarly named shutter part.
+          final String groupName = matchedKitName ?? defaultKeywords.first;
           final bool perLeaf = kitPerLeafMap[groupName] ?? false;
           final double kitQty = perLeaf
               ? ((doubleSashCount * 2) + singleSashCount).toDouble()
               : 1.0;
 
-          if (isMotorized) {
-            items.add(
-              createInteractiveAccessory(
-                uiKey,
-                groupName,
-                isActive: true, // دائماً مفعَّل — لا يُشطَب أبداً
-                qty: kitQty,
-                kitGroupName: matchedKitName ?? uiKey,
-                category: 'shutter', // ينتمي لقسم الستار، ليس الإكسسوارات
-              ),
-            );
-          } else {
-            items.add(
-              createShutter(
-                uiKey,
-                color: colorName,
-                qty: kitQty,
-                kitGroupName: matchedKitName ?? uiKey,
-              ),
-            );
-          }
+          // `isMotorized` describes the mechanism, but every kit uses the
+          // same source: its KitBundles record and exact stored French name.
+          items.add(createKitBundle(uiKey, groupName, qty: kitQty));
 
           if (matchedKitName != null) {
             final String shutterVariant = isExtrudedBlade
@@ -2805,13 +2739,15 @@ class ComponentCalculator {
               'kit volet manivelle',
               'Kit Volet Manivelle',
             ],
-            true,
+            // A manual shutter only swaps the normal volet kit for this
+            // shutter kit; it must not enable motor/accessory interactions.
+            false,
           );
           addAndExpandKit(
             'كيت مانيفر (Kit Manivelle)',
             // DB: "Kit Manivelle"
             ['Kit Manivelle', 'kit manivelle', 'kit_manivelle'],
-            true,
+            false,
           );
         } else {
           // حزام (Sangle): DB: "Kit volet 155", "Kit volet 185", "Kit volet 205"
@@ -3048,29 +2984,20 @@ class ComponentCalculator {
       }
 
       // ===== 10. أطاش (Attache) =====
-      int totalAttaches = (window.width <= 1200)
-          ? 2
-          : (window.width <= 2000 ? 3 : 4);
-      if (isTunnel) {
+      // Kit Volet contains two attaches. Count the total from shutter width,
+      // then list only the remaining standalone attaches: 2 below 1200 mm,
+      // 3 from 1200 mm, 4 from 1600 mm, and 5 from 2000 mm.
+      final int totalAttaches = window.width >= 2000
+          ? 5
+          : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
+      final int attachesIncludedByKit = isKitActive ? 2 : 0;
+      final int attachesToAdd = (totalAttaches - attachesIncludedByKit)
+          .clamp(0, totalAttaches)
+          .toInt();
+      if (attachesToAdd > 0) {
         items.add(
-          createShutter('أطاش (Attache)', qty: totalAttaches.toDouble()),
+          createShutter('أطاش (Attache)', qty: attachesToAdd.toDouble()),
         );
-      } else {
-        if (isExtrudedBlade) {
-          // في الشفرة الإكسترودي، لا يمكن استخدام الأطاش العادية المرفقة مع الكيت.
-          // لذا، نقوم بإضافة إجمالي عدد الأطاش كعنصر منفصل خاص بالإكسترودي يتم شراؤه خارج الكيت.
-          items.add(
-            createShutter('أطاش (Attache)', qty: totalAttaches.toDouble()),
-          );
-        } else {
-          // في الشفرة العادية، الكيت يحتوي بالفعل على 2 أطاش، ونحتاج فقط الأطاش الإضافية.
-          int extraAttaches = totalAttaches - 2;
-          if (extraAttaches > 0) {
-            items.add(
-              createShutter('أطاش (Attache)', qty: extraAttaches.toDouble()),
-            );
-          }
-        }
       }
 
       // ===== 11. الإكسسوارات الفردية (Tandem, Embout, Support Roulement, Support Moteur) =====
@@ -3086,6 +3013,7 @@ class ComponentCalculator {
                 'tandem_group',
                 isActive: isTandemActive,
                 qty: 1,
+                category: 'shutter',
               ),
             );
           }
@@ -3098,6 +3026,7 @@ class ComponentCalculator {
                 'embout_group',
                 isActive: isEmboutActive,
                 qty: 1,
+                category: 'shutter',
               ),
             );
             items.add(
@@ -3106,6 +3035,7 @@ class ComponentCalculator {
                 'roulement_group',
                 isActive: isSupportRoulementActive,
                 qty: 1,
+                category: 'shutter',
               ),
             );
           }
@@ -3119,6 +3049,7 @@ class ComponentCalculator {
                 'motor_support_group',
                 isActive: isSupportMoteurActive,
                 qty: 1,
+                category: 'shutter',
               ),
             );
           }
@@ -4191,8 +4122,16 @@ class ComponentCalculator {
             }
           }
 
+          // The drawing renders baguettes and rosettes for double glazing
+          // only. Keep the quantity table on exactly the same rule so stale
+          // decoration settings from a former double pane are never priced
+          // after the user removes them or changes the pane type.
+          final hasVisibleDoubleGlassDecor =
+              cellGlass.structure == GlassStructure.double &&
+              (cellGlass.decorH > 0 || cellGlass.decorV > 0);
+
           // 🟢 حساب الديكور باجيت والورود لهذه القطعة الفردية
-          if (cellGlass.decorH > 0 || cellGlass.decorV > 0) {
+          if (hasVisibleDoubleGlassDecor) {
             double cellBaguette =
                 (cellGlass.decorH * cellGw + cellGlass.decorV * cellGh) /
                 1000.0;
@@ -4238,17 +4177,16 @@ class ComponentCalculator {
               (cellGw * cellGh / 1000000.0) * totalPieces;
 
           double layerThickness({required bool isOuter}) {
-            return isOuter
-                ? (cellGlass.thicknessOuter ??
-                      window.getThicknessForFinish(
-                        cellGlass.finishOuter,
-                        cellGlass.colorOuter,
-                      ))
-                : (cellGlass.thicknessInner ??
-                      window.getThicknessForFinish(
-                        cellGlass.finishInner,
-                        cellGlass.colorInner,
-                      ));
+            final selectedThickness = isOuter
+                ? cellGlass.thicknessOuter
+                : cellGlass.thicknessInner;
+            if (selectedThickness != null && selectedThickness > 0) {
+              return selectedThickness;
+            }
+            return window.getThicknessForFinish(
+              isOuter ? cellGlass.finishOuter : cellGlass.finishInner,
+              isOuter ? cellGlass.colorOuter : cellGlass.colorInner,
+            );
           }
 
           bool layerIsTempered({required bool isOuter}) {
@@ -5102,8 +5040,9 @@ class ComponentCalculator {
       result = desc;
     }
 
-    // Append decoration details (baguette and rosette) if configured
-    if (glass.decorH > 0 || glass.decorV > 0) {
+    // Append decoration details only when they are visible in the drawing.
+    if (glass.structure == GlassStructure.double &&
+        (glass.decorH > 0 || glass.decorV > 0)) {
       String decorText = '\n- ديكور داخلي: ${glass.decorH}×${glass.decorV}';
       if (glass.decorColor.isNotEmpty) {
         decorText += ' (اللون: ${glass.decorColor})';

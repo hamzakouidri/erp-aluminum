@@ -93,6 +93,11 @@ class SqlDatabase {
 
   int createDistributedId() => _nextDistributedId();
 
+  static double? _readStoredNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().trim() ?? '');
+  }
+
   static Map<String, dynamic> _withDistributedId(Map<String, dynamic> values) {
     return <String, dynamic>{
       ...values,
@@ -8398,7 +8403,24 @@ class SqlDatabase {
     double price = 0.0,
   }) async {
     final myDb = await db;
-    if (myDb == null) return;
+    if (myDb == null) {
+      throw StateError('Shutter component database is not available.');
+    }
+
+    // Colour-specific prices are optional.  Ensure their legacy tables are
+    // available when the user chooses to add one, instead of making the
+    // ordinary component price depend on a colour configuration.
+    await _ensureShutterColorTables(myDb);
+    final component = await myDb.query(
+      'ShutterComponents',
+      columns: const ['id'],
+      where: 'id = ?',
+      whereArgs: [shutterComponentId],
+      limit: 1,
+    );
+    if (component.isEmpty) {
+      throw StateError('The selected shutter component no longer exists.');
+    }
 
     await myDb.transaction((txn) async {
       if (enabled) {
@@ -8424,6 +8446,23 @@ class SqlDatabase {
         );
       }
     });
+
+    if (enabled) {
+      final stored = await myDb.query(
+        'ShutterColorPrices',
+        columns: const ['price'],
+        where: 'shutter_component_id = ? AND color_id = ?',
+        whereArgs: [shutterComponentId, colorId],
+        limit: 1,
+      );
+      final savedPrice =
+          stored.isEmpty ? null : _readStoredNumber(stored.first['price']);
+      if (stored.isEmpty ||
+          savedPrice == null ||
+          (savedPrice - price).abs() > 0.000001) {
+        throw StateError('The shutter colour price was not persisted.');
+      }
+    }
     CloudSyncService().notifyCatalogChange();
   }
 
@@ -8834,6 +8873,9 @@ class SqlDatabase {
   /// price.
   Future<int> updateShutterComponentPrice(int id, double price) async {
     final myDb = await db;
+    if (myDb == null) {
+      throw StateError('Shutter component database is not available.');
+    }
     if (!price.isFinite) {
       throw ArgumentError.value(price, 'price', 'Price must be a finite number');
     }
@@ -8843,14 +8885,25 @@ class SqlDatabase {
     // present here as well, so saving a price never depends on which screen
     // happened to open first.
     try {
-      await myDb!.execute(
+      await myDb.execute(
         'ALTER TABLE ShutterComponents ADD COLUMN price REAL NOT NULL DEFAULT 0.0;',
       );
     } catch (_) {
       // The column already exists on current databases.
     }
 
-    final res = await myDb!.update(
+    final component = await myDb.query(
+      'ShutterComponents',
+      columns: const ['id'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (component.isEmpty) {
+      return 0;
+    }
+
+    final res = await myDb.update(
       'ShutterComponents',
       {'price': price},
       where: 'id = ?',
@@ -8869,7 +8922,7 @@ class SqlDatabase {
     );
     if (savedRow.isEmpty) return 0;
 
-    final stored = (savedRow.first['price'] as num?)?.toDouble();
+    final stored = _readStoredNumber(savedRow.first['price']);
     if (stored == null || (stored - price).abs() > 0.000001) return 0;
 
     CloudSyncService().notifyCatalogChange();

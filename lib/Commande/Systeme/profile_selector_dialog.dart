@@ -881,6 +881,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             'price_dzd': 0.0,
             'component_type': 'كيت',
             'measurement': extractSizeDigits(e['name'].toString()),
+            'catalog_source': 'KitBundles',
           }).toList();
 
           // Filter kits list by material type and series name
@@ -1146,6 +1147,48 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             final bDiameter = shutterComponentDiameter(b) ?? double.infinity;
             return aDiameter.compareTo(bDiameter);
           });
+        }
+
+        // Attaches, motors and their supports are shutter components tied to
+        // the selected blade family.  A normal blade must never offer X3D
+        // parts, and an X3D blade must never fall back to the normal family.
+        final isBladeBoundSelector =
+            t.contains('attache') ||
+            t.contains('أطاش') ||
+            t.contains('moteur') ||
+            t.contains('motor') ||
+            t.contains('محرك') ||
+            t.contains('support moteur') ||
+            t.contains('support_moteur') ||
+            t.contains('سيبور موتور') ||
+            t.contains('support roulement') ||
+            t.contains('support_roulement') ||
+            t.contains('سيبور رولمو') ||
+            t.contains('embout') ||
+            t.contains('الامبو');
+        if (isBladeBoundSelector) {
+          final selectedBlade = (widget.selectedBladeName ?? '')
+              .trim()
+              .toLowerCase();
+          final selectedBladeIsX3d =
+              widget.selectedBladeIsX3d ?? selectedBlade.contains('x3d');
+          initialFiltered = initialFiltered.where((component) {
+            return _isX3dShutterComponent(component) == selectedBladeIsX3d;
+          }).toList();
+
+          // An explicit blade relation is stronger than a generic normal/X3D
+          // label whenever the catalogue contains one.
+          final explicitlyLinked = initialFiltered.where((component) {
+            return selectedBlade.isNotEmpty &&
+                (component['shutter_subtype'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase() ==
+                    selectedBlade;
+          }).toList();
+          if (explicitlyLinked.isNotEmpty) {
+            initialFiltered = explicitlyLinked;
+          }
         }
 
         if (widget.targetSize != null) {

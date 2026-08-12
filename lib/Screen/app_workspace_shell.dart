@@ -903,6 +903,21 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     super.dispose();
   }
 
+  /// Phones keep swipe navigation between tabs, but do not show a horizontal
+  /// scrollbar over the top application bar.
+  Widget _wrapTabsWithDesktopScrollbar({
+    required bool isDesktop,
+    required Widget child,
+  }) {
+    if (!isDesktop) return child;
+    return Scrollbar(
+      controller: _tabsScrollController,
+      interactive: true,
+      thumbVisibility: true,
+      child: child,
+    );
+  }
+
   void _handleTabsPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent || !_tabsScrollController.hasClients) {
       return;
@@ -993,7 +1008,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                       Expanded(
                         child: ScrollConfiguration(
                           behavior: ScrollConfiguration.of(context).copyWith(
-                            scrollbars: true,
+                            scrollbars: isDesktop,
                             dragDevices: const {
                               PointerDeviceKind.touch,
                               PointerDeviceKind.mouse,
@@ -1006,10 +1021,8 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                           child: Listener(
                             behavior: HitTestBehavior.opaque,
                             onPointerSignal: _handleTabsPointerSignal,
-                            child: Scrollbar(
-                              controller: _tabsScrollController,
-                              interactive: true,
-                              thumbVisibility: isDesktop,
+                            child: _wrapTabsWithDesktopScrollbar(
+                              isDesktop: isDesktop,
                               child: ListView.builder(
                                 controller: _tabsScrollController,
                                 padding: EdgeInsetsDirectional.fromSTEB(

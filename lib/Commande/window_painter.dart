@@ -1771,9 +1771,14 @@ class WindowPainter extends CustomPainter {
       final start = segment.startOffset.clamp(0.0, sideLength).toDouble();
       final end = segment.endOffset.clamp(0.0, sideLength).toDouble();
       if (end <= start) continue;
-      final visible = segment.visibleWidth > 0
-          ? segment.visibleWidth
-          : model.sideCoverWidth;
+      // A custom value is a visible projection, never an instruction to let
+      // a cover grow beyond the selected cover profile itself.  This also
+      // repairs older drawings that accidentally stored a larger value.
+      final visible = (segment.visibleWidth > 0
+              ? segment.visibleWidth
+              : model.sideCoverWidth)
+          .clamp(0.0, model.sideCoverWidth)
+          .toDouble();
       if (visible <= 0) continue;
       geometry[segment.side] = {
         'start': start,
@@ -1803,6 +1808,27 @@ class WindowPainter extends CustomPainter {
     final joinBottomRight =
         model.hasBottomFrame && reachesEnd('bottom') && reachesEnd('right');
 
+    // Where two covers meet with different visible widths, only the common
+    // part is welded at 45°.  The excess of the wider profile is cut square
+    // at that same point.  Drawing both pieces with their own full width was
+    // what made a partial cover spill past the adjacent frame side.
+    double jointSpan(String first, String second, bool joins) {
+      if (!joins) return 0.0;
+      return math.min(
+        geometry[first]!['visible']!,
+        geometry[second]!['visible']!,
+      );
+    }
+
+    final topLeftSpan = jointSpan('top', 'left', joinTopLeft);
+    final topRightSpan = jointSpan('top', 'right', joinTopRight);
+    final bottomLeftSpan = jointSpan('bottom', 'left', joinBottomLeft);
+    final bottomRightSpan = jointSpan(
+      'bottom',
+      'right',
+      joinBottomRight,
+    );
+
     for (final entry in geometry.entries) {
       final side = entry.key;
       final data = entry.value;
@@ -1813,45 +1839,86 @@ class WindowPainter extends CustomPainter {
 
       switch (side) {
         case 'left':
+          final topSpan = topLeftSpan;
+          final bottomSpan = bottomLeftSpan;
           path = Path()
             ..moveTo(0, topY + start)
-            ..lineTo(-visible, topY + start - (joinTopLeft ? visible : 0))
             ..lineTo(
-              -visible,
-              topY + end + (joinBottomLeft ? visible : 0),
-            )
+              topSpan > 0 ? -topSpan : -visible,
+              topY + start - topSpan,
+            );
+          if (topSpan > 0 && visible > topSpan) {
+            path.lineTo(-visible, topY + start - topSpan);
+          }
+          path.lineTo(-visible, topY + end + bottomSpan);
+          if (bottomSpan > 0 && visible > bottomSpan) {
+            path.lineTo(-bottomSpan, topY + end + bottomSpan);
+          }
+          path
             ..lineTo(0, topY + end)
             ..close();
           break;
         case 'right':
+          final topSpan = topRightSpan;
+          final bottomSpan = bottomRightSpan;
           path = Path()
             ..moveTo(w, topY + start)
             ..lineTo(
-              w + visible,
-              topY + start - (joinTopRight ? visible : 0),
-            )
-            ..lineTo(
-              w + visible,
-              topY + end + (joinBottomRight ? visible : 0),
-            )
+              w + (topSpan > 0 ? topSpan : visible),
+              topY + start - topSpan,
+            );
+          if (topSpan > 0 && visible > topSpan) {
+            path.lineTo(w + visible, topY + start - topSpan);
+          }
+          path.lineTo(w + visible, topY + end + bottomSpan);
+          if (bottomSpan > 0 && visible > bottomSpan) {
+            path.lineTo(w + bottomSpan, topY + end + bottomSpan);
+          }
+          path
             ..lineTo(w, topY + end)
             ..close();
           break;
         case 'top':
+          final leftSpan = topLeftSpan;
+          final rightSpan = topRightSpan;
           path = Path()
             ..moveTo(start, topY)
             ..lineTo(end, topY)
-            ..lineTo(end + (joinTopRight ? visible : 0), topY - visible)
-            ..lineTo(start - (joinTopLeft ? visible : 0), topY - visible)
+            ..lineTo(
+              end + rightSpan,
+              topY - (rightSpan > 0 ? rightSpan : visible),
+            );
+          if (rightSpan > 0 && visible > rightSpan) {
+            path.lineTo(end + rightSpan, topY - visible);
+          }
+          path.lineTo(start - leftSpan, topY - visible);
+          if (leftSpan > 0 && visible > leftSpan) {
+            path.lineTo(start - leftSpan, topY - leftSpan);
+          }
+          path
+            ..lineTo(start, topY)
             ..close();
           break;
         case 'bottom':
           if (!model.hasBottomFrame) continue;
+          final leftSpan = bottomLeftSpan;
+          final rightSpan = bottomRightSpan;
           path = Path()
             ..moveTo(start, h)
             ..lineTo(end, h)
-            ..lineTo(end + (joinBottomRight ? visible : 0), h + visible)
-            ..lineTo(start - (joinBottomLeft ? visible : 0), h + visible)
+            ..lineTo(
+              end + rightSpan,
+              h + (rightSpan > 0 ? rightSpan : visible),
+            );
+          if (rightSpan > 0 && visible > rightSpan) {
+            path.lineTo(end + rightSpan, h + visible);
+          }
+          path.lineTo(start - leftSpan, h + visible);
+          if (leftSpan > 0 && visible > leftSpan) {
+            path.lineTo(start - leftSpan, h + leftSpan);
+          }
+          path
+            ..lineTo(start, h)
             ..close();
           break;
         default:
@@ -5679,16 +5746,10 @@ class WindowPainter extends CustomPainter {
     required double topOffset,
     required bool isTopBound,
   }) {
-    double netHeight = zone.boundary.height;
-    int hingeCount = (netHeight > 2100)
-        ? 4
-        : (netHeight > 1000)
-        ? 3
-        : 2;
-
-    if (zone.glass.structure == GlassStructure.double) {
-      hingeCount += 1;
-    }
+    var hingeCount = standardHingeCountForSash(
+      sashHeight: zone.boundary.height,
+      glassStructure: zone.glass.structure,
+    );
 
     // Full System OB replaces the ordinary hinge layout only on the leaf that
     // carries the handle. Demi-OB has its own hardware and must not be drawn

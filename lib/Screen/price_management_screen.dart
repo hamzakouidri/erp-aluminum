@@ -181,6 +181,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     });
   }
 
+  double _readStoredPrice(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().trim() ?? '') ?? 0.0;
+  }
+
   Future<void> _loadAllData() async {
     // Ignore a slower, older reload if a more recent database event arrives
     // while it is still reading.  Otherwise its late setState can replace the
@@ -353,7 +358,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       for (var row in gPricesData) {
         int gId = row['glass_id'] as int;
         String cName = row['color_name'] as String;
-        double p = (row['price'] as num).toDouble();
+        double p = _readStoredPrice(row['price']);
         if (!tempGlassColorPrices.containsKey(gId)) {
           tempGlassColorPrices[gId] = {};
         }
@@ -448,7 +453,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       for (var row in shData) {
         int sId = row['shutter_component_id'] as int;
         int cId = row['color_id'] as int;
-        double p = (row['price'] as num).toDouble();
+        double p = _readStoredPrice(row['price']);
         if (!tempShutterPrices.containsKey(sId)) {
           tempShutterPrices[sId] = {};
         }
@@ -462,7 +467,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       for (var row in sqmPricesData) {
         String blade = row['blade_type'] as String;
         int cId = row['color_id'] as int;
-        double p = (row['price_per_sqm'] as num).toDouble();
+        double p = _readStoredPrice(row['price_per_sqm']);
         if (!tempShutterSqmPrices.containsKey(blade)) {
           tempShutterSqmPrices[blade] = {};
         }
@@ -1101,11 +1106,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         child: Text(Localization.translate('لا توجد بيانات.', lang)),
       );
     }
-    if (allColorList.isEmpty) {
-      return Center(
-        child: Text(Localization.translate('لا توجد ألوان.', lang)),
-      );
-    }
 
     final query = _shutterSearchQuery.trim().toLowerCase();
     final filteredShutters = shutterList.where((item) {
@@ -1134,9 +1134,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
         final sColors = shutterColorPrices[shutterId] ?? {};
         final hasColorPrices = sColors.isNotEmpty;
-        final singlePrice = (shutter['price'] is num)
-            ? (shutter['price'] as num).toDouble()
-            : 0.0;
+        final singlePrice = _readStoredPrice(shutter['price']);
 
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
@@ -1210,7 +1208,50 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 ),
               ),
               const Divider(height: 1, thickness: 0.7),
+              // A shutter component always owns a base price.  Colour prices
+              // are optional overrides, not a prerequisite for pricing the
+              // component.  Keeping this row visible also lets an uncoloured
+              // component be priced immediately after it is created.
+              PriceEditRow(
+                title: Localization.translate('السعر الافتراضي', lang),
+                titleIcon: Icon(
+                  Icons.sell,
+                  size: 13,
+                  color: Colors.deepPurple.shade400,
+                ),
+                currentPrice: singlePrice,
+                canChangePrices: canChangePrices,
+                onSave: (parsed) =>
+                    _updateShutterComponentPrice(shutterId, parsed),
+                onPriceChanged: (parsed) {
+                  const pendingKeyPrefix = 'shutter-component-';
+                  final pendingKey = '$pendingKeyPrefix$shutterId';
+                  if (parsed == null) {
+                    _removeQueuedShutterPrice(pendingKey);
+                    return;
+                  }
+                  _queueShutterPrice(
+                    key: pendingKey,
+                    price: parsed,
+                    currentPrice: singlePrice,
+                    save: (price) => _updateShutterComponentPrice(
+                      shutterId,
+                      price,
+                      showConfirmation: false,
+                    ),
+                  );
+                },
+                onSaveCompleted: () =>
+                    _removeQueuedShutterPrice('shutter-component-$shutterId'),
+              ),
               if (hasColorPrices) ...[
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  endIndent: 16,
+                  color: Colors.grey.shade200,
+                ),
                 ...sColors.keys.toList().asMap().entries.map((entry) {
                   final colorIdx = entry.key;
                   final cId = entry.value;
@@ -1262,40 +1303,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     ],
                   );
                 }),
-              ] else ...[
-                // Single price row
-                PriceEditRow(
-                  title: Localization.translate('السعر الافتراضي', lang),
-                  titleIcon: Icon(
-                    Icons.sell,
-                    size: 13,
-                    color: Colors.deepPurple.shade400,
-                  ),
-                  currentPrice: singlePrice,
-                  canChangePrices: canChangePrices,
-                  onSave: (parsed) =>
-                      _updateShutterComponentPrice(shutterId, parsed),
-                  onPriceChanged: (parsed) {
-                    const pendingKeyPrefix = 'shutter-component-';
-                    final pendingKey = '$pendingKeyPrefix$shutterId';
-                    if (parsed == null) {
-                      _removeQueuedShutterPrice(pendingKey);
-                      return;
-                    }
-                    _queueShutterPrice(
-                      key: pendingKey,
-                      price: parsed,
-                      currentPrice: singlePrice,
-                      save: (price) => _updateShutterComponentPrice(
-                        shutterId,
-                        price,
-                        showConfirmation: false,
-                      ),
-                    );
-                  },
-                  onSaveCompleted: () =>
-                      _removeQueuedShutterPrice('shutter-component-$shutterId'),
-                ),
               ],
               const SizedBox(height: 4),
             ],
@@ -1406,7 +1413,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 orElse: () => {},
               );
               if (comp.isNotEmpty) {
-                currentPrice = (comp['price'] as num?)?.toDouble() ?? 0.0;
+                currentPrice = _readStoredPrice(comp['price']);
               }
             }
 
@@ -3971,9 +3978,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                         final shut = shutterList.firstWhere(
                                           (s) => s['id'] == selectedShutId,
                                         );
-                                        final basePrice = (shut['price'] is num)
-                                            ? (shut['price'] as num).toDouble()
-                                            : 0.0;
+                                        final basePrice = _readStoredPrice(
+                                          shut['price'],
+                                        );
                                         await db.setShutterColorForComponent(
                                           shutterComponentId: selectedShutId!,
                                           colorId: cId,
@@ -4054,6 +4061,22 @@ class _PriceEditRowState extends State<PriceEditRow> {
   bool _isSaving = false;
   bool _showSaved = false;
 
+  String _normalisePriceInput(String value) {
+    const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+    const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+    var normalized = value.trim();
+    for (var index = 0; index < arabicDigits.length; index++) {
+      normalized = normalized
+          .replaceAll(arabicDigits[index], index.toString())
+          .replaceAll(persianDigits[index], index.toString());
+    }
+    return normalized
+        .replaceAll('٬', '')
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(',', '.')
+        .replaceAll('٫', '.');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -4125,10 +4148,7 @@ class _PriceEditRowState extends State<PriceEditRow> {
               readOnly: !_isEditing || !widget.canChangePrices,
               onChanged: (value) {
                 if (!_isEditing) return;
-                final normalizedPrice = value
-                    .trim()
-                    .replaceAll(',', '.')
-                    .replaceAll('٫', '.');
+                final normalizedPrice = _normalisePriceInput(value);
                 final parsed = double.tryParse(normalizedPrice);
                 widget.onPriceChanged?.call(parsed);
               },
@@ -4204,10 +4224,9 @@ class _PriceEditRowState extends State<PriceEditRow> {
                     ? null
                     : () async {
                         if (_isEditing) {
-                          final normalizedPrice = _ctrl.text
-                              .trim()
-                              .replaceAll(',', '.')
-                              .replaceAll('٫', '.');
+                          final normalizedPrice = _normalisePriceInput(
+                            _ctrl.text,
+                          );
                           double? parsed = double.tryParse(normalizedPrice);
                           if (parsed == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
