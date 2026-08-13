@@ -72,6 +72,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   int _accessoryPricingMode =
       0; // 0: standard/color prices, 1: included in selling price
   String _shutterSearchQuery = '';
+  String _accessorySearchQuery = '';
   final Map<String, _PendingShutterPrice> _pendingShutterPrices = {};
   bool _isSavingAllShutterPrices = false;
   String _jointSearchQuery = '';
@@ -1111,8 +1112,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final filteredShutters = shutterList.where((item) {
       if (query.isEmpty) return true;
       final name = (item['name'] ?? '').toString().toLowerCase();
+      final code = (item['code'] ?? '').toString().toLowerCase();
       final type = (item['component_type'] ?? '').toString().toLowerCase();
-      return name.contains(query) || type.contains(query);
+      final subtype = (item['shutter_subtype'] ?? '')
+          .toString()
+          .toLowerCase();
+      final measurement = (item['measurement'] ?? '')
+          .toString()
+          .toLowerCase();
+      return name.contains(query) ||
+          code.contains(query) ||
+          type.contains(query) ||
+          subtype.contains(query) ||
+          measurement.contains(query);
     }).toList();
 
     if (filteredShutters.isEmpty) {
@@ -2075,6 +2087,25 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: Localization.translate(
+                'بحث في الإكسسوارات...',
+                lang,
+              ),
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              border: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(20)),
+              ),
+            ),
+            onChanged: (value) {
+              setState(() => _accessorySearchQuery = value);
+            },
+          ),
+        ),
         Expanded(
           child: _accessoryPricingMode == 0
               ? _buildAccessoryListStandard(context)
@@ -2098,12 +2129,35 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       );
     }
 
+    final query = _accessorySearchQuery.trim().toLowerCase();
+    final filteredAccessories = accessoryList.where((accessory) {
+      if (query.isEmpty) return true;
+      final name = (accessory['name'] ?? '').toString().toLowerCase();
+      final code = (accessory['code'] ?? '').toString().toLowerCase();
+      final type = (accessory['type'] ?? '').toString().toLowerCase();
+      final material = (accessory['material_type'] ?? '')
+          .toString()
+          .toLowerCase();
+      return name.contains(query) ||
+          code.contains(query) ||
+          type.contains(query) ||
+          material.contains(query);
+    }).toList();
+
+    if (filteredAccessories.isEmpty) {
+      return Center(
+        child: Text(
+          Localization.translate('لا توجد نتائج مطابقة للبحث.', lang),
+        ),
+      );
+    }
+
     return ListView.builder(
       key: const PageStorageKey<String>('price-accessories-standard-list'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: accessoryList.length,
+      itemCount: filteredAccessories.length,
       itemBuilder: (context, index) {
-        final acc = accessoryList[index];
+        final acc = filteredAccessories[index];
         final accId = acc['id'] as int;
         final accName = acc['name'].toString();
 
@@ -2296,19 +2350,33 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final lang = Provider.of<AppSettingsProvider>(context).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Filter out OB/Demi/Verrou accessory items
+    final query = _accessorySearchQuery.trim().toLowerCase();
+    // Filter out OB/Demi/Verrou accessory items, then apply the search.
     final filteredAccessories = accessoryList.where((acc) {
       final name = acc['name'].toString().toLowerCase();
-      final type = acc['type'].toString().toLowerCase();
+      final code = (acc['code'] ?? '').toString().toLowerCase();
+      final type = (acc['type'] ?? '').toString().toLowerCase();
+      final material = (acc['material_type'] ?? '').toString().toLowerCase();
 
       if (name.contains('ob') || type.contains('ob')) return false;
       if (name.contains('demi') || type.contains('demi')) return false;
       if (name.contains('verrou') || type.contains('verrou')) return false;
 
-      return true;
+      return query.isEmpty ||
+          name.contains(query) ||
+          code.contains(query) ||
+          type.contains(query) ||
+          material.contains(query);
     }).toList();
 
-    final totalItemsCount = kitBundlesList.length + filteredAccessories.length;
+    final filteredKits = kitBundlesList.where((kit) {
+      if (query.isEmpty) return true;
+      final name = (kit['name'] ?? '').toString().toLowerCase();
+      final description = (kit['description'] ?? '').toString().toLowerCase();
+      return name.contains(query) || description.contains(query);
+    }).toList();
+
+    final totalItemsCount = filteredKits.length + filteredAccessories.length;
 
     if (totalItemsCount == 0) {
       return Center(
@@ -2326,8 +2394,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: totalItemsCount,
       itemBuilder: (context, index) {
-        if (index < kitBundlesList.length) {
-          final kit = kitBundlesList[index];
+        if (index < filteredKits.length) {
+          final kit = filteredKits[index];
           final kitId = kit['id'] as int;
           final kitName = kit['name'].toString();
           final isCalculated = kit['is_selling_calculated'] != 0;
@@ -2370,7 +2438,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             ),
           );
         } else {
-          final acc = filteredAccessories[index - kitBundlesList.length];
+          final acc = filteredAccessories[index - filteredKits.length];
           final accId = acc['id'] as int;
           final accName = acc['name'].toString();
           final isCalculated = acc['is_selling_calculated'] == 1;
@@ -2916,6 +2984,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         final String name = item.glass['name']?.toString() ?? '';
         final String glassType = item.glass['type']?.toString() ?? '';
         final String subtype = item.glass['subtype']?.toString() ?? '';
+        final normalizedSubtype = subtype.toLowerCase();
+        final isDecorPanneau =
+            glassType.toLowerCase() == 'panneau' &&
+            (normalizedSubtype.contains('decor') ||
+                normalizedSubtype.contains('décor') ||
+                normalizedSubtype.contains('ديكور'));
         final int id = item.glass['id'] as int;
 
         String displayTitle = name;
@@ -2938,6 +3012,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             displaySubtitle = 'سعر المتر الخطي  |  النوع: باجيت ديكور';
           } else if (t == 'rosette') {
             displaySubtitle = 'سعر القطعة  |  النوع: وردة ديكور';
+          } else if (isDecorPanneau) {
+            displaySubtitle = 'سعر القطعة  |  النوع: بانو ديكور';
           } else {
             displaySubtitle = 'سعر المتر المربع  |  النوع: $glassType';
             if (t == 'panneau' && subtype.isNotEmpty) {

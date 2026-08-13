@@ -133,274 +133,280 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: InputDecoration(
-                    labelText: Localization.translate(
-                      'اسم المركب (مثال: محرك سومفي)',
-                      lang,
-                    ),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedType,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: Localization.translate('النوع', lang),
-                    border: OutlineInputBorder(),
-                  ),
-                  items: types.entries
-                      .map(
-                        (e) => DropdownMenuItem(
-                          value: e.key,
-                          child: Text(
-                            e.value,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (val) {
-                    setStateDialog(() {
-                      selectedType = val!;
-                      if (selectedType != 'bouchon_lame') {
-                        selectedLinkedBlade = null;
-                      }
-                      if (selectedType == 'kit') {
-                        selectedUnit = 'piece';
-                      }
-                      if (selectedType != 'motor') {
-                        motorHasEmergencyCrank = false;
-                      }
-                    });
-                  },
-                ),
-                SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedUnit,
-                  decoration: InputDecoration(
-                    labelText: Localization.translate('الوحدة', lang),
-                    border: OutlineInputBorder(),
-                  ),
-                  items: units.entries
-                      .map(
-                        (e) => DropdownMenuItem(
-                          value: e.key,
-                          child: Text(e.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (val) {
-                    setStateDialog(() {
-                      selectedUnit = val!;
-                      // Force piece for specific types
-                      if (selectedType == 'kit') {
-                        selectedUnit = 'piece';
-                      }
-                    });
-                  },
-                ),
-                if (selectedUnit == 'bar' && selectedType != 'kit') ...[
-                  SizedBox(height: 10),
                   TextField(
-                    controller: barLengthCtrl,
-                    keyboardType: TextInputType.number,
+                    controller: nameCtrl,
                     decoration: InputDecoration(
                       labelText: Localization.translate(
-                        'طول البارة (بالمتر)',
+                        'اسم المركب (مثال: محرك سومفي)',
                         lang,
                       ),
                       border: OutlineInputBorder(),
                     ),
                   ),
-                ],
-                if ([
-                  'blade',
-                  'laxe',
-                  'final_blade',
-                  'attache',
-                  'support_moteur',
-                  'embout',
-                  'support_roulement',
-                  'tandem',
-                  'rouleau',
-                  'tulip',
-                ].contains(selectedType)) ...[
                   SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedSubtype,
+                    initialValue: selectedType,
+                    isExpanded: true,
                     decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'نوع الشفرة/الملحق',
-                        lang,
-                      ),
+                      labelText: Localization.translate('النوع', lang),
                       border: OutlineInputBorder(),
                     ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'normal',
-                        child: Text(Localization.translate('عادي', lang)),
-                      ),
-                      DropdownMenuItem(
-                        value: 'extruded',
-                        child: Text(Localization.translate('إكسترودي', lang)),
-                      ),
-                    ],
+                    items: types.entries
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e.key,
+                            child: Text(
+                              e.value,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
                     onChanged: (val) {
                       setStateDialog(() {
-                        selectedSubtype = val!;
+                        selectedType = val!;
+                        if (selectedType != 'bouchon_lame') {
+                          selectedLinkedBlade = null;
+                        }
+                        if (selectedType == 'kit') {
+                          selectedUnit = 'piece';
+                        }
+                        if (selectedType != 'motor') {
+                          motorHasEmergencyCrank = false;
+                        }
                       });
                     },
                   ),
-                ],
-                // Only blade end caps are tied to a particular blade.
-                if (selectedType == 'bouchon_lame') ...[
                   SizedBox(height: 10),
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: SqlDatabase().db.then(
-                      (db) =>
-                          db?.query(
-                            'ShutterComponents',
-                            where:
-                                "component_type = 'blade' AND (is_active = 1 OR is_active IS NULL)",
-                          ) ??
-                          [],
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedUnit,
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('الوحدة', lang),
+                      border: OutlineInputBorder(),
                     ),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData)
-                        return const Center(child: CircularProgressIndicator());
-                      final blades = snapshot.data!;
-                      return DropdownButtonFormField<String>(
-                        value: blades.any(
-                          (b) => b['name'] == selectedLinkedBlade,
-                        )
-                            ? selectedLinkedBlade
-                            : null,
-                        hint: Text(
-                          Localization.translate('اختر الشفرة المرتبطة', lang),
-                        ),
-                        decoration: InputDecoration(
-                          labelText: Localization.translate(
-                            'الشفرة المرتبطة (Blade)',
-                            lang,
+                    items: units.entries
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value),
                           ),
-                          border: OutlineInputBorder(),
-                        ),
-                        items: blades
-                            .map(
-                              (b) => DropdownMenuItem(
-                                value: b['name'].toString(),
-                                child: Text(b['name'].toString()),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (val) {
-                          setStateDialog(() {
-                            selectedLinkedBlade = val;
-                          });
-                        },
-                      );
+                        )
+                        .toList(),
+                    onChanged: (val) {
+                      setStateDialog(() {
+                        selectedUnit = val!;
+                        // Force piece for specific types
+                        if (selectedType == 'kit') {
+                          selectedUnit = 'piece';
+                        }
+                      });
                     },
                   ),
-                ],
-                if (![
-                  'attache',
-                  'support_roulement',
-                  'bouchon_lame',
-                ].contains(selectedType)) ...[
-                  SizedBox(height: 10),
-                  TextField(
-                    controller: measurementCtrl,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        selectedType == 'blade'
-                            ? 'ارتفاع الشفرة (مم)'
-                            : selectedType == 'track'
-                            ? 'قياس السكة (مم)'
-                            : selectedType == 'motor'
-                            ? 'قياس المحرك (مثال: 10Nm أو 20Nm)'
-                            : selectedType == 'laxe'
-                            ? 'قطر المحور (مثال: 40 أو 60 مم)'
-                            : selectedType == 'tandem'
-                            ? 'قياس المحور المتوافق (مثال: 40 أو 60 مم)'
-                            : 'القياس (مثال: 185 أو 55)',
-                        lang,
+                  if (selectedUnit == 'bar' && selectedType != 'kit') ...[
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: barLengthCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'طول البارة (بالمتر)',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
                       ),
-                      border: OutlineInputBorder(),
                     ),
-                  ),
-                ],
-                if (selectedType == 'blade') ...[
-                  SizedBox(height: 10),
-                  TextField(
-                    controller: trackMeasurementCtrl,
-                    keyboardType: TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'قياس السكة المطابق (مم)',
-                        lang,
+                  ],
+                  if ([
+                    'blade',
+                    'laxe',
+                    'final_blade',
+                    'attache',
+                    'support_moteur',
+                    'embout',
+                    'support_roulement',
+                    'tandem',
+                    'rouleau',
+                    'tulip',
+                  ].contains(selectedType)) ...[
+                    SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedSubtype,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'نوع الشفرة/الملحق',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
                       ),
-                      border: OutlineInputBorder(),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'normal',
+                          child: Text(Localization.translate('عادي', lang)),
+                        ),
+                        DropdownMenuItem(
+                          value: 'extruded',
+                          child: Text(Localization.translate('إكسترودي', lang)),
+                        ),
+                      ],
+                      onChanged: (val) {
+                        setStateDialog(() {
+                          selectedSubtype = val!;
+                        });
+                      },
                     ),
-                  ),
-                ],
-                if (selectedType == 'motor') ...[
-                  SizedBox(height: 10),
-                  TextField(
-                    controller: motorDiameterCtrl,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'قطر المحرك (مثال: 45 أو 55)',
-                        lang,
+                  ],
+                  // Only blade end caps are tied to a particular blade.
+                  if (selectedType == 'bouchon_lame') ...[
+                    SizedBox(height: 10),
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: SqlDatabase().db.then(
+                        (db) =>
+                            db?.query(
+                              'ShutterComponents',
+                              where:
+                                  "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
+                            ) ??
+                            [],
                       ),
-                      border: OutlineInputBorder(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData)
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        final blades = snapshot.data!;
+                        return DropdownButtonFormField<String>(
+                          value:
+                              blades.any(
+                                (b) => b['name'] == selectedLinkedBlade,
+                              )
+                              ? selectedLinkedBlade
+                              : null,
+                          hint: Text(
+                            Localization.translate(
+                              'اختر الشفرة المرتبطة',
+                              lang,
+                            ),
+                          ),
+                          decoration: InputDecoration(
+                            labelText: Localization.translate(
+                              'الشفرة المرتبطة (Blade)',
+                              lang,
+                            ),
+                            border: OutlineInputBorder(),
+                          ),
+                          items: blades
+                              .map(
+                                (b) => DropdownMenuItem(
+                                  value: b['name'].toString(),
+                                  child: Text(b['name'].toString()),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) {
+                            setStateDialog(() {
+                              selectedLinkedBlade = val;
+                            });
+                          },
+                        );
+                      },
                     ),
-                  ),
-                  SizedBox(height: 10),
-                  DropdownButtonFormField<bool>(
-                    initialValue: motorHasEmergencyCrank,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'هل يحتوي المحرك على مانيفيل احتياطي؟',
-                        lang,
+                  ],
+                  if (![
+                    'attache',
+                    'support_roulement',
+                    'bouchon_lame',
+                  ].contains(selectedType)) ...[
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: measurementCtrl,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          selectedType == 'blade'
+                              ? 'ارتفاع الشفرة (مم)'
+                              : selectedType == 'track'
+                              ? 'قياس السكة (مم)'
+                              : selectedType == 'motor'
+                              ? 'قياس المحرك (مثال: 10Nm أو 20Nm)'
+                              : selectedType == 'laxe'
+                              ? 'قطر المحور (مثال: 40 أو 60 مم)'
+                              : selectedType == 'tandem'
+                              ? 'قياس المحور المتوافق (مثال: 40 أو 60 مم)'
+                              : 'القياس (مثال: 185 أو 55)',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
                       ),
-                      border: OutlineInputBorder(),
                     ),
-                    items: [
-                      DropdownMenuItem(
-                        value: true,
-                        child: Text(Localization.translate('نعم', lang)),
+                  ],
+                  if (selectedType == 'blade') ...[
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: trackMeasurementCtrl,
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
                       ),
-                      DropdownMenuItem(
-                        value: false,
-                        child: Text(Localization.translate('لا', lang)),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'قياس السكة المطابق (مم)',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
                       ),
-                    ],
-                    onChanged: (value) => setStateDialog(
-                      () => motorHasEmergencyCrank = value ?? false,
                     ),
-                  ),
-                ],
-                if (selectedType == 'bouchon_lame') ...[
-                  SizedBox(height: 10),
-                  TextField(
-                    controller: capThicknessCtrl,
-                    keyboardType: TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'سمك أغطية الشفرات (مم)',
-                        lang,
+                  ],
+                  if (selectedType == 'motor') ...[
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: motorDiameterCtrl,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'قطر المحرك (مثال: 45 أو 55)',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
                       ),
-                      border: OutlineInputBorder(),
                     ),
-                  ),
-                ],
+                    SizedBox(height: 10),
+                    DropdownButtonFormField<bool>(
+                      initialValue: motorHasEmergencyCrank,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'هل يحتوي المحرك على مانيفيل احتياطي؟',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: true,
+                          child: Text(Localization.translate('نعم', lang)),
+                        ),
+                        DropdownMenuItem(
+                          value: false,
+                          child: Text(Localization.translate('لا', lang)),
+                        ),
+                      ],
+                      onChanged: (value) => setStateDialog(
+                        () => motorHasEmergencyCrank = value ?? false,
+                      ),
+                    ),
+                  ],
+                  if (selectedType == 'bouchon_lame') ...[
+                    SizedBox(height: 10),
+                    TextField(
+                      controller: capThicknessCtrl,
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'سمك أغطية الشفرات (مم)',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -413,6 +419,18 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
+                  if (selectedType == 'bouchon_lame' &&
+                      (selectedLinkedBlade == null ||
+                          selectedLinkedBlade!.trim().isEmpty)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'يجب اختيار الشفرة المرتبطة بهذا الغطاء.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
                   try {
                     await widget.db.insertShutterComponent(
                       nameCtrl.text,
@@ -533,12 +551,12 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     // Legacy Tulip/Rouleau/Axe records sometimes stored a blade name here.
     // They are no longer blade-linked, so return them to their normal type
     // as soon as the item is edited.
-    String selectedSubtype = ['normal', 'extruded'].contains(
-      storedSubtype.toLowerCase(),
-    )
+    String selectedSubtype =
+        ['normal', 'extruded'].contains(storedSubtype.toLowerCase())
         ? storedSubtype
         : 'normal';
-    String? selectedLinkedBlade = selectedType == 'bouchon_lame' &&
+    String? selectedLinkedBlade =
+        selectedType == 'bouchon_lame' &&
             !['normal', 'extruded'].contains(storedSubtype.toLowerCase())
         ? storedSubtype
         : null;
@@ -576,10 +594,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                       .map(
                         (e) => DropdownMenuItem(
                           value: e.key,
-                          child: Text(
-                            e.value,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          child: Text(e.value, overflow: TextOverflow.ellipsis),
                         ),
                       )
                       .toList(),
@@ -708,7 +723,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           db?.query(
                             'ShutterComponents',
                             where:
-                                "component_type = 'blade' AND (is_active = 1 OR is_active IS NULL)",
+                                "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
                           ) ??
                           [],
                     ),
@@ -717,9 +732,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                         return const Center(child: CircularProgressIndicator());
                       final blades = snapshot.data!;
                       return DropdownButtonFormField<String>(
-                        value: blades.any(
-                          (b) => b['name'] == selectedLinkedBlade,
-                        )
+                        value:
+                            blades.any((b) => b['name'] == selectedLinkedBlade)
                             ? selectedLinkedBlade
                             : null,
                         hint: Text(
@@ -840,6 +854,18 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
+                  if (selectedType == 'bouchon_lame' &&
+                      (selectedLinkedBlade == null ||
+                          selectedLinkedBlade!.trim().isEmpty)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'يجب اختيار الشفرة المرتبطة بهذا الغطاء.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
                   try {
                     await widget.db.updateShutterComponent(
                       item['id'],
@@ -944,7 +970,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
               },
               child: Text(
                 Localization.translate('استعادة المكون', lang),
-                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'Cairo',
+                ),
               ),
             ),
           if (!isArchived)
@@ -957,7 +986,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
               },
               child: Text(
                 Localization.translate('أرشفة (إخفاء)', lang),
-                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'Cairo',
+                ),
               ),
             ),
           ElevatedButton(
@@ -1353,7 +1385,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
           ),
           Expanded(
             child: filteredItems.isEmpty
-                ? Center(child: Text(Localization.translate('لا توجد نتائج', lang)))
+                ? Center(
+                    child: Text(Localization.translate('لا توجد نتائج', lang)),
+                  )
                 : ListView(children: sections),
           ),
         ],

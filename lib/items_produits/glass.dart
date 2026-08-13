@@ -23,6 +23,13 @@ class _GlassScreenState extends State<GlassScreen> {
   List<String> _allColors = []; // جميع الألوان (للـ Panneau)
   final ImagePicker _picker = ImagePicker();
 
+  bool _isDecorSubtype(String? subtype) {
+    final value = (subtype ?? '').toLowerCase();
+    return value.contains('decor') ||
+        value.contains('décor') ||
+        value.contains('ديكور');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -264,26 +271,34 @@ class _GlassScreenState extends State<GlassScreen> {
                     ),
                     keyboardType: TextInputType.number,
                   ),
-                  if (selectedType == 'Panneau' && selectedSubtype == 'bardage') ...[
+                  if (selectedType == 'Panneau' &&
+                      (selectedSubtype == 'bardage' ||
+                          _isDecorSubtype(selectedSubtype))) ...[
                     const SizedBox(height: 10),
                     TextField(
                       controller: visibleWidthCtrl,
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'العرض الظاهر (Visible Width)',
+                          _isDecorSubtype(selectedSubtype)
+                              ? 'عرض الديكور'
+                              : 'العرض الظاهر (Visible Width)',
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
                       keyboardType: TextInputType.number,
                     ),
                   ],
-                  if (selectedType == 'Rosette') ...[
+                  if (selectedType == 'Rosette' ||
+                      (selectedType == 'Panneau' &&
+                          _isDecorSubtype(selectedSubtype))) ...[
                     const SizedBox(height: 10),
                     TextField(
                       controller: heightCtrl,
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'الطول',
+                          _isDecorSubtype(selectedSubtype)
+                              ? 'طول الديكور'
+                              : 'الطول',
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
@@ -324,9 +339,27 @@ class _GlassScreenState extends State<GlassScreen> {
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
                   final thickness = double.tryParse(thicknessCtrl.text) ?? 0.0;
+                  final decorWidth =
+                      double.tryParse(visibleWidthCtrl.text) ?? 0.0;
+                  final decorHeight = double.tryParse(heightCtrl.text) ?? 0.0;
+                  final isDecorPanneau =
+                      selectedType == 'Panneau' &&
+                      _isDecorSubtype(selectedSubtype);
                   final itemName = isTempering
                       ? 'Trempé ${thickness.toStringAsFixed(thickness == thickness.roundToDouble() ? 0 : 1)} mm'
                       : nameCtrl.text.trim();
+                  if (isDecorPanneau &&
+                      (decorWidth <= 0 || decorHeight <= 0)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'يجب إدخال عرض الديكور وطوله.',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
                   if (itemName.isNotEmpty && thickness > 0) {
                     // تجميع اللون/الألوان بحسب النوع
                     final String colorValue = hasMultipleColors
@@ -340,8 +373,14 @@ class _GlassScreenState extends State<GlassScreen> {
                       color: colorValue,
                       imagePath: imagePath ?? '',
                       subtype: isPanneau ? selectedSubtype : '',
-                      height: selectedType == 'Rosette' ? (double.tryParse(heightCtrl.text) ?? 0.0) : 0.0,
-                      visibleWidth: (isPanneau && selectedSubtype == 'bardage') ? (double.tryParse(visibleWidthCtrl.text) ?? 0.0) : null,
+                      height: selectedType == 'Rosette' || isDecorPanneau
+                          ? decorHeight
+                          : 0.0,
+                      visibleWidth:
+                          (isPanneau && selectedSubtype == 'bardage') ||
+                              isDecorPanneau
+                          ? decorWidth
+                          : null,
                     );
                     _loadItems();
                     if (context.mounted) Navigator.pop(context);
@@ -583,28 +622,36 @@ class _GlassScreenState extends State<GlassScreen> {
                     ),
                     keyboardType: TextInputType.number,
                   ),
-                  if (selectedType == 'Panneau' && selectedSubtype == 'bardage') ...[
+                  if (selectedType == 'Panneau' &&
+                      (selectedSubtype == 'bardage' ||
+                          _isDecorSubtype(selectedSubtype))) ...[
                     const SizedBox(height: 10),
                     TextField(
                       controller: visibleWidthCtrl,
                       enabled: isUserAdmin,
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'العرض الظاهر (Visible Width)',
+                          _isDecorSubtype(selectedSubtype)
+                              ? 'عرض الديكور'
+                              : 'العرض الظاهر (Visible Width)',
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
                       keyboardType: TextInputType.number,
                     ),
                   ],
-                  if (selectedType == 'Rosette') ...[
+                  if (selectedType == 'Rosette' ||
+                      (selectedType == 'Panneau' &&
+                          _isDecorSubtype(selectedSubtype))) ...[
                     const SizedBox(height: 10),
                     TextField(
                       controller: heightCtrl,
                       enabled: isUserAdmin,
                       decoration: InputDecoration(
                         labelText: Localization.translate(
-                          'الطول',
+                          _isDecorSubtype(selectedSubtype)
+                              ? 'طول الديكور'
+                              : 'الطول',
                           Provider.of<AppSettingsProvider>(context).language,
                         ),
                       ),
@@ -645,9 +692,27 @@ class _GlassScreenState extends State<GlassScreen> {
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
                   final thickness = double.tryParse(thicknessCtrl.text) ?? 0.0;
+                  final decorWidth =
+                      double.tryParse(visibleWidthCtrl.text) ?? 0.0;
+                  final decorHeight = double.tryParse(heightCtrl.text) ?? 0.0;
+                  final isDecorPanneau =
+                      selectedType == 'Panneau' &&
+                      _isDecorSubtype(selectedSubtype);
                   final itemName = isTempering
                       ? 'Trempé ${thickness.toStringAsFixed(thickness == thickness.roundToDouble() ? 0 : 1)} mm'
                       : nameCtrl.text.trim();
+                  if (isDecorPanneau &&
+                      (decorWidth <= 0 || decorHeight <= 0)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'يجب إدخال عرض الديكور وطوله.',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
                   if (itemName.isNotEmpty && thickness > 0) {
                     final String colorValue = hasMultipleColors
                         ? selectedPanneauColors.join(',')
@@ -661,8 +726,14 @@ class _GlassScreenState extends State<GlassScreen> {
                       color: colorValue,
                       imagePath: imagePath ?? '',
                       subtype: isPanneau ? selectedSubtype : '',
-                      height: selectedType == 'Rosette' ? (double.tryParse(heightCtrl.text) ?? 0.0) : 0.0,
-                      visibleWidth: (isPanneau && selectedSubtype == 'bardage') ? (double.tryParse(visibleWidthCtrl.text) ?? 0.0) : null,
+                      height: selectedType == 'Rosette' || isDecorPanneau
+                          ? decorHeight
+                          : 0.0,
+                      visibleWidth:
+                          (isPanneau && selectedSubtype == 'bardage') ||
+                              isDecorPanneau
+                          ? decorWidth
+                          : null,
                     );
                     _loadItems();
                     if (context.mounted) Navigator.pop(context);
@@ -872,6 +943,14 @@ class _GlassScreenState extends State<GlassScreen> {
                   if (type == 'Panneau' && (item['subtype']?.toString() ?? '') == 'bardage' && item['visible_width'] != null) {
                     double vw = (item['visible_width'] is num) ? (item['visible_width'] as num).toDouble() : double.tryParse(item['visible_width'].toString()) ?? 0.0;
                     if (vw > 0) dimText += ' - ${Localization.translate('العرض الظاهر', lang)}: ${vw.toStringAsFixed(0)} ${Localization.translate('مم', lang)}';
+                  } else if (type == 'Panneau' &&
+                      _isDecorSubtype(item['subtype']?.toString())) {
+                    final decorWidth = (item['visible_width'] as num?)?.toDouble() ?? 0.0;
+                    final decorHeight = (item['height'] as num?)?.toDouble() ?? 0.0;
+                    if (decorWidth > 0 && decorHeight > 0) {
+                      dimText +=
+                          ' - أبعاد الديكور: ${decorWidth.toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(0)} ${Localization.translate('مم', lang)}';
+                    }
                   }
                 }
                 final colorPart = (type == 'Glass' || type == 'Panneau' || type == 'Baguette' || type == 'Rosette') && colorText.isNotEmpty
@@ -880,7 +959,9 @@ class _GlassScreenState extends State<GlassScreen> {
                 final subtypePart = type == 'Panneau' && (item['subtype']?.toString() ?? '').isNotEmpty
                     ? ' - ${Localization.translate('الخاصية', lang)}: ${item['subtype']}'
                     : '';
-                final priceUnit = type == 'Rosette'
+                final priceUnit = type == 'Rosette' ||
+                        (type == 'Panneau' &&
+                            _isDecorSubtype(item['subtype']?.toString()))
                     ? Localization.translate('دج/قطعة', lang)
                     : type == 'Baguette'
                         ? Localization.translate('دج/متر', lang)

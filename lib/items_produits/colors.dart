@@ -75,6 +75,16 @@ class _ColorsScreenState extends State<ColorsScreen> {
   DecorationImage? _getDecorationImageFromName(String name) {
     name = name.toLowerCase();
 
+    if (name.contains('desert') ||
+        name.contains('oak') ||
+        name.contains('ديزر') ||
+        name.contains('ديزير')) {
+      return const DecorationImage(
+        image: AssetImage('assets/images/wood_texture_d0.png'),
+        fit: BoxFit.cover,
+      );
+    }
+
     if (name.contains('أنتيك') ||
         name.contains('antique') ||
         name.contains('انتيك')) {
@@ -117,6 +127,14 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
   LinearGradient _getGradientFromName(String name, [String? hexCode]) {
     name = name.toLowerCase();
+
+    if (name.contains('9007')) {
+      return const LinearGradient(
+        colors: [Color(0xFFB8C0C8), Color(0xFF8A939E), Color(0xFF606A75)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+    }
 
     // Check standard colors first to preserve their beautiful, handcrafted gradients
     if (name.contains('خام') || name.contains('brut') || name.contains('raw')) {
@@ -212,7 +230,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
         name.contains('doré') ||
         name.contains('gold')) {
       return const LinearGradient(
-        colors: [Color(0xFFFFDF00), Color(0xFFD4AF37)],
+        colors: [Color(0xFFF1D675), Color(0xFFD4AF37), Color(0xFF9C7616)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
@@ -228,9 +246,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
     }
     if (name.contains('شامبانيا') ||
         name.contains('شامبان') ||
+        name.contains('شمبان') ||
         name.contains('champagne')) {
       return const LinearGradient(
-        colors: [Color(0xFFF7E7CE), Color(0xFFE5D3B3)],
+        colors: [Color(0xFFFFF4DF), Color(0xFFF7E7CE), Color(0xFFC9AE86)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );

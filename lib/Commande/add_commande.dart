@@ -28,6 +28,7 @@ class CommandePage extends StatefulWidget {
   final int? editCommandeId;
   final int? projectId;
   final List<WindowModel>? initialProducts;
+
   /// When shown inside the order workspace, the tab strip owns closing and
   /// navigation so the form itself must not pop the whole workspace route.
   final bool embeddedInWorkspace;
@@ -1181,7 +1182,7 @@ class _CommandePageState extends State<CommandePage> {
       case FrameColor.beige:
         return const Color(0xFFDDC8A0);
       case FrameColor.gris:
-        return const Color(0xFF9E9E9E);
+        return const Color(0xFF8A939E);
       case FrameColor.antique:
         return const Color(0xFF6E5D4F);
       case FrameColor.lightWood:

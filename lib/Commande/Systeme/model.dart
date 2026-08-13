@@ -12,6 +12,64 @@ enum ZoneContent { empty, fixedGlass, singleSash, doubleSash, slidingSash }
 
 enum GlassStructure { simple, double, closed }
 
+/// Resolves the catalogue unit price of a shutter component.
+///
+/// Component rows can legitimately keep a zero base price while their real
+/// price is stored in ShutterColorPrices. Prefer the selected colour, then a
+/// positive base price, then any configured colour price as a legacy fallback.
+double resolveShutterComponentUnitPrice({
+  required Map<String, dynamic> component,
+  required Iterable<Map<String, dynamic>> colorPrices,
+  int? selectedColorId,
+}) {
+  double readNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0.0;
+  }
+
+  final componentId = component['id'] is num
+      ? (component['id'] as num).toInt()
+      : int.tryParse('${component['id'] ?? ''}');
+  final matchingPrices = colorPrices.where((row) {
+    final rawId = row['shutter_component_id'];
+    final id = rawId is num ? rawId.toInt() : int.tryParse('$rawId');
+    return componentId != null && id == componentId;
+  }).toList();
+
+  if (selectedColorId != null) {
+    for (final row in matchingPrices) {
+      final rawColorId = row['color_id'];
+      final colorId = rawColorId is num
+          ? rawColorId.toInt()
+          : int.tryParse('$rawColorId');
+      final price = readNumber(row['price']);
+      if (colorId == selectedColorId && price > 0) return price;
+    }
+  }
+
+  for (final key in const ['price_dzd', 'price_per_meter', 'price']) {
+    final price = readNumber(component[key]);
+    if (price > 0) return price;
+  }
+  for (final row in matchingPrices) {
+    final price = readNumber(row['price']);
+    if (price > 0) return price;
+  }
+  return 0.0;
+}
+
+class ShutterBoxResolution {
+  const ShutterBoxResolution({
+    required this.boxSize,
+    required this.exceedsAllLimits,
+    required this.maximumSupportedHeight,
+  });
+
+  final double boxSize;
+  final bool exceedsAllLimits;
+  final double maximumSupportedHeight;
+}
+
 /// The number of ordinary hinges is based on the height of the actual sash.
 /// Double glazing only adds one hinge from 1800 mm upwards; it must not add a
 /// hinge to every double-glazed sash regardless of its height.
@@ -47,6 +105,30 @@ enum GlassFinish {
   moussa,
   harari,
   vitrageArme,
+}
+
+bool isDecorPanelSubtype(String? subtype) {
+  final normalized = (subtype ?? '').trim().toLowerCase();
+  return normalized.contains('decor') ||
+      normalized.contains('décor') ||
+      normalized.contains('ديكور');
+}
+
+bool decorPanelFitsSpace({
+  required double spaceWidth,
+  required double spaceHeight,
+  required double decorWidth,
+  required double decorHeight,
+}) {
+  if (spaceWidth <= 0 ||
+      spaceHeight <= 0 ||
+      decorWidth <= 0 ||
+      decorHeight <= 0) {
+    return false;
+  }
+  // A decor drawing has a fixed orientation. It is not rotated or split to
+  // force it into a smaller opening.
+  return decorWidth <= spaceWidth + 0.1 && decorHeight <= spaceHeight + 0.1;
 }
 
 enum GlassColor { transparent, blue, brown, green, gray, grayAgc, blueAgc }
@@ -393,6 +475,7 @@ class GlassSpecification {
   final int? decorBaguetteId;
   final int? decorRosetteId;
   final bool isVerticalBardage;
+  final bool bardageUsesFrameColor;
   final int? panneauProductId;
   final int rosetteShape;
   final bool jointTwoSides;
@@ -422,6 +505,7 @@ class GlassSpecification {
     this.decorBaguetteId,
     this.decorRosetteId,
     this.isVerticalBardage = false,
+    this.bardageUsesFrameColor = true,
     this.panneauProductId,
     this.thicknessOuter,
     this.thicknessInner,
@@ -456,6 +540,7 @@ class GlassSpecification {
     decorBaguetteId: decorBaguetteId,
     decorRosetteId: decorRosetteId,
     isVerticalBardage: isVerticalBardage,
+    bardageUsesFrameColor: bardageUsesFrameColor,
     panneauProductId: panneauProductId,
     thicknessOuter: thicknessOuter,
     thicknessInner: thicknessInner,
@@ -490,6 +575,7 @@ class GlassSpecification {
     int? decorBaguetteId,
     int? decorRosetteId,
     bool? isVerticalBardage,
+    bool? bardageUsesFrameColor,
     int? panneauProductId,
     double? thicknessOuter,
     double? thicknessInner,
@@ -522,6 +608,7 @@ class GlassSpecification {
     decorBaguetteId: decorBaguetteId ?? this.decorBaguetteId,
     decorRosetteId: decorRosetteId ?? this.decorRosetteId,
     isVerticalBardage: isVerticalBardage ?? this.isVerticalBardage,
+    bardageUsesFrameColor: bardageUsesFrameColor ?? this.bardageUsesFrameColor,
     panneauProductId: panneauProductId ?? this.panneauProductId,
     thicknessOuter: thicknessOuter ?? this.thicknessOuter,
     thicknessInner: thicknessInner ?? this.thicknessInner,
@@ -563,6 +650,7 @@ class GlassSpecification {
         decorBaguetteId == other.decorBaguetteId &&
         decorRosetteId == other.decorRosetteId &&
         isVerticalBardage == other.isVerticalBardage &&
+        bardageUsesFrameColor == other.bardageUsesFrameColor &&
         panneauProductId == other.panneauProductId &&
         rosetteShape == other.rosetteShape &&
         jointTwoSides == other.jointTwoSides;
@@ -1155,9 +1243,9 @@ extension FrameColorExtension on FrameColor {
         ];
       case FrameColor.gris:
         return [
-          const Color(0xFF9E9E9E),
-          const Color(0xFF757575),
-          const Color(0xFF616161),
+          const Color(0xFFB8C0C8),
+          const Color(0xFF8A939E),
+          const Color(0xFF606A75),
         ];
       case FrameColor.antique:
         return [
@@ -1187,7 +1275,7 @@ extension FrameColorExtension on FrameColor {
       case FrameColor.beige:
         return const Color(0xFFC0C090);
       case FrameColor.gris:
-        return const Color(0xFF616161);
+        return const Color(0xFF575B5D);
       case FrameColor.antique:
         return const Color(0xFF4D3E32);
       case FrameColor.lightWood:
@@ -1239,7 +1327,10 @@ List<Color> getEffectiveGradientColors(
       return FrameColor.antique.gradientColors;
     }
 
-    if (name.contains('ديزر') || name.contains('desert')) {
+    if (name.contains('ديزر') ||
+        name.contains('ديزير') ||
+        name.contains('desert') ||
+        name.contains('oak')) {
       return FrameColor.lightWood.gradientColors;
     }
 
@@ -1267,11 +1358,17 @@ List<Color> getEffectiveGradientColors(
       return FrameColor.black.gradientColors;
     }
 
-    if (name.contains('gold') || name.contains('ذهبي') || name.contains('or')) {
+    final bool isGold =
+        name.contains('gold') ||
+        name.contains('ذهب') ||
+        name.contains('doré') ||
+        name.contains('dore') ||
+        RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(name);
+    if (isGold) {
       return [
-        const Color(0xFFFFF3CC),
+        const Color(0xFFF1D675),
         const Color(0xFFD4AF37),
-        const Color(0xFF8A6421),
+        const Color(0xFF9C7616),
       ];
     }
 
@@ -1287,11 +1384,12 @@ List<Color> getEffectiveGradientColors(
 
     if (name.contains('champagne') ||
         name.contains('شامبان') ||
+        name.contains('شمبان') ||
         name.contains('وايت')) {
       return [
-        const Color(0xFFF5E6C8),
-        const Color(0xFFDDC8A0),
-        const Color(0xFFBBA070),
+        const Color(0xFFFFF4DF),
+        const Color(0xFFF7E7CE),
+        const Color(0xFFC9AE86),
       ];
     }
 
@@ -1315,14 +1413,6 @@ List<Color> getEffectiveGradientColors(
         name.contains('d0') ||
         name.contains('دي زيرو')) {
       return FrameColor.brown.gradientColors;
-    }
-
-    if (name.contains('ديزر') || name.contains('desert')) {
-      return [
-        const Color(0xFFCBA56A),
-        const Color(0xFFA8803E),
-        const Color(0xFF7A5828),
-      ];
     }
 
     if (name.contains('brown') ||
@@ -1402,11 +1492,7 @@ Color getEffectiveBorderColor(
     }
 
     if (name.contains('9007')) {
-      return const Color(0xFF909090);
-    }
-
-    if (name.contains('9007')) {
-      return FrameColor.gris.borderColor;
+      return const Color(0xFF575B5D);
     }
 
     if (name.contains('antique') ||
@@ -1415,7 +1501,10 @@ Color getEffectiveBorderColor(
       return FrameColor.antique.borderColor;
     }
 
-    if (name.contains('ديزر') || name.contains('desert')) {
+    if (name.contains('ديزر') ||
+        name.contains('ديزير') ||
+        name.contains('desert') ||
+        name.contains('oak')) {
       return FrameColor.lightWood.borderColor;
     }
 
@@ -1467,8 +1556,14 @@ Color getEffectiveBorderColor(
       return FrameColor.black.borderColor;
     }
 
-    if (name.contains('gold') || name.contains('ذهبي') || name.contains('or')) {
-      return const Color(0xFF8A6421);
+    final bool isGold =
+        name.contains('gold') ||
+        name.contains('ذهب') ||
+        name.contains('doré') ||
+        name.contains('dore') ||
+        RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(name);
+    if (isGold) {
+      return const Color(0xFF76560C);
     }
 
     if (name.contains('silver') ||
@@ -1479,8 +1574,9 @@ Color getEffectiveBorderColor(
 
     if (name.contains('champagne') ||
         name.contains('شامبان') ||
+        name.contains('شمبان') ||
         name.contains('وايت')) {
-      return const Color(0xFF8D6E63);
+      return const Color(0xFFA48661);
     }
 
     // 2. If no name matched, check hex codes
@@ -1513,6 +1609,265 @@ Color getEffectiveBorderColor(
 }
 
 class WindowModel extends ChangeNotifier {
+  static bool isShutterBladeComponent(Map<String, dynamic> component) {
+    final type = (component['component_type'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    return type == 'blade' || type == 'lame';
+  }
+
+  static bool isBladeEndCapLinkedTo(
+    Map<String, dynamic> endCap,
+    Map<String, dynamic> blade,
+  ) {
+    final type = (endCap['component_type'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final linkedBlade = (endCap['shutter_subtype'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final bladeName = (blade['name'] ?? '').toString().trim().toLowerCase();
+    return type == 'bouchon_lame' &&
+        bladeName.isNotEmpty &&
+        linkedBlade == bladeName;
+  }
+
+  static String? shutterMeasurementKey(
+    Map<String, dynamic> component, {
+    bool preferTrackMeasurement = false,
+  }) {
+    final trackMeasurement = preferTrackMeasurement
+        ? (component['track_measurement'] ?? '').toString().trim()
+        : '';
+    final measurement = (component['measurement'] ?? '').toString().trim();
+    final source = trackMeasurement.isNotEmpty
+        ? trackMeasurement
+        : measurement.isNotEmpty
+        ? measurement
+        : (component['name'] ?? '').toString();
+    final match = RegExp(r'\d+(?:[.,]\d+)?').firstMatch(source);
+    final value = match == null
+        ? null
+        : double.tryParse(match.group(0)!.replaceAll(',', '.'));
+    if (value == null || value <= 0) return null;
+    return value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value
+              .toStringAsFixed(3)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  static List<Map<String, dynamic>> compatibleShutterTracks(
+    Map<String, dynamic> blade,
+    Iterable<Map<String, dynamic>> tracks,
+  ) {
+    final requiredMeasurement = shutterMeasurementKey(
+      blade,
+      preferTrackMeasurement: true,
+    );
+    if (requiredMeasurement == null) return <Map<String, dynamic>>[];
+    return tracks
+        .where((track) {
+          final type = (track['component_type'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          return const {
+                'track',
+                'coulisse',
+                'coulisses',
+                'glissiere',
+              }.contains(type) &&
+              shutterMeasurementKey(track) == requiredMeasurement;
+        })
+        .map(Map<String, dynamic>.from)
+        .toList();
+  }
+
+  static String _normalizeShutterBladeLabel(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll('\u00e0', 'a')
+        .replaceAll('\u00e2', 'a')
+        .replaceAll('\u00e4', 'a')
+        .replaceAll('\u00e7', 'c')
+        .replaceAll('\u00e9', 'e')
+        .replaceAll('\u00e8', 'e')
+        .replaceAll('\u00ea', 'e')
+        .replaceAll('\u00eb', 'e')
+        .replaceAll('\u00ee', 'i')
+        .replaceAll('\u00ef', 'i')
+        .replaceAll('\u00f4', 'o')
+        .replaceAll('\u00f6', 'o')
+        .replaceAll('\u00f9', 'u')
+        .replaceAll('\u00fb', 'u')
+        .replaceAll('\u00fc', 'u')
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06ff]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static int _shutterBladeNameScore(String actual, String candidate) {
+    final normalizedActual = _normalizeShutterBladeLabel(actual);
+    final normalizedCandidate = _normalizeShutterBladeLabel(candidate);
+    if (normalizedActual.isEmpty || normalizedCandidate.isEmpty) return -1;
+    if (normalizedActual.replaceAll(' ', '') ==
+        normalizedCandidate.replaceAll(' ', '')) {
+      return 1000;
+    }
+
+    Set<String> signature(String value) => value
+        .split(' ')
+        .where(
+          (token) =>
+              token.isNotEmpty &&
+              !const {'lame', 'lames', 'blade', 'blades', 'mm'}.contains(token),
+        )
+        .toSet();
+
+    final actualTokens = signature(normalizedActual);
+    final candidateTokens = signature(normalizedCandidate);
+    final actualNumbers = RegExp(
+      r'\d+(?:[.,]\d+)?',
+    ).allMatches(normalizedActual).map((match) => match.group(0)!).toSet();
+    final candidateNumbers = RegExp(
+      r'\d+(?:[.,]\d+)?',
+    ).allMatches(normalizedCandidate).map((match) => match.group(0)!).toSet();
+    if (actualNumbers.isNotEmpty &&
+        actualNumbers.intersection(candidateNumbers).isEmpty) {
+      return -1;
+    }
+    final actualExtruded =
+        normalizedActual.contains('extrud') || normalizedActual.contains('x3d');
+    final candidateExtruded =
+        normalizedCandidate.contains('extrud') ||
+        normalizedCandidate.contains('x3d');
+    if (actualExtruded != candidateExtruded) return -1;
+    final common = actualTokens.intersection(candidateTokens).length;
+    if (common == 0) return -1;
+    var score = common * 50;
+    if (actualNumbers.intersection(candidateNumbers).isNotEmpty) score += 150;
+    if (actualTokens.length == candidateTokens.length &&
+        actualTokens.containsAll(candidateTokens)) {
+      score += 400;
+    }
+    final actualInjected = normalizedActual.contains('inject');
+    final candidateInjected = normalizedCandidate.contains('inject');
+    if (actualInjected == candidateInjected) score += 40;
+    return score;
+  }
+
+  static double resolveShutterSqmPrice({
+    required String bladeName,
+    required String bladeSubtype,
+    required int? colorId,
+    required Iterable<Map<String, dynamic>> prices,
+  }) {
+    double readPrice(dynamic value) => value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '') ?? 0.0;
+
+    var selectedColorScore = -1;
+    var generalColorScore = -1;
+    var selectedColorPrice = 0.0;
+    var generalColorPrice = 0.0;
+    var subtypeFallback = 0.0;
+    final normalizedSubtype = _normalizeShutterBladeLabel(bladeSubtype);
+
+    for (final row in prices) {
+      final rowColorId = (row['color_id'] as num?)?.toInt() ?? 0;
+      final isSelectedColor = colorId != null && rowColorId == colorId;
+      final isGeneralColor = rowColorId == 0;
+      if (!isSelectedColor && !isGeneralColor) continue;
+      final price = readPrice(row['price_per_sqm']);
+      if (price <= 0) continue;
+      final candidate = (row['blade_type'] ?? '').toString();
+      final score = _shutterBladeNameScore(bladeName, candidate);
+      if (score >= 0 && isSelectedColor && score > selectedColorScore) {
+        selectedColorScore = score;
+        selectedColorPrice = price;
+      } else if (score >= 0 && isGeneralColor && score > generalColorScore) {
+        generalColorScore = score;
+        generalColorPrice = price;
+      } else if (subtypeFallback == 0 &&
+          normalizedSubtype == _normalizeShutterBladeLabel(candidate)) {
+        subtypeFallback = price;
+      }
+    }
+    if (selectedColorPrice > 0) return selectedColorPrice;
+    if (generalColorPrice > 0) return generalColorPrice;
+    return subtypeFallback;
+  }
+
+  /// Resolves the caisson from the blade-specific limits configured on the
+  /// pricing page. A manually selected box is respected only when that exact
+  /// size is configured and supports the current height.
+  static ShutterBoxResolution? resolveShutterBoxFromLimits({
+    required double windowHeight,
+    required List<Map<String, dynamic>> limits,
+    double? manuallySelectedBoxSize,
+  }) {
+    if (limits.isEmpty) return null;
+
+    double readNumber(Map<String, dynamic> row, String key) {
+      final value = row[key];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    final sorted =
+        limits.where((row) {
+          return readNumber(row, 'box_size') > 0 &&
+              readNumber(row, 'max_height') > 0;
+        }).toList()..sort((a, b) {
+          return readNumber(a, 'box_size').compareTo(readNumber(b, 'box_size'));
+        });
+    if (sorted.isEmpty) return null;
+
+    final supported = sorted.where((row) {
+      return windowHeight <= readNumber(row, 'max_height');
+    }).toList();
+    final largestBox = sorted.last;
+    final maximumSupportedHeight = sorted
+        .map((row) => readNumber(row, 'max_height'))
+        .reduce(math.max);
+
+    if (supported.isEmpty) {
+      return ShutterBoxResolution(
+        boxSize: readNumber(largestBox, 'box_size'),
+        exceedsAllLimits: true,
+        maximumSupportedHeight: maximumSupportedHeight,
+      );
+    }
+
+    final minimumSupported = supported.first;
+    var selectedSize = readNumber(minimumSupported, 'box_size');
+    if (manuallySelectedBoxSize != null) {
+      for (final row in supported) {
+        final size = readNumber(row, 'box_size');
+        if ((size - manuallySelectedBoxSize).abs() <= 0.5 &&
+            size >= selectedSize) {
+          selectedSize = size;
+          break;
+        }
+      }
+    }
+
+    return ShutterBoxResolution(
+      boxSize: selectedSize,
+      exceedsAllLimits: false,
+      maximumSupportedHeight: maximumSupportedHeight,
+    );
+  }
+
   List<PlacedFrame> frames = [];
   PlacedFrame? selectedFrame;
   String? selectedFrameCode;
@@ -1624,6 +1979,8 @@ class WindowModel extends ChangeNotifier {
             type.contains('attache') ||
             name.contains('attache') ||
             name.contains('أطاش');
+      case 'blade_cap':
+        return type == 'bouchon_lame';
       default:
         return false;
     }
@@ -1702,44 +2059,26 @@ class WindowModel extends ChangeNotifier {
   Future<void> _synchronizeShutterTrackWithBlade(dynamic database) async {
     final blade = componentOverrides['الشرائح (Lames)'];
     if (blade == null) return;
-    String? sizeKey(
-      Map<String, dynamic> component, {
-      bool preferTrackMeasurement = false,
-    }) {
-      // A blade can explicitly name the rail measurement it needs.  Its own
-      // measurement remains the blade height used to calculate blade count.
-      final linkedTrackMeasurement = preferTrackMeasurement
-          ? (component['track_measurement'] ?? '').toString().trim()
-          : '';
-      final rawMeasurement = (component['measurement'] ?? '').toString().trim();
-      final source = linkedTrackMeasurement.isNotEmpty
-          ? linkedTrackMeasurement
-          : rawMeasurement.isNotEmpty
-          ? rawMeasurement
-          : (component['name'] ?? '').toString();
-      final match = RegExp(r'\d+(?:[.,]\d+)?').firstMatch(source);
-      return match?.group(0)?.replaceAll(RegExp(r'[^0-9]'), '');
-    }
 
     // Older blades did not have a separate rail measurement, so fall back to
     // their existing measurement for backward compatibility.
-    final bladeSize = sizeKey(blade, preferTrackMeasurement: true);
+    final bladeSize = shutterMeasurementKey(
+      Map<String, dynamic>.from(blade),
+      preferTrackMeasurement: true,
+    );
     if (bladeSize == null || bladeSize.isEmpty) return;
 
     final rows = await database.query(
       'ShutterComponents',
       where:
-          "(LOWER(component_type) IN ('track', 'coulisse', 'coulisses') OR LOWER(name) LIKE '%track%' OR LOWER(name) LIKE '%coulisse%' OR name LIKE '%سكة%' OR name LIKE '%سكك%') AND (is_active = 1 OR is_active IS NULL)",
+          "LOWER(TRIM(component_type)) IN ('track', 'coulisse', 'coulisses', 'glissiere') AND (is_active = 1 OR is_active IS NULL)",
     );
     final bladeIsX3d = _isX3dShutterComponent(blade);
     final bladeName = (blade['name'] ?? '').toString().trim().toLowerCase();
-    final candidates = rows
-        .map(Map<String, dynamic>.from)
-        .where((track) => sizeKey(track) == bladeSize)
-        .where(
-          (track) => _isX3dShutterComponent(track) == bladeIsX3d,
-        )
-        .toList();
+    final candidates = compatibleShutterTracks(
+      Map<String, dynamic>.from(blade),
+      rows.map(Map<String, dynamic>.from),
+    ).where((track) => _isX3dShutterComponent(track) == bladeIsX3d).toList();
     if (candidates.isEmpty) return;
 
     int score(Map<String, dynamic> track) {
@@ -1776,15 +2115,22 @@ class WindowModel extends ChangeNotifier {
       where: '(is_active = 1 OR is_active IS NULL)',
     );
     final catalogue = rows.map(Map<String, dynamic>.from).toList();
+    final colorPrices = (await database.query(
+      'ShutterColorPrices',
+    )).map(Map<String, dynamic>.from).toList();
+    final selectedColorId = selectedDbColor?['id'] is num
+        ? (selectedDbColor!['id'] as num).toInt()
+        : int.tryParse('${selectedDbColor?['id'] ?? ''}');
     final bladeName = (blade['name'] ?? '').toString().trim().toLowerCase();
     final isX3d = _isX3dShutterComponent(blade);
 
     Map<String, dynamic> withPrice(Map<String, dynamic> row) {
       final result = Map<String, dynamic>.from(row);
-      final rawPrice = result['price_dzd'] ?? result['price'] ?? 0;
-      result['calculated_price'] = rawPrice is num
-          ? rawPrice.toDouble()
-          : double.tryParse(rawPrice.toString()) ?? 0;
+      result['calculated_price'] = resolveShutterComponentUnitPrice(
+        component: result,
+        colorPrices: colorPrices,
+        selectedColorId: selectedColorId,
+      );
       return result;
     }
 
@@ -1802,11 +2148,13 @@ class WindowModel extends ChangeNotifier {
       }).toList();
       if (exact.isNotEmpty) candidates = exact;
 
-      final currentId =
-          (componentOverrides[overrideKey]?['id'] as num?)?.toInt();
+      final currentId = (componentOverrides[overrideKey]?['id'] as num?)
+          ?.toInt();
       final current = currentId == null
           ? null
-          : candidates.where((row) => (row['id'] as num?)?.toInt() == currentId);
+          : candidates.where(
+              (row) => (row['id'] as num?)?.toInt() == currentId,
+            );
       if (current != null && current.isNotEmpty) {
         return withPrice(current.first);
       }
@@ -1833,6 +2181,20 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('أطاش (Attache)');
     } else {
       componentOverrides['أطاش (Attache)'] = attache;
+    }
+
+    // Blade end caps use the exact linked-blade field saved by the catalogue
+    // dialog. They never fall back to another blade family or size.
+    final linkedEndCaps = catalogue
+        .where((row) => _matchesShutterRole(row, 'blade_cap'))
+        .where((row) => isBladeEndCapLinkedTo(row, blade))
+        .toList();
+    if (linkedEndCaps.isEmpty) {
+      componentOverrides.remove('أغطية الشفرات (Bouchons Lames)');
+    } else {
+      componentOverrides['أغطية الشفرات (Bouchons Lames)'] = withPrice(
+        linkedEndCaps.first,
+      );
     }
   }
 
@@ -2507,6 +2869,64 @@ class WindowModel extends ChangeNotifier {
     return 205.0;
   }
 
+  Rect get expectedOuterFrameClearBoundary {
+    final topBox = hasShutter && !hasArchOrSlant && !isCaissonTunnel
+        ? shutterBoxHeight
+        : 0.0;
+    final bottomFrame = hasBottomFrame ? profileThickness : 0.0;
+    final bottomPlinthe = hasFramePlintheBottom ? plintheHeight : 0.0;
+    return Rect.fromLTRB(
+      profileThickness,
+      topBox + profileThickness,
+      math.max(profileThickness, width - profileThickness),
+      math.max(topBox + profileThickness, height - bottomFrame - bottomPlinthe),
+    );
+  }
+
+  /// A drawing with one zone always fills the exact clear opening of the
+  /// selected outer frame. Rebuilding this boundary prevents a former frame
+  /// width or caisson height from leaking into sash/glass cutting dimensions.
+  void _synchronizeSingleZoneWithOuterFrame() {
+    if (zones.length != 1 || width <= 0 || height <= 0) return;
+    zones.first.boundary = expectedOuterFrameClearBoundary;
+  }
+
+  void _synchronizeZonesAfterShutterBoxChange(
+    double previousBoxHeight,
+    double nextBoxHeight,
+  ) {
+    if ((previousBoxHeight - nextBoxHeight).abs() <= 0.1 || zones.isEmpty) {
+      _synchronizeSingleZoneWithOuterFrame();
+      return;
+    }
+
+    if (zones.length == 1) {
+      _synchronizeSingleZoneWithOuterFrame();
+      return;
+    }
+
+    final previousTop = previousBoxHeight + profileThickness;
+    final nextTop = nextBoxHeight + profileThickness;
+    final bottomFrame = hasBottomFrame ? profileThickness : 0.0;
+    final bottomPlinthe = hasFramePlintheBottom ? plintheHeight : 0.0;
+    final innerBottom = height - bottomFrame - bottomPlinthe;
+    final previousHeight = innerBottom - previousTop;
+    final nextHeight = innerBottom - nextTop;
+    if (previousHeight <= 0 || nextHeight <= 0) return;
+
+    final scale = nextHeight / previousHeight;
+    for (final zone in zones) {
+      final top = nextTop + (zone.boundary.top - previousTop) * scale;
+      final bottom = nextTop + (zone.boundary.bottom - previousTop) * scale;
+      zone.boundary = Rect.fromLTRB(
+        zone.boundary.left,
+        top,
+        zone.boundary.right,
+        bottom,
+      );
+    }
+  }
+
   void setCaissonTunnelHeight(double value) {
     if (caissonTunnelHeight == value) return;
     _saveSnapshot();
@@ -2601,34 +3021,67 @@ class WindowModel extends ChangeNotifier {
         codeLower.contains('103');
   }
 
-  double get sideCoverWidth {
-    if (activeFrameOverride != null) {
-      final double w =
-          (activeFrameOverride!['couvre_joint_width'] as num?)?.toDouble() ??
-          0.0;
-      if (w > 0) return w;
+  /// Width of the selected standalone side-cover face.
+  ///
+  /// The first face is stored in `couvre_joint_width` and the second in
+  /// `visible_width`. This getter deliberately never reads the frame, so an
+  /// integrated-frame width cannot leak into a standalone cover calculation.
+  double get standaloneSideCoverWidth {
+    double firstWidth = selectedSideCover?.couvreJointWidth ?? 0.0;
+    double secondWidth = selectedSideCover?.visibleWidth ?? 0.0;
+
+    if (selectedSideCover == null && sideCoverOverride != null) {
+      double read(String key) {
+        final value = sideCoverOverride![key];
+        return value is num
+            ? value.toDouble()
+            : double.tryParse(value?.toString() ?? '') ?? 0.0;
+      }
+
+      firstWidth = read('couvre_joint_width');
+      secondWidth = read('visible_width');
     }
 
-    // For a standalone TPR cover its width must win over the ordinary frame.
+    final selectedWidth = sideCoverUseSecondWidth ? secondWidth : firstWidth;
+    final otherWidth = sideCoverUseSecondWidth ? firstWidth : secondWidth;
+    if (selectedWidth > 0) return selectedWidth;
+    if (otherWidth > 0) return otherWidth;
+    return 0.0;
+  }
+
+  /// Thickness of the selected standalone cover only. It is used to shorten
+  /// the frame once for every side on which that cover is actually installed.
+  double get standaloneSideCoverThickness {
     if (selectedSideCover != null) {
-      final primary = sideCoverUseSecondWidth
-          ? selectedSideCover!.visibleWidth
-          : selectedSideCover!.couvreJointWidth;
-      final secondary = sideCoverUseSecondWidth
-          ? selectedSideCover!.couvreJointWidth
-          : selectedSideCover!.visibleWidth;
-      if (primary > 0) return primary;
-      if (secondary > 0) return secondary;
+      return selectedSideCover!.couvreJointThickness;
+    }
+    final value = sideCoverOverride?['couvre_joint_thickness'];
+    return value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  /// Integrated-cover width from the selected frame only.
+  double get integratedFrameSideCoverWidth {
+    if (activeFrameOverride != null) {
+      final value = activeFrameOverride!['couvre_joint_width'];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+    return getSectionByType('frame')?.couvreJointWidth ?? 0.0;
+  }
+
+  double get sideCoverWidth {
+    final integratedWidth = integratedFrameSideCoverWidth;
+    if (integratedWidth > 0) return integratedWidth;
+    if (activeFrameOverride != null) {
+      // A selected frame override is authoritative. A zero here means this
+      // frame has no integrated cover, so continue with the standalone one.
+      return standaloneSideCoverWidth;
     }
 
-    final frame = getSectionByType('frame');
-    if (frame != null) {
-      if (frame.couvreJointWidth > 0) return frame.couvreJointWidth;
-      if (isIntegratedFrame && (frame.visibleWidth ?? 0) > 0)
-        return frame.visibleWidth!;
-    }
-
-    return 40.0;
+    return standaloneSideCoverWidth;
   }
 
   bool get hasCustomSideCoverLayout =>
@@ -2833,9 +3286,7 @@ class WindowModel extends ChangeNotifier {
       endOffset: end,
       // A side-specific cover may be narrower than the selected profile, but
       // it must never project farther than that profile's visible width.
-      visibleWidth: segment.visibleWidth
-          .clamp(0.0, sideCoverWidth)
-          .toDouble(),
+      visibleWidth: segment.visibleWidth.clamp(0.0, sideCoverWidth).toDouble(),
     );
     sideCoverSegments = [
       ...sideCoverSegments.where((item) => item.side != side),
@@ -2885,7 +3336,198 @@ class WindowModel extends ChangeNotifier {
           ? null
           : Map<String, dynamic>.from(_selectedDbColor!);
     }
+    unawaited(refreshSectionPricesForSelectedColor());
+    unawaited(refreshBardageColorPrices());
     notifyListeners();
+  }
+
+  final Map<int, double> sectionPricesForSelectedColor = <int, double>{};
+
+  bool _isParcloseSection(AluminumSection section) {
+    final type = section.type.toLowerCase();
+    final name = section.name.toLowerCase();
+    return section.code.trim() == '514' ||
+        type.contains('parclose') ||
+        name.contains('parclose') ||
+        type.contains('باكيت') ||
+        name.contains('باكيت');
+  }
+
+  /// Adds the current colour price to an in-memory catalogue section before
+  /// it enters the synchronous BOM calculation.
+  Map<String, dynamic> sectionMapWithSelectedColorPrice(
+    AluminumSection section,
+  ) {
+    final result = Map<String, dynamic>.from(section.toMap());
+    double? price = sectionPricesForSelectedColor[section.id];
+    if (price == null) {
+      for (final rawOverride in componentOverrides.values) {
+        if (rawOverride is! Map ||
+            rawOverride['id']?.toString() != section.id.toString()) {
+          continue;
+        }
+        final rawPrice = rawOverride['calculated_price'];
+        price = rawPrice is num
+            ? rawPrice.toDouble()
+            : double.tryParse(rawPrice?.toString() ?? '');
+        if (price != null) break;
+      }
+    }
+    if (price != null) result['calculated_price'] = price;
+    return result;
+  }
+
+  Future<void> refreshSectionPricesForSelectedColor({
+    bool notify = true,
+  }) async {
+    final sections = <int, AluminumSection>{};
+    for (final series in <AluminumSeries?>[activeSeries, activeSlidingSeries]) {
+      if (series == null) continue;
+      for (final section in series.sections) {
+        if (_isParcloseSection(section)) sections[section.id] = section;
+      }
+    }
+    if (sections.isEmpty) return;
+
+    final colorId = selectedDbColor?['id'] as int?;
+    try {
+      for (final section in sections.values) {
+        sectionPricesForSelectedColor[section.id] = await db.getSectionPrice(
+          section.id,
+          colorId,
+        );
+      }
+      for (final entry in componentOverrides.entries.toList()) {
+        final rawOverride = entry.value;
+        if (rawOverride is! Map) continue;
+        final rawId = rawOverride['id'];
+        final id = rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '');
+        final price = id == null ? null : sectionPricesForSelectedColor[id];
+        if (price == null) continue;
+        final updated = Map<String, dynamic>.from(rawOverride);
+        updated['calculated_price'] = price;
+        componentOverrides[entry.key] = updated;
+      }
+      if (notify) notifyListeners();
+    } catch (error) {
+      debugPrint('Unable to refresh parclose prices: $error');
+    }
+  }
+
+  String _profileColorName(Map<String, dynamic>? colorData) {
+    return (colorData?['name'] ?? colorData?['color_name'] ?? '')
+        .toString()
+        .trim();
+  }
+
+  String _normalizedProfileColorName(String value) {
+    return value.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Resolves the colour actually used by a bardage cell. In automatic mode
+  /// it always follows the current frame/series colour; an explicit override
+  /// is accepted only when it belongs to the active series colour list.
+  Map<String, dynamic>? getBardageColorForSpec(GlassSpecification glass) {
+    if (glass.bardageUsesFrameColor) return selectedDbColor;
+
+    final requested = _normalizedProfileColorName(glass.panneauColor ?? '');
+    if (requested.isNotEmpty) {
+      for (final color in availableColors) {
+        if (_normalizedProfileColorName(_profileColorName(color)) ==
+            requested) {
+          return color;
+        }
+      }
+    }
+    return selectedDbColor;
+  }
+
+  String getBardageColorNameForSpec(GlassSpecification glass) {
+    final resolved = _profileColorName(getBardageColorForSpec(glass));
+    if (resolved.isNotEmpty) return resolved;
+    final fallback = _profileColorName(selectedDbColor);
+    return fallback.isNotEmpty
+        ? fallback
+        : frameColor.toString().split('.').last;
+  }
+
+  /// Reads the price attached to the resolved bardage colour. The complete
+  /// colour-price map is cached on the selected bardage profile because BOM
+  /// generation is synchronous and may contain several bardage colours.
+  double getBardagePriceForColor(
+    Map<String, dynamic>? colorData,
+    String colorName,
+  ) {
+    final rawOverride = componentOverrides['البارداج (Bardage)'];
+    if (rawOverride is! Map) return 0.0;
+    final override = Map<String, dynamic>.from(rawOverride);
+    final rawPrices = override['color_prices'];
+    if (rawPrices is Map) {
+      final colorId = colorData?['id'];
+      final keys = <String>[
+        if (colorId != null) 'id:$colorId',
+        'name:${_normalizedProfileColorName(colorName)}',
+      ];
+      for (final key in keys) {
+        final rawPrice = rawPrices[key];
+        final price = rawPrice is num
+            ? rawPrice.toDouble()
+            : double.tryParse(rawPrice?.toString() ?? '');
+        if (price != null && price >= 0) return price;
+      }
+    }
+
+    final rawFallback =
+        override['calculated_price'] ??
+        override['price_dzd'] ??
+        override['price'] ??
+        0.0;
+    return rawFallback is num
+        ? rawFallback.toDouble()
+        : double.tryParse(rawFallback.toString()) ?? 0.0;
+  }
+
+  Future<void> refreshBardageColorPrices({bool notify = true}) async {
+    final rawOverride = componentOverrides['البارداج (Bardage)'];
+    if (rawOverride is! Map) return;
+    final override = Map<String, dynamic>.from(rawOverride);
+    final rawId = override['id'];
+    final sectionId = rawId is num
+        ? rawId.toInt()
+        : int.tryParse(rawId?.toString() ?? '');
+    if (sectionId == null) return;
+
+    final fallbackRaw = override['price_dzd'] ?? override['price'] ?? 0.0;
+    final fallbackPrice = fallbackRaw is num
+        ? fallbackRaw.toDouble()
+        : double.tryParse(fallbackRaw.toString()) ?? 0.0;
+    final prices = <String, double>{};
+    for (final color in availableColors) {
+      final rawColorId = color['id'];
+      final colorId = rawColorId is num
+          ? rawColorId.toInt()
+          : int.tryParse(rawColorId?.toString() ?? '');
+      if (colorId == null) continue;
+      var price = await db.getSectionPrice(sectionId, colorId);
+      if (price <= 0) price = fallbackPrice;
+      prices['id:$colorId'] = price;
+      final name = _normalizedProfileColorName(_profileColorName(color));
+      if (name.isNotEmpty) prices['name:$name'] = price;
+    }
+    override['color_prices'] = prices;
+
+    final selectedName = _profileColorName(selectedDbColor);
+    final selectedId = selectedDbColor?['id'];
+    if (selectedId != null && prices.containsKey('id:$selectedId')) {
+      override['calculated_price'] = prices['id:$selectedId'];
+    } else {
+      final selectedKey = 'name:${_normalizedProfileColorName(selectedName)}';
+      override['calculated_price'] = prices[selectedKey] ?? fallbackPrice;
+    }
+    componentOverrides['البارداج (Bardage)'] = override;
+    if (notify) notifyListeners();
   }
 
   Map<String, dynamic>? _selectedAccessoryColor;
@@ -3595,11 +4237,7 @@ class WindowModel extends ChangeNotifier {
       return raw is num
           ? raw.toDouble()
           : double.tryParse(
-              raw
-                      ?.toString()
-                      .trim()
-                      .replaceAll(' ', '')
-                      .replaceAll(',', '.') ??
+              raw?.toString().trim().replaceAll(' ', '').replaceAll(',', '.') ??
                   '',
             );
     }
@@ -3730,9 +4368,13 @@ class WindowModel extends ChangeNotifier {
         final t = g['type'].toString().toLowerCase();
         final s = (g['subtype'] ?? '').toString().toLowerCase();
         final c = (g['color'] ?? '').toString().toLowerCase();
+        final sameSelectedProduct =
+            glass.panneauProductId != null &&
+            g['id']?.toString() == glass.panneauProductId.toString() &&
+            s == sub.toLowerCase();
 
         return t == 'panneau' &&
-            s == sub.toLowerCase() &&
+            (sameSelectedProduct || s == sub.toLowerCase()) &&
             c == col.toLowerCase();
       }, orElse: () => <String, dynamic>{});
 
@@ -3742,7 +4384,12 @@ class WindowModel extends ChangeNotifier {
         final baseMatch = allGlassCache.firstWhere((g) {
           final t = g['type'].toString().toLowerCase();
           final s = (g['subtype'] ?? '').toString().toLowerCase();
-          return t == 'panneau' && s == sub.toLowerCase();
+          final sameSelectedProduct =
+              glass.panneauProductId != null &&
+              g['id']?.toString() == glass.panneauProductId.toString() &&
+              s == sub.toLowerCase();
+          return t == 'panneau' &&
+              (sameSelectedProduct || s == sub.toLowerCase());
         }, orElse: () => <String, dynamic>{});
         if (baseMatch.isNotEmpty) {
           price = (baseMatch['price_per_sqm'] ?? 0.0).toDouble();
@@ -3750,6 +4397,40 @@ class WindowModel extends ChangeNotifier {
       }
     }
     return price;
+  }
+
+  Map<String, dynamic>? getPanneauProductForSpec(GlassSpecification glass) {
+    final selectedId = glass.panneauProductId;
+    final selectedColor = (glass.panneauColor ?? '').trim().toLowerCase();
+    final subtype = (glass.panneauSubtype ?? '').trim().toLowerCase();
+    if (selectedId != null) {
+      Map<String, dynamic>? idFallback;
+      for (final product in allGlassCache) {
+        if (product['type'].toString().toLowerCase() != 'panneau' ||
+            product['id']?.toString() != selectedId.toString() ||
+            (product['subtype'] ?? '').toString().trim().toLowerCase() !=
+                subtype) {
+          continue;
+        }
+        idFallback ??= product;
+        final color = (product['color'] ?? '').toString().trim().toLowerCase();
+        if (selectedColor.isEmpty || color == selectedColor) return product;
+      }
+      if (idFallback != null) return idFallback;
+    }
+
+    Map<String, dynamic>? subtypeFallback;
+    for (final product in allGlassCache) {
+      if (product['type'].toString().toLowerCase() != 'panneau' ||
+          (product['subtype'] ?? '').toString().trim().toLowerCase() !=
+              subtype) {
+        continue;
+      }
+      subtypeFallback ??= product;
+      final color = (product['color'] ?? '').toString().trim().toLowerCase();
+      if (selectedColor.isEmpty || color == selectedColor) return product;
+    }
+    return subtypeFallback;
   }
 
   Future<void> loadCatalogData([String systemMode = '']) async {
@@ -4197,8 +4878,32 @@ class WindowModel extends ChangeNotifier {
   /// No global default is applied: an unconfigured series intentionally
   /// returns zero until its overlap is entered in the catalogue.
   double get openingSashOverlap {
+    double readOverlap(dynamic value) {
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    // The sash explicitly selected in the drawing is the source of truth.
+    final overrideOverlap = readOverlap(sashOverride?['sash_overlap']);
+    if (overrideOverlap > 0) return overrideOverlap;
+
     final series = activeSeries;
     if (series != null) {
+      final overrideId = sashOverride?['id']?.toString();
+      final overrideCode = sashOverride?['code']?.toString().trim();
+      for (final sash in series.sections) {
+        final matchesSelected =
+            (overrideId != null && sash.id.toString() == overrideId) ||
+            (overrideCode != null &&
+                overrideCode.isNotEmpty &&
+                sash.code.trim() == overrideCode) ||
+            (selectedSashCode.isNotEmpty && sash.code == selectedSashCode);
+        if (matchesSelected && sash.sashOverlap > 0) {
+          return sash.sashOverlap;
+        }
+      }
+
       final sashes =
           series.sections.where((section) {
             final type = section.type.toLowerCase();
@@ -4217,12 +4922,7 @@ class WindowModel extends ChangeNotifier {
         if (sash.sashOverlap > 0) return sash.sashOverlap;
       }
     }
-
-    final rawOverride = sashOverride?['sash_overlap'];
-    final overrideOverlap = rawOverride is num
-        ? rawOverride.toDouble()
-        : double.tryParse(rawOverride?.toString() ?? '') ?? 0.0;
-    return overrideOverlap > 0 ? overrideOverlap : 0.0;
+    return 0.0;
   }
 
   double getSectionThickness(String type, {double fallback = 45.0}) {
@@ -4882,8 +5582,9 @@ class WindowModel extends ChangeNotifier {
         final parRes = await d.query(
           'Sections',
           where:
-              'series_id = ? AND (LOWER(type) = ? OR name LIKE ? OR type LIKE ?)',
-          whereArgs: [series.id, 'parclose', '%باكيت%', '%parclose%'],
+              'series_id = ? AND (LOWER(type) = ? OR name LIKE ? OR type LIKE ? OR TRIM(code) = ?)',
+          whereArgs: [series.id, 'parclose', '%باكيت%', '%parclose%', '514'],
+          orderBy: "CASE WHEN TRIM(code) = '514' THEN 0 ELSE 1 END, id",
           limit: 1,
         );
         if (parRes.isNotEmpty) {
@@ -5125,6 +5826,9 @@ class WindowModel extends ChangeNotifier {
                 );
               } catch (_) {}
             }
+            if (overrideName == 'الشرائح (Lames)') {
+              res = res.where(isShutterBladeComponent).toList();
+            }
             if (res.isNotEmpty) {
               Map<String, dynamic>? bestMatch;
 
@@ -5262,11 +5966,30 @@ class WindowModel extends ChangeNotifier {
 
     var parcloses = series.sections.where((s) {
       final t = s.type.toLowerCase().trim();
-      return t.contains('parclose') || t.contains('باكيت');
+      final n = s.name.toLowerCase().trim();
+      return s.code.trim() == '514' ||
+          t.contains('parclose') ||
+          n.contains('parclose') ||
+          t.contains('باكيت') ||
+          n.contains('باكيت');
     }).toList();
-    if (parcloses.isNotEmpty &&
-        !componentOverrides.containsKey('باكيت الزجاج (Parclose)')) {
-      componentOverrides['باكيت الزجاج (Parclose)'] = parcloses.first.toMap();
+    parcloses.sort((a, b) {
+      final aPriority = a.code.trim() == '514' ? 0 : 1;
+      final bPriority = b.code.trim() == '514' ? 0 : 1;
+      return aPriority.compareTo(bPriority);
+    });
+    if (parcloses.isNotEmpty) {
+      const key = 'باكيت الزجاج (Parclose)';
+      final current = componentOverrides[key];
+      final currentMax = current is Map
+          ? (current['max_glass_thickness'] as num?)?.toDouble() ?? 0.0
+          : 0.0;
+      final preferred514 = parcloses.where((s) => s.code.trim() == '514');
+      if (current == null || (preferred514.isNotEmpty && currentMax <= 10.0)) {
+        componentOverrides[key] = preferred514.isNotEmpty
+            ? preferred514.first.toMap()
+            : parcloses.first.toMap();
+      }
     }
 
     var mullions = series.sections.where((s) {
@@ -5366,6 +6089,8 @@ class WindowModel extends ChangeNotifier {
       selectedSideCover = covers.first;
     }
     await _loadColorsForProfile(series.profileId);
+    await refreshSectionPricesForSelectedColor(notify: false);
+    await refreshBardageColorPrices(notify: false);
     availableAccessoryColors = await db.readAccessoryColors();
 
     // فلترة أي إكسسوار متبقٍ غير مربوط بهذه السلسلة حتى عند فتح طلب قديم.
@@ -5599,6 +6324,8 @@ class WindowModel extends ChangeNotifier {
     }
 
     await _loadColorsForProfile(series.profileId);
+    await refreshSectionPricesForSelectedColor(notify: false);
+    await refreshBardageColorPrices(notify: false);
     final d = await db.db;
     if (d != null) {
       await _loadAccessoryDefaults(d, series.id);
@@ -5610,8 +6337,40 @@ class WindowModel extends ChangeNotifier {
   Future<void> updateShutterDefaultsIfNeeded() async {
     if (!hasShutter) return;
 
+    final previousBoxHeight = shutterBoxHeight;
+    final database = await db.db;
+    Map<String, dynamic>? blade;
+    final rawBlade = componentOverrides['الشرائح (Lames)'];
+    if (rawBlade is Map) {
+      blade = Map<String, dynamic>.from(rawBlade);
+    }
+
+    // The limits table is blade-specific. On the first shutter activation the
+    // blade may not have been loaded yet, so resolve it before choosing a box.
+    if (blade == null && database != null) {
+      var rows = await database.query(
+        'ShutterComponents',
+        where: 'name = ? AND (is_active = 1 OR is_active IS NULL)',
+        whereArgs: [shutterLame],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        rows = await database.query(
+          'ShutterComponents',
+          where:
+              "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
+          limit: 1,
+        );
+      }
+      if (rows.isNotEmpty) {
+        final resolvedBlade = Map<String, dynamic>.from(rows.first);
+        blade = resolvedBlade;
+        componentOverrides['الشرائح (Lames)'] = resolvedBlade;
+        shutterLame = resolvedBlade['name']?.toString() ?? shutterLame;
+      }
+    }
+
     // 1. Check for extruded blade auto-switch (applies to all, including tunnel boxes!)
-    final blade = componentOverrides['الشرائح (Lames)'];
     if (blade != null) {
       final bladeSubtype = (blade['shutter_subtype']?.toString() ?? '')
           .toLowerCase();
@@ -5625,10 +6384,9 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (isCaissonTunnel) {
-      final tunnelDatabase = await db.db;
-      if (tunnelDatabase != null) {
-        await _synchronizeShutterTrackWithBlade(tunnelDatabase);
-        await _synchronizeShutterPartsWithBlade(tunnelDatabase);
+      if (database != null) {
+        await _synchronizeShutterTrackWithBlade(database);
+        await _synchronizeShutterPartsWithBlade(database);
       }
       return;
     }
@@ -5664,7 +6422,6 @@ class WindowModel extends ChangeNotifier {
       return null;
     }
 
-    final database = await db.db;
     if (database != null) {
       if (blade != null && blade['id'] != null) {
         final bladeId = blade['id'];
@@ -5676,41 +6433,26 @@ class WindowModel extends ChangeNotifier {
             orderBy: 'box_size ASC',
           );
 
-          double? requiredMinBox;
-          if (limits.isNotEmpty) {
-            for (var limit in limits) {
-              final boxSize = (limit['box_size'] as num).toDouble();
-              final maxHeight = (limit['max_height'] as num).toDouble();
-              if (height <= maxHeight) {
-                requiredMinBox = boxSize;
-                break;
-              }
-            }
-            if (requiredMinBox == null) {
-              requiredMinBox = (limits.last['box_size'] as num).toDouble();
-            }
-          }
-
-          // Respect manually selected box size if >= requiredMinBox
           double? chosenBoxSize;
           final manualBox = componentOverrides['الصندوق (Caisson)'];
           if (manualBox != null && manualBox['id'] != -999) {
             chosenBoxSize = getLocalComponentSize(manualBox);
           }
 
-          if (requiredMinBox != null) {
-            if (chosenBoxSize != null && chosenBoxSize >= requiredMinBox) {
-              customShutterBoxHeight = chosenBoxSize;
-              shutterHeightWarning = null;
-            } else {
-              customShutterBoxHeight = requiredMinBox;
-              if (height > (limits.last['max_height'] as num).toDouble()) {
-                shutterHeightWarning =
-                    "هذا الصندوق لا يمكنه أن يحمل هذا الارتفاع من الستار";
-              } else {
-                shutterHeightWarning = null;
-              }
-            }
+          final resolution = resolveShutterBoxFromLimits(
+            windowHeight: height,
+            limits: limits,
+            manuallySelectedBoxSize: chosenBoxSize,
+          );
+          if (resolution != null) {
+            customShutterBoxHeight = resolution.boxSize;
+            shutterHeightWarning = resolution.exceedsAllLimits
+                ? 'لا يمكن تركيب هذا الستار: ارتفاع النافذة '
+                      '${height.toStringAsFixed(0)} مم يتجاوز الحد الأقصى '
+                      '${resolution.maximumSupportedHeight.toStringAsFixed(0)} مم. '
+                      'تم اختيار أكبر صندوق '
+                      '${resolution.boxSize.toStringAsFixed(0)} مم للكميات.'
+                : null;
           } else {
             // Height-based fallback if no limits in DB
             double minFallback = 155.0;
@@ -5738,6 +6480,8 @@ class WindowModel extends ChangeNotifier {
     } else {
       customShutterBoxHeight = null;
     }
+
+    _synchronizeZonesAfterShutterBoxChange(previousBoxHeight, shutterBoxHeight);
 
     bool isSameSize(String? size1, String? size2) {
       if (size1 == null || size2 == null) return false;
@@ -5827,6 +6571,9 @@ class WindowModel extends ChangeNotifier {
           } catch (_) {}
         }
         try {
+          if (overrideName == 'الشرائح (Lames)') {
+            res = res.where(isShutterBladeComponent).toList();
+          }
           if (res.isNotEmpty) {
             Map<String, dynamic>? bestMatch;
 
@@ -6151,11 +6898,13 @@ class WindowModel extends ChangeNotifier {
     if (!needsDoubleParclose && structure != GlassStructure.simple) {
       return false;
     }
+    final currentCode = currentParclose?['code']?.toString().trim();
     final needsReplacement = needsDoubleParclose
         ? currentCapacity == null ||
               currentCapacity <= 10.0 ||
               currentCapacity <= paneThickness
-        : currentCapacity != null && currentCapacity > 10.0;
+        : (currentCapacity != null && currentCapacity > 10.0) ||
+              currentCode != '514';
     if (!needsReplacement) return false;
 
     final seriesId = activeFrameSeries?.id ?? activeSeries?.id;
@@ -6231,9 +6980,10 @@ class WindowModel extends ChangeNotifier {
     final rows = await database.query(
       'Sections',
       where:
-          'series_id = ? AND (LOWER(type) = ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ?) AND max_glass_thickness <= 10.0',
-      whereArgs: [seriesId, 'parclose', '%parclose%', '%باكيت%'],
-      orderBy: 'max_glass_thickness ASC',
+          "series_id = ? AND (LOWER(type) = ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR TRIM(code) = ?) AND (TRIM(code) = '514' OR COALESCE(max_glass_thickness, 0) <= 10.0)",
+      whereArgs: [seriesId, 'parclose', '%parclose%', '%باكيت%', '514'],
+      orderBy:
+          "CASE WHEN TRIM(code) = '514' THEN 0 ELSE 1 END, max_glass_thickness ASC",
       limit: 1,
     );
     if (rows.isNotEmpty) {
@@ -8791,30 +9541,106 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
-  void removeSashDivisions() {
-    if (selectedZone == null) return;
+  String? removeSashDivisions({
+    WindowZone? zoneOverride,
+    String? targetCellKey,
+  }) {
+    final zone = zoneOverride ?? selectedZone;
+    if (zone == null) return null;
     _saveSnapshot();
-    final zone = selectedZone!;
-    if (activeSubZone != null && activeSubZone!.startsWith('right')) {
+    final selectedCell = targetCellKey ?? activeSubZone;
+
+    // Fresh zones use immutable empty-map defaults. Make every collection
+    // mutable before removing the divisions and their obsolete cell data.
+    zone.cellIsPanel = Map<String, bool>.from(zone.cellIsPanel);
+    zone.cellIsSash = Map<String, bool>.from(zone.cellIsSash);
+    zone.cellIsDoubleSash = Map<String, bool>.from(zone.cellIsDoubleSash);
+    zone.cellSashOverrides = Map<String, Map<String, dynamic>>.from(
+      zone.cellSashOverrides,
+    );
+    zone.cellGlassSpec = Map<String, GlassSpecification>.from(
+      zone.cellGlassSpec,
+    );
+    zone.disabledVerticalDivisions = Map<String, bool>.from(
+      zone.disabledVerticalDivisions,
+    );
+    zone.disabledHorizontalDivisions = Map<String, bool>.from(
+      zone.disabledHorizontalDivisions,
+    );
+
+    void clearCellData(bool Function(String key) matches) {
+      zone.cellIsPanel.removeWhere((key, value) => matches(key));
+      zone.cellIsSash.removeWhere((key, value) => matches(key));
+      zone.cellIsDoubleSash.removeWhere((key, value) => matches(key));
+      zone.cellSashOverrides.removeWhere((key, value) => matches(key));
+      zone.cellGlassSpec.removeWhere((key, value) => matches(key));
+    }
+
+    String? normalizedCell;
+    if (selectedCell != null && selectedCell.startsWith('right')) {
       zone.rightInnerH = 0;
       zone.rightInnerV = 0;
+      zone.rightInnerHPositions = const [];
+      zone.rightInnerVPositions = const [];
       zone.rightPrimaryDivisionAxis = null;
-      zone.cellIsPanel.removeWhere((key, value) => key.startsWith('right'));
-    } else if (activeSubZone != null && activeSubZone!.startsWith('left')) {
+      zone.disabledVerticalDivisions.removeWhere(
+        (key, value) => key.startsWith('right_'),
+      );
+      zone.disabledHorizontalDivisions.removeWhere(
+        (key, value) => key.startsWith('right_'),
+      );
+      clearCellData((key) => key.startsWith('right'));
+      normalizedCell = 'right_cell_0_0';
+    } else if (selectedCell != null && selectedCell.startsWith('left')) {
       zone.innerH = 0;
       zone.innerV = 0;
+      zone.innerHPositions = const [];
+      zone.innerVPositions = const [];
       zone.primaryDivisionAxis = null;
-      zone.cellIsPanel.removeWhere((key, value) => key.startsWith('left'));
+      zone.disabledVerticalDivisions.removeWhere(
+        (key, value) => !key.startsWith('right_'),
+      );
+      zone.disabledHorizontalDivisions.removeWhere(
+        (key, value) => !key.startsWith('right_'),
+      );
+      clearCellData((key) => key.startsWith('left'));
+      normalizedCell = 'left_cell_0_0';
+    } else if (selectedCell != null && selectedCell.startsWith('main')) {
+      zone.innerH = 0;
+      zone.innerV = 0;
+      zone.innerHPositions = const [];
+      zone.innerVPositions = const [];
+      zone.primaryDivisionAxis = null;
+      zone.disabledVerticalDivisions.removeWhere(
+        (key, value) => !key.startsWith('right_'),
+      );
+      zone.disabledHorizontalDivisions.removeWhere(
+        (key, value) => !key.startsWith('right_'),
+      );
+      clearCellData((key) => key.startsWith('main'));
+      normalizedCell = 'main_cell_0_0';
     } else {
       zone.innerH = 0;
       zone.innerV = 0;
       zone.rightInnerH = 0;
       zone.rightInnerV = 0;
+      zone.innerHPositions = const [];
+      zone.innerVPositions = const [];
+      zone.rightInnerHPositions = const [];
+      zone.rightInnerVPositions = const [];
       zone.primaryDivisionAxis = null;
       zone.rightPrimaryDivisionAxis = null;
       zone.cellIsPanel.clear();
+      zone.cellIsSash.clear();
+      zone.cellIsDoubleSash.clear();
+      zone.cellSashOverrides.clear();
+      zone.cellGlassSpec.clear();
+      zone.disabledVerticalDivisions.clear();
+      zone.disabledHorizontalDivisions.clear();
     }
+    if (identical(zone, selectedZone)) activeSubZone = normalizedCell;
     notifyListeners();
+    return normalizedCell;
   }
 
   void updatePrimaryMullionAxis() {
@@ -9996,21 +10822,26 @@ class WindowModel extends ChangeNotifier {
       double topOffset = (hasShutter && !hasArchOrSlant && !isCaissonTunnel)
           ? shutterBoxHeight
           : 0.0;
+      bool isSameEdge(double value, double expected) =>
+          (value - expected).abs() <= 1.0;
       for (var z in zones) {
         z.boundary = Rect.fromLTRB(
-          z.boundary.left == oldThickness ? profileThickness : z.boundary.left,
-          z.boundary.top == (topOffset + oldThickness)
+          isSameEdge(z.boundary.left, oldThickness)
+              ? profileThickness
+              : z.boundary.left,
+          isSameEdge(z.boundary.top, topOffset + oldThickness)
               ? (topOffset + profileThickness)
               : z.boundary.top,
-          z.boundary.right == width - oldThickness
+          isSameEdge(z.boundary.right, width - oldThickness)
               ? width - profileThickness
               : z.boundary.right,
-          z.boundary.bottom == height - oldThickness
+          isSameEdge(z.boundary.bottom, height - oldThickness)
               ? height - profileThickness
               : z.boundary.bottom,
         );
       }
     }
+    _synchronizeSingleZoneWithOuterFrame();
   }
 
   void toggleShutterSide(String side) {
@@ -10140,6 +10971,7 @@ class WindowModel extends ChangeNotifier {
     String? panneauSubtype,
     String? panneauColor,
     bool? isVerticalBardage,
+    bool? bardageUsesFrameColor,
     int? panneauProductId,
     double? thicknessOuter,
     double? thicknessInner,
@@ -10240,6 +11072,7 @@ class WindowModel extends ChangeNotifier {
         panneauSubtype: panneauSubtype,
         panneauColor: panneauColor,
         isVerticalBardage: isVerticalBardage,
+        bardageUsesFrameColor: bardageUsesFrameColor,
         panneauProductId: panneauProductId,
         thicknessOuter: resolvedThicknessOuter,
         thicknessInner: resolvedThicknessInner,
@@ -10273,6 +11106,7 @@ class WindowModel extends ChangeNotifier {
         panneauSubtype: panneauSubtype,
         panneauColor: panneauColor,
         isVerticalBardage: isVerticalBardage,
+        bardageUsesFrameColor: bardageUsesFrameColor,
         panneauProductId: panneauProductId,
         thicknessOuter: resolvedThicknessOuter,
         thicknessInner: resolvedThicknessInner,
@@ -10303,6 +11137,7 @@ class WindowModel extends ChangeNotifier {
             panneauSubtype: panneauSubtype,
             panneauColor: panneauColor,
             isVerticalBardage: isVerticalBardage,
+            bardageUsesFrameColor: bardageUsesFrameColor,
             panneauProductId: panneauProductId,
             thicknessOuter: resolvedThicknessOuter,
             thicknessInner: resolvedThicknessInner,

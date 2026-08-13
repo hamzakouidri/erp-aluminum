@@ -288,6 +288,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
   String _dimLabel(String? dim, AppLanguage lang) {
     if (dim == 'leaf_height') return Localization.translate('طول الضلفة', lang);
     if (dim == 'leaf_width') return Localization.translate('عرض الضلفة', lang);
+    if (dim == 'shutter_weight') return 'وزن الستار';
     return '';
   }
 
@@ -297,6 +298,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
     String? dimension = item?['dimension'];
     final baseQtyCtrl = TextEditingController(text: (item?['base_qty'] ?? 1).toString());
     String unit = item?['unit'] ?? 'قطعة';
+    String mechanismScope = item?['mechanism_scope'] ?? 'all';
     final units = ['قطعة', 'متر', 'بارة', 'مجموعة'];
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
 
@@ -405,7 +407,30 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     contentPadding: EdgeInsets.zero,
                     dense: true,
                   ),
+                  RadioListTile<String?>(
+                    title: const Text('وزن الستار (كغ)'),
+                    value: 'shutter_weight',
+                    groupValue: dimension,
+                    onChanged: (v) => setS(() => dimension = v),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
                 ],
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: mechanismScope,
+                  decoration: const InputDecoration(
+                    labelText: 'استعمال المركب',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('مشترك')),
+                    DropdownMenuItem(value: 'belt', child: Text('للحزام فقط')),
+                    DropdownMenuItem(value: 'crank', child: Text('للمانيفال فقط')),
+                  ],
+                  onChanged: (value) => setS(() => mechanismScope = value ?? 'all'),
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   isExpanded: true,
@@ -436,6 +461,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     dimension: qtyMode == 'by_range' ? dimension : null,
                     baseQty: double.tryParse(baseQtyCtrl.text) ?? 1,
                     unit: unit,
+                    mechanismScope: mechanismScope,
                     sortOrder: _items.length,
                   );
                 } else {
@@ -446,6 +472,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     dimension: qtyMode == 'by_range' ? dimension : null,
                     baseQty: double.tryParse(baseQtyCtrl.text) ?? 1,
                     unit: unit,
+                    mechanismScope: mechanismScope,
                     sortOrder: item['sort_order'] ?? 0,
                   );
                 }
@@ -481,6 +508,12 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     final dim = item['dimension'] as String?;
                     final ranges = item['ranges'] as List? ?? [];
                     final variants = item['variants'] as List? ?? [];
+                    final mechanismScope = item['mechanism_scope']?.toString() ?? 'all';
+                    final mechanismLabel = mechanismScope == 'belt'
+                        ? 'للحزام فقط'
+                        : mechanismScope == 'crank'
+                        ? 'للمانيفال فقط'
+                        : 'مشترك';
 
                     String qtyLabel = '';
                     if (mode == 'fixed') {
@@ -512,10 +545,14 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     String modeDetails = '';
                     if (mode == 'by_range' && ranges.isNotEmpty) {
                       modeDetails = ' (' + ranges.map((r) {
-                        final minCm = ((r['min_mm'] ?? 0) / 10).toStringAsFixed(0);
-                        final maxCm = ((r['max_mm'] ?? 0) / 10).toStringAsFixed(0);
+                        final isWeight = dim == 'shutter_weight';
+                        final divisor = isWeight ? 1.0 : 10.0;
+                        final minCm = ((r['min_mm'] ?? 0) / divisor).toStringAsFixed(0);
+                        final maxCm = ((r['max_mm'] ?? 0) / divisor).toStringAsFixed(0);
                         final qty = (r['qty'] ?? 1).toStringAsFixed(0);
-                        return '$minCm-$maxCm: $qty';
+                        final rawGroup = (r['compatibility_group'] as num?)?.toInt() ?? 0;
+                        final groupLabel = rawGroup == 0 ? 'مشترك' : 'م$rawGroup';
+                        return '$minCm-$maxCm${isWeight ? " كغ، $groupLabel" : ""}: $qty';
                       }).join(', ') + ')';
                     } else if (mode == 'by_variant' && variants.isNotEmpty) {
                       final isShutter = (widget.kit['name'] ?? '').toString().toLowerCase().contains('volet') ||
@@ -546,7 +583,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                           child: Text(qtyLabel, style: const TextStyle(color: Colors.white, fontSize: 10)),
                         ),
                         title: Text(item['component_type'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('${_qtyModeLabel(mode, lang)}$modeDetails${dim != null ? " | ${_dimLabel(dim, lang)}" : ""} | $translatedUnit'),
+                        subtitle: Text('${_qtyModeLabel(mode, lang)}$modeDetails${dim != null ? " | ${_dimLabel(dim, lang)}" : ""} | $mechanismLabel | $translatedUnit'),
                         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                           if (mode == 'by_range')
                             IconButton(
@@ -634,26 +671,31 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
     switch (widget.item['dimension']) {
       case 'leaf_height': return 'طول الضلفة (سم)';
       case 'leaf_width': return 'عرض الضلفة (سم)';
+      case 'shutter_weight': return 'وزن الستار (كغ)';
       default: return 'القياس (سم)';
     }
   }
   Future<void> _showAddEditRangeDialog({Map<String, dynamic>? range}) async {
-    final minCtrl = TextEditingController(text: range != null ? (range['min_mm'] / 10).toStringAsFixed(0) : '');
-    final maxCtrl = TextEditingController(text: range != null ? (range['max_mm'] / 10).toStringAsFixed(0) : '');
+    final isWeight = widget.item['dimension'] == 'shutter_weight';
+    final divisor = isWeight ? 1.0 : 10.0;
+    final unitLabel = isWeight ? 'كغ' : 'سم';
+    final minCtrl = TextEditingController(text: range != null ? (range['min_mm'] / divisor).toStringAsFixed(isWeight ? 1 : 0) : '');
+    final maxCtrl = TextEditingController(text: range != null ? (range['max_mm'] / divisor).toStringAsFixed(isWeight ? 1 : 0) : '');
     final nameCtrl = TextEditingController(text: range?['product_name'] ?? '');
     final priceCtrl = TextEditingController(text: (range?['price'] ?? 0).toString());
     final qtyCtrl = TextEditingController(text: (range?['qty'] ?? 1).toString());
+    int compatibilityGroup = ((range?['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) => AlertDialog(
         title: Text(range == null ? 'اضافة نطاق' : 'تعديل النطاق'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(_dimLabel(), style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: TextField(controller: minCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'من (سم)', hintText: '80', border: OutlineInputBorder()))),
+            Expanded(child: TextField(controller: minCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'من ($unitLabel)', hintText: isWeight ? '1' : '80', border: const OutlineInputBorder()))),
             const SizedBox(width: 8),
-            Expanded(child: TextField(controller: maxCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'الى (سم)', hintText: '120', border: OutlineInputBorder()))),
+            Expanded(child: TextField(controller: maxCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'إلى ($unitLabel)', hintText: isWeight ? '15' : '120', border: const OutlineInputBorder()))),
           ]),
           const SizedBox(height: 10),
           Autocomplete<String>(
@@ -679,18 +721,31 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
             const SizedBox(width: 8),
             Expanded(child: TextField(controller: qtyCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'الكمية', border: OutlineInputBorder()))),
           ]),
+          if (isWeight) ...[
+            const SizedBox(height: 10),
+            DropdownButtonFormField<int>(
+              value: compatibilityGroup,
+              decoration: const InputDecoration(labelText: 'مجموعة التوافق', border: OutlineInputBorder()),
+              items: const [
+                DropdownMenuItem(value: 0, child: Text('مشترك بين المجموعتين')),
+                DropdownMenuItem(value: 1, child: Text('المجموعة 1')),
+                DropdownMenuItem(value: 2, child: Text('المجموعة 2')),
+              ],
+              onChanged: (value) => setDialogState(() => compatibilityGroup = value ?? 0),
+            ),
+          ],
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('الغاء')),
           ElevatedButton(
             onPressed: () async {
-              final minCm = double.tryParse(minCtrl.text) ?? 0;
-              final maxCm = double.tryParse(maxCtrl.text) ?? 0;
-              if (nameCtrl.text.trim().isEmpty || minCm >= maxCm) return;
+              final minValue = double.tryParse(minCtrl.text.replaceAll(',', '.')) ?? 0;
+              final maxValue = double.tryParse(maxCtrl.text.replaceAll(',', '.')) ?? 0;
+              if (nameCtrl.text.trim().isEmpty || minValue >= maxValue) return;
               if (range == null) {
-                await widget.db.insertKitItemRange(itemId: widget.item['id'], minMm: minCm * 10, maxMm: maxCm * 10, productName: nameCtrl.text.trim(), price: double.tryParse(priceCtrl.text) ?? 0, qty: double.tryParse(qtyCtrl.text) ?? 1);
+                await widget.db.insertKitItemRange(itemId: widget.item['id'], minMm: minValue * divisor, maxMm: maxValue * divisor, productName: nameCtrl.text.trim(), price: double.tryParse(priceCtrl.text) ?? 0, qty: double.tryParse(qtyCtrl.text) ?? 1, compatibilityGroup: compatibilityGroup);
               } else {
-                await widget.db.updateKitItemRange(range['id'], minMm: minCm * 10, maxMm: maxCm * 10, productName: nameCtrl.text.trim(), price: double.tryParse(priceCtrl.text) ?? 0, qty: double.tryParse(qtyCtrl.text) ?? 1);
+                await widget.db.updateKitItemRange(range['id'], minMm: minValue * divisor, maxMm: maxValue * divisor, productName: nameCtrl.text.trim(), price: double.tryParse(priceCtrl.text) ?? 0, qty: double.tryParse(qtyCtrl.text) ?? 1, compatibilityGroup: compatibilityGroup);
               }
               if (ctx.mounted) Navigator.pop(ctx);
               _loadRanges();
@@ -698,7 +753,7 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
             child: Text(range == null ? 'اضافة' : 'حفظ'),
           ),
         ],
-      ),
+      )),
     );
   }
   @override
@@ -706,20 +761,25 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('${widget.item['component_type']} - النطاقات'), actions: [if (isAdmin) IconButton(icon: const Icon(Icons.add), onPressed: () => _showAddEditRangeDialog())]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : _ranges.isEmpty
-          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.linear_scale, size: 48, color: Colors.grey), const SizedBox(height: 12), Text('لا توجد نطاقات — اضغط + لاضافة نطاق', style: TextStyle(color: Colors.grey[600])), const SizedBox(height: 6), Text('مثال: من 80 سم الى 120 سم', style: TextStyle(color: Colors.grey[400], fontSize: 12))]))
+          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.linear_scale, size: 48, color: Colors.grey), const SizedBox(height: 12), Text('لا توجد نطاقات — اضغط + لاضافة نطاق', style: TextStyle(color: Colors.grey[600])), const SizedBox(height: 6), Text(widget.item['dimension'] == 'shutter_weight' ? 'مثال: من 1 كغ إلى 15 كغ' : 'مثال: من 80 سم الى 120 سم', style: TextStyle(color: Colors.grey[400], fontSize: 12))]))
           : ListView.builder(
               padding: const EdgeInsets.all(12), itemCount: _ranges.length,
               itemBuilder: (ctx, i) {
                 final r = _ranges[i];
-                final minCm = (r['min_mm'] / 10).toStringAsFixed(0);
-                final maxCm = (r['max_mm'] / 10).toStringAsFixed(0);
+                final isWeight = widget.item['dimension'] == 'shutter_weight';
+                final divisor = isWeight ? 1.0 : 10.0;
+                final unitLabel = isWeight ? 'كغ' : 'سم';
+                final minCm = (r['min_mm'] / divisor).toStringAsFixed(isWeight ? 1 : 0);
+                final maxCm = (r['max_mm'] / divisor).toStringAsFixed(isWeight ? 1 : 0);
+                final rawGroup = ((r['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
+                final groupLabel = rawGroup == 0 ? 'مشترك' : 'المجموعة $rawGroup';
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.withOpacity(0.4))),
-                      child: Text('$minCm-$maxCm\nسم', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 11))),
+                      child: Text('$minCm-$maxCm\n$unitLabel', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 11))),
                     title: Text(r['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('السعر: ${r['price']}  |  الكمية: ${r['qty']?.toStringAsFixed(0)}'),
+                    subtitle: Text('السعر: ${r['price']}  |  الكمية: ${r['qty']?.toStringAsFixed(0)}${isWeight ? "  |  $groupLabel" : ""}'),
                     trailing: isAdmin
                         ? Row(mainAxisSize: MainAxisSize.min, children: [
                             IconButton(icon: const Icon(Icons.edit), onPressed: () => _showAddEditRangeDialog(range: r)),

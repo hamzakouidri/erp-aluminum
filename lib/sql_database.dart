@@ -52,6 +52,7 @@ class SqlDatabase {
   static Database? _db;
   static Future<Database>? _openingDb;
   static Future<void>? _databaseReopenTask;
+  static bool _knownColorsRepaired = false;
   static final Random _distributedIdRandom = Random.secure();
   static int _lastDistributedId = 0;
 
@@ -96,6 +97,67 @@ class SqlDatabase {
   static double? _readStoredNumber(dynamic value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString().trim() ?? '');
+  }
+
+  static String _canonicalKnownColorHex(String name, String fallback) {
+    final normalized = name.toLowerCase().trim();
+    if (normalized.contains('9007')) return '#8A939E';
+    if (normalized.contains('desert') ||
+        normalized.contains('ديزرت') ||
+        normalized.contains('ديزيرت') ||
+        normalized.contains('ديزر')) {
+      return '#B68B55';
+    }
+    if (normalized.contains('champagne') ||
+        normalized.contains('شامبان') ||
+        normalized.contains('شمبان')) {
+      return '#F7E7CE';
+    }
+    final isGold =
+        normalized.contains('gold') ||
+        normalized.contains('ذهبي') ||
+        normalized.contains('ذهب') ||
+        normalized.contains('doré') ||
+        normalized.contains('dore') ||
+        RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(normalized);
+    if (isGold) return '#D4AF37';
+    return fallback;
+  }
+
+  static bool _isDesertOakColor(String name) {
+    final normalized = name.toLowerCase().trim();
+    return normalized.contains('desert') ||
+        normalized.contains('oak') ||
+        normalized.contains('ديزر');
+  }
+
+  static Future<void> _linkColorToAllProfiles(
+    Database database,
+    int colorId,
+  ) async {
+    final profiles = await database.query('Profile', columns: ['id']);
+    for (final profile in profiles) {
+      final profileId = profile['id'];
+      if (profileId == null) continue;
+      await database.insert('ProfileColors', {
+        'profile_id': profileId,
+        'color_id': colorId,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  static String _canonicalLegacyColorName(String value) {
+    const exactFixes = <String, String>{
+      'â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢': 'أبيض',
+      'â•ªÂ¿â”˜Ã¥â”˜Ã¨': 'بني',
+      'â•ªâ–’â”˜Ã â•ªÂºâ•ªÂ»â”˜Ã¨': 'رمادي',
+      'â•ªÃºâ•ªâ”‚â”˜Ãªâ•ªÂ»': 'أسود',
+      'â•ªÂ¿â”˜Ã¨â•ªÂ¼': 'بيج',
+      'â•ªâ”¤â•ªÂºâ”˜Ã â•ªÂ¿â•ªÂºâ”˜Ã¥': 'شمبانيا',
+    };
+    final exact = exactFixes[value];
+    if (exact != null) return exact;
+    return _repairLegacyTextEncoding(value);
   }
 
   static Map<String, dynamic> _withDistributedId(Map<String, dynamic> values) {
@@ -244,7 +306,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 54,
+          version: 56,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -255,7 +317,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 54,
+      version: 56,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -1070,6 +1132,7 @@ class SqlDatabase {
               dimension TEXT,
               base_qty REAL NOT NULL DEFAULT 1,
               unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
+              mechanism_scope TEXT NOT NULL DEFAULT 'all',
               sort_order INTEGER NOT NULL DEFAULT 0,
               FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
             )
@@ -1085,6 +1148,7 @@ class SqlDatabase {
               product_name TEXT NOT NULL,
               price REAL NOT NULL DEFAULT 0.0,
               qty REAL NOT NULL DEFAULT 1,
+              compatibility_group INTEGER NOT NULL DEFAULT 0,
               FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
             )
           ''');
@@ -1461,7 +1525,9 @@ class SqlDatabase {
   /// be offered as a frame, sash and/or mullion.  Keep the schema repair here
   /// too because users can edit the catalogue in a session that started before
   /// the normal database-open migration ran.
-  Future<void> _ensureSectionDrawingRoleColumns(DatabaseExecutor executor) async {
+  Future<void> _ensureSectionDrawingRoleColumns(
+    DatabaseExecutor executor,
+  ) async {
     try {
       await executor.execute(
         'ALTER TABLE Sections ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
@@ -2464,6 +2530,20 @@ class SqlDatabase {
       await _ensureClientCodeInfrastructure(db);
       await _backfillClientCodes(db);
     }
+    if (oldVersion < 55) {
+      try {
+        await db.execute(
+          'ALTER TABLE KitItemRanges ADD COLUMN compatibility_group INTEGER NOT NULL DEFAULT 0;',
+        );
+      } catch (_) {}
+    }
+    if (oldVersion < 56) {
+      try {
+        await db.execute(
+          "ALTER TABLE KitBundleItems ADD COLUMN mechanism_scope TEXT NOT NULL DEFAULT 'all';",
+        );
+      } catch (_) {}
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -2902,6 +2982,7 @@ class SqlDatabase {
         dimension TEXT,
         base_qty REAL NOT NULL DEFAULT 1,
         unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
+        mechanism_scope TEXT NOT NULL DEFAULT 'all',
         sort_order INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
       )
@@ -2915,6 +2996,7 @@ class SqlDatabase {
         product_name TEXT NOT NULL,
         price REAL NOT NULL DEFAULT 0.0,
         qty REAL NOT NULL DEFAULT 1,
+        compatibility_group INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
       )
     ''');
@@ -3105,8 +3187,7 @@ class SqlDatabase {
             ? <Map<String, dynamic>>[]
             : allColorPriceRows
                   .where(
-                    (row) =>
-                        row['color_id']?.toString() == colorId.toString(),
+                    (row) => row['color_id']?.toString() == colorId.toString(),
                   )
                   .toList();
         finalPrice = matchingColorPrice.isEmpty
@@ -3205,8 +3286,7 @@ class SqlDatabase {
     );
     if (persisted.isEmpty ||
         persisted.any(
-          (row) =>
-              ((row['price'] as num?)?.toDouble() ?? double.nan) != price,
+          (row) => ((row['price'] as num?)?.toDouble() ?? double.nan) != price,
         )) {
       throw StateError('تعذر التحقق من حفظ سعر القطاع');
     }
@@ -3480,11 +3560,9 @@ class SqlDatabase {
         ? 0
         : _positiveInt(sequenceRows.first['last_code']);
     if (highestCode > previousHighWater) {
-      await executor.update(
-        'ClientCodeSequence',
-        {'last_code': highestCode},
-        where: 'id = 1',
-      );
+      await executor.update('ClientCodeSequence', {
+        'last_code': highestCode,
+      }, where: 'id = 1');
     }
   }
 
@@ -3505,15 +3583,11 @@ class SqlDatabase {
     final maxExisting = maxRows.isEmpty
         ? 0
         : _positiveInt(maxRows.first['max_code']);
-    final nextCode = (sequenceValue > maxExisting
-            ? sequenceValue
-            : maxExisting) +
-        1;
-    await executor.update(
-      'ClientCodeSequence',
-      {'last_code': nextCode},
-      where: 'id = 1',
-    );
+    final nextCode =
+        (sequenceValue > maxExisting ? sequenceValue : maxExisting) + 1;
+    await executor.update('ClientCodeSequence', {
+      'last_code': nextCode,
+    }, where: 'id = 1');
     return nextCode;
   }
 
@@ -3545,16 +3619,13 @@ class SqlDatabase {
 
     final where = (whereClause ?? '').trim();
     final filter = where.isEmpty ? '' : 'WHERE $where';
-    return myDb.rawQuery(
-      '''
+    return myDb.rawQuery('''
       SELECT c.*,
         c.client_code AS display_number
       FROM Client AS c
       $filter
       ORDER BY c.client_code ASC, c.id ASC
-      ''',
-      whereArgs,
-    );
+      ''', whereArgs);
   }
 
   Future<int> insertClient(
@@ -3782,13 +3853,7 @@ class SqlDatabase {
         .join(' AND ');
     final whereArgs = <Object?>[];
     for (final term in terms) {
-      whereArgs.addAll([
-        '%$term%',
-        '%$term%',
-        '%$term%',
-        '%$term%',
-        '%$term%',
-      ]);
+      whereArgs.addAll(['%$term%', '%$term%', '%$term%', '%$term%', '%$term%']);
     }
     return _queryClientsForDisplay(
       database: myDb,
@@ -8048,8 +8113,41 @@ class SqlDatabase {
   }
 
   //////////////////////////////////// Colors //////////////////////////////////////
+  Future<void> _repairKnownColorRows(Database myDb) async {
+    if (_knownColorsRepaired) return;
+    _knownColorsRepaired = true;
+    var changed = false;
+    try {
+      final rows = await myDb.query('Colors');
+      for (final row in rows) {
+        final id = row['id'];
+        if (id == null) continue;
+        final rawName = row['name']?.toString() ?? '';
+        final repairedName = _canonicalLegacyColorName(rawName);
+        final rawHex = row['hex_code']?.toString() ?? '';
+        final repairedHex = _canonicalKnownColorHex(repairedName, rawHex);
+        if (_isDesertOakColor(repairedName)) {
+          await _linkColorToAllProfiles(myDb, (id as num).toInt());
+        }
+        if (repairedName == rawName && repairedHex == rawHex) continue;
+        await myDb.update(
+          'Colors',
+          {'name': repairedName, 'hex_code': repairedHex},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        changed = true;
+      }
+    } catch (_) {
+      _knownColorsRepaired = false;
+      return;
+    }
+    if (changed) CloudSyncService().notifyCatalogChange();
+  }
+
   Future<List<Map<String, dynamic>>> readColors() async {
     Database? myDb = await db;
+    await _repairKnownColorRows(myDb!);
     return myDb!.query(
       'Colors',
       where: 'is_active = 1 OR is_active IS NULL',
@@ -8081,24 +8179,12 @@ class SqlDatabase {
       if (check.isNotEmpty) return;
 
       final defaults = [
-        {
-          'name': 'â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢',
-          'hex_code': '#FFFFFF',
-          'type': 'Global',
-        },
-        {'name': 'â•ªÂ¿â”˜Ã¥â”˜Ã¨', 'hex_code': '#795548', 'type': 'Global'},
-        {
-          'name': 'â•ªâ–’â”˜Ã â•ªÂºâ•ªÂ»â”˜Ã¨',
-          'hex_code': '#9E9E9E',
-          'type': 'Global',
-        },
-        {
-          'name': 'â•ªÃºâ•ªâ”‚â”˜Ãªâ•ªÂ»',
-          'hex_code': '#000000',
-          'type': 'Global',
-        },
-        {'name': 'â•ªÂ¿â”˜Ã¨â•ªÂ¼', 'hex_code': '#F5F5DC', 'type': 'Global'},
-        {'name': 'Ø®Ø§Ù…', 'hex_code': '#E0E0E0', 'type': 'Global'},
+        {'name': 'أبيض', 'hex_code': '#FFFFFF', 'type': 'Global'},
+        {'name': 'بني', 'hex_code': '#795548', 'type': 'Global'},
+        {'name': 'رمادي', 'hex_code': '#9E9E9E', 'type': 'Global'},
+        {'name': 'أسود', 'hex_code': '#000000', 'type': 'Global'},
+        {'name': 'بيج', 'hex_code': '#F5F5DC', 'type': 'Global'},
+        {'name': 'خام', 'hex_code': '#E0E0E0', 'type': 'Global'},
       ];
       for (var c in defaults) {
         await myDb.insert('Colors', c);
@@ -8112,46 +8198,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
 
-    // --- ONE-TIME COLOR MIGRATION ---
-    var white = await myDb.query(
-      'Colors',
-      where: "name COLLATE NOCASE IN ('white', 'â”˜Ãªâ•ªÂºâ”˜Ã¨â•ªÂ¬')",
-    );
-    if (white.isNotEmpty) {
-      var abiad = await myDb.query(
-        'Colors',
-        where: "name = ?",
-        whereArgs: ["â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢"],
-      );
-      if (abiad.isNotEmpty) {
-        // Rename old "â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢" (with wrong prices) to "â•ªâ”¤â•ªÂºâ”˜Ã â•ªÂ¿â•ªÂºâ”˜Ã¥"
-        await myDb.update(
-          'Colors',
-          {'name': 'â•ªâ”¤â•ªÂºâ”˜Ã â•ªÂ¿â•ªÂºâ”˜Ã¥', 'hex_code': '#F5E6C8'},
-          where: "id = ?",
-          whereArgs: [abiad.first['id']],
-        );
-      }
-      // Rename English "White" (with correct prices) to "â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢"
-      await myDb.update(
-        'Colors',
-        {'name': 'â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢', 'hex_code': '#FFFFFF'},
-        where: "id = ?",
-        whereArgs: [white.first['id']],
-      );
-
-      // Fix Desert Oak & Antique hex codes
-      await myDb.rawUpdate(
-        "UPDATE Colors SET hex_code = '#CD853F' WHERE name LIKE '%â•ªÂ»â”˜Ã¨â•ªâ–“â•ªâ–’%' OR name LIKE '%desert%'",
-      );
-      await myDb.rawUpdate(
-        "UPDATE Colors SET hex_code = '#6E5D4F' WHERE name LIKE '%â•ªÂºâ”˜Ã¥â•ªÂ¬â”˜Ã¨â”˜Ã¢%' OR name LIKE '%antique%'",
-      );
-      await myDb.rawUpdate(
-        "UPDATE Colors SET hex_code = '#4E2A14' WHERE name LIKE '%fonce%' OR name LIKE '%foncÃ©%' OR name LIKE '%dark%' OR name LIKE '%â•ªÂ»â•ªÂºâ”˜Ã¢â”˜Ã¥%'",
-      );
-    }
-    // ----------------------------------
+    await _repairKnownColorRows(myDb);
 
     var duplicates = await myDb.rawQuery('''
       SELECT name, COUNT(*) as count, MIN(id) as keep_id
@@ -8199,12 +8246,12 @@ class SqlDatabase {
       var checkAntique = await myDb.query(
         'Colors',
         where:
-            "name LIKE '%antique%' OR name LIKE '%Ø§Ù†ØªÙŠÙƒ%' OR name LIKE '%â•ªÂºâ”˜Ã¥â•ªÂ¬â”˜Ã¨â”˜Ã¢%'",
+            "LOWER(name) LIKE '%antique%' OR name LIKE '%أنتيك%' OR name LIKE '%انتيك%'",
       );
       int antiqueId;
       if (checkAntique.isEmpty) {
         antiqueId = await myDb.insert('Colors', {
-          'name': 'antique - Ø§Ù†ØªÙŠÙƒ',
+          'name': 'Antique / أنتيك',
           'hex_code': '#6E5D4F',
           'type': 'Global',
           'is_active': 1,
@@ -8216,13 +8263,13 @@ class SqlDatabase {
       var checkDesert = await myDb.query(
         'Colors',
         where:
-            "name LIKE '%desert%' OR name LIKE '%Oak%' OR name LIKE '%Ø¯ÙŠØ²Ø±Øª%'",
+            "LOWER(name) LIKE '%desert%' OR LOWER(name) LIKE '%oak%' OR name LIKE '%ديزرت%' OR name LIKE '%ديزيرت%'",
       );
       int desertId;
       if (checkDesert.isEmpty) {
         desertId = await myDb.insert('Colors', {
-          'name': 'desert oak - Ø¯ÙŠØ²Ø±Øª Ø§ÙˆÙƒ',
-          'hex_code': '#CD853F',
+          'name': 'Desert Oak / ديزرت أوك',
+          'hex_code': '#B68B55',
           'type': 'Global',
           'is_active': 1,
         });
@@ -8232,13 +8279,13 @@ class SqlDatabase {
 
       var checkGris9007 = await myDb.query(
         'Colors',
-        where: "name LIKE '%9007%' OR name LIKE '%Ø±Ù…Ø§Ø¯ÙŠ 9007%'",
+        where: "name LIKE '%9007%' OR name LIKE '%رمادي 9007%'",
       );
       int gris9007Id;
       if (checkGris9007.isEmpty) {
         gris9007Id = await myDb.insert('Colors', {
-          'name': 'Gris 9007 / Ø±Ù…Ø§Ø¯ÙŠ 9007',
-          'hex_code': '#9E9E9E',
+          'name': 'Gris 9007 / رمادي 9007',
+          'hex_code': '#8A939E',
           'type': 'Global',
           'is_active': 1,
         });
@@ -8246,7 +8293,7 @@ class SqlDatabase {
         gris9007Id = checkGris9007.first['id'] as int;
       }
 
-      var profiles = await myDb.query('Profiles');
+      var profiles = await myDb.query('Profile');
       for (var p in profiles) {
         final pId = p['id'] as int;
         var linkAntique = await myDb.query(
@@ -8295,12 +8342,17 @@ class SqlDatabase {
     double price = 0.0,
   }) async {
     Database? myDb = await db;
+    final repairedName = _canonicalLegacyColorName(name);
+    final repairedHex = _canonicalKnownColorHex(repairedName, hexCode);
     var res = await myDb!.insert('Colors', {
-      'name': name,
-      'hex_code': hexCode,
+      'name': repairedName,
+      'hex_code': repairedHex,
       'type': type,
       'price': price,
     });
+    if (_isDesertOakColor(repairedName)) {
+      await _linkColorToAllProfiles(myDb, res);
+    }
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -8313,12 +8365,22 @@ class SqlDatabase {
     double price = 0.0,
   }) async {
     Database? myDb = await db;
+    final repairedName = _canonicalLegacyColorName(name);
+    final repairedHex = _canonicalKnownColorHex(repairedName, hexCode);
     var res = await myDb!.update(
       'Colors',
-      {'name': name, 'hex_code': hexCode, 'type': type, 'price': price},
+      {
+        'name': repairedName,
+        'hex_code': repairedHex,
+        'type': type,
+        'price': price,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (_isDesertOakColor(repairedName)) {
+      await _linkColorToAllProfiles(myDb, id);
+    }
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -8455,8 +8517,9 @@ class SqlDatabase {
         whereArgs: [shutterComponentId, colorId],
         limit: 1,
       );
-      final savedPrice =
-          stored.isEmpty ? null : _readStoredNumber(stored.first['price']);
+      final savedPrice = stored.isEmpty
+          ? null
+          : _readStoredNumber(stored.first['price']);
       if (stored.isEmpty ||
           savedPrice == null ||
           (savedPrice - price).abs() > 0.000001) {
@@ -8468,6 +8531,21 @@ class SqlDatabase {
 
   Future<List<Map<String, dynamic>>> getColorsForProfile(int profileId) async {
     Database? myDb = await db;
+    await _repairKnownColorRows(myDb!);
+    final desertColors = await myDb.query(
+      'Colors',
+      columns: ['id'],
+      where:
+          "LOWER(name) LIKE '%desert%' OR LOWER(name) LIKE '%oak%' OR name LIKE '%ديزر%'",
+    );
+    for (final color in desertColors) {
+      final colorId = color['id'];
+      if (colorId == null) continue;
+      await myDb.insert('ProfileColors', {
+        'profile_id': profileId,
+        'color_id': colorId,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
     return myDb!.rawQuery(
       '''
       SELECT DISTINCT c.* FROM Colors c
@@ -8877,7 +8955,11 @@ class SqlDatabase {
       throw StateError('Shutter component database is not available.');
     }
     if (!price.isFinite) {
-      throw ArgumentError.value(price, 'price', 'Price must be a finite number');
+      throw ArgumentError.value(
+        price,
+        'price',
+        'Price must be a finite number',
+      );
     }
 
     // Older local databases can contain the component table from before the
@@ -10189,6 +10271,7 @@ class SqlDatabase {
         dimension TEXT,
         base_qty REAL NOT NULL DEFAULT 1,
         unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
+        mechanism_scope TEXT NOT NULL DEFAULT 'all',
         sort_order INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
       )
@@ -10202,6 +10285,7 @@ class SqlDatabase {
         product_name TEXT NOT NULL,
         price REAL NOT NULL DEFAULT 0.0,
         qty REAL NOT NULL DEFAULT 1,
+        compatibility_group INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
       )
     ''');
@@ -11963,6 +12047,7 @@ class SqlDatabase {
     String? dimension, // 'leaf_height' | 'leaf_width' | null
     double baseQty = 1,
     String unit = 'Ù‚Ø·Ø¹Ø©',
+    String mechanismScope = 'all',
     int sortOrder = 0,
   }) async {
     final database = await db;
@@ -11974,6 +12059,9 @@ class SqlDatabase {
       'dimension': dimension,
       'base_qty': baseQty,
       'unit': unit,
+      'mechanism_scope': const {'belt', 'crank'}.contains(mechanismScope)
+          ? mechanismScope
+          : 'all',
       'sort_order': sortOrder,
     });
   }
@@ -11986,6 +12074,7 @@ class SqlDatabase {
     String? dimension,
     required double baseQty,
     required String unit,
+    String mechanismScope = 'all',
     required int sortOrder,
   }) async {
     final database = await db;
@@ -11998,6 +12087,9 @@ class SqlDatabase {
         'dimension': dimension,
         'base_qty': baseQty,
         'unit': unit,
+        'mechanism_scope': const {'belt', 'crank'}.contains(mechanismScope)
+            ? mechanismScope
+            : 'all',
         'sort_order': sortOrder,
       },
       where: 'id = ?',
@@ -12035,6 +12127,7 @@ class SqlDatabase {
     required String productName,
     double price = 0.0,
     double qty = 1,
+    int compatibilityGroup = 0,
   }) async {
     final database = await db;
     if (database == null) return -1;
@@ -12045,6 +12138,7 @@ class SqlDatabase {
       'product_name': productName,
       'price': price,
       'qty': qty,
+      'compatibility_group': compatibilityGroup.clamp(0, 2),
     });
   }
 
@@ -12056,6 +12150,7 @@ class SqlDatabase {
     required String productName,
     required double price,
     required double qty,
+    int compatibilityGroup = 0,
   }) async {
     final database = await db;
     if (database == null) return;
@@ -12067,6 +12162,7 @@ class SqlDatabase {
         'product_name': productName,
         'price': price,
         'qty': qty,
+        'compatibility_group': compatibilityGroup.clamp(0, 2),
       },
       where: 'id = ?',
       whereArgs: [id],

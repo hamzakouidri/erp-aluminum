@@ -159,11 +159,7 @@ class _CommandeState extends State<Commande> {
   }
 
   Future<void> _openNewOrderForm() async {
-    await openOrderInWorkspaceTab(
-      context,
-      db: db,
-      onSaved: _fetchCommandes,
-    );
+    await openOrderInWorkspaceTab(context, db: db, onSaved: _fetchCommandes);
   }
 
   void _fetchCommandes() {
@@ -2117,23 +2113,11 @@ class _CommandeState extends State<Commande> {
                       color: Colors.indigo,
                     ),
                     title: Text(
-                      Localization.translate(
-                        'سلع الطلبية وموادها (تقرير النواقص)',
-                        lang,
-                      ),
+                      Localization.translate('كميات الطلبية المطلوبة', lang),
                     ),
-                    onTap: () {},
-                  ),
-
-                  ListTile(
-                    leading: const Icon(
-                      Icons.shopping_basket,
-                      color: Colors.deepPurple,
-                    ),
-                    title: Text(Localization.translate('السلع المطلوبة', lang)),
                     subtitle: Text(
                       Localization.translate(
-                        'مجموع سلع جميع المنتجات مجمّعة',
+                        'محسوبة من نفس جدول الكمية والتكلفة',
                         lang,
                       ),
                       style: const TextStyle(fontSize: 11),

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
-import 'package:database_data/settings/localization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
@@ -43,6 +42,11 @@ class AggregatedGoodItem {
   double totalQuantity;
   double totalCost;
   final String? profileCode;
+  final String? colorName;
+  final int? catalogItemId;
+  final String? inventoryItemType;
+  final int? colorId;
+  final bool isMissing;
 
   // 🟢 List of sub-items if this item is a grouped Kit
   final List<BomItem> kitSubItems;
@@ -58,6 +62,11 @@ class AggregatedGoodItem {
     required this.totalQuantity,
     required this.totalCost,
     this.profileCode,
+    this.colorName,
+    this.catalogItemId,
+    this.inventoryItemType,
+    this.colorId,
+    this.isMissing = false,
     this.kitSubItems = const [],
     this.kitGroupName,
   });
@@ -114,6 +123,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     Map<String, List<Map<String, dynamic>>> kitBundleData,
     Map<String, bool> kitPerLeafMap,
   ) async {
+    // Use the same automatic shutter links as the quantity/cost table before
+    // generating any row (blade -> track -> exact linked blade cap).
+    await model.updateShutterDefaultsIfNeeded();
     final activeVariants = _buildActiveVariants(model);
     final dbInstance = (await widget.db.db)!;
     final sqlDb = widget.db;
@@ -137,6 +149,28 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       if (item.isMissing &&
           !model.componentOverrides.containsKey(item.originalName)) {
         try {
+          if (item.category == 'shutter' &&
+              item.originalName == 'أغطية الشفرات (Bouchons Lames)') {
+            final blade = model.componentOverrides['الشرائح (Lames)'];
+            if (blade is Map) {
+              final bladeName = (blade['name'] ?? '').toString().trim();
+              if (bladeName.isNotEmpty) {
+                final linkedCaps = await dbInstance.query(
+                  'ShutterComponents',
+                  where:
+                      "LOWER(TRIM(component_type)) = 'bouchon_lame' AND LOWER(TRIM(shutter_subtype)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)",
+                  whereArgs: [bladeName],
+                  orderBy: 'id ASC',
+                  limit: 1,
+                );
+                if (linkedCaps.isNotEmpty) {
+                  model.componentOverrides[item.originalName] =
+                      Map<String, dynamic>.from(linkedCaps.first);
+                }
+              }
+            }
+            continue;
+          }
           // Espagnolette special case
           if (item.originalName.contains('إسبانيوليت') ||
               item.originalName.contains('Espagnolette')) {
@@ -616,6 +650,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 } else {
                   price = _safeDouble(matched['price_dzd'] ?? matched['price']);
                 }
+              } else if (table == 'ShutterComponents') {
+                final colorPrices = await dbInstance.query(
+                  'ShutterColorPrices',
+                  where: 'shutter_component_id = ?',
+                  whereArgs: [matched['id']],
+                );
+                price = resolveShutterComponentUnitPrice(
+                  component: Map<String, dynamic>.from(matched),
+                  colorPrices: colorPrices,
+                  selectedColorId: colorId,
+                );
               } else {
                 price = _safeDouble(matched['price']);
               }
@@ -635,10 +680,45 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       kitPerLeafMap: kitPerLeafMap,
     );
 
+    // Kit rows are configured by name. Resolve their exact catalogue identity
+    // without changing their quantity or cost, so a later stock comparison can
+    // address the correct physical record instead of relying on display text.
+    final resolvedBom = <BomItem>[];
+    for (final item in generatedBom) {
+      if (item.catalogItemId == null && item.kitGroupName != null) {
+        final isShutterItem = item.category == 'shutter';
+        final table = isShutterItem ? 'ShutterComponents' : 'Accessories';
+        final matches = await dbInstance.query(
+          table,
+          columns: const ['id'],
+          where:
+              'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)',
+          whereArgs: [item.name],
+          orderBy: 'id ASC',
+          limit: 1,
+        );
+        if (matches.isNotEmpty) {
+          final rawId = matches.first['id'];
+          final id = rawId is num ? rawId.toInt() : int.tryParse('$rawId');
+          resolvedBom.add(
+            item.copyWith(
+              catalogItemId: id,
+              inventoryItemType: isShutterItem
+                  ? 'ShutterComponent'
+                  : 'Accessory',
+              colorId: isShutterItem ? colorId : accessoryColorId,
+            ),
+          );
+          continue;
+        }
+      }
+      resolvedBom.add(item);
+    }
+
     // The series-configuration page is being redesigned.  Until the new
     // table rules are defined, the quantity table must use its direct
     // calculation without any configuration-page filter.
-    return generatedBom;
+    return resolvedBom;
   }
 
   Future<void> _loadAndAggregate() async {
@@ -763,9 +843,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   width: w,
                   height: h,
                   model: instanceModel,
-                  bomItems: instBom
-                      .where((b) => b.isActive && !b.isMissing)
-                      .toList(),
+                  bomItems: instBom.where((b) => b.isActive).toList(),
                 ),
               );
               instIdx++;
@@ -794,9 +872,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 width: model.width,
                 height: model.height,
                 model: model,
-                bomItems: instBom
-                    .where((b) => b.isActive && !b.isMissing)
-                    .toList(),
+                bomItems: instBom.where((b) => b.isActive).toList(),
               ),
             );
           }
@@ -805,18 +881,20 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           final Set<String> countedKitsInThisWindow = {};
           for (final bom in bomItems) {
             if (!bom.isActive) continue;
-            if (bom.isMissing) continue;
 
-            final double bomQty = (bom.exactQuantity ?? bom.quantity);
-            final double bomCost = bomQty * bom.unitPrice;
+            // `quantity` is the physical purchase quantity shown in the
+            // quantity table. `exactQuantity` remains costing consumption.
+            final double purchaseQty = bom.purchaseQuantity;
+            final double bomCost = bom.total;
 
             if (bom.kitGroupName != null && bom.kitGroupName!.isNotEmpty) {
               final String kitName = bom.kitGroupName!;
               final String kitKey = 'KIT___${kitName}___${bom.colorName ?? ''}';
 
               double kitQtyToAdd = 0.0;
-              if (countedKitsInThisWindow.add(kitName)) {
-                kitQtyToAdd = model.quantity.toDouble();
+              final isKitHeader = !bom.originalName.startsWith('${kitName}_');
+              if (isKitHeader && countedKitsInThisWindow.add(kitName)) {
+                kitQtyToAdd = purchaseQty;
               }
 
               if (aggregationMap.containsKey(kitKey)) {
@@ -838,14 +916,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     name: existing.name,
                     imagePath: existing.imagePath,
                     colorName: existing.colorName,
-                    quantity: existing.quantity + bomQty,
+                    quantity: existing.purchaseQuantity + purchaseQty,
                     unit: existing.unit,
                     unitPrice: existing.unitPrice,
                     isMissing: existing.isMissing,
                     isActive: existing.isActive,
                     kitGroupName: existing.kitGroupName,
                     exactQuantity:
-                        (existing.exactQuantity ?? existing.quantity) + bomQty,
+                        existing.requiredQuantity + bom.requiredQuantity,
+                    catalogItemId: existing.catalogItemId ?? bom.catalogItemId,
+                    inventoryItemType:
+                        existing.inventoryItemType ?? bom.inventoryItemType,
+                    colorId: existing.colorId ?? bom.colorId,
                   );
                 } else {
                   agg.kitSubItems.add(bom);
@@ -869,15 +951,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               }
             } else {
               final String itemIdentifier =
-                  (bom.profileCode != null && bom.profileCode!.isNotEmpty)
-                  ? '${bom.originalName} (${bom.profileCode})'
-                  : bom.originalName;
+                  bom.catalogItemId != null && bom.inventoryItemType != null
+                  ? '${bom.inventoryItemType}:${bom.catalogItemId}'
+                  : (bom.profileCode != null && bom.profileCode!.isNotEmpty)
+                  ? 'CODE:${bom.profileCode}'
+                  : 'NAME:${bom.name}';
               final aggregationKey =
-                  '${itemIdentifier}___${bom.colorName ?? ''}___${bom.unit}';
+                  '${itemIdentifier}___${bom.colorId ?? bom.colorName ?? ''}___${bom.unit}___${bom.length ?? ''}';
 
               if (aggregationMap.containsKey(aggregationKey)) {
-                aggregationMap[aggregationKey]!.totalQuantity += bomQty;
-                aggregationMap[aggregationKey]!.totalCost += bomCost;
+                final aggregate = aggregationMap[aggregationKey]!;
+                aggregate.totalCost += bomCost;
+                aggregate.totalQuantity += purchaseQty;
               } else {
                 aggregationMap[aggregationKey] = AggregatedGoodItem(
                   name: bom.name,
@@ -886,9 +971,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   unit: bom.unit,
                   imagePath: bom.imagePath,
                   unitPrice: bom.unitPrice,
-                  totalQuantity: bomQty,
+                  totalQuantity: purchaseQty,
                   totalCost: bomCost,
                   profileCode: bom.profileCode,
+                  colorName: bom.colorName,
+                  catalogItemId: bom.catalogItemId,
+                  inventoryItemType: bom.inventoryItemType,
+                  colorId: bom.colorId,
+                  isMissing: bom.isMissing,
                   kitSubItems: const [],
                   kitGroupName: null,
                 );
@@ -905,13 +995,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       // حساب سعر الوحدة الفعلي لكل طقم (Kit) كمجموع أسعار مكوناته
       for (final item in aggregationMap.values) {
         if (item.kitGroupName != null && item.totalQuantity > 0) {
-          double sumPrice = 0.0;
-          for (final sub in item.kitSubItems) {
-            final ratio =
-                (sub.exactQuantity ?? sub.quantity) / item.totalQuantity;
-            sumPrice += sub.unitPrice * ratio;
-          }
-          item.unitPrice = sumPrice;
+          item.unitPrice = item.totalCost / item.totalQuantity;
         }
       }
 
@@ -921,6 +1005,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         const order = [
           'profile',
           'glass',
+          'panneau',
           'shutter',
           'accessory',
           'joint',
@@ -967,7 +1052,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       'الامبو (Embout)': isMotor,
       'سيبور رولمو (Support Roulement)': isMotor,
       'سيبور موتور (Support Moteur)': isMotor || isTunnel,
-      'أغطية الشفرات (Bouchons Lames)': isTunnel || isMotor,
+      'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
+        'أغطية الشفرات (Bouchons Lames)',
+      ),
       'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
       'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
       'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
@@ -997,12 +1084,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return '📐 بروفيل الفاصل';
       case 'glass':
         return '🔷 الزجاج';
+      case 'panneau':
+        return '🖼️ البانو';
       case 'shutter':
         return '🎛️ مكونات الستارة';
       case 'caisson_tunnel':
         return '📦 Caisson Tunnel';
       case 'accessory':
         return '🔩 الإكسسوارات';
+      case 'joint':
+        return '🧵 الجوانات';
       default:
         return '📦 أخرى';
     }
@@ -1020,12 +1111,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return Colors.purple.shade600;
       case 'glass':
         return Colors.cyan.shade700;
+      case 'panneau':
+        return Colors.lightBlue.shade700;
       case 'shutter':
         return Colors.orange.shade700;
       case 'caisson_tunnel':
         return Colors.amber.shade900;
       case 'accessory':
         return Colors.teal.shade600;
+      case 'joint':
+        return Colors.brown.shade600;
       default:
         return Colors.grey.shade700;
     }
@@ -1051,7 +1146,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         title: Column(
           children: [
             const Text(
-              'السلع المطلوبة',
+              'الكميات المطلوبة للطلبية',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             Text(
@@ -1209,7 +1304,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'السلع المتشابهة مجمّعة تلقائياً',
+                  'مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة',
                   style: const TextStyle(color: Colors.white70, fontSize: 11),
                 ),
               ],
@@ -1547,7 +1642,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   Widget _buildItemCard(AggregatedGoodItem item, String category) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = _categoryColor(category);
-    final roundedQty = _roundQuantity(item.totalQuantity, item.unit);
+    final purchaseLabel = _purchaseQuantityLabel(item);
+    final itemMeta = _itemMeta(item);
 
     final isKit = item.kitGroupName != null && item.kitGroupName!.isNotEmpty;
     final isExpanded = _expandedKits.contains(item.name);
@@ -1653,7 +1749,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            '$roundedQty ${item.unit}',
+                            purchaseLabel,
                             style: TextStyle(
                               color: color,
                               fontWeight: FontWeight.bold,
@@ -1695,10 +1791,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 child: Column(
                   children: item.kitSubItems.map((sub) {
                     final subRoundedQty = _roundQuantity(
-                      sub.quantity,
+                      sub.purchaseQuantity,
                       sub.unit,
                     );
-                    final subCost = sub.quantity * sub.unitPrice;
+                    final subCost = sub.total;
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
@@ -1823,6 +1919,21 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (itemMeta.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          itemMeta,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? Colors.white60
+                                : Colors.grey.shade600,
+                            fontSize: 10.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                       const SizedBox(height: 3),
                       // 2. اسم وتفاصيل القطاع المختار المجلوبة من قاعدة البيانات أو الـ ShowDialog بخط رقيق تحته
                       Text(
@@ -1860,7 +1971,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        '$roundedQty ${item.unit}',
+                        purchaseLabel,
                         style: TextStyle(
                           color: color,
                           fontWeight: FontWeight.bold,
@@ -1962,18 +2073,48 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   // دوال مساعدة
   // ─────────────────────────────────────────────────────────────────
 
-  /// تقريب الكمية بذكاء: الأمتار الخطية تُقرّب لـ 2 خانات عشرية، الأعداد الصحيحة بلا كسور
+  /// الوحدات المستمرة تبقى عشرية، أما وحدات الشراء العددية فتعرض أعدادًا كاملة.
   String _roundQuantity(double qty, String unit) {
     final unitLower = unit.toLowerCase();
     if (unitLower == 'ml' ||
         unitLower == 'م' ||
+        unitLower == 'm²' ||
+        unitLower == 'م²' ||
+        unitLower == 'sqm' ||
         unitLower.contains('متر') ||
-        unitLower.contains('meter')) {
+        unitLower.contains('meter') ||
+        unitLower.contains('مساحة')) {
       return qty.toStringAsFixed(2);
     }
     // وحدات عدد: اعرض عددًا صحيحًا مع تقريب للأعلى
     final rounded = qty.ceil();
     return '$rounded';
+  }
+
+  String _purchaseQuantityLabel(AggregatedGoodItem item) {
+    final formatted = _roundQuantity(item.totalQuantity, item.unit);
+    final unit = item.unit.toLowerCase().trim();
+    if (unit == 'قطاع' ||
+        unit == 'بارة' ||
+        unit == 'bar' ||
+        unit == 'section') {
+      return '$formatted قطاع';
+    }
+    return '$formatted ${item.unit}';
+  }
+
+  String _itemMeta(AggregatedGoodItem item) {
+    final parts = <String>[];
+    if (item.profileCode != null && item.profileCode!.trim().isNotEmpty) {
+      parts.add('الكود: ${item.profileCode}');
+    }
+    if (item.colorName != null && item.colorName!.trim().isNotEmpty) {
+      parts.add('اللون: ${item.colorName}');
+    }
+    if (item.isMissing) {
+      parts.add('غير مرتبط بقاعدة البيانات');
+    }
+    return parts.join(' • ');
   }
 
   void _showProductBreakdownDialog() {
@@ -2191,9 +2332,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             ],
                           ),
                           ...pb.bomItems.map((bom) {
-                            final double qty =
-                                (bom.exactQuantity ?? bom.quantity);
-                            final double cost = qty * bom.unitPrice;
+                            final double qty = bom.purchaseQuantity;
+                            final double cost = bom.total;
                             return TableRow(
                               children: [
                                 Padding(
@@ -2230,7 +2370,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                 Padding(
                                   padding: const EdgeInsets.all(6.0),
                                   child: Text(
-                                    qty.toStringAsFixed(2),
+                                    _roundQuantity(qty, bom.unit),
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: isDark

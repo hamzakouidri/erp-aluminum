@@ -23,10 +23,41 @@ class BomItem {
   final String? cuttingList;
   final String? kitGroupName; // اسم Kit التابع له (مثال: System OB)
   final double? exactQuantity;
+  final int? catalogItemId;
+  final String? inventoryItemType;
+  final int? colorId;
 
   /// Quantity actually required for pricing. For profiles this can be a
   /// fractional number of bars, unlike the rounded purchase quantity.
   double get requiredQuantity => exactQuantity ?? quantity;
+
+  /// Quantity that must actually be purchased or reserved from stock.
+  ///
+  /// Costing can use a fractional consumption such as 1.20 bars, but stock
+  /// cannot provide a fraction of a bar/profile. Count-based catalogue units
+  /// therefore always round up: 1.20 profiles become 2 profiles.
+  double get purchaseQuantity {
+    if (quantity <= 0) return 0;
+    final normalizedUnit = unit.toLowerCase().trim();
+    final requiresWholeUnits =
+        category == 'profile' ||
+        const <String>{
+          'قطاع',
+          'بارة',
+          'قطعة',
+          'حبة',
+          'طقم',
+          'kit',
+          'pcs',
+          'pc',
+          'piece',
+          'bar',
+          'section',
+        }.contains(normalizedUnit);
+    return requiresWholeUnits
+        ? (quantity - 0.000000001).ceilToDouble()
+        : quantity;
+  }
 
   BomItem({
     required this.category,
@@ -48,6 +79,9 @@ class BomItem {
     this.cuttingList,
     this.kitGroupName,
     this.exactQuantity,
+    this.catalogItemId,
+    this.inventoryItemType,
+    this.colorId,
   }) : this.name = name.replaceAll(RegExp(r'\s*\(\s*جودة[^)]*\)'), '').trim();
 
   double get exactTotal {
@@ -320,6 +354,9 @@ class BomItem {
     double? qty,
     String? profileCode,
     String? imagePath,
+    int? catalogItemId,
+    String? inventoryItemType,
+    int? colorId,
   }) {
     return BomItem(
       category: category,
@@ -341,11 +378,155 @@ class BomItem {
       cuttingList: cuttingList,
       kitGroupName: kitGroupName ?? this.kitGroupName,
       exactQuantity: exactQuantity,
+      catalogItemId: catalogItemId ?? this.catalogItemId,
+      inventoryItemType: inventoryItemType ?? this.inventoryItemType,
+      colorId: colorId ?? this.colorId,
     );
   }
 }
 
 class ComponentCalculator {
+  /// Exact clear opening of the selected outer frame. The top caisson and the
+  /// current frame width are read afresh instead of trusting a zone boundary
+  /// that may still contain dimensions from a formerly selected profile.
+  static Map<String, double> outerFrameClearOpening({
+    required double finishedWidth,
+    required double finishedHeight,
+    required double frameWidth,
+    required double shutterBoxHeight,
+    required bool hasBottomFrame,
+    double bottomPlintheHeight = 0.0,
+  }) {
+    return {
+      'width': math.max(0.0, finishedWidth - frameWidth * 2),
+      'height': math.max(
+        0.0,
+        finishedHeight -
+            shutterBoxHeight -
+            frameWidth -
+            (hasBottomFrame ? frameWidth : 0.0) -
+            bottomPlintheHeight,
+      ),
+    };
+  }
+
+  /// Every physical division uses two Tasso pieces. PVC adds one exceptional
+  /// pair only when a shutter is combined with the selected integrated-cover
+  /// frame; a plain PVC frame never adds that pair.
+  static int tassoQuantity({
+    required int divisionPieceCount,
+    required bool isPvc,
+    required bool hasShutter,
+    required bool selectedFrameHasIntegratedCover,
+  }) {
+    return (divisionPieceCount * 2) +
+        (isPvc && hasShutter && selectedFrameHasIntegratedCover ? 2 : 0);
+  }
+
+  /// Physical weight of the shutter curtain, calculated from the actual
+  /// blade count and cut length used by the BOM.
+  static double shutterCurtainWeightKg({
+    required double windowWidthMm,
+    required double windowHeightMm,
+    required double shutterBoxHeightMm,
+    required bool isTunnel,
+    required double bladeHeightMm,
+    required double bladeWeightPerSqm,
+    double bladeEndCapThicknessMm = 0.0,
+  }) {
+    if (bladeHeightMm <= 0 || bladeWeightPerSqm <= 0) return 0.0;
+    final bladeCount = isTunnel
+        ? ((windowHeightMm + 100.0) / bladeHeightMm).ceil()
+        : ((windowHeightMm - shutterBoxHeightMm) / bladeHeightMm + 2).ceil();
+    if (bladeCount <= 0) return 0.0;
+    final bladeLengthM = math.max(
+      0.0,
+      (windowWidthMm - 65.0 - (2.0 * bladeEndCapThicknessMm)) / 1000.0,
+    );
+    final curtainAreaSqm =
+        bladeLengthM * bladeCount * (bladeHeightMm / 1000.0);
+    return curtainAreaSqm * bladeWeightPerSqm;
+  }
+
+  /// Chooses one complete compatibility family for all weight-driven kit
+  /// components. Group 0 is common and can participate in either family.
+  static int? selectKitCompatibilityGroup({
+    required List<Map<String, dynamic>> kitItems,
+    required double shutterWeightKg,
+    String mechanismScope = 'all',
+  }) {
+    final weightItems = kitItems.where((item) {
+      return (item['qty_mode'] as String? ?? 'fixed') == 'by_range' &&
+          item['dimension'] == 'shutter_weight' &&
+          kitItemAppliesToMechanism(item, mechanismScope);
+    }).toList();
+    if (weightItems.isEmpty) return null;
+    if (shutterWeightKg <= 0) return null;
+    for (final group in const [1, 2]) {
+      final groupIsComplete = weightItems.every((item) {
+        final ranges =
+            (item['ranges'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        return ranges.any((range) {
+          final rangeGroup =
+              ((range['compatibility_group'] as num?)?.toInt() ?? 0)
+                  .clamp(0, 2);
+          final min = (range['min_mm'] as num?)?.toDouble() ?? 0;
+          final max =
+              (range['max_mm'] as num?)?.toDouble() ?? double.infinity;
+          return (rangeGroup == 0 || rangeGroup == group) &&
+              shutterWeightKg >= min &&
+              shutterWeightKg <= max;
+        });
+      });
+      if (groupIsComplete) return group;
+    }
+    return null;
+  }
+
+  static String shutterMechanismScope(String mechanism) {
+    final normalized = mechanism.toLowerCase().trim();
+    if (normalized.contains('maniv') ||
+        normalized.contains('مانيف') ||
+        normalized.contains('منايف')) {
+      return 'crank';
+    }
+    if (normalized.contains('sangle') ||
+        normalized.contains('belt') ||
+        normalized.contains('حزام')) {
+      return 'belt';
+    }
+    return 'all';
+  }
+
+  static bool kitItemAppliesToMechanism(
+    Map<String, dynamic> item,
+    String mechanismScope,
+  ) {
+    final itemScope = item['mechanism_scope']?.toString() ?? 'all';
+    return itemScope == 'all' || itemScope == mechanismScope;
+  }
+
+  /// Cut length in millimetres for a customised standalone side-cover piece.
+  /// Its visible width is added once when the piece touches either outer end,
+  /// and not at all when both ends are in the middle.
+  static double standaloneSideCoverSegmentCutLength({
+    required double sideLength,
+    required double start,
+    required double end,
+    required double visibleWidth,
+    required double weldingAllowance,
+  }) {
+    final safeStart = start.clamp(0.0, sideLength).toDouble();
+    final safeEnd = end.clamp(0.0, sideLength).toDouble();
+    if (safeEnd <= safeStart) return 0.0;
+    final touchesOuterEdge =
+        safeStart <= 0.1 || (sideLength - safeEnd).abs() <= 0.1;
+    return safeEnd -
+        safeStart +
+        (touchesOuterEdge ? visibleWidth : 0.0) +
+        weldingAllowance;
+  }
+
   static Map<String, dynamic> optimizeCutting({
     required List<double> pieces,
     required double barLength,
@@ -405,7 +586,81 @@ class ComponentCalculator {
     Map<String, bool> activeVariants, {
     Map<String, List<Map<String, dynamic>>> kitBundleData = const {},
     Map<String, bool> kitPerLeafMap = const {},
+    Map<String, double> kitBundlePrices = const {},
   }) {
+    int? catalogueId(dynamic component) {
+      if (component is! Map) return null;
+      final rawId = component['id'];
+      return rawId is num ? rawId.toInt() : int.tryParse('$rawId');
+    }
+
+    int? catalogueColorId(String? itemColor, {bool accessory = false}) {
+      Map<String, dynamic>? selected = accessory
+          ? window.selectedAccessoryColor
+          : window.selectedDbColor;
+      if (itemColor != null && itemColor.trim().isNotEmpty) {
+        final normalized = itemColor.trim().toLowerCase();
+        for (final color in window.availableColors) {
+          final name = (color['name'] ?? color['color_name'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          if (name == normalized) {
+            selected = color;
+            break;
+          }
+        }
+      }
+      return catalogueId(selected);
+    }
+
+    Map<String, dynamic>? glassCatalogueProduct(
+      GlassFinish finish,
+      GlassColor color,
+      double thickness,
+    ) {
+      final finishKeywords = window.getFinishKeywords(finish);
+      final colorKeywords = window.getColorKeywords(color);
+      bool matchesColor(Map<String, dynamic> product) {
+        final name = (product['name'] ?? '').toString().toLowerCase();
+        final productColor = (product['color'] ?? '').toString().toLowerCase();
+        return colorKeywords.any((keyword) {
+          if (keyword.isEmpty) {
+            return productColor.isEmpty ||
+                productColor.contains('clair') ||
+                productColor.contains('transparent') ||
+                name.contains('clair') ||
+                name.contains('transparent');
+          }
+          return productColor == keyword ||
+              productColor.contains(keyword) ||
+              name.contains(keyword);
+        });
+      }
+
+      bool matchesFinish(Map<String, dynamic> product) {
+        final type = (product['type'] ?? '').toString().toLowerCase();
+        final name = (product['name'] ?? '').toString().toLowerCase();
+        return finishKeywords.any(
+          (keyword) => type.contains(keyword) || name.contains(keyword),
+        );
+      }
+
+      for (final product in window.allGlassCache) {
+        final productThickness =
+            (product['thickness'] as num?)?.toDouble() ?? 0.0;
+        if (matchesFinish(product) &&
+            matchesColor(product) &&
+            (productThickness - thickness).abs() < 0.01) {
+          return product;
+        }
+      }
+      for (final product in window.allGlassCache) {
+        if (matchesFinish(product) && matchesColor(product)) return product;
+      }
+      return null;
+    }
+
     Map<String, dynamic>? getSlidingFrameSection() {
       if (window.slidingFrameOverride != null)
         return window.slidingFrameOverride;
@@ -558,7 +813,14 @@ class ComponentCalculator {
       List<double>? pieces,
       Map<String, dynamic>? overrideMap,
       bool preferOverrideMap = false,
+      bool priceByWholeBar = false,
     }) {
+      final savedOverride = window.componentOverrides[originalName];
+      final selectedOverride = preferOverrideMap && overrideMap != null
+          ? overrideMap
+          : savedOverride is Map
+          ? Map<String, dynamic>.from(savedOverride)
+          : overrideMap;
       List<double>? multipliedPieces;
       if (pieces != null && pieces.isNotEmpty) {
         multipliedPieces = [];
@@ -577,6 +839,9 @@ class ComponentCalculator {
         pieces: multipliedPieces,
         overrideMap: overrideMap,
         preferOverrideMap: preferOverrideMap,
+        priceByWholeBar: priceByWholeBar,
+        catalogItemId: catalogueId(selectedOverride),
+        colorId: catalogueColorId(color),
       );
     }
 
@@ -591,6 +856,8 @@ class ComponentCalculator {
       isActive: isActive,
       color: color,
       qty: qty * window.quantity,
+      catalogItemId: catalogueId(window.componentOverrides[originalName]),
+      colorId: catalogueColorId(color, accessory: true),
     );
     BomItem createInteractiveAccessory(
       String originalName,
@@ -607,6 +874,11 @@ class ComponentCalculator {
       qty: qty * window.quantity,
       kitGroupName: kitGroupName,
       category: category,
+      catalogItemId: catalogueId(window.componentOverrides[originalName]),
+      inventoryItemType: category == 'shutter'
+          ? 'ShutterComponent'
+          : 'Accessory',
+      colorId: catalogueColorId(null, accessory: category != 'shutter'),
     );
     BomItem createShutter(
       String originalName, {
@@ -634,12 +906,15 @@ class ComponentCalculator {
         windowWidth: window.width.toDouble(),
         windowHeight: window.height.toDouble(),
         windowQuantity: window.quantity,
+        catalogItemId: catalogueId(window.componentOverrides[originalName]),
+        colorId: catalogueColorId(color),
       );
     }
 
-    /// A shutter kit is configured on the Kits page, never in
-    /// ShutterComponents.  The saved logical key is internal only: the
-    /// visible label remains the exact French name of the selected bundle.
+    /// A shutter kit is configured on the Kits page, while its selling price
+    /// comes from the identically named `kit` product in ShutterComponents.
+    /// The saved logical key is internal only: the visible label remains the
+    /// exact French name of the selected bundle.
     BomItem createKitBundle(
       String logicalKey,
       String bundleName, {
@@ -650,7 +925,7 @@ class ComponentCalculator {
       name: bundleName,
       quantity: qty * window.quantity,
       unit: 'kit',
-      unitPrice: 0,
+      unitPrice: kitBundlePrices[bundleName] ?? 0,
       isInteractive: true,
       isActive: true,
       exclusionGroup: bundleName,
@@ -668,6 +943,7 @@ class ComponentCalculator {
       color: color,
       qty: qty * window.quantity,
       unit: unit,
+      catalogItemId: catalogueId(window.componentOverrides[originalName]),
     );
 
     BomItem createOther(
@@ -681,6 +957,8 @@ class ComponentCalculator {
       isActive: isActive,
       color: color,
       qty: qty * window.quantity,
+      catalogItemId: catalogueId(window.componentOverrides[originalName]),
+      colorId: catalogueColorId(color, accessory: true),
     );
 
     // The catalogue value is shared by every opening-sash calculation. Add it
@@ -745,11 +1023,47 @@ class ComponentCalculator {
         });
     final isOuterFramePvc = window.isFramePVC;
 
+    double selectedOuterFrameWidth() {
+      for (final key in const ['visible_width', 'thickness']) {
+        final rawValue = outerFrameOverride?[key];
+        final value = rawValue is num
+            ? rawValue.toDouble()
+            : double.tryParse(rawValue?.toString() ?? '') ?? 0.0;
+        if (value > 0) return value;
+      }
+      return window.profileThickness;
+    }
+
+    final selectedFrameWidth = selectedOuterFrameWidth();
+    final fullOpening = outerFrameClearOpening(
+      finishedWidth: window.width,
+      finishedHeight: window.height,
+      frameWidth: selectedFrameWidth,
+      shutterBoxHeight: window.hasShutter && !window.isCaissonTunnel
+          ? window.shutterBoxHeight
+          : 0.0,
+      hasBottomFrame: window.hasBottomFrame,
+      bottomPlintheHeight: window.hasFramePlintheBottom
+          ? window.plintheHeight
+          : 0.0,
+    );
+
     // تحديد نوع الغطاء الجانبي:
     // مدمج: مقطع الإطار نفسه فيه couvreJointWidth > 0
     // غير مدمج: hasSideCovers = true لكن الإطار بدون couvreJoint مدمج
+    double selectedFrameIntegratedCoverWidth() {
+      if (outerFrameOverride != null) {
+        final value = outerFrameOverride['couvre_joint_width'];
+        return value is num
+            ? value.toDouble()
+            : double.tryParse(value?.toString() ?? '') ?? 0.0;
+      }
+      return window.getSectionByType('frame')?.couvreJointWidth ?? 0.0;
+    }
+
+    final integratedFrameCoverWidth = selectedFrameIntegratedCoverWidth();
     bool frameHasIntegratedSideCover =
-        window.isIntegratedFrame && window.isSideCoverAllowed;
+        integratedFrameCoverWidth > 0 && window.isSideCoverAllowed;
     // In PVC an integrated cover belongs to the selected frame itself.  It is
     // therefore present even when the separate-cover switch is off.
     bool hasIntegratedSideCover = isOuterFramePvc
@@ -762,8 +1076,8 @@ class ComponentCalculator {
         window.isSideCoverAllowed &&
         !hasIntegratedSideCover;
     // Both integrated and standalone covers are workshop/drawing details.
-    // A standalone cover has its own cutting row; neither kind changes the
-    // selected frame profile or the frame cutting sizes.
+    // A standalone cover has its own cutting row and its thickness shortens
+    // the frame once for every side where it is installed.
     final bool customSideCoverLayout = window.useCustomSideCoverLayout;
 
     // A separate couvre-joint must always be read from the exact section that
@@ -774,11 +1088,7 @@ class ComponentCalculator {
       final series = window.activeFrameSeries ?? window.activeSeries;
       if (series == null) return window.selectedSideCover;
 
-      AluminumSection? findInSeries({
-        int? id,
-        String? code,
-        String? name,
-      }) {
+      AluminumSection? findInSeries({int? id, String? code, String? name}) {
         if (id != null) {
           for (final section in series.sections) {
             if (section.id == id) return section;
@@ -835,11 +1145,17 @@ class ComponentCalculator {
     double selectedSeparateCoverWidth() {
       final cover = selectedSeparateSideCover;
       if (cover != null) {
-        // The cut of a separate couvre-joint always uses its visible width.
-        // The other section width is profile geometry and must not replace it
-        // merely because the drawing orientation changed.
-        if (cover.visibleWidth > 0) return cover.visibleWidth;
-        if (cover.couvreJointWidth > 0) return cover.couvreJointWidth;
+        // A standalone cover can have two usable faces. The first face is
+        // couvreJointWidth and the second is visibleWidth. Respect the user's
+        // orientation choice, falling back only when that face is zero.
+        final selectedWidth = window.sideCoverUseSecondWidth
+            ? cover.visibleWidth
+            : cover.couvreJointWidth;
+        final otherWidth = window.sideCoverUseSecondWidth
+            ? cover.couvreJointWidth
+            : cover.visibleWidth;
+        if (selectedWidth > 0) return selectedWidth;
+        if (otherWidth > 0) return otherWidth;
       }
 
       final override = window.sideCoverOverride;
@@ -851,15 +1167,51 @@ class ComponentCalculator {
               : double.tryParse(value?.toString() ?? '') ?? 0.0;
         }
 
-        final visibleWidth = read('visible_width');
-        if (visibleWidth > 0) return visibleWidth;
-        return read('couvre_joint_width');
+        final firstWidth = read('couvre_joint_width');
+        final secondWidth = read('visible_width');
+        final selectedWidth = window.sideCoverUseSecondWidth
+            ? secondWidth
+            : firstWidth;
+        final otherWidth = window.sideCoverUseSecondWidth
+            ? firstWidth
+            : secondWidth;
+        if (selectedWidth > 0) return selectedWidth;
+        return otherWidth;
       }
 
       return 0.0;
     }
 
     final separateCoverWidth = selectedSeparateCoverWidth();
+    double selectedSeparateCoverThickness() {
+      if (selectedSeparateSideCover != null) {
+        return selectedSeparateSideCover.couvreJointThickness;
+      }
+      final value = window.sideCoverOverride?['couvre_joint_thickness'];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    final separateCoverThickness = selectedSeparateCoverThickness();
+
+    bool hasSeparateCoverOn(String side) {
+      if (!hasNonIntegratedSideCover) return false;
+      if (side == 'bottom' && !window.hasBottomFrame) return false;
+      if (customSideCoverLayout) {
+        return window.effectiveSideCoverSegments.any(
+          (segment) =>
+              segment.side == side && segment.endOffset > segment.startOffset,
+        );
+      }
+      return !window.removedShutterSides.contains(side);
+    }
+
+    final hasSeparateCoverLeft = hasSeparateCoverOn('left');
+    final hasSeparateCoverRight = hasSeparateCoverOn('right');
+    final hasSeparateCoverTop = hasSeparateCoverOn('top');
+    final hasSeparateCoverBottom = hasSeparateCoverOn('bottom');
+
     Map<String, dynamic>? selectedSeparateCoverMap;
     if (selectedSeparateSideCover != null) {
       selectedSeparateCoverMap = selectedSeparateSideCover.toMap();
@@ -1094,13 +1446,21 @@ class ComponentCalculator {
       List<Map<String, dynamic>> kitItems, {
       double leafHeightMm = 0,
       double leafWidthMm = 0,
+      double shutterWeightKg = 0,
+      String mechanismScope = 'all',
       bool isActive = true,
       int leafCount = 1,
       String category = 'accessory',
       String? variantValue,
     }) {
       final result = <BomItem>[];
+      final selectedCompatibilityGroup = selectKitCompatibilityGroup(
+        kitItems: kitItems,
+        shutterWeightKg: shutterWeightKg,
+        mechanismScope: mechanismScope,
+      );
       for (final item in kitItems) {
+        if (!kitItemAppliesToMechanism(item, mechanismScope)) continue;
         final mode = item['qty_mode'] as String? ?? 'fixed';
         final dimension = item['dimension'] as String?;
         final unit = item['unit'] as String? ?? 'قطعة';
@@ -1124,8 +1484,11 @@ class ComponentCalculator {
             ),
           );
         } else if (mode == 'by_range' && ranges.isNotEmpty) {
+          final isWeight = dimension == 'shutter_weight';
           final isHeight = dimension == 'leaf_height' || dimension == 'height';
-          final dimValue = isHeight ? leafHeightMm : leafWidthMm;
+          final dimValue = isWeight
+              ? shutterWeightKg
+              : (isHeight ? leafHeightMm : leafWidthMm);
 
           // Sort ranges by max_mm ascending so we pick the smallest matching range
           final sortedRanges = List<Map<String, dynamic>>.from(ranges);
@@ -1139,8 +1502,15 @@ class ComponentCalculator {
           for (final r in sortedRanges) {
             final mn = (r['min_mm'] as num?)?.toDouble() ?? 0;
             final mx = (r['max_mm'] as num?)?.toDouble() ?? double.infinity;
+            final rangeGroup =
+                ((r['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
+            final groupMatches =
+                !isWeight ||
+                (selectedCompatibilityGroup != null &&
+                    (rangeGroup == 0 ||
+                        rangeGroup == selectedCompatibilityGroup));
             // The range matches if dimValue falls within [mn, mx)
-            if (dimValue >= mn && dimValue <= mx) {
+            if (groupMatches && dimValue >= mn && dimValue <= mx) {
               matchedRange = r;
               break;
             }
@@ -1170,7 +1540,11 @@ class ComponentCalculator {
               BomItem(
                 category: category,
                 originalName: '${kitName}_${item['component_type']}_missing',
-                name: '⚠ ${item['component_type']} (قياس خارج النطاق)',
+                name: isWeight && shutterWeightKg <= 0
+                    ? '⚠ ${item['component_type']} (وزن الشفرة غير محدد)'
+                    : isWeight && selectedCompatibilityGroup == null
+                    ? '⚠ ${item['component_type']} (لا توجد مجموعة توافق مكتملة لهذا الوزن)'
+                    : '⚠ ${item['component_type']} (قياس خارج النطاق)',
                 quantity: 0,
                 unit: unit,
                 unitPrice: 0,
@@ -1214,11 +1588,33 @@ class ComponentCalculator {
     final double weldVal = isOuterFramePvc ? 5.0 : 0.0;
     final double noBottomWeldVal = isOuterFramePvc ? 5.0 : 0.0;
 
-    // A cover does not change the frame cutting dimensions. Its own cuts are
-    // created below only when it is a separately selected cover.
-    final double frameWidth = window.width + weldVal;
+    // A PVC frame with an integrated couvre-joint is cut around the finished
+    // window on all four sides.  Add the integrated cover width at each end,
+    // plus the 5 mm welding allowance.  This applies whether or not the
+    // window has a bottom frame. A separate cover stays a separate profile;
+    // only its thickness deductions, calculated above per installed side,
+    // affect the plain frame.
+    final double integratedCoverCutExtension =
+        isOuterFramePvc && hasIntegratedSideCover
+        ? integratedFrameCoverWidth * 2
+        : 0.0;
+    final double frameWidth =
+        window.width +
+        integratedCoverCutExtension +
+        weldVal -
+        (hasSeparateCoverLeft ? separateCoverThickness : 0.0) -
+        (hasSeparateCoverRight ? separateCoverThickness : 0.0);
+    // For an integrated cover, the requested base is the actual window
+    // height, not the net height after deducting a shutter box.
+    final double frameBaseHeight = hasIntegratedSideCover
+        ? window.height
+        : netHeight;
     final double frameNetHeight =
-        netHeight + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+        frameBaseHeight +
+        integratedCoverCutExtension +
+        (window.hasBottomFrame ? weldVal : noBottomWeldVal) -
+        (hasSeparateCoverTop ? separateCoverThickness : 0.0) -
+        (hasSeparateCoverBottom ? separateCoverThickness : 0.0);
 
     final String sName =
         window.activeSlidingSeries?.name.toLowerCase() ??
@@ -1227,6 +1623,18 @@ class ComponentCalculator {
     final bool isTPRSeries = sName.contains('tpr');
 
     final frameRects = window.getFrameRects();
+    final minFrameLeft = frameRects.isEmpty
+        ? 0.0
+        : frameRects.map((rect) => rect.left).reduce(math.min);
+    final maxFrameRight = frameRects.isEmpty
+        ? 0.0
+        : frameRects.map((rect) => rect.right).reduce(math.max);
+    final minFrameTop = frameRects.isEmpty
+        ? 0.0
+        : frameRects.map((rect) => rect.top).reduce(math.min);
+    final maxFrameBottom = frameRects.isEmpty
+        ? 0.0
+        : frameRects.map((rect) => rect.bottom).reduce(math.max);
     List<double> framePieces = [];
     List<double> framePlinthePieces = [];
     List<double> renfortFramePieces = [];
@@ -1243,10 +1651,29 @@ class ComponentCalculator {
       // multi-frame drawing, retain each group's own dimensions while using
       // the same cover formula.
       final isCompleteFrame = frameRects.length == 1;
-      double fWidth = isCompleteFrame ? frameWidth : r.width + weldVal;
+      double fWidth = isCompleteFrame
+          ? frameWidth
+          : r.width +
+                integratedCoverCutExtension +
+                weldVal -
+                (hasSeparateCoverLeft && (r.left - minFrameLeft).abs() < 0.1
+                    ? separateCoverThickness
+                    : 0.0) -
+                (hasSeparateCoverRight && (r.right - maxFrameRight).abs() < 0.1
+                    ? separateCoverThickness
+                    : 0.0);
       double fHeight = isCompleteFrame
           ? frameNetHeight
-          : r.height + (window.hasBottomFrame ? weldVal : noBottomWeldVal);
+          : r.height +
+                integratedCoverCutExtension +
+                (window.hasBottomFrame ? weldVal : noBottomWeldVal) -
+                (hasSeparateCoverTop && (r.top - minFrameTop).abs() < 0.1
+                    ? separateCoverThickness
+                    : 0.0) -
+                (hasSeparateCoverBottom &&
+                        (r.bottom - maxFrameBottom).abs() < 0.1
+                    ? separateCoverThickness
+                    : 0.0);
 
       double hPiece = fHeight / 1000.0;
       double wPiece = fWidth / 1000.0;
@@ -1335,9 +1762,10 @@ class ComponentCalculator {
       List<double> sideCoverPieces = [];
 
       if (customSideCoverLayout) {
-        // The input length is the covered span on the frame. The visible
-        // width is deliberately outside that input and is added only at an
-        // endpoint that reaches the outer frame edge.
+        // The input length is the covered span on the frame. For a standalone
+        // custom piece, add its visible width once when either end reaches an
+        // outer frame edge. A piece whose start and end are both in the
+        // middle gets no visible-width extension.
         for (final segment in window.effectiveSideCoverSegments) {
           if (segment.side == 'bottom' && !window.hasBottomFrame) continue;
           final sideLength = window.sideCoverSideLength(segment.side);
@@ -1348,10 +1776,13 @@ class ComponentCalculator {
           final visible = segment.visibleWidth > 0
               ? segment.visibleWidth
               : separateCoverWidth;
-          final startExtension = start <= 0.1 ? visible : 0.0;
-          final endExtension = (sideLength - end).abs() <= 0.1 ? visible : 0.0;
-          final cutLength =
-              end - start + startExtension + endExtension + pvcWeldingAllowance;
+          final cutLength = standaloneSideCoverSegmentCutLength(
+            sideLength: sideLength,
+            start: start,
+            end: end,
+            visibleWidth: visible,
+            weldingAllowance: pvcWeldingAllowance,
+          );
           sideCoverPieces.add(cutLength / 1000.0);
         }
       } else {
@@ -1360,24 +1791,20 @@ class ComponentCalculator {
         // width is included at both ends. PVC also needs 5 mm for welding;
         // aluminium does not. An integrated cover never enters this branch.
 
-        // The legacy full-cover setting still keeps its previous behaviour.
-        final checkShutterRemoval = window.removedShutterSides.isNotEmpty;
-        final hasL = !checkShutterRemoval ||
-            !window.removedShutterSides.contains('left');
-        final hasR = !checkShutterRemoval ||
-            !window.removedShutterSides.contains('right');
-        final hasT = !checkShutterRemoval ||
-            !window.removedShutterSides.contains('top');
-        final hasB =
-            (!checkShutterRemoval ||
-                !window.removedShutterSides.contains('bottom')) &&
-            window.hasBottomFrame;
         final verticalLen = window.height + (2 * w) + pvcWeldingAllowance;
         final horizontalLen = window.width + (2 * w) + pvcWeldingAllowance;
-        if (hasL) sideCoverPieces.add(verticalLen / 1000.0);
-        if (hasR) sideCoverPieces.add(verticalLen / 1000.0);
-        if (hasT) sideCoverPieces.add(horizontalLen / 1000.0);
-        if (hasB) sideCoverPieces.add(horizontalLen / 1000.0);
+        if (hasSeparateCoverLeft) {
+          sideCoverPieces.add(verticalLen / 1000.0);
+        }
+        if (hasSeparateCoverRight) {
+          sideCoverPieces.add(verticalLen / 1000.0);
+        }
+        if (hasSeparateCoverTop) {
+          sideCoverPieces.add(horizontalLen / 1000.0);
+        }
+        if (hasSeparateCoverBottom) {
+          sideCoverPieces.add(horizontalLen / 1000.0);
+        }
       }
 
       if (sideCoverPieces.isNotEmpty) {
@@ -1466,6 +1893,16 @@ class ComponentCalculator {
         final double overlap = seriesSashOverlap;
         double clearW = zone.boundary.width;
         double clearH = zone.boundary.height;
+
+        // A single visible zone is the complete frame opening. Recalculate it
+        // directly from the finished window, selected caisson and selected
+        // frame so old drawing geometry cannot shorten its sash cuts.
+        if (window.zones.length == 1 &&
+            (zone.content == ZoneContent.singleSash ||
+                zone.content == ZoneContent.doubleSash)) {
+          clearW = fullOpening['width']!;
+          clearH = fullOpening['height']!;
+        }
 
         if (zone.content == ZoneContent.singleSash) {
           double sashW = clearW + overlap * 2;
@@ -2114,8 +2551,7 @@ class ComponentCalculator {
       // Every normal window handle requires one espagnolette.  OB/Demi-OB
       // only changes whether the ordinary espagnolette is active; it must
       // never silently reduce its quantity.
-      final bool isEspagnoletteActive =
-          !isSystemObActive && !isDemiObActive;
+      final bool isEspagnoletteActive = !isSystemObActive && !isDemiObActive;
       final int espagnoletteQty = totalHandles;
 
       if (espagnoletteQty > 0 && window.isPVC) {
@@ -2543,13 +2979,14 @@ class ComponentCalculator {
       bool isMotor = window.shutterMechanism == 'محرك';
 
       bool isExtrudedBlade = false;
-      if (window.componentOverrides.containsKey('الشرائح (Lames)')) {
-        final override = window.componentOverrides['الشرائح (Lames)'];
+      final selectedBlade = window.componentOverrides['الشرائح (Lames)'];
+      if (selectedBlade != null) {
         final bladeText =
-            '${override?['name'] ?? ''} ${override?['shutter_subtype'] ?? ''}'
+            '${selectedBlade['name'] ?? ''} ${selectedBlade['shutter_subtype'] ?? ''}'
                 .toLowerCase();
         // X3D and Extrudé are two catalogue labels for the same heavy blade.
-        isExtrudedBlade = bladeText.contains('x3d') ||
+        isExtrudedBlade =
+            bladeText.contains('x3d') ||
             bladeText.contains('extrud') ||
             bladeText.contains('إكسترودي') ||
             bladeText.contains('اكسترودي');
@@ -2559,9 +2996,25 @@ class ComponentCalculator {
 
       bool showIndividualOptions = isTunnel || isExtrudedBlade;
 
-      // Retrieve active variant states
-      // Kit is always active for non-tunnel shutters (for all drive types)
-      bool isKitActive = !isTunnel && (activeVariants['كيت (Kit)'] ?? true);
+      // A shutter kit is enabled by default. Its actual logical key depends
+      // on the mechanism, so checking only the old generic "كيت (Kit)" key
+      // made the Attache calculation ignore a visible Kit Volet.
+      const shutterKitKeys = [
+        'كيت (Kit)',
+        'كيت فولي موتور (Kit Volet Moteur)',
+        'كيت فولي مانيفر (Kit Volet Manivelle)',
+        'كيت مانيفر (Kit Manivelle)',
+        'كيت حزام (Kit Sangle)',
+        'كيت فولي (Kit Volet)',
+      ];
+      final explicitKitStates = shutterKitKeys
+          .where(activeVariants.containsKey)
+          .map((key) => activeVariants[key]!)
+          .toList();
+      final bool isKitActive =
+          !isTunnel &&
+          (explicitKitStates.isEmpty ||
+              explicitKitStates.any((value) => value));
       bool isTandemActive =
           !isX3dPvcAssembly &&
           showIndividualOptions &&
@@ -2580,17 +3033,61 @@ class ComponentCalculator {
           ? rawEmergencyCrank
           : rawEmergencyCrank is num
           ? rawEmergencyCrank != 0
-          : const ['1', 'true', 'yes', 'oui', 'نعم'].contains(
-              rawEmergencyCrank?.toString().trim().toLowerCase(),
-            );
-      bool isSupportMoteurActive =
-          isX3dPvcAssembly
-              ? isMotor && !motorHasEmergencyCrank
-              : (showIndividualOptions &&
-                  (activeVariants['سيبور موتور (Support Moteur)'] ?? true));
-      bool isBouchonLameActive = isTunnel
-          ? true
-          : (activeVariants['أغطية الشفرات (Bouchons Lames)'] ?? false);
+          : const [
+              '1',
+              'true',
+              'yes',
+              'oui',
+              'نعم',
+            ].contains(rawEmergencyCrank?.toString().trim().toLowerCase());
+      bool isSupportMoteurActive = isX3dPvcAssembly
+          ? isMotor && !motorHasEmergencyCrank
+          : (showIndividualOptions &&
+                (activeVariants['سيبور موتور (Support Moteur)'] ?? true));
+      final rawBladeEndCap =
+          window.componentOverrides['أغطية الشفرات (Bouchons Lames)'];
+      final linkedBladeEndCap =
+          selectedBlade != null &&
+              rawBladeEndCap != null &&
+              WindowModel.isBladeEndCapLinkedTo(
+                Map<String, dynamic>.from(rawBladeEndCap),
+                Map<String, dynamic>.from(selectedBlade),
+              )
+          ? Map<String, dynamic>.from(rawBladeEndCap)
+          : null;
+      final isBouchonLameActive = linkedBladeEndCap != null;
+      final bladeWeightPerSqm =
+          (selectedBlade?['weight_per_sqm'] as num?)?.toDouble() ??
+          double.tryParse(selectedBlade?['weight_per_sqm']?.toString() ?? '') ??
+          0.0;
+      final bladeMeasurementText = (selectedBlade?['measurement'] ?? '')
+          .toString()
+          .trim();
+      final bladeMeasurementMatch = RegExp(
+        r'\d+(?:[.,]\d+)?',
+      ).firstMatch(bladeMeasurementText);
+      final selectedBladeHeightMm = bladeMeasurementMatch == null
+          ? 43.0
+          : (double.tryParse(
+                  bladeMeasurementMatch.group(0)!.replaceAll(',', '.'),
+                ) ??
+                43.0);
+      final bladeCapThicknessMm = linkedBladeEndCap == null
+          ? 0.0
+          : ((linkedBladeEndCap['cap_thickness'] as num?)?.toDouble() ??
+                double.tryParse(
+                  linkedBladeEndCap['cap_thickness']?.toString() ?? '',
+                ) ??
+                0.0);
+      final shutterWeightKg = shutterCurtainWeightKg(
+        windowWidthMm: window.width.toDouble(),
+        windowHeightMm: window.height.toDouble(),
+        shutterBoxHeightMm: window.shutterBoxHeight,
+        isTunnel: isTunnel,
+        bladeHeightMm: selectedBladeHeightMm,
+        bladeWeightPerSqm: bladeWeightPerSqm,
+        bladeEndCapThicknessMm: bladeCapThicknessMm,
+      );
 
       // ===== 1. الكيت (Kit) - أول مركب، فقط لغير النفق =====
       if (!isTunnel) {
@@ -2641,15 +3138,12 @@ class ComponentCalculator {
             }
             if (candidates.isNotEmpty) {
               final targetBoxSize = window.shutterBoxHeight.round();
-              matchedKitName = candidates.firstWhere(
-                (name) {
-                  final size = RegExp(r'(?<!\d)(\d{3})(?!\d)')
-                      .firstMatch(name)
-                      ?.group(1);
-                  return size != null && int.tryParse(size) == targetBoxSize;
-                },
-                orElse: () => candidates.first,
-              );
+              matchedKitName = candidates.firstWhere((name) {
+                final size = RegExp(
+                  r'(?<!\d)(\d{3})(?!\d)',
+                ).firstMatch(name)?.group(1);
+                return size != null && int.tryParse(size) == targetBoxSize;
+              }, orElse: () => candidates.first);
             }
           }
 
@@ -2678,6 +3172,10 @@ class ComponentCalculator {
               kitBundleData[matchedKitName]!,
               leafHeightMm: window.height.toDouble(),
               leafWidthMm: window.width.toDouble(),
+              shutterWeightKg: shutterWeightKg,
+              mechanismScope: shutterMechanismScope(
+                window.shutterMechanism,
+              ),
               isActive: true,
               // دائماً مفعَّل — لا تُشطَب عناصر الكيت
               leafCount: leafCount,
@@ -2730,23 +3228,23 @@ class ComponentCalculator {
             filterAxeItems: true,
           );
         } else if (isCrank) {
-          // منايفال (Manivelle)
+          // Belt and crank share one shutter kit. Each component declares
+          // whether it is common, belt-only or crank-only.
           addAndExpandKit(
             'كيت فولي مانيفر (Kit Volet Manivelle)',
-            // DB: "Kit volet manivelle"
             [
+              'Kit volet 1',
+              'Kit volet 2',
+              'kit volet 1',
+              'kit volet 2',
+              'Kit volet 0',
               'Kit volet manivelle',
               'kit volet manivelle',
               'Kit Volet Manivelle',
+              'Kit Manivelle',
+              'kit manivelle',
+              'kit_manivelle',
             ],
-            // A manual shutter only swaps the normal volet kit for this
-            // shutter kit; it must not enable motor/accessory interactions.
-            false,
-          );
-          addAndExpandKit(
-            'كيت مانيفر (Kit Manivelle)',
-            // DB: "Kit Manivelle"
-            ['Kit Manivelle', 'kit manivelle', 'kit_manivelle'],
             false,
           );
         } else {
@@ -2792,6 +3290,9 @@ class ComponentCalculator {
           cuttingList: originalBox.cuttingList,
           kitGroupName: originalBox.kitGroupName,
           exactQuantity: originalBox.exactQuantity,
+          catalogItemId: originalBox.catalogItemId,
+          inventoryItemType: originalBox.inventoryItemType,
+          colorId: originalBox.colorId,
         );
         items.add(boxItem);
         // براغي الصندوق لا تضاف في حالة Caisson Tunnel
@@ -2851,7 +3352,6 @@ class ComponentCalculator {
       // The blade catalogue measurement is its physical height in mm.  It
       // drives the number of blades; old records without a value retain the
       // former 43 mm fallback.
-      final selectedBlade = window.componentOverrides['الشرائح (Lames)'];
       final bladeHeightSource = (selectedBlade?['measurement'] ?? '')
           .toString()
           .trim();
@@ -2860,39 +3360,23 @@ class ComponentCalculator {
       ).firstMatch(bladeHeightSource);
       final bladeHeightMm = bladeHeightMatch == null
           ? 43.0
-          : (double.tryParse(
-                  bladeHeightMatch.group(0)!.replaceAll(',', '.'),
-                ) ??
+          : (double.tryParse(bladeHeightMatch.group(0)!.replaceAll(',', '.')) ??
                 43.0);
       final safeBladeHeightMm = bladeHeightMm > 0 ? bladeHeightMm : 43.0;
       int numBladesShutter = isTunnel
           ? ((window.height + 100) / safeBladeHeightMm).ceil()
-          : ((window.height - window.shutterBoxHeight) / safeBladeHeightMm +
-                  2)
-              .ceil();
+          : ((window.height - window.shutterBoxHeight) / safeBladeHeightMm + 2)
+                .ceil();
       if (numBladesShutter < 0) numBladesShutter = 0;
 
       double bladeLengthM = (window.width - 65) / 1000.0;
-      // خصم سُمك أغطية الشفرات (4mm من كل جانب = 8mm إجمالاً) عند:
-      //  - تفعيل أغطية الشفرات يدوياً (isBouchonLameActive)
-      //  - أو صندوق نفق (isTunnel)
-      if (isBouchonLameActive || isTunnel) {
-        double bladesCapThickness = 0.0;
-        final bouchonOverride =
-            window.componentOverrides['أغطية الشفرات (Bouchons Lames)'];
-        if (bouchonOverride != null) {
-          bladesCapThickness =
-              (bouchonOverride['cap_thickness'] as num?)?.toDouble() ?? 0.0;
-        }
-        if (bladesCapThickness == 0.0) {
-          final bladesOverride = window.componentOverrides['الشرائح (Lames)'];
-          if (bladesOverride != null) {
-            bladesCapThickness =
-                (bladesOverride['cap_thickness'] as num?)?.toDouble() ?? 0.0;
-          }
-        }
-        // الخصم الافتراضي 4mm من كل جانب إذا لم تُحدَّد قيمة في القاعدة
-        if (bladesCapThickness == 0.0) bladesCapThickness = 4.0;
+      // The exact cap linked to this blade shortens every blade at both ends.
+      // No generic cap or hard-coded thickness is allowed as a fallback.
+      if (linkedBladeEndCap != null) {
+        final rawThickness = linkedBladeEndCap['cap_thickness'];
+        final bladesCapThickness = rawThickness is num
+            ? rawThickness.toDouble()
+            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
         bladeLengthM -= (2 * bladesCapThickness) / 1000.0;
       }
       List<double> bladePieces = List.filled(numBladesShutter, bladeLengthM);
@@ -2907,40 +3391,25 @@ class ComponentCalculator {
 
       // ===== 6. أغطية الشفرات (Bouchons Lames) =====
       // الكمية = عدد قطع الشفرات (نفس numBladesShutter تماماً)
-      // Keep the optional row visible for a motorized shutter so it can be
-      // enabled again after the user unticks it; only its active state affects
-      // the calculation above.
-      if (isTunnel || isMotor || isBouchonLameActive) {
+      // End caps are automatic and are shown only in the quantity/cost table.
+      // They are never a blade choice or a user-toggleable variant.
+      if (isBouchonLameActive) {
         items.add(
-          createInteractiveAccessory(
+          createShutter(
             'أغطية الشفرات (Bouchons Lames)',
-            'bouchon_lame_group',
-            isActive: isBouchonLameActive || isTunnel,
-            qty: numBladesShutter * 1.0, // = عدد القطع وليس البارات
+            qty: numBladesShutter * 1.0,
+            unit: 'حبة',
           ),
         );
       }
 
       // ===== 7. الشريحة النهائية (Lame Finale) =====
       double lameFinaleLengthM = (window.width - 65) / 1000.0;
-      if (isBouchonLameActive || isTunnel) {
-        double finalBladeCapThickness = 0.0;
-        final bouchonOverride =
-            window.componentOverrides['أغطية الشفرات (Bouchons Lames)'];
-        if (bouchonOverride != null) {
-          finalBladeCapThickness =
-              (bouchonOverride['cap_thickness'] as num?)?.toDouble() ?? 0.0;
-        }
-        if (finalBladeCapThickness == 0.0) {
-          final finalBladeOverride =
-              window.componentOverrides['الشريحة النهائية (Lame Finale)'];
-          if (finalBladeOverride != null) {
-            finalBladeCapThickness =
-                (finalBladeOverride['cap_thickness'] as num?)?.toDouble() ??
-                0.0;
-          }
-        }
-        if (finalBladeCapThickness == 0.0) finalBladeCapThickness = 4.0;
+      if (linkedBladeEndCap != null) {
+        final rawThickness = linkedBladeEndCap['cap_thickness'];
+        final finalBladeCapThickness = rawThickness is num
+            ? rawThickness.toDouble()
+            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
         lameFinaleLengthM -= (2 * finalBladeCapThickness) / 1000.0;
       }
       List<double> lameFinalePieces = [lameFinaleLengthM];
@@ -2984,9 +3453,9 @@ class ComponentCalculator {
       }
 
       // ===== 10. أطاش (Attache) =====
-      // Kit Volet contains two attaches. Count the total from shutter width,
-      // then list only the remaining standalone attaches: 2 below 1200 mm,
-      // 3 from 1200 mm, 4 from 1600 mm, and 5 from 2000 mm.
+      // Every active shutter kit contains two Attaches. Count the total from
+      // shutter width, then list only the remaining standalone Attaches:
+      // 2 below 1200 mm, 3 from 1200 mm, 4 from 1600 mm, and 5 from 2000 mm.
       final int totalAttaches = window.width >= 2000
           ? 5
           : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
@@ -3697,36 +4166,18 @@ class ComponentCalculator {
     }
 
     // --- 3.7 حساب إكسسوار الطاسو (Tasso) ---
-    int tassoQty = 0;
-    // Condition A: In divisions (mullions/transoms)
-    final bool canHaveDivisionTasso =
-        window.systemMode != 'sliding' &&
-        !(window.system?.name.toLowerCase().contains('tpr') ?? false);
-    if (canHaveDivisionTasso) {
-      tassoQty +=
-          (mullionPieces.length +
-              selectedMullionPieces.values.fold<int>(
-                0,
-                (sum, pieces) => sum + pieces.length,
-              )) *
-          2;
-    }
-
-    // Condition B: PVC window with Shutter and monobloc/integrated frame
-    final bool isFrameMonobloc =
-        (outerFrameOverride != null) &&
-        (outerFrameOverride['name'].toString().contains('Cadre cj') ||
-            outerFrameOverride['code'].toString().contains('103') ||
-            outerFrameOverride['name'].toString().toLowerCase().contains(
-              'monobloc',
-            ) ||
-            outerFrameOverride['code'].toString().toLowerCase().contains(
-              'monobloc',
-            ));
-
-    if (isOuterFramePvc && hasShutter && isFrameMonobloc) {
-      tassoQty += 2;
-    }
+    final divisionPieceCount =
+        mullionPieces.length +
+        selectedMullionPieces.values.fold<int>(
+          0,
+          (sum, pieces) => sum + pieces.length,
+        );
+    final int tassoQty = tassoQuantity(
+      divisionPieceCount: divisionPieceCount,
+      isPvc: isOuterFramePvc,
+      hasShutter: hasShutter,
+      selectedFrameHasIntegratedCover: integratedFrameCoverWidth > 0,
+    );
 
     if (tassoQty > 0) {
       items.add(
@@ -3748,7 +4199,9 @@ class ComponentCalculator {
 
     // قائمة مؤقتة لتجميع كل قطع الزجاج قبل الدمج
     List<BomItem> glassItems = [];
-    List<double> bardagePieces = [];
+    final Map<String, List<double>> bardagePiecesByColor = {};
+    final Map<String, String> bardageColorNames = {};
+    final Map<String, Map<String, dynamic>?> bardageColorData = {};
     List<double> parcloseSimplePieces = [];
     List<double> parcloseDoublePieces = [];
     List<double> reducteurPieces = [];
@@ -3763,39 +4216,36 @@ class ComponentCalculator {
     double swingCentralFramePerim =
         0.0; // مجموع محيطات الإطارات للفتحات المزدوجة (متر)
 
-    double getSlatWidthForSpec(GlassSpecification spec) {
-      final bardageOverride = window.componentOverrides['البارداج (Bardage)'];
-      if (bardageOverride != null) {
-        final double vw =
-            ((bardageOverride['visible_width'] ?? bardageOverride['thickness'])
-                    as num?)
-                ?.toDouble() ??
-            0.0;
-        if (vw > 0) return vw;
-      }
-      Map<String, dynamic> dbMatch = <String, dynamic>{};
-      if (spec.panneauProductId != null) {
-        dbMatch = window.allGlassCache.firstWhere(
-          (g) => g['id'] == spec.panneauProductId,
-          orElse: () => <String, dynamic>{},
-        );
-      }
-      if (dbMatch.isEmpty && spec.panneauSubtype != null) {
-        dbMatch = window.allGlassCache.firstWhere(
-          (g) =>
-              g['type'].toString().toLowerCase() == 'panneau' &&
-              (g['subtype'] ?? '').toString().toLowerCase().contains('bardage'),
-          orElse: () => <String, dynamic>{},
-        );
-      }
-      double width = 0.0;
-      if (dbMatch.isNotEmpty) {
-        width =
-            ((dbMatch['visible_width'] ?? dbMatch['thickness']) as num?)
-                ?.toDouble() ??
-            0.0;
-      }
-      return width > 0 ? width : 100.0; // fallback to 100mm
+    // Bardage is a profile from the active series, never a priced panel from
+    // the glass catalogue. Its visible width controls the slat count and its
+    // thickness selects the matching parclose.
+    double bardageProfileValue(String key) {
+      final override = window.componentOverrides['البارداج (Bardage)'];
+      final value = override?[key];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    double getBardageVisibleWidth() => bardageProfileValue('visible_width');
+
+    double getBardageThickness() => bardageProfileValue('thickness');
+
+    String bardageColorKey(Map<String, dynamic>? colorData, String colorName) {
+      final id = colorData?['id'];
+      if (id != null) return 'id:$id';
+      return 'name:${colorName.toLowerCase().trim()}';
+    }
+
+    void addBardagePiece(GlassSpecification glass, double pieceLength) {
+      final selectedColor = window.getBardageColorForSpec(glass);
+      final selectedName = window.getBardageColorNameForSpec(glass);
+      final key = bardageColorKey(selectedColor, selectedName);
+      bardagePiecesByColor.putIfAbsent(key, () => <double>[]).add(pieceLength);
+      bardageColorNames[key] = selectedName;
+      bardageColorData[key] = selectedColor == null
+          ? null
+          : Map<String, dynamic>.from(selectedColor);
     }
 
     double totalBaguetteLength = 0.0;
@@ -4003,6 +4453,10 @@ class ComponentCalculator {
           final isPanneau =
               cellGlass.structure == GlassStructure.closed ||
               zone.cellIsPanel[cellKey] == true;
+          final isDecorPanneau =
+              isPanneau &&
+              (isDecorPanelSubtype(cellGlass.panneauSubtype) ||
+                  cellGlass.finishOuter == GlassFinish.paneauSandwitchDecore);
 
           final isBardage =
               isPanneau &&
@@ -4012,8 +4466,10 @@ class ComponentCalculator {
 
           if (isBardage &&
               window.componentOverrides.containsKey('البارداج (Bardage)')) {
-            // البارداج يُحسب كبروفيل طولي في قسم البروفيلات، ولا يُضاف كبانو مساحي
-            final double slatW = getSlatWidthForSpec(cellGlass);
+            // البارداج مادة بروفيل، لكن تسعيره يكون بعدد قطع المخزون
+            // الكاملة وليس بالمتر الخطي، ولا يُضاف كبانو مساحي.
+            final double slatW = getBardageVisibleWidth();
+            if (slatW <= 0) return;
             final bool isVertical = cellGlass.isVerticalBardage;
 
             final int slatsCount = isVertical
@@ -4025,22 +4481,43 @@ class ComponentCalculator {
 
             for (int i = 0; i < slatsCount; i++) {
               for (int q = 0; q < pieceMultiplier; q++) {
-                bardagePieces.add(pieceLength);
+                addBardagePiece(cellGlass, pieceLength);
               }
             }
 
-            // 🟢 البارداج سمكه غليظ (مثلاً 24 مم) فيحتاج باكيت زجاج مزدوج (Double Glazing Parclose)
+            // The bardage profile's own thickness determines its parclose;
+            // it must not inherit a sandwich/decor panel thickness.
+            final targetParclosePieces = getBardageThickness() > 10.0
+                ? parcloseDoublePieces
+                : parcloseSimplePieces;
             for (int q = 0; q < pieceMultiplier; q++) {
-              parcloseDoublePieces.add(cellGw / 1000.0);
-              parcloseDoublePieces.add(cellGw / 1000.0);
-              parcloseDoublePieces.add(cellGh / 1000.0);
-              parcloseDoublePieces.add(cellGh / 1000.0);
+              targetParclosePieces.add(cellGw / 1000.0);
+              targetParclosePieces.add(cellGw / 1000.0);
+              targetParclosePieces.add(cellGh / 1000.0);
+              targetParclosePieces.add(cellGh / 1000.0);
             }
             return;
           }
 
-          final originalName = isPanneau ? 'البانو' : 'الزجاج';
+          final originalName = isDecorPanneau
+              ? 'البانو ديكور'
+              : isPanneau
+              ? 'البانو'
+              : 'الزجاج';
           int totalPieces = pieceMultiplier * window.quantity;
+          final panneauProduct = isPanneau
+              ? window.getPanneauProductForSpec(cellGlass)
+              : null;
+          final outerGlassProduct = !isPanneau
+              ? glassCatalogueProduct(
+                  cellGlass.finishOuter,
+                  cellGlass.colorOuter,
+                  cellGlass.thicknessOuter ?? 4.0,
+                )
+              : null;
+          final effectiveGlassCatalogId = catalogueId(
+            panneauProduct ?? outerGlassProduct,
+          );
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
           final double cellThick = cellGlass.totalThickness(
@@ -4265,13 +4742,16 @@ class ComponentCalculator {
             final innerPrice = cellGlass.structure == GlassStructure.double
                 ? layerPrice(isOuter: false)
                 : 0.0;
-            final innerMaterialPrice = cellGlass.structure == GlassStructure.double
+            final innerMaterialPrice =
+                cellGlass.structure == GlassStructure.double
                 ? layerMaterialPrice(isOuter: false)
                 : 0.0;
-            final innerTemperingPrice = cellGlass.structure == GlassStructure.double
+            final innerTemperingPrice =
+                cellGlass.structure == GlassStructure.double
                 ? layerTemperingPrice(isOuter: false)
                 : 0.0;
-            final innerIsTempered = cellGlass.structure == GlassStructure.double &&
+            final innerIsTempered =
+                cellGlass.structure == GlassStructure.double &&
                 layerIsTempered(isOuter: false);
             final intercallPrice = cellGlass.structure == GlassStructure.double
                 ? window.getPriceForIntercall(cellGlass.intercallThickness)
@@ -4320,6 +4800,8 @@ class ComponentCalculator {
                 unit: 'م²',
                 unitPrice: totalGlassPrice,
                 isMissing: false,
+                catalogItemId: effectiveGlassCatalogId,
+                inventoryItemType: 'Glass',
               ),
             );
           } else {
@@ -4335,15 +4817,20 @@ class ComponentCalculator {
                 category: 'panneau',
                 originalName: originalName,
                 name: glassName,
+                imagePath: panneauProduct?['image_path']?.toString(),
                 colorName: cellGh.toStringAsFixed(1),
                 length: cellGw,
                 glassHeight: cellGh,
-                quantity: totalPieces.toDouble(),
-                unit: 'قطعة',
+                quantity: isDecorPanneau
+                    ? totalPieces.toDouble()
+                    : totalAreaSqm,
+                unit: isDecorPanneau ? 'قطعة' : 'م²',
                 unitPrice: window.calculateTotalGlassPricePerSqmForZoneGlass(
                   cellGlass,
                 ),
                 isMissing: false,
+                catalogItemId: effectiveGlassCatalogId,
+                inventoryItemType: 'Glass',
               ),
             );
           }
@@ -4513,6 +5000,7 @@ class ComponentCalculator {
       // بهذا تُدمج الظلفة الرئيسية والثانوية إذا كان لهما نفس القياس والسعر
       String key =
           '${g.originalName}_'
+          '${g.category == 'panneau' ? g.name : ''}_'
           '${g.length?.toStringAsFixed(1)}_'
           '${g.glassHeight?.toStringAsFixed(1)}_'
           '${g.unitPrice.toStringAsFixed(2)}';
@@ -4524,6 +5012,7 @@ class ComponentCalculator {
           category: existing.category,
           originalName: existing.originalName,
           name: _mergeGlassName(existing.name, g.name),
+          imagePath: existing.imagePath,
           colorName: existing.colorName,
           length: existing.length,
           glassHeight: existing.glassHeight,
@@ -4531,6 +5020,9 @@ class ComponentCalculator {
           unit: existing.unit,
           unitPrice: existing.unitPrice,
           isMissing: existing.isMissing,
+          catalogItemId: existing.catalogItemId,
+          inventoryItemType: existing.inventoryItemType,
+          colorId: existing.colorId,
         );
       } else {
         mergedGlass[key] = g;
@@ -4547,29 +5039,72 @@ class ComponentCalculator {
 
     final activeSeries = window.activeSeries;
     if (activeSeries != null) {
+      bool isParcloseSection(AluminumSection section) {
+        final type = section.type.toLowerCase();
+        final name = section.name.toLowerCase();
+        return section.code.trim() == '514' ||
+            type.contains('parclose') ||
+            name.contains('parclose') ||
+            type.contains('باكيت') ||
+            name.contains('باكيت');
+      }
+
+      AluminumSection? findSimpleParclose() {
+        final candidates = activeSeries.sections
+            .where(isParcloseSection)
+            .toList();
+        for (final section in candidates) {
+          if (section.code.trim() == '514') return section;
+        }
+        for (final section in candidates) {
+          if (section.maxGlassThickness > 0 &&
+              section.maxGlassThickness <= 10) {
+            return section;
+          }
+        }
+        return null;
+      }
+
+      AluminumSection? findDoubleParclose() {
+        for (final section in activeSeries.sections) {
+          if (isParcloseSection(section) && section.maxGlassThickness > 10) {
+            return section;
+          }
+        }
+        return null;
+      }
+
+      Map<String, dynamic> pricedMap(AluminumSection section) =>
+          window.sectionMapWithSelectedColorPrice(section);
+      Map<String, dynamic> pricedOverride(Map<String, dynamic> source) {
+        final result = Map<String, dynamic>.from(source);
+        final rawId = result['id'];
+        final id = rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '');
+        final price = id == null
+            ? null
+            : window.sectionPricesForSelectedColor[id];
+        if (price != null) result['calculated_price'] = price;
+        return result;
+      }
+
       if (chosenParclose != null) {
-        // المستخدم اختار باكيت محدد — نحدد نوعه ونبحث عن المقابل
         final double maxG =
             (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
         if (maxG > 10.0) {
-          parcloseDouble = chosenParclose;
-          // البحث عن باكيت السامبل في نفس السلسلة
-          try {
-            final sampleSec = activeSeries.sections.firstWhere(
-              (s) =>
-                  (s.type.toLowerCase().contains('parclose') ||
-                      s.name.contains('باكيت')) &&
-                  s.maxGlassThickness <= 10.0 &&
-                  s.maxGlassThickness > 0.0,
-            );
-            parcloseSimple = sampleSec.toMap();
-          } catch (_) {
-            // إذا لم نجد simple، نستخدم نفس الـ double (أفضل من لا شيء)
-            parcloseSimple = chosenParclose;
-          }
+          parcloseDouble = pricedOverride(chosenParclose);
+          final simple = findSimpleParclose();
+          parcloseSimple = simple == null
+              ? pricedOverride(chosenParclose)
+              : pricedMap(simple);
         } else {
-          parcloseSimple = chosenParclose;
-          // البحث عن باكيت الدوبل — أولاً عبر الرابط المباشر
+          final simple = findSimpleParclose();
+          parcloseSimple =
+              chosenParclose['code']?.toString().trim() == '514' ||
+                  simple == null
+              ? pricedOverride(chosenParclose)
+              : pricedMap(simple);
           final int? linkedId =
               chosenParclose['linked_parclose_double_id'] as int?;
           if (linkedId != null && linkedId > 0) {
@@ -4577,49 +5112,21 @@ class ComponentCalculator {
               final linkedSec = activeSeries.sections.firstWhere(
                 (s) => s.id == linkedId,
               );
-              parcloseDouble = linkedSec.toMap();
+              parcloseDouble = pricedMap(linkedSec);
             } catch (_) {}
           }
           if (parcloseDouble == null) {
-            try {
-              final doubleSec = activeSeries.sections.firstWhere(
-                (s) =>
-                    (s.type.toLowerCase().contains('parclose') ||
-                        s.name.contains('باكيت')) &&
-                    s.maxGlassThickness > 10.0,
-              );
-              parcloseDouble = doubleSec.toMap();
-            } catch (_) {
-              // إذا لم نجد double، نستخدم نفس الـ simple
-              parcloseDouble = chosenParclose;
-            }
+            final doubleSection = findDoubleParclose();
+            parcloseDouble = doubleSection == null
+                ? pricedOverride(chosenParclose)
+                : pricedMap(doubleSection);
           }
         }
       } else {
-        // لم يختر المستخدم — بحث تلقائي في السلسلة المحملة
-        try {
-          final simpleSec = activeSeries.sections.firstWhere(
-            (s) =>
-                (s.type.toLowerCase().contains('parclose') ||
-                    s.name.contains('باكيت')) &&
-                s.maxGlassThickness <= 10.0 &&
-                s.maxGlassThickness > 0.0,
-          );
-          parcloseSimple = simpleSec.toMap();
-        } catch (_) {
-          // لا يوجد باكيت simple في السلسلة
-        }
-        try {
-          final doubleSec = activeSeries.sections.firstWhere(
-            (s) =>
-                (s.type.toLowerCase().contains('parclose') ||
-                    s.name.contains('باكيت')) &&
-                s.maxGlassThickness > 10.0,
-          );
-          parcloseDouble = doubleSec.toMap();
-        } catch (_) {
-          // لا يوجد باكيت double في السلسلة
-        }
+        final simple = findSimpleParclose();
+        final doubleSection = findDoubleParclose();
+        if (simple != null) parcloseSimple = pricedMap(simple);
+        if (doubleSection != null) parcloseDouble = pricedMap(doubleSection);
       }
     }
 
@@ -4757,16 +5264,32 @@ class ComponentCalculator {
     // =========================================================================
     // --- 4.6 البارداج كبروفيل (Bardage Profile) ---
     // =========================================================================
-    if (bardagePieces.isNotEmpty &&
+    if (bardagePiecesByColor.isNotEmpty &&
         window.componentOverrides.containsKey('البارداج (Bardage)')) {
-      items.add(
-        createProfile(
-          'البارداج (Bardage)',
-          colorName,
-          pieces: bardagePieces,
-          unit: 'قطاع',
-        ),
-      );
+      final rawBardageOverride =
+          window.componentOverrides['البارداج (Bardage)'];
+      for (final entry in bardagePiecesByColor.entries) {
+        final selectedName = bardageColorNames[entry.key] ?? colorName;
+        final selectedColor = bardageColorData[entry.key];
+        final pricedOverride = rawBardageOverride is Map
+            ? Map<String, dynamic>.from(rawBardageOverride)
+            : <String, dynamic>{};
+        pricedOverride['calculated_price'] = window.getBardagePriceForColor(
+          selectedColor,
+          selectedName,
+        );
+        items.add(
+          createProfile(
+            'البارداج (Bardage)',
+            selectedName,
+            pieces: entry.value,
+            unit: 'قطعة',
+            overrideMap: pricedOverride,
+            preferOverrideMap: true,
+            priceByWholeBar: true,
+          ),
+        );
+      }
     }
 
     // =========================================================================
@@ -4943,6 +5466,10 @@ class ComponentCalculator {
           'زجاج مفرد\n${thickness.toStringAsFixed(0)}مم: $namePart (${price.toStringAsFixed(0)} دج/م²)\n$dimText';
     } else if (glass.structure == GlassStructure.closed) {
       double price = window.calculateTotalGlassPricePerSqmForZoneGlass(glass);
+      final isDecor =
+          isDecorPanelSubtype(glass.panneauSubtype) ||
+          glass.finishOuter == GlassFinish.paneauSandwitchDecore;
+      final panneauProduct = window.getPanneauProductForSpec(glass);
 
       String getArabicSubtypeName(String sub) {
         final s = sub.toLowerCase();
@@ -4965,8 +5492,13 @@ class ComponentCalculator {
       );
       String color =
           glass.panneauColor ?? window.getClosedColoreName(glass.colorP);
+      final productName = (panneauProduct?['name'] ?? '').toString().trim();
+      final productLine = isDecor && productName.isNotEmpty
+          ? '\n- الرسم: $productName'
+          : '';
+      final priceUnit = isDecor ? 'دج/قطعة' : 'دج/م²';
       result =
-          'بانو (Panneau)\n- النوع: $subtype - اللون: $color (${price.toStringAsFixed(0)} دج/م²)\n$dimText';
+          'بانو (Panneau)\n- النوع: $subtype - اللون: $color$productLine (${price.toStringAsFixed(0)} $priceUnit)\n$dimText';
     } else {
       double intercallPrice = window.getPriceForIntercall(
         glass.intercallThickness,
@@ -5154,6 +5686,9 @@ class ComponentCalculator {
     List<double>? pieces,
     Map<String, dynamic>? overrideMap,
     bool preferOverrideMap = false,
+    bool priceByWholeBar = false,
+    int? catalogItemId,
+    int? colorId,
   }) {
     final Map<String, dynamic>? savedOverride =
         overrides.containsKey(originalName)
@@ -5246,7 +5781,17 @@ class ComponentCalculator {
       colorName: color,
       length: finalLength ?? 0.0,
       quantity: finalQty,
-      exactQuantity: exactBars ?? finalQty,
+      // Most profiles keep the exact fractional consumption for costing.
+      // Bardage is sold by complete stock pieces, so its rounded purchase
+      // quantity is also its priced quantity.
+      exactQuantity: priceByWholeBar ? finalQty : exactBars ?? finalQty,
+      catalogItemId:
+          catalogItemId ??
+          (selectedOverride?['id'] is num
+              ? (selectedOverride!['id'] as num).toInt()
+              : int.tryParse('${selectedOverride?['id'] ?? ''}')),
+      inventoryItemType: 'Section',
+      colorId: colorId,
       unit: unit,
       unitPrice: price,
       isMissing: !isLinked,
@@ -5261,6 +5806,8 @@ class ComponentCalculator {
     bool isActive = true,
     String? color,
     int qty = 0,
+    int? catalogItemId,
+    int? colorId,
   }) {
     String lookupKey = originalName;
     if (!overrides.containsKey(lookupKey) &&
@@ -5283,6 +5830,13 @@ class ComponentCalculator {
       name = '$originalName\n$details';
       price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
     }
+    final linkedCatalogueId =
+        catalogItemId ??
+        (isLinked && overrides[lookupKey]['id'] is num
+            ? (overrides[lookupKey]['id'] as num).toInt()
+            : int.tryParse(
+                '${isLinked ? overrides[lookupKey]['id'] ?? '' : ''}',
+              ));
     return BomItem(
       category: 'accessory',
       originalName: originalName,
@@ -5295,6 +5849,9 @@ class ComponentCalculator {
       unitPrice: price,
       isMissing: !isLinked,
       isActive: isActive,
+      catalogItemId: linkedCatalogueId,
+      inventoryItemType: 'Accessory',
+      colorId: colorId,
     );
   }
 
@@ -5304,6 +5861,8 @@ class ComponentCalculator {
     bool isActive = true,
     String? color,
     int qty = 0,
+    int? catalogItemId,
+    int? colorId,
   }) {
     String lookupKey = originalName;
     bool isLinked = overrides.containsKey(lookupKey);
@@ -5321,6 +5880,13 @@ class ComponentCalculator {
       name = '$originalName\n$details';
       price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
     }
+    final linkedCatalogueId =
+        catalogItemId ??
+        (isLinked && overrides[lookupKey]['id'] is num
+            ? (overrides[lookupKey]['id'] as num).toInt()
+            : int.tryParse(
+                '${isLinked ? overrides[lookupKey]['id'] ?? '' : ''}',
+              ));
     return BomItem(
       category: 'other',
       originalName: originalName,
@@ -5333,6 +5899,9 @@ class ComponentCalculator {
       unitPrice: price,
       isMissing: !isLinked,
       isActive: isActive,
+      catalogItemId: linkedCatalogueId,
+      inventoryItemType: 'Accessory',
+      colorId: colorId,
     );
   }
 
@@ -5344,6 +5913,9 @@ class ComponentCalculator {
     double qty = 1,
     String? kitGroupName,
     String category = 'accessory',
+    int? catalogItemId,
+    String? inventoryItemType,
+    int? colorId,
   }) {
     String lookupKey = originalName;
     if (!overrides.containsKey(lookupKey) &&
@@ -5366,6 +5938,13 @@ class ComponentCalculator {
       name = '$originalName\n$details';
       price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
     }
+    final linkedCatalogueId =
+        catalogItemId ??
+        (isLinked && overrides[lookupKey]['id'] is num
+            ? (overrides[lookupKey]['id'] as num).toInt()
+            : int.tryParse(
+                '${isLinked ? overrides[lookupKey]['id'] ?? '' : ''}',
+              ));
     return BomItem(
       category: category,
       originalName: originalName,
@@ -5380,6 +5959,9 @@ class ComponentCalculator {
       isActive: isActive,
       exclusionGroup: group,
       kitGroupName: kitGroupName,
+      catalogItemId: linkedCatalogueId,
+      inventoryItemType: inventoryItemType ?? 'Accessory',
+      colorId: colorId,
     );
   }
 
@@ -5389,6 +5971,7 @@ class ComponentCalculator {
     String? color,
     double qty = 0,
     String unit = 'متر',
+    int? catalogItemId,
   }) {
     bool isLinked = overrides.containsKey(originalName);
     String name = originalName;
@@ -5406,6 +5989,13 @@ class ComponentCalculator {
       price = (ov['price_per_meter'] ?? ov['calculated_price'] ?? 0.0)
           .toDouble();
     }
+    final linkedCatalogueId =
+        catalogItemId ??
+        (isLinked && overrides[originalName]['id'] is num
+            ? (overrides[originalName]['id'] as num).toInt()
+            : int.tryParse(
+                '${isLinked ? overrides[originalName]['id'] ?? '' : ''}',
+              ));
     return BomItem(
       category: 'joint',
       originalName: originalName,
@@ -5418,6 +6008,8 @@ class ComponentCalculator {
       unitPrice: price,
       isMissing: !isLinked,
       isActive: true,
+      catalogItemId: linkedCatalogueId,
+      inventoryItemType: 'Joints',
     );
   }
 
@@ -5432,6 +6024,8 @@ class ComponentCalculator {
     double? windowWidth,
     double? windowHeight,
     int windowQuantity = 1,
+    int? catalogItemId,
+    int? colorId,
   }) {
     bool isLinked = overrides.containsKey(originalName);
     String name = originalName;
@@ -5448,8 +6042,19 @@ class ComponentCalculator {
       imagePath = ov['image_path']?.toString();
       name = '${ov['code'] ?? ''} - ${ov['name']}'.trim();
       if (name.startsWith('- ')) name = name.substring(2);
-      price = (ov['calculated_price'] ?? ov['price'] ?? 0.0).toDouble();
+      final rawPrice =
+          ov['calculated_price'] ?? ov['price_dzd'] ?? ov['price'] ?? 0.0;
+      price = rawPrice is num
+          ? rawPrice.toDouble()
+          : double.tryParse(rawPrice.toString()) ?? 0.0;
     }
+    final linkedCatalogueId =
+        catalogItemId ??
+        (isLinked && overrides[originalName]['id'] is num
+            ? (overrides[originalName]['id'] as num).toInt()
+            : int.tryParse(
+                '${isLinked ? overrides[originalName]['id'] ?? '' : ''}',
+              ));
 
     bool isSqmOrLinear = false;
     String finalUnit = unit;
@@ -5540,6 +6145,9 @@ class ComponentCalculator {
       pieces: pieces,
       cuttingList: cuttingListText,
       kitGroupName: kitGroupName,
+      catalogItemId: linkedCatalogueId,
+      inventoryItemType: 'ShutterComponent',
+      colorId: colorId,
     );
   }
 

@@ -18,9 +18,6 @@ class CatalogManagerScreen extends StatefulWidget {
 }
 
 class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
-
-  
-
   Future<void> _confirmDelete(
     String title,
     String content,
@@ -267,9 +264,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   SizedBox(height: 10),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('دعم ضلفة 3 قطع (Lateral/Central/Traverse)'),
+                    title: const Text(
+                      'دعم ضلفة 3 قطع (Lateral/Central/Traverse)',
+                    ),
                     value: hasThreePieceSash,
-                    onChanged: (val) => setDialogState(() => hasThreePieceSash = val),
+                    onChanged: (val) =>
+                        setDialogState(() => hasThreePieceSash = val),
                   ),
                 ],
               ],
@@ -362,9 +362,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   SizedBox(height: 10),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('دعم ضلفة 3 قطع (Lateral/Central/Traverse)'),
+                    title: const Text(
+                      'دعم ضلفة 3 قطع (Lateral/Central/Traverse)',
+                    ),
                     value: hasThreePieceSash,
-                    onChanged: (val) => setDialogState(() => hasThreePieceSash = val),
+                    onChanged: (val) =>
+                        setDialogState(() => hasThreePieceSash = val),
                   ),
                 ],
               ],
@@ -542,20 +545,17 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                       ?.toDouble() ??
                                   0.0,
                               visibleWidth:
-                                  (sec['visible_width'] as num?)
-                                      ?.toDouble() ??
+                                  (sec['visible_width'] as num?)?.toDouble() ??
                                   0.0,
                               visibleWidth2:
                                   (sec['visible_width_2'] as num?)
                                       ?.toDouble() ??
                                   0.0,
                               sashOverlap:
-                                  (sec['sash_overlap'] as num?)
-                                      ?.toDouble() ??
+                                  (sec['sash_overlap'] as num?)?.toDouble() ??
                                   0.0,
                               barLength:
-                                  (sec['bar_length'] as num?)
-                                      ?.toDouble() ??
+                                  (sec['bar_length'] as num?)?.toDouble() ??
                                   5.8,
                               imagePath: sec['image_path']?.toString(),
                               isFrame:
@@ -617,7 +617,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
         )['name']
         .toString()
         .toUpperCase();
-    bool isSlidingSashSubtypeAllowed = (seriesType == 'Coulissant' ||
+    bool isSlidingSashSubtypeAllowed =
+        (seriesType == 'Coulissant' ||
             seriesType == 'منزلق' ||
             seriesType == 'جرار') &&
         (seriesName.contains('TPR') || seriesName.contains('HPS'));
@@ -632,7 +633,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final nameCtrl = TextEditingController();
     final barLengthCtrl = TextEditingController(text: '5.8');
     final glassDedCtrl = TextEditingController();
-    bool hasThreePieceSash = (_currentSeries.firstWhere((s) => s['id'] == _selectedSeriesId, orElse: () => {})['has_three_piece_sash'] ?? 0) == 1;
+    bool hasThreePieceSash =
+        (_currentSeries.firstWhere(
+              (s) => s['id'] == _selectedSeriesId,
+              orElse: () => {},
+            )['has_three_piece_sash'] ??
+            0) ==
+        1;
     final weightCtrl = TextEditingController();
     final couvreJointWidthCtrl = TextEditingController();
     final couvreJointThicknessCtrl = TextEditingController();
@@ -724,7 +731,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           child: Text(
                             Localization.translate(
                               'بلانت (Plinthe)',
-                              Provider.of<AppSettingsProvider>(context).language,
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                              ).language,
                             ),
                           ),
                         ),
@@ -743,8 +752,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         child: Text('غطاء جانبي / Couvre-joint'),
                       ),
                       DropdownMenuItem(
+                        value: 'bardage',
+                        child: Text('بارداش (Bardage Profile)'),
+                      ),
+                      DropdownMenuItem(
                         value: 'panneau',
-                        child: Text('بانو / برداج (Panneau)'),
+                        child: Text('بانو / برداج (قديم)'),
                       ),
                       if (seriesType != 'Coulissant' &&
                           seriesType != 'منزلق' &&
@@ -780,7 +793,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         isFrameRole = val == 'frame';
                         isSashRole = val == 'sash';
                         isMullionRole = val == 'mullion';
-                        final bool isTprHps = seriesName.contains('TPR') || seriesName.contains('HPS');
+                        final bool isTprHps =
+                            seriesName.contains('TPR') ||
+                            seriesName.contains('HPS');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
                                 seriesType == 'منزلق' ||
@@ -796,40 +811,48 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   const SizedBox(height: 8),
                   const Text(
                     'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
-                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('يُستعمل كإطار (Frame)'),
                     value: isFrameRole,
-                    onChanged: (value) => setDialogState(
-                      () => isFrameRole = value ?? false,
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => isFrameRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('يُستعمل كظلفة (Sash)'),
                     value: isSashRole,
-                    onChanged: (value) => setDialogState(
-                      () => isSashRole = value ?? false,
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => isSashRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('يُستعمل كتقسيم (Mullion)'),
                     value: isMullionRole,
-                    onChanged: (value) => setDialogState(
-                      () => isMullionRole = value ?? false,
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => isMullionRole = value ?? false),
                   ),
                   if (displayedType == 'sash' &&
                       (seriesType == 'Coulissant' ||
                           seriesType == 'منزلق' ||
                           seriesType == 'جرار') &&
-                      (seriesName.contains('TPR') || seriesName.contains('HPS'))) ...[
+                      (seriesName.contains('TPR') ||
+                          seriesName.contains('HPS'))) ...[
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: ['sash_lateral', 'sash_central', 'sash_traverse'].contains(selectedType) ? selectedType : 'sash_lateral',
+                      value:
+                          [
+                            'sash_lateral',
+                            'sash_central',
+                            'sash_traverse',
+                          ].contains(selectedType)
+                          ? selectedType
+                          : 'sash_lateral',
                       items: const [
                         DropdownMenuItem(
                           value: 'sash_lateral',
@@ -859,7 +882,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (selectedType != 'bouchon_batmo') ...[
                     TextField(
                       controller: barLengthCtrl,
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(
                         labelText: 'طول البار (متر) / Bar Length (m)',
                       ),
@@ -872,6 +897,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType != 'side_cover' &&
                       selectedType != 'chicane' &&
                       selectedType != 'panneau' &&
+                      selectedType != 'bardage' &&
                       !(selectedType == 'frame' &&
                           (seriesType == 'Coulissant' ||
                               seriesType == 'منزلق' ||
@@ -893,7 +919,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     ),
                   ),
                   SizedBox(height: 12),
-                  if (selectedType == 'frame' || selectedType == 'side_cover') ...[
+                  if (selectedType == 'frame' ||
+                      selectedType == 'side_cover') ...[
                     TextField(
                       controller: couvreJointWidthCtrl,
                       keyboardType: TextInputType.number,
@@ -908,7 +935,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: couvreJointThicknessCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
+                        labelText:
+                            'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
                       ),
                     ),
                     SizedBox(height: 12),
@@ -918,12 +946,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: cuttingDedCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'خصم التقطيع الإضافي / Cutting Deduction (mm)',
+                        labelText:
+                            'خصم التقطيع الإضافي / Cutting Deduction (mm)',
                       ),
                     ),
                     SizedBox(height: 12),
                   ],
-                  if (selectedType.startsWith('sash') || selectedType == 'frame' || selectedType == 'mullion' || selectedType == 'side_cover' || selectedType == 'panneau' || selectedType == 'plinthe') ...[
+                  if (selectedType.startsWith('sash') ||
+                      selectedType == 'frame' ||
+                      selectedType == 'mullion' ||
+                      selectedType == 'side_cover' ||
+                      selectedType == 'bardage' ||
+                      selectedType == 'plinthe') ...[
                     TextField(
                       controller: visibleWidthCtrl,
                       keyboardType: TextInputType.number,
@@ -940,7 +974,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: sashOverlapCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
+                        labelText:
+                            'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
                       ),
                     ),
                     SizedBox(height: 12),
@@ -948,23 +983,29 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (selectedType == 'parclose') ...[
                     TextField(
                       controller: maxGlassThicknessCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
-                        labelText: 'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                        labelText:
+                            'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
                       ),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       decoration: const InputDecoration(
-                        labelText: 'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                        labelText:
+                            'البيركلوز المزدوج المرتبط / Linked Double Parclose',
                       ),
                       value: selectedParcloseDoubleId,
                       items: _currentSections
                           .where((s) => s['type'] == 'parclose')
-                          .map((s) => DropdownMenuItem<int>(
-                                value: s['id'] as int,
-                                child: Text('${s['code']} - ${s['name']}'),
-                              ))
+                          .map(
+                            (s) => DropdownMenuItem<int>(
+                              value: s['id'] as int,
+                              child: Text('${s['code']} - ${s['name']}'),
+                            ),
+                          )
                           .toList(),
                       onChanged: (val) {
                         setDialogState(() {
@@ -1053,7 +1094,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           double.tryParse(visibleWidth2Ctrl.text) ?? 0.0,
                       sashOverlap: double.tryParse(sashOverlapCtrl.text) ?? 0.0,
                       imagePath: selectedImagePath,
-                      maxGlassThickness: double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
+                      maxGlassThickness:
+                          double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
                       linkedParcloseDoubleId: selectedParcloseDoubleId,
                       isFrame: isFrameRole ? 1 : 0,
                       isSash: isSashRole ? 1 : 0,
@@ -1134,11 +1176,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
       text: section['max_glass_thickness']?.toString() ?? '',
     );
     bool allowsSideCoverVal = (section['allows_side_cover'] as int?) != 0;
-    int? selectedParcloseDoubleId = section['linked_parclose_double_id'] as int?;
+    int? selectedParcloseDoubleId =
+        section['linked_parclose_double_id'] as int?;
     String? selectedImagePath = section['image_path']?.toString();
     String selectedType = section['type']?.toString() ?? 'frame';
     String displayedType = selectedType;
-    if (['sash_lateral', 'sash_central', 'sash_traverse'].contains(displayedType)) {
+    if ([
+      'sash_lateral',
+      'sash_central',
+      'sash_traverse',
+    ].contains(displayedType)) {
       displayedType = 'sash';
     }
     bool readRole(String key, bool fallback) {
@@ -1153,7 +1200,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     bool isFrameRole = readRole('is_frame', selectedType == 'frame');
     bool isSashRole = readRole('is_sash', selectedType.startsWith('sash'));
     bool isMullionRole = readRole('is_mullion', selectedType == 'mullion');
-    String sashSubtype = ['sash_lateral', 'sash_central', 'sash_traverse'].contains(selectedType)
+    String sashSubtype =
+        ['sash_lateral', 'sash_central', 'sash_traverse'].contains(selectedType)
         ? selectedType
         : 'sash_lateral';
     int? selectedRenfortId = section['linked_renfort_id'] as int?;
@@ -1239,7 +1287,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           child: Text(
                             Localization.translate(
                               'بلانت (Plinthe)',
-                              Provider.of<AppSettingsProvider>(context).language,
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                              ).language,
                             ),
                           ),
                         ),
@@ -1258,12 +1308,16 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         child: Text('غطاء جانبي / Couvre-joint'),
                       ),
                       DropdownMenuItem(
+                        value: 'bardage',
+                        child: Text('بارداش (Bardage Profile)'),
+                      ),
+                      DropdownMenuItem(
                         value: 'panneau',
-                        child: Text('بانو / برداج (Panneau)'),
+                        child: Text('بانو / برداج (قديم)'),
                       ),
                       if (seriesType != 'Coulissant' &&
                           seriesType != 'منزلق' &&
-                          seriesType != 'جرار')...[
+                          seriesType != 'جرار') ...[
                         DropdownMenuItem(
                           value: 'batmo',
                           child: Text('باتمو (Batmo)'),
@@ -1296,7 +1350,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         isFrameRole = val == 'frame';
                         isSashRole = val == 'sash';
                         isMullionRole = val == 'mullion';
-                        final bool isTprHps = seriesName.contains('TPR') || seriesName.contains('HPS');
+                        final bool isTprHps =
+                            seriesName.contains('TPR') ||
+                            seriesName.contains('HPS');
                         if (displayedType == 'sash' &&
                             (seriesType == 'Coulissant' ||
                                 seriesType == 'منزلق' ||
@@ -1312,40 +1368,48 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   const SizedBox(height: 8),
                   const Text(
                     'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
-                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('يُستعمل كإطار (Frame)'),
                     value: isFrameRole,
-                    onChanged: (value) => setDialogState(
-                      () => isFrameRole = value ?? false,
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => isFrameRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('يُستعمل كظلفة (Sash)'),
                     value: isSashRole,
-                    onChanged: (value) => setDialogState(
-                      () => isSashRole = value ?? false,
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => isSashRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('يُستعمل كتقسيم (Mullion)'),
                     value: isMullionRole,
-                    onChanged: (value) => setDialogState(
-                      () => isMullionRole = value ?? false,
-                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => isMullionRole = value ?? false),
                   ),
                   if (displayedType == 'sash' &&
                       (seriesType == 'Coulissant' ||
                           seriesType == 'منزلق' ||
                           seriesType == 'جرار') &&
-                      (seriesName.contains('TPR') || seriesName.contains('HPS'))) ...[
+                      (seriesName.contains('TPR') ||
+                          seriesName.contains('HPS'))) ...[
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: ['sash_lateral', 'sash_central', 'sash_traverse'].contains(selectedType) ? selectedType : 'sash_lateral',
+                      value:
+                          [
+                            'sash_lateral',
+                            'sash_central',
+                            'sash_traverse',
+                          ].contains(selectedType)
+                          ? selectedType
+                          : 'sash_lateral',
                       items: const [
                         DropdownMenuItem(
                           value: 'sash_lateral',
@@ -1375,7 +1439,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (selectedType != 'bouchon_batmo') ...[
                     TextField(
                       controller: barLengthCtrl,
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(
                         labelText: 'طول البار (متر) / Bar Length (m)',
                       ),
@@ -1388,6 +1454,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       selectedType != 'side_cover' &&
                       selectedType != 'chicane' &&
                       selectedType != 'panneau' &&
+                      selectedType != 'bardage' &&
                       !(selectedType == 'frame' &&
                           (seriesType == 'Coulissant' ||
                               seriesType == 'منزلق' ||
@@ -1409,7 +1476,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     ),
                   ),
                   SizedBox(height: 12),
-                  if (selectedType == 'frame' || selectedType == 'side_cover') ...[
+                  if (selectedType == 'frame' ||
+                      selectedType == 'side_cover') ...[
                     TextField(
                       controller: couvreJointWidthCtrl,
                       keyboardType: TextInputType.number,
@@ -1424,19 +1492,30 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: couvreJointThicknessCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
+                        labelText:
+                            'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
                       ),
                     ),
-                    if (selectedType == 'frame' && (double.tryParse(couvreJointWidthCtrl.text) ?? 0.0) == 0) ...[
+                    if (selectedType == 'frame' &&
+                        (double.tryParse(couvreJointWidthCtrl.text) ?? 0.0) ==
+                            0) ...[
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text(
                           'يسمح بركوب غطاء جانبي منفصل (Couvre-joint)',
-                          style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         subtitle: const Text(
                           'قم بإلغاء التحديد إذا كان هذا الإطار لا يركب عليه غطاء جانبي منفصل مطلقاً',
-                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey),
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                         ),
                         value: allowsSideCoverVal,
                         onChanged: (val) {
@@ -1453,12 +1532,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: cuttingDedCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'خصم التقطيع الإضافي / Cutting Deduction (mm)',
+                        labelText:
+                            'خصم التقطيع الإضافي / Cutting Deduction (mm)',
                       ),
                     ),
                     SizedBox(height: 12),
                   ],
-                  if (selectedType.startsWith('sash') || selectedType == 'frame' || selectedType == 'mullion' || selectedType == 'side_cover' || selectedType == 'panneau' || selectedType == 'plinthe') ...[
+                  if (selectedType.startsWith('sash') ||
+                      selectedType == 'frame' ||
+                      selectedType == 'mullion' ||
+                      selectedType == 'side_cover' ||
+                      selectedType == 'bardage' ||
+                      selectedType == 'plinthe') ...[
                     TextField(
                       controller: visibleWidthCtrl,
                       keyboardType: TextInputType.number,
@@ -1475,7 +1560,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: sashOverlapCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
+                        labelText:
+                            'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1483,23 +1569,33 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (selectedType == 'parclose') ...[
                     TextField(
                       controller: maxGlassThicknessCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
-                        labelText: 'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                        labelText:
+                            'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
                       ),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       decoration: const InputDecoration(
-                        labelText: 'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                        labelText:
+                            'البيركلوز المزدوج المرتبط / Linked Double Parclose',
                       ),
                       value: selectedParcloseDoubleId,
                       items: _currentSections
-                          .where((s) => s['type'] == 'parclose' && s['id'] != section['id'])
-                          .map((s) => DropdownMenuItem<int>(
-                                value: s['id'] as int,
-                                child: Text('${s['code']} - ${s['name']}'),
-                              ))
+                          .where(
+                            (s) =>
+                                s['type'] == 'parclose' &&
+                                s['id'] != section['id'],
+                          )
+                          .map(
+                            (s) => DropdownMenuItem<int>(
+                              value: s['id'] as int,
+                              child: Text('${s['code']} - ${s['name']}'),
+                            ),
+                          )
                           .toList(),
                       onChanged: (val) {
                         setDialogState(() {
@@ -1609,8 +1705,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         'is_frame': isFrameRole ? 1 : 0,
                         'is_sash': isSashRole ? 1 : 0,
                         'is_mullion': isMullionRole ? 1 : 0,
-                        'thickness': double.tryParse(visibleWidthCtrl.text) ?? 45.0,
-                        'bar_length': double.tryParse(barLengthCtrl.text) ?? 5.8,
+                        'thickness':
+                            double.tryParse(visibleWidthCtrl.text) ?? 45.0,
+                        'bar_length':
+                            double.tryParse(barLengthCtrl.text) ?? 5.8,
                         'glass_deduction':
                             (selectedType == 'batmo' ||
                                 selectedType == 'bouchon_batmo' ||
@@ -1627,7 +1725,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         'couvre_joint_width':
                             double.tryParse(couvreJointWidthCtrl.text) ?? 0.0,
                         'couvre_joint_thickness':
-                            double.tryParse(couvreJointThicknessCtrl.text) ?? 0.0,
+                            double.tryParse(couvreJointThicknessCtrl.text) ??
+                            0.0,
                         'cutting_deduction':
                             double.tryParse(cuttingDedCtrl.text) ?? 0.0,
                         'visible_width':
@@ -1640,7 +1739,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         'renfort_deduction':
                             double.tryParse(renfortDeductionCtrl.text) ?? 140.0,
                         'image_path': selectedImagePath,
-                        'max_glass_thickness': double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
+                        'max_glass_thickness':
+                            double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
                         'linked_parclose_double_id': selectedParcloseDoubleId,
                         'allows_side_cover': allowsSideCoverVal ? 1 : 0,
                       });
@@ -1958,20 +2058,17 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                       ?.toDouble() ??
                                   0.0,
                               visibleWidth:
-                                  (sec['visible_width'] as num?)
-                                      ?.toDouble() ??
+                                  (sec['visible_width'] as num?)?.toDouble() ??
                                   0.0,
                               visibleWidth2:
                                   (sec['visible_width_2'] as num?)
                                       ?.toDouble() ??
                                   0.0,
                               sashOverlap:
-                                  (sec['sash_overlap'] as num?)
-                                      ?.toDouble() ??
+                                  (sec['sash_overlap'] as num?)?.toDouble() ??
                                   0.0,
                               barLength:
-                                  (sec['bar_length'] as num?)
-                                      ?.toDouble() ??
+                                  (sec['bar_length'] as num?)?.toDouble() ??
                                   5.8,
                               imagePath: sec['image_path']?.toString(),
                               isFrame:
@@ -2051,9 +2148,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                 onTap: () => _loadSeries(p['id']),
                                 child: Container(
                                   color: isSelected
-                                      ? (Theme.of(context).brightness == Brightness.dark
-                                          ? Colors.blue.shade900.withValues(alpha: 0.5)
-                                          : Colors.blue.shade100)
+                                      ? (Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.blue.shade900.withValues(
+                                                alpha: 0.5,
+                                              )
+                                            : Colors.blue.shade100)
                                       : Colors.transparent,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 8,
@@ -2211,9 +2311,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                   onTap: () => _loadSections(s['id']),
                                   child: Container(
                                     color: isSelected
-                                        ? (Theme.of(context).brightness == Brightness.dark
-                                            ? Colors.blue.shade900.withValues(alpha: 0.3)
-                                            : Colors.blue.shade50)
+                                        ? (Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? Colors.blue.shade900.withValues(
+                                                  alpha: 0.3,
+                                                )
+                                              : Colors.blue.shade50)
                                         : Colors.transparent,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 8,
@@ -2385,10 +2488,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                 IconData typeIcon;
                                 Color typeColor;
                                 switch (sec['type']) {
-                                                                    case 'plinthe':
+                                  case 'plinthe':
                                     typeIcon = Icons.border_bottom;
                                     typeColor = Colors.brown;
-                                    
+
                                     break;
                                   case 'frame':
                                     typeIcon = Icons.crop_square;
@@ -2455,14 +2558,25 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               IconButton(
-                                                icon: Icon(Icons.edit, color: Colors.blue),
-                                                onPressed: () => _showEditSectionDialog(sec),
+                                                icon: Icon(
+                                                  Icons.edit,
+                                                  color: Colors.blue,
+                                                ),
+                                                onPressed: () =>
+                                                    _showEditSectionDialog(sec),
                                               ),
                                               IconButton(
-                                                icon: Icon(Icons.delete, color: Colors.red),
+                                                icon: Icon(
+                                                  Icons.delete,
+                                                  color: Colors.red,
+                                                ),
                                                 onPressed: () async {
-                                                  await widget.db.deleteSection(sec['id']);
-                                                  _loadSections(_selectedSeriesId!);
+                                                  await widget.db.deleteSection(
+                                                    sec['id'],
+                                                  );
+                                                  _loadSections(
+                                                    _selectedSeriesId!,
+                                                  );
                                                 },
                                               ),
                                             ],

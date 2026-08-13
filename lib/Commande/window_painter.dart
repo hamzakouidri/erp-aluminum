@@ -891,6 +891,17 @@ class WindowPainter extends CustomPainter {
     ).createShader(r);
   }
 
+  String? _effectivePanneauColor(GlassSpecification? spec) {
+    if (spec == null) return null;
+    final isBardage = spec.finishOuter == GlassFinish.bardage ||
+        spec.finishInner == GlassFinish.bardage ||
+        (spec.panneauSubtype ?? '').toLowerCase().contains('bardage');
+    if (isBardage && spec.bardageUsesFrameColor) {
+      return model.getBardageColorNameForSpec(spec);
+    }
+    return spec.panneauColor;
+  }
+
   void _drawGlassLayer(
     Canvas canvas,
     Rect r,
@@ -918,7 +929,7 @@ class WindowPainter extends CustomPainter {
     canvas.save();
     canvas.clipPath(glassPath);
 
-    final pColor = spec.panneauColor;
+    final pColor = _effectivePanneauColor(spec);
     final bool isPanneauWood = pColor != null && _isWoodColor({'name': pColor});
     final Paint fillPaint = Paint();
     if (structure == GlassStructure.closed &&
@@ -3007,8 +3018,9 @@ class WindowPainter extends CustomPainter {
         GlassFinish.paneauSandwitch;
 
     final Paint fillPaint = Paint();
-    final String? pColor =
-        effectiveSpec?.panneauColor ?? model.selectedZone?.glass.panneauColor;
+    final String? pColor = _effectivePanneauColor(
+      effectiveSpec ?? model.selectedZone?.glass,
+    );
     final bool isPanneauWood = pColor != null && _isWoodColor({'name': pColor});
     if (isPanneauWood && TextureCache.woodTexture != null) {
       final woodColors = getEffectiveGradientColors(FrameColor.brown, {
