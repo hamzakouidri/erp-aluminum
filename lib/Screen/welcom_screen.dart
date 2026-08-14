@@ -96,8 +96,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   List<Map<String, dynamic>> _desktopClients = [];
   List<Map<String, dynamic>> _desktopTreasury = [];
   Map<int, String> _assignedWorkersMap = {};
-  int _selectedDesktopTableTab =
-      0; // 0: الطلبيات, 1: الزبائن, 2: الصندوق
+  int _selectedDesktopTableTab = 0; // 0: الطلبيات, 1: الزبائن, 2: الصندوق
   final TextEditingController _desktopTreasurySearchController =
       TextEditingController();
   String _desktopTreasurySearchQuery = '';
@@ -508,7 +507,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     for (final client in _desktopClients) {
       final date = DateTime.tryParse((client['created_at'] ?? '').toString());
       if (date == null) continue;
-      final monthDifference = (now.year - date.year) * 12 + now.month - date.month;
+      final monthDifference =
+          (now.year - date.year) * 12 + now.month - date.month;
       if (monthDifference >= 0 && monthDifference < monthsToShow) {
         counts[monthsToShow - monthDifference - 1] += 1;
       }
@@ -813,11 +813,247 @@ class _WelcomScreenState extends State<WelcomScreen> {
     return english;
   }
 
+  Widget _buildDesktopTopBar(
+    BuildContext context,
+    AppLanguage lang,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    final email = _userEmail == 'جاري التحميل...'
+        ? (firebaseUser?.email ?? '')
+        : _userEmail;
+    final displayName = firebaseUser?.displayName?.trim().isNotEmpty == true
+        ? firebaseUser!.displayName!.trim()
+        : (email.contains('@') ? email.split('@').first : email);
+    final initial = displayName.isEmpty
+        ? 'A'
+        : displayName.substring(0, 1).toUpperCase();
+
+    final account = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: mutedColor.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 17,
+            backgroundColor: const Color(0xFF4D67F0),
+            child: Text(
+              initial,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 130),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  displayName.isEmpty
+                      ? _desktopText(lang, 'المستخدم', 'Utilisateur', 'User')
+                      : displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: contentColor,
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  _desktopText(
+                    lang,
+                    'حساب التطبيق',
+                    'Compte application',
+                    'Application account',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: mutedColor,
+                    fontFamily: 'Cairo',
+                    fontSize: 9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final search = Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: mutedColor.withValues(alpha: 0.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, color: Color(0xFF4D67F0), size: 21),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              _desktopText(
+                lang,
+                'ابحث عن طلبية أو زبون أو منتج...',
+                'Rechercher commande, client ou produit...',
+                'Search orders, clients, or products...',
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: mutedColor,
+                fontFamily: 'Cairo',
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final brand = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFF4D67F0).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(13),
+            image: _cachedLogoProvider == null
+                ? null
+                : DecorationImage(
+                    image: _cachedLogoProvider!,
+                    fit: BoxFit.cover,
+                  ),
+          ),
+          child: _cachedLogoProvider == null
+              ? const Icon(Icons.layers_rounded, color: Color(0xFF4D67F0))
+              : null,
+        ),
+        const SizedBox(width: 9),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 190),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _workshopName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: contentColor,
+                  fontFamily: 'Cairo',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                _desktopText(
+                  lang,
+                  'نظام إدارة الورشة',
+                  'Gestion de l’atelier',
+                  'Workshop management',
+                ),
+                style: TextStyle(
+                  color: mutedColor,
+                  fontFamily: 'Cairo',
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 820) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [account, const Spacer(), brand]),
+              const SizedBox(height: 14),
+              search,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            account,
+            const SizedBox(width: 12),
+            IconButton(
+              tooltip: _desktopText(
+                lang,
+                'تنبيهات المخزون',
+                'Alertes stock',
+                'Inventory alerts',
+              ),
+              onPressed: () => _showLowStockNotifications(context),
+              icon: const Icon(Icons.notifications_none_rounded),
+              color: const Color(0xFF4D67F0),
+              style: IconButton.styleFrom(
+                backgroundColor: cardColor,
+                side: BorderSide(color: mutedColor.withValues(alpha: 0.10)),
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: search,
+                ),
+              ),
+            ),
+            const SizedBox(width: 18),
+            brand,
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildDesktopDashboard(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pageColor = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final pageColor = isDark
+        ? const Color(0xFF0F172A)
+        : const Color(0xFFF6F8FC);
     final cardColor = isDark ? const Color(0xFF172033) : Colors.white;
     final contentColor = isDark
         ? const Color(0xFFE5E7EB)
@@ -830,13 +1066,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
       color: pageColor,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 36),
+        padding: const EdgeInsets.fromLTRB(28, 22, 28, 36),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1440),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildDesktopTopBar(
+                  context,
+                  lang,
+                  cardColor,
+                  contentColor,
+                  mutedColor,
+                ),
+                const SizedBox(height: 26),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final narrow = constraints.maxWidth < 660;
@@ -869,22 +1113,27 @@ class _WelcomScreenState extends State<WelcomScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _workshopName,
+                                _desktopText(
+                                  lang,
+                                  'لوحة القيادة والإحصائيات',
+                                  'Tableau de bord et statistiques',
+                                  'Dashboard and statistics',
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: contentColor,
                                   fontFamily: 'Cairo',
-                                  fontSize: 17,
+                                  fontSize: 21,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                               Text(
                                 _desktopText(
                                   lang,
-                                  'لوحة التحكم',
-                                  'Tableau de bord',
-                                  'Dashboard',
+                                  'متابعة فورية للورشة والطلبات والمخزون',
+                                  'Suivi de l’atelier, des commandes et du stock',
+                                  'Live workshop, orders, and inventory overview',
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -961,7 +1210,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   builder: (context, constraints) {
                     final sideWidth = 290.0;
                     final isCompact = constraints.maxWidth < 980;
-                    final orders = _buildDesktopOrdersPanel(
+                    final orders = _buildDesktopTrendPanel(
                       context,
                       cardColor,
                       contentColor,
@@ -1000,11 +1249,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   },
                 ),
                 const SizedBox(height: 18),
-                _buildDesktopLowStockPanel(
-                  context,
-                  cardColor,
-                  contentColor,
-                  mutedColor,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final orders = _buildDesktopOrdersPanel(
+                      context,
+                      cardColor,
+                      contentColor,
+                      mutedColor,
+                    );
+                    // Stock alerts live below the open-orders metric.  Keeping
+                    // a second, wide stock panel here made the dashboard much
+                    // taller and could overflow in smaller desktop windows.
+                    return orders;
+                  },
                 ),
               ],
             ),
@@ -1051,6 +1308,20 @@ class _WelcomScreenState extends State<WelcomScreen> {
           textColor: contentColor,
           mutedColor: mutedColor,
           onTap: _openOrders,
+          secondaryLabel: _desktopText(
+            lang,
+            'تنبيهات المخزون',
+            'Alertes de stock',
+            'Stock alerts',
+          ),
+          secondaryValue: _lowStockCount.toString(),
+          secondaryIcon: _lowStockCount == 0
+              ? Icons.verified_rounded
+              : Icons.warning_amber_rounded,
+          secondaryColor: _lowStockCount == 0
+              ? const Color(0xFF10B981)
+              : const Color(0xFFF97316),
+          onSecondaryTap: () => _showLowStockNotifications(context),
         ),
       if (settings.canAccessTreasury())
         _DesktopMetricCard(
@@ -1149,6 +1420,254 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
+  Widget _buildDesktopTrendPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final entries = _ordersByMonth.entries.toList();
+    final values = entries.map((entry) => entry.value.toDouble()).toList();
+    final maxValue = entries.fold<int>(
+      0,
+      (maximum, entry) => math.max(maximum, entry.value),
+    );
+
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(
+        lang,
+        'حركة الطلبيات',
+        'Évolution des commandes',
+        'Order activity',
+      ),
+      subtitle: _desktopText(
+        lang,
+        'مقارنة الطلبيات المسجلة خلال الأشهر الأخيرة',
+        'Comparaison des commandes des derniers mois',
+        'Comparison of orders from recent months',
+      ),
+      icon: Icons.query_stats_rounded,
+      color: const Color(0xFF4D67F0),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      child: SizedBox(
+        height: 350,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                _desktopTrendLegend(
+                  const Color(0xFF7289F4),
+                  _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
+                  mutedColor,
+                ),
+                const SizedBox(width: 16),
+                _desktopTrendLegend(
+                  const Color(0xFF10B981),
+                  _desktopText(
+                    lang,
+                    'اتجاه النشاط',
+                    'Tendance',
+                    'Activity trend',
+                  ),
+                  mutedColor,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final usableHeight = math.max(
+                    1.0,
+                    constraints.maxHeight - 20,
+                  );
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Column(
+                          children: List.generate(
+                            4,
+                            (_) => Expanded(
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Divider(
+                                  color: mutedColor.withValues(alpha: 0.14),
+                                  height: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 13,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              for (final entry in entries)
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.bottomCenter,
+                                      child: Container(
+                                        height: maxValue == 0
+                                            ? 3
+                                            : math.max(
+                                                4.0,
+                                                usableHeight *
+                                                    entry.value /
+                                                    maxValue,
+                                              ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFF7289F4,
+                                          ).withValues(alpha: 0.92),
+                                          borderRadius:
+                                              const BorderRadius.vertical(
+                                                top: Radius.circular(7),
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
+                            child: Opacity(
+                              opacity: 0.9,
+                              child: _DesktopSparkline(
+                                values: values,
+                                color: const Color(0xFF10B981),
+                                fill: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                for (final entry in entries)
+                  Expanded(
+                    child: Text(
+                      _desktopTrendMonth(entry.key, lang),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: mutedColor,
+                        fontFamily: 'Cairo',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopTrendLegend(Color color, String label, Color mutedColor) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: TextStyle(
+            color: mutedColor,
+            fontFamily: 'Cairo',
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _desktopTrendMonth(String key, AppLanguage lang) {
+    final month = int.tryParse(key.split('/').first);
+    const arabic = [
+      '',
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ];
+    const french = [
+      '',
+      'janv.',
+      'févr.',
+      'mars',
+      'avr.',
+      'mai',
+      'juin',
+      'juil.',
+      'août',
+      'sept.',
+      'oct.',
+      'nov.',
+      'déc.',
+    ];
+    const english = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    if (month == null || month < 1 || month > 12) return key;
+    return _desktopText(lang, arabic[month], french[month], english[month]);
+  }
+
   Widget _buildDesktopOrdersPanel(
     BuildContext context,
     Color cardColor,
@@ -1157,7 +1676,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final selectedTab = !settings.canAccessTreasury() && _selectedDesktopTableTab == 2
+    final selectedTab =
+        !settings.canAccessTreasury() && _selectedDesktopTableTab == 2
         ? 0
         : _selectedDesktopTableTab;
     if (selectedTab == 2) {
@@ -1295,7 +1815,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  icon: const Icon(Icons.account_balance_wallet_rounded, size: 14),
+                  icon: const Icon(
+                    Icons.account_balance_wallet_rounded,
+                    size: 14,
+                  ),
                 ),
             ],
             selected: {selectedTab},
@@ -1408,7 +1931,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                icon: const Icon(Icons.account_balance_wallet_rounded, size: 14),
+                icon: const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  size: 14,
+                ),
               ),
             ],
             selected: const {2},
@@ -1441,7 +1967,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   void _openTreasury() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     openAdaptiveScreen(
       context,
       title: _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'),
@@ -2020,7 +2549,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
           onChanged: (value) {
             setState(() => _desktopTreasurySearchQuery = value);
           },
-          style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: contentColor),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 12,
+            color: contentColor,
+          ),
           decoration: InputDecoration(
             isDense: true,
             prefixIcon: const Icon(Icons.search_rounded, size: 19),
@@ -2030,7 +2563,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
               'Rechercher : libellé, montant, date ou saisi par',
               'Search description, amount, date, or recorded by',
             ),
-            hintStyle: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: mutedColor),
+            hintStyle: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11,
+              color: mutedColor,
+            ),
             filled: true,
             fillColor: mutedColor.withOpacity(0.06),
             border: OutlineInputBorder(
@@ -2041,7 +2578,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: mutedColor.withOpacity(0.16)),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 11,
+            ),
           ),
         ),
         const SizedBox(height: 10),
@@ -2169,8 +2709,13 @@ class _WelcomScreenState extends State<WelcomScreen> {
               _desktopTableCell(
                 description.isEmpty
                     ? (type.isEmpty
-                        ? _desktopText(lang, 'عملية صندوق', 'Opération de caisse', 'Treasury entry')
-                        : type)
+                          ? _desktopText(
+                              lang,
+                              'عملية صندوق',
+                              'Opération de caisse',
+                              'Treasury entry',
+                            )
+                          : type)
                     : description,
                 4,
                 contentColor,
@@ -2241,19 +2786,26 @@ class _WelcomScreenState extends State<WelcomScreen> {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () => setState(() => _showTreasuryTotals = !_showTreasuryTotals),
+            onTap: () =>
+                setState(() => _showTreasuryTotals = !_showTreasuryTotals),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
                 color: const Color(0xFF0EA5A4).withOpacity(0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF0EA5A4).withOpacity(0.18)),
+                border: Border.all(
+                  color: const Color(0xFF0EA5A4).withOpacity(0.18),
+                ),
               ),
               child: Column(
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.calculate_rounded, size: 17, color: const Color(0xFF0EA5A4)),
+                      Icon(
+                        Icons.calculate_rounded,
+                        size: 17,
+                        color: const Color(0xFF0EA5A4),
+                      ),
                       const SizedBox(width: 7),
                       Text(
                         _desktopText(lang, 'الإجماليات', 'Totaux', 'Totals'),
@@ -2267,7 +2819,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       const Spacer(),
                       Text(
                         '${rows.length} ${_desktopText(lang, 'عملية', 'opérations', 'entries')}',
-                        style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: mutedColor),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 10,
+                          color: mutedColor,
+                        ),
                       ),
                       const SizedBox(width: 5),
                       Icon(
@@ -2292,17 +2848,32 @@ class _WelcomScreenState extends State<WelcomScreen> {
                                 runSpacing: 4,
                                 children: [
                                   _desktopTreasuryTotalLabel(
-                                    _desktopText(lang, 'الدفع', 'Encaissements', 'Income'),
+                                    _desktopText(
+                                      lang,
+                                      'الدفع',
+                                      'Encaissements',
+                                      'Income',
+                                    ),
                                     _formatCurrency(income),
                                     const Color(0xFF10B981),
                                   ),
                                   _desktopTreasuryTotalLabel(
-                                    _desktopText(lang, 'السحب', 'Décaissements', 'Withdrawals'),
+                                    _desktopText(
+                                      lang,
+                                      'السحب',
+                                      'Décaissements',
+                                      'Withdrawals',
+                                    ),
                                     _formatCurrency(expense),
                                     const Color(0xFFEF4444),
                                   ),
                                   _desktopTreasuryTotalLabel(
-                                    _desktopText(lang, 'الرصيد', 'Solde', 'Balance'),
+                                    _desktopText(
+                                      lang,
+                                      'الرصيد',
+                                      'Solde',
+                                      'Balance',
+                                    ),
                                     _formatCurrency(balance),
                                     const Color(0xFF0EA5A4),
                                   ),
@@ -2326,7 +2897,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
       text: TextSpan(
         style: const TextStyle(fontFamily: 'Cairo', fontSize: 10),
         children: [
-          TextSpan(text: '$label: ', style: const TextStyle(color: Color(0xFF64748B))),
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(color: Color(0xFF64748B)),
+          ),
           TextSpan(
             text: value,
             style: TextStyle(color: color, fontWeight: FontWeight.w800),
@@ -2477,51 +3051,165 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color mutedColor,
   ) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    final entries = _ordersByMonth.values
-        .map((value) => value.toDouble())
-        .toList();
+    final total = _ordersByStatus.values.fold<int>(
+      0,
+      (sum, value) => sum + value,
+    );
+    final statusColors = <String, Color>{
+      'New': const Color(0xFF64748B),
+      'Pending': const Color(0xFFF59E0B),
+      'Confirmed': const Color(0xFF10B981),
+      'In Progress': const Color(0xFF2563EB),
+      'Partial Manufacturing': const Color(0xFF0EA5E9),
+      'Full Manufacturing': const Color(0xFF0F766E),
+      'Partial Distribution': const Color(0xFFF97316),
+      'Full Distribution': const Color(0xFF22C55E),
+      'Installation': const Color(0xFF8B5CF6),
+      'Reserve': const Color(0xFFEF4444),
+      'Done': const Color(0xFF059669),
+    };
+    final legendEntries = _ordersByStatus.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
     return _desktopPanel(
       context: context,
       title: _desktopText(
         lang,
-        'نشاط الطلبيات',
-        'Activité des commandes',
-        'Order activity',
+        'حالات الطلبيات',
+        'État des commandes',
+        'Order statuses',
       ),
-      icon: Icons.show_chart_rounded,
+      subtitle: _desktopText(
+        lang,
+        'توزيع الطلبيات حسب الحالة',
+        'Répartition par état',
+        'Orders grouped by status',
+      ),
+      icon: Icons.donut_small_rounded,
       color: const Color(0xFF2563EB),
       backgroundColor: cardColor,
       textColor: contentColor,
       mutedColor: mutedColor,
       child: SizedBox(
         height: 138,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _DesktopSparkline(
-                values: entries,
-                color: const Color(0xFF2563EB),
-                fill: true,
+        child: total == 0
+            ? Center(
+                child: Text(
+                  _desktopText(
+                    lang,
+                    'لا توجد طلبيات بعد',
+                    'Aucune commande pour le moment',
+                    'No orders yet',
+                  ),
+                  style: TextStyle(color: mutedColor, fontSize: 11),
+                ),
+              )
+            : Row(
+                children: [
+                  SizedBox(
+                    width: 116,
+                    height: 116,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CustomPaint(
+                          size: const Size.square(116),
+                          painter: _DonutPainter(
+                            data: _ordersByStatus,
+                            colors: statusColors,
+                            progress: 1,
+                            bgColor: mutedColor.withValues(alpha: 0.14),
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              total.toString(),
+                              style: TextStyle(
+                                color: contentColor,
+                                fontFamily: 'Arial',
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              _desktopText(
+                                lang,
+                                'طلبية',
+                                'commandes',
+                                'orders',
+                              ),
+                              style: TextStyle(color: mutedColor, fontSize: 9),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in legendEntries.take(4))
+                          _desktopStatusLegend(
+                            color:
+                                statusColors[entry.key] ??
+                                const Color(0xFF94A3B8),
+                            label: _desktopStatusText(entry.key, lang),
+                            count: entry.value,
+                            mutedColor: mutedColor,
+                          ),
+                        if (legendEntries.length > 4)
+                          Text(
+                            '+${legendEntries.length - 4}',
+                            style: TextStyle(
+                              color: mutedColor,
+                              fontFamily: 'Arial',
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _desktopText(
-                lang,
-                'الستة أشهر الأخيرة',
-                'Six derniers mois',
-                'Last six months',
-              ),
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                color: mutedColor,
-                fontSize: 10,
-              ),
-            ),
-          ],
-        ),
       ),
+    );
+  }
+
+  Widget _desktopStatusLegend({
+    required Color color,
+    required String label,
+    required int count,
+    required Color mutedColor,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 84),
+          child: Text(
+            '$label ($count)',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Arial',
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -3294,98 +3982,110 @@ class _WelcomScreenState extends State<WelcomScreen> {
     }
     final lang = settings.language;
 
-    return Container(
-      width: double.infinity,
-      height: 90,
-      decoration: BoxDecoration(
-        gradient: Theme.of(context).brightness == Brightness.dark
-            ? const LinearGradient(
-                colors: [Color(0xFF1E3A5F), Color(0xFF0F2744)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+        return Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 90),
+          decoration: BoxDecoration(
+            gradient: Theme.of(context).brightness == Brightness.dark
+                ? const LinearGradient(
+                    colors: [Color(0xFF1E3A5F), Color(0xFF0F2744)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF3B82F6).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
               ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF3B82F6).withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+            ],
           ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            openAdaptiveScreen(
-              context,
-              title: Localization.translate('بطاقة رفع القياسات', lang),
-              icon: Icons.mic_none_outlined,
-              screen: MeasurementsScreen(db: db),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.mic_none_outlined,
-                    color: Colors.white,
-                    size: 32,
-                  ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () {
+                openAdaptiveScreen(
+                  context,
+                  title: Localization.translate('بطاقة رفع القياسات', lang),
+                  icon: Icons.mic_none_outlined,
+                  screen: MeasurementsScreen(db: db),
+                );
+              },
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 12 : 20,
+                  vertical: 12,
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        Localization.translate('بطاقة رفع القياسات', lang),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                        ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(compact ? 8 : 10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor.withOpacity(0.2),
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        Localization.translate(
-                          'إدخال القياسات السريع بالكتابة أو بالصوت',
-                          lang,
-                        ),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
-                          fontSize: 13,
-                          fontFamily: 'Cairo',
-                        ),
+                      child: Icon(
+                        Icons.mic_none_outlined,
+                        color: Colors.white,
+                        size: compact ? 26 : 32,
                       ),
-                    ],
-                  ),
+                    ),
+                    SizedBox(width: compact ? 10 : 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            Localization.translate('بطاقة رفع القياسات', lang),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Cairo',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            Localization.translate(
+                              'إدخال القياسات السريع بالكتابة أو بالصوت',
+                              lang,
+                            ),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.85),
+                              fontSize: 13,
+                              fontFamily: 'Cairo',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: Colors.white,
+                      size: compact ? 18 : 20,
+                    ),
+                  ],
                 ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -3625,6 +4325,11 @@ class _DesktopMetricCard extends StatelessWidget {
     required this.textColor,
     required this.mutedColor,
     this.onTap,
+    this.secondaryLabel,
+    this.secondaryValue,
+    this.secondaryIcon,
+    this.secondaryColor,
+    this.onSecondaryTap,
   });
 
   final IconData icon;
@@ -3637,6 +4342,11 @@ class _DesktopMetricCard extends StatelessWidget {
   final Color textColor;
   final Color mutedColor;
   final VoidCallback? onTap;
+  final String? secondaryLabel;
+  final String? secondaryValue;
+  final IconData? secondaryIcon;
+  final Color? secondaryColor;
+  final VoidCallback? onSecondaryTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3645,36 +4355,34 @@ class _DesktopMetricCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          // Windows can use larger system text and the treasury value can be
-          // much longer than the other metrics.  Keep enough vertical room
-          // and scale only the value when its available width is limited.
-          height: 154,
-          padding: const EdgeInsets.all(14),
+          height: secondaryValue == null ? 108 : 132,
+          padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 15),
           decoration: BoxDecoration(
             color: backgroundColor,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: isDark
-                  ? Colors.white.withOpacity(0.08)
-                  : const Color(0xFFE2E8F0),
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFFE8EDF6),
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(isDark ? 0.10 : 0.09),
-                blurRadius: 16,
-                offset: const Offset(0, 5),
+                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.045),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
                       title,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -3684,51 +4392,92 @@ class _DesktopMetricCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(9),
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 31,
+                      width: double.infinity,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          value,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 23,
+                            color: textColor,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
                     ),
-                    child: Icon(icon, size: 18, color: color),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              SizedBox(
-                height: 32,
-                width: double.infinity,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text(
-                    value,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 23,
-                      color: textColor,
-                      fontWeight: FontWeight.w900,
+                    Text(
+                      caption,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 10,
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
+                    if (secondaryValue != null) ...[
+                      const SizedBox(height: 6),
+                      Divider(
+                        height: 1,
+                        color: mutedColor.withValues(alpha: 0.15),
+                      ),
+                      const SizedBox(height: 5),
+                      InkWell(
+                        onTap: onSecondaryTap,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Row(
+                          children: [
+                            Icon(
+                              secondaryIcon ?? Icons.warning_amber_rounded,
+                              color: secondaryColor ?? color,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                secondaryLabel ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Arial',
+                                  fontSize: 9,
+                                  color: mutedColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              secondaryValue!,
+                              style: TextStyle(
+                                fontFamily: 'Arial',
+                                fontSize: 12,
+                                color: secondaryColor ?? color,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const Spacer(),
-              SizedBox(
-                height: 20,
-                child: _DesktopSparkline(values: values, color: color),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                caption,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 10,
-                  color: mutedColor,
+              const SizedBox(width: 12),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
                 ),
+                child: Icon(icon, size: 23, color: color),
               ),
             ],
           ),

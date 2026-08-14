@@ -404,8 +404,9 @@ extension WindowModelSerialization on WindowModel {
       'hasSideCovers': hasSideCovers,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
       'useCustomSideCoverLayout': useCustomSideCoverLayout,
-      'sideCoverSegments':
-          sideCoverSegments.map((segment) => segment.toMap()).toList(),
+      'sideCoverSegments': sideCoverSegments
+          .map((segment) => segment.toMap())
+          .toList(),
       'hiddenSideCoverSegments': hiddenSideCoverSegments.toList(),
       'isFrame140': isFrame140,
       'isShutterOnly': isShutterOnly,
@@ -417,6 +418,10 @@ extension WindowModelSerialization on WindowModel {
       'selectedAccessoryColor': _colorSelectionFromRaw(selectedAccessoryColor),
       'primaryMullionAxis': primaryMullionAxis,
       'zones': zones.map((z) => z.toMap()).toList(),
+      // The selected zone is part of the drawing workspace state.  Persist it
+      // so returning to an order reopens the same pane with its highlight.
+      'selectedZoneId': selectedZone?.id,
+      'activeSubZone': activeSubZone,
       'mullionProfiles': mullionProfiles.map((k, v) => MapEntry(k, v.name)),
       'groovedMullionCavityOnPositiveSide': groovedMullionCavityOnPositiveSide,
       'mullionSectionOverrides': mullionSectionOverrides,
@@ -532,11 +537,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   if (map['sideCoverSegments'] is List) {
     model.sideCoverSegments = (map['sideCoverSegments'] as List)
         .whereType<Map>()
-        .map(
-          (raw) => SideCoverSegment.fromMap(
-            Map<String, dynamic>.from(raw),
-          ),
-        )
+        .map((raw) => SideCoverSegment.fromMap(Map<String, dynamic>.from(raw)))
         .toList();
     if (model.sideCoverSegments.isNotEmpty) {
       model.useCustomSideCoverLayout = true;
@@ -545,7 +546,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   if (map['hiddenSideCoverSegments'] is List) {
     model.hiddenSideCoverSegments = (map['hiddenSideCoverSegments'] as List)
         .map((side) => side.toString().toLowerCase())
-        .where((side) => const {'left', 'right', 'top', 'bottom'}.contains(side))
+        .where(
+          (side) => const {'left', 'right', 'top', 'bottom'}.contains(side),
+        )
         .toSet();
   }
   model.isFrame140 = map['isFrame140'] ?? false;
@@ -557,9 +560,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   if (map['removedShutterSides'] != null) {
     model.removedShutterSides = Set<String>.from(map['removedShutterSides']);
   }
-  if (!model.hasBottomFrame) {
-    model.removedShutterSides.add('bottom');
-  }
+  model.enforceBottomSideCoverConstraint();
 
   if (map['frameColor'] != null) {
     model.frameColor = FrameColor.values.firstWhere(
@@ -619,6 +620,23 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
         .map((zMap) => windowZoneFromMap(zMap as Map<String, dynamic>))
         .toList();
   }
+
+  // Restore only a zone selection.  It is stable across a saved drawing,
+  // unlike temporary mullion/resize selections, and keeps the visible green
+  // highlight and the contextual glass drawer on the intended pane.
+  model.selection = SelectionInfo.none;
+  model.activeSubZone = null;
+  final selectedZoneId = map['selectedZoneId']?.toString().trim();
+  if (selectedZoneId != null &&
+      selectedZoneId.isNotEmpty &&
+      model.zones.any((zone) => zone.id == selectedZoneId)) {
+    model.selection = SelectionInfo.zone(selectedZoneId);
+    final savedSubZone = map['activeSubZone']?.toString().trim();
+    model.activeSubZone = savedSubZone == null || savedSubZone.isEmpty
+        ? null
+        : savedSubZone;
+  }
+  model.showZoneMenu = false;
 
   // Older orders sometimes saved the color on individual zones only.  Reuse
   // it as the product color so the frame, all sashes and price calculation

@@ -252,21 +252,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
+    final uiFontFamily = settings.language == AppLanguage.arabic
+        ? 'Cairo'
+        : 'Arial';
 
     return MaterialApp(
       scaffoldMessengerKey: _scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: Localization.translate('ورشتي', settings.language),
       themeMode: settings.themeMode,
-      theme: AppTheme.lightTheme(settings.fontSizeScale).copyWith(
-        textTheme: AppTheme.lightTheme(
-          settings.fontSizeScale,
-        ).textTheme.apply(fontFamily: 'Cairo'),
+      theme: AppTheme.lightTheme(
+        settings.fontSizeScale,
+        fontFamily: uiFontFamily,
       ),
-      darkTheme: AppTheme.darkTheme(settings.fontSizeScale).copyWith(
-        textTheme: AppTheme.darkTheme(
-          settings.fontSizeScale,
-        ).textTheme.apply(fontFamily: 'Cairo'),
+      darkTheme: AppTheme.darkTheme(
+        settings.fontSizeScale,
+        fontFamily: uiFontFamily,
       ),
       builder: (context, child) {
         Widget content = child!;

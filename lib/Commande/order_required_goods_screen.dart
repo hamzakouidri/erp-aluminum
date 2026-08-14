@@ -10,6 +10,7 @@ import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
 import 'package:database_data/settings/localization.dart';
+import 'package:database_data/Screen/achat_details_screen.dart';
 
 bool isExplicitlyReplacedProduct(bool modelIsReplaced, dynamic savedValue) {
   if (modelIsReplaced || savedValue == true) return true;
@@ -76,8 +77,23 @@ String requiredGoodsAggregationKey(BomItem item, String category) {
       : 'NAME:${item.name}';
   return '${category}___${itemIdentifier}___'
       '${item.colorId ?? item.colorName ?? ''}___${item.unit}___'
-      '${item.length ?? ''}';
+      '${item.length ?? ''}___${item.glassHeight ?? ''}';
 }
+
+/// A Kit is one configured bundle. Its contents can carry different colours,
+/// but must still remain beneath that single Kit row in required goods.
+String requiredGoodsKitAggregationKey(String category, String kitName) =>
+    'KIT___${category}___${kitName.trim().toLowerCase()}';
+
+/// Child rows are generated from the Kit page with this stable prefix. The
+/// Kit header itself has a logical UI key instead and must never be rendered
+/// again as one of its own components.
+bool isRequiredGoodsKitHeader(BomItem item, String kitName) =>
+    !item.originalName.trim().startsWith('${kitName.trim()}_');
+
+/// The Kit page is the source of truth for the display name. Avoid turning an
+/// already French-named bundle such as "Kit Volet 155" into "Kit Kit Volet".
+String requiredGoodsKitDisplayName(String kitName) => kitName.trim();
 
 class OrderCuttingPlan {
   const OrderCuttingPlan({
@@ -369,6 +385,8 @@ class ProductBreakdown {
   });
 }
 
+enum _PurchaseDocumentKind { purchaseOrder, purchaseInvoice }
+
 class AggregatedGoodItem {
   final String name;
   final String originalName;
@@ -381,6 +399,7 @@ class AggregatedGoodItem {
   final String? profileCode;
   final String? colorName;
   final double? stockLength;
+  final double? glassHeight;
   final int? catalogItemId;
   final String? inventoryItemType;
   final int? colorId;
@@ -404,6 +423,7 @@ class AggregatedGoodItem {
     this.profileCode,
     this.colorName,
     this.stockLength,
+    this.glassHeight,
     this.catalogItemId,
     this.inventoryItemType,
     this.colorId,
@@ -442,6 +462,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   List<String> _processingWarnings = [];
   final Set<String> _expandedKits = {};
   final Set<String> _expandedCuttingPlans = {};
+  bool _isCreatingPurchase = false;
   late AppLanguage _currentLang;
 
   @override
@@ -562,6 +583,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final activeVariants = _buildActiveVariants(model);
     final dbInstance = (await widget.db.db)!;
     final sqlDb = widget.db;
+    // The grey colour is the shutter component base price.  This also moves
+    // legacy standalone prices into the colour-price table before this BOM is
+    // priced.
+    final shutterGreyColorId = await sqlDb
+        .ensureShutterComponentsUseGreyPrice();
 
     // Generate initial BOM
     final bomItems = ComponentCalculator.generateBom(
@@ -1091,6 +1117,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   component: Map<String, dynamic>.from(matched),
                   colorPrices: colorPrices,
                   selectedColorId: colorId,
+                  fallbackColorId: shutterGreyColorId,
                 );
               } else {
                 price = _safeDouble(matched['price']);
@@ -1236,6 +1263,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               if (kitId == null) continue;
               final details = await widget.db.readKitBundleItemsWithDetails(
                 kitId,
+                topLevelOnly: true,
               );
               final mutableDetails = details
                   .map((e) => Map<String, dynamic>.from(e))
@@ -1372,64 +1400,70 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
             if (bom.kitGroupName != null && bom.kitGroupName!.isNotEmpty) {
               final String kitName = bom.kitGroupName!;
-              final String kitKey =
-                  'KIT___${category}___${kitName}___${bom.colorId ?? bom.colorName ?? ''}';
-
-              double kitQtyToAdd = 0.0;
-              final isKitHeader = !bom.originalName.startsWith('${kitName}_');
-              if (isKitHeader) {
-                kitQtyToAdd = purchaseQty;
-              }
+              final String kitKey = requiredGoodsKitAggregationKey(
+                category,
+                kitName,
+              );
+              final isKitHeader = isRequiredGoodsKitHeader(bom, kitName);
+              final double kitQtyToAdd = isKitHeader ? purchaseQty : 0.0;
+              // The header is a display group only. Its price is derived from
+              // physical components configured on the Kit page, never added
+              // a second time on top of them.
+              final double kitCostToAdd = isKitHeader ? 0.0 : bomCost;
 
               if (aggregationMap.containsKey(kitKey)) {
                 final agg = aggregationMap[kitKey]!;
                 agg.totalQuantity += kitQtyToAdd;
-                agg.totalCost += bomCost;
+                agg.totalCost += kitCostToAdd;
 
-                final existingSubIndex = agg.kitSubItems.indexWhere(
-                  (sub) =>
-                      sub.originalName == bom.originalName &&
-                      sub.unit == bom.unit,
-                );
-                if (existingSubIndex != -1) {
-                  final existing = agg.kitSubItems[existingSubIndex];
-                  agg.kitSubItems[existingSubIndex] = BomItem(
-                    category: existing.category,
-                    originalName: existing.originalName,
-                    profileCode: existing.profileCode,
-                    name: existing.name,
-                    imagePath: existing.imagePath,
-                    colorName: existing.colorName,
-                    quantity: existing.purchaseQuantity + purchaseQty,
-                    unit: existing.unit,
-                    unitPrice: existing.unitPrice,
-                    isMissing: existing.isMissing,
-                    isActive: existing.isActive,
-                    kitGroupName: existing.kitGroupName,
-                    exactQuantity:
-                        existing.requiredQuantity + bom.requiredQuantity,
-                    catalogItemId: existing.catalogItemId ?? bom.catalogItemId,
-                    inventoryItemType:
-                        existing.inventoryItemType ?? bom.inventoryItemType,
-                    colorId: existing.colorId ?? bom.colorId,
+                if (!isKitHeader) {
+                  final existingSubIndex = agg.kitSubItems.indexWhere(
+                    (sub) =>
+                        sub.originalName == bom.originalName &&
+                        sub.unit == bom.unit &&
+                        sub.colorId == bom.colorId,
                   );
-                } else {
-                  agg.kitSubItems.add(bom);
+                  if (existingSubIndex != -1) {
+                    final existing = agg.kitSubItems[existingSubIndex];
+                    agg.kitSubItems[existingSubIndex] = BomItem(
+                      category: existing.category,
+                      originalName: existing.originalName,
+                      profileCode: existing.profileCode,
+                      name: existing.name,
+                      imagePath: existing.imagePath,
+                      colorName: existing.colorName,
+                      length: existing.length,
+                      glassHeight: existing.glassHeight,
+                      quantity: existing.purchaseQuantity + purchaseQty,
+                      unit: existing.unit,
+                      unitPrice: existing.unitPrice,
+                      isMissing: existing.isMissing,
+                      isActive: existing.isActive,
+                      kitGroupName: existing.kitGroupName,
+                      exactQuantity:
+                          existing.requiredQuantity + bom.requiredQuantity,
+                      catalogItemId:
+                          existing.catalogItemId ?? bom.catalogItemId,
+                      inventoryItemType:
+                          existing.inventoryItemType ?? bom.inventoryItemType,
+                      colorId: existing.colorId ?? bom.colorId,
+                    );
+                  } else {
+                    agg.kitSubItems.add(bom);
+                  }
                 }
               } else {
                 aggregationMap[kitKey] = AggregatedGoodItem(
-                  name: _currentLang == AppLanguage.french
-                      ? 'Kit $kitName'
-                      : 'كيت ($kitName)',
+                  name: requiredGoodsKitDisplayName(kitName),
                   originalName: kitName,
                   category: category,
                   unit: _currentLang == AppLanguage.french ? 'Kit' : 'طقم',
                   imagePath: null,
                   unitPrice: 0.0,
                   totalQuantity: kitQtyToAdd,
-                  totalCost: bomCost,
+                  totalCost: kitCostToAdd,
                   profileCode: null,
-                  kitSubItems: [bom],
+                  kitSubItems: isKitHeader ? <BomItem>[] : [bom],
                   kitGroupName: kitName,
                 );
               }
@@ -1458,6 +1492,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   profileCode: bom.profileCode,
                   colorName: bom.colorName,
                   stockLength: bom.length,
+                  glassHeight: bom.glassHeight,
                   catalogItemId: bom.catalogItemId,
                   inventoryItemType: bom.inventoryItemType,
                   colorId: bom.colorId,
@@ -1513,15 +1548,16 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         }
       }
 
-      // ترتيب العناصر: البروفيلات أولاً ثم الملحقات
+      // ترتيب العرض: البروفيلات ثم الإكسسوارات ثم الزجاج. داخل كل فئة
+      // ذات ألوان، تسبق الأبيضُ الخشبيَّ ثم الداكن فبقية الألوان.
       final sorted = aggregationMap.values.toList();
       sorted.sort((a, b) {
         const order = <String>[
           'profile',
           'accessory',
+          'glass',
           'shutter',
           'joint',
-          'glass',
           'panneau',
         ];
         final rawAi = order.indexOf(a.category);
@@ -1529,6 +1565,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         final ai = rawAi < 0 ? order.length : rawAi;
         final bi = rawBi < 0 ? order.length : rawBi;
         if (ai != bi) return ai.compareTo(bi);
+        if (a.category == 'profile' || a.category == 'accessory') {
+          final colorComparison = _colourSortKey(
+            a,
+          ).compareTo(_colourSortKey(b));
+          if (colorComparison != 0) return colorComparison;
+        }
         return a.name.compareTo(b.name);
       });
 
@@ -1583,6 +1625,325 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   // ─────────────────────────────────────────────────────────────────
   double get _grandTotal =>
       _aggregatedItems.fold(0.0, (sum, item) => sum + item.totalCost);
+
+  List<AggregatedGoodItem> _purchaseDocumentItems() {
+    final itemsByKey = <String, AggregatedGoodItem>{};
+
+    void add(AggregatedGoodItem item) {
+      final itemId = item.catalogItemId;
+      final itemType = item.inventoryItemType;
+      if (itemId == null || itemType == null || item.totalQuantity <= 0) {
+        return;
+      }
+      final key = '$itemType:$itemId:${item.colorId ?? ''}';
+      final existing = itemsByKey[key];
+      if (existing == null) {
+        itemsByKey[key] = AggregatedGoodItem(
+          name: item.name,
+          originalName: item.originalName,
+          category: item.category,
+          unit: item.unit,
+          imagePath: item.imagePath,
+          unitPrice: item.unitPrice,
+          totalQuantity: item.totalQuantity,
+          totalCost: item.totalCost,
+          profileCode: item.profileCode,
+          colorName: item.colorName,
+          stockLength: item.stockLength,
+          glassHeight: item.glassHeight,
+          catalogItemId: itemId,
+          inventoryItemType: itemType,
+          colorId: item.colorId,
+          isMissing: false,
+        );
+        return;
+      }
+
+      existing.totalQuantity += item.totalQuantity;
+      existing.totalCost += item.totalCost;
+      if (existing.totalQuantity > 0) {
+        existing.unitPrice = existing.totalCost / existing.totalQuantity;
+      }
+    }
+
+    for (final item in _aggregatedItems) {
+      final kitName = item.kitGroupName;
+      if (kitName != null && kitName.isNotEmpty) {
+        for (final child in item.kitSubItems) {
+          // Kit headers are display-only. Purchase their physical components.
+          if (!child.originalName.startsWith('${kitName}_')) continue;
+          add(
+            AggregatedGoodItem(
+              name: requiredGoodsDisplayName(child),
+              originalName: child.originalName,
+              category: requiredGoodsCategoryForBom(child),
+              unit: child.unit,
+              imagePath: child.imagePath,
+              unitPrice: child.unitPrice,
+              totalQuantity: child.purchaseQuantity,
+              totalCost: child.total,
+              profileCode: child.profileCode,
+              colorName: child.colorName,
+              stockLength: child.length,
+              glassHeight: child.glassHeight,
+              catalogItemId: child.catalogItemId,
+              inventoryItemType: child.inventoryItemType,
+              colorId: child.colorId,
+              isMissing: child.isMissing,
+            ),
+          );
+        }
+      } else {
+        add(item);
+      }
+    }
+
+    final result = itemsByKey.values.toList()
+      ..sort((a, b) {
+        final categoryComparison = _categorySortIndex(
+          a.category,
+        ).compareTo(_categorySortIndex(b.category));
+        if (categoryComparison != 0) return categoryComparison;
+        final colorComparison = _colourSortKey(a).compareTo(_colourSortKey(b));
+        if (colorComparison != 0) return colorComparison;
+        return a.name.compareTo(b.name);
+      });
+    return result;
+  }
+
+  Future<void> _convertRequiredGoodsToPurchase() async {
+    if (_isCreatingPurchase) return;
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    if (!settings.canAddPurchases()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('ليس لديك صلاحية إنشاء المشتريات'))),
+      );
+      return;
+    }
+
+    final purchaseItems = _purchaseDocumentItems();
+    if (purchaseItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t('لا توجد سلع مرتبطة بقاعدة البيانات لتحويلها إلى شراء.'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final results = await Future.wait<dynamic>([
+      widget.db.readSuppliers(),
+      widget.db.readLocations(),
+      widget.db.getNextAchatInvoiceNumber(),
+    ]);
+    if (!mounted) return;
+    final suppliers = results[0] as List<Map<String, dynamic>>;
+    final locations = results[1] as List<Map<String, dynamic>>;
+    final nextNumber = results[2] as String;
+    if (suppliers.isEmpty || locations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('أضف مورّدًا ومكان تخزين قبل إنشاء طلب الشراء.')),
+        ),
+      );
+      return;
+    }
+
+    final formKey = GlobalKey<FormState>();
+    final numberController = TextEditingController(text: nextNumber);
+    int? supplierId = suppliers.first['id'] as int?;
+    int? locationId = locations.first['id'] as int?;
+    var documentKind = _PurchaseDocumentKind.purchaseOrder;
+
+    final request = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(_t('تحويل الكميات المطلوبة إلى شراء')),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<_PurchaseDocumentKind>(
+                    value: _PurchaseDocumentKind.purchaseOrder,
+                    groupValue: documentKind,
+                    onChanged: (value) =>
+                        setDialogState(() => documentKind = value!),
+                    title: Text(_t('طلب شراء (مسودة)')),
+                    subtitle: Text(
+                      _t('يمكن مراجعته وتأكيده لاحقًا دون إدخال المخزون.'),
+                    ),
+                  ),
+                  RadioListTile<_PurchaseDocumentKind>(
+                    value: _PurchaseDocumentKind.purchaseInvoice,
+                    groupValue: documentKind,
+                    onChanged: (value) =>
+                        setDialogState(() => documentKind = value!),
+                    title: Text(_t('فاتورة شراء')),
+                    subtitle: Text(
+                      _t('تُنشأ بالعناصر المحسوبة وقابلة للتعديل.'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: numberController,
+                    decoration: InputDecoration(
+                      labelText:
+                          documentKind == _PurchaseDocumentKind.purchaseOrder
+                          ? _t('رقم طلب الشراء')
+                          : _t('رقم فاتورة الشراء'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? _t('أدخل رقم الوثيقة')
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: supplierId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: _t('المورّد'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: suppliers
+                        .map(
+                          (supplier) => DropdownMenuItem<int>(
+                            value: supplier['id'] as int,
+                            child: Text(supplier['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => supplierId = value),
+                    validator: (value) =>
+                        value == null ? _t('اختر المورّد') : null,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: locationId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: _t('مكان التخزين'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: locations
+                        .map(
+                          (location) => DropdownMenuItem<int>(
+                            value: location['id'] as int,
+                            child: Text(location['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => locationId = value),
+                    validator: (value) =>
+                        value == null ? _t('اختر مكان التخزين') : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      '${purchaseItems.length} ${_t('صنف مرتبط سيُضاف إلى الوثيقة')}',
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_t('إلغاء')),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                if (!formKey.currentState!.validate()) return;
+                final supplier = suppliers.firstWhere(
+                  (row) => row['id'] == supplierId,
+                );
+                Navigator.pop(dialogContext, {
+                  'kind': documentKind,
+                  'number': numberController.text.trim(),
+                  'supplier_id': supplierId,
+                  'supplier_name': supplier['name']?.toString() ?? '',
+                  'location_id': locationId,
+                });
+              },
+              icon: const Icon(Icons.shopping_cart_checkout),
+              label: Text(_t('إنشاء')),
+            ),
+          ],
+        ),
+      ),
+    );
+    numberController.dispose();
+    if (request == null || !mounted) return;
+
+    setState(() => _isCreatingPurchase = true);
+    try {
+      final achatId = await widget.db.insertAchat(
+        request['number'] as String,
+        request['supplier_name'] as String,
+        0,
+        supplierId: request['supplier_id'] as int,
+        locationId: request['location_id'] as int,
+      );
+
+      for (final item in purchaseItems) {
+        await widget.db.insertAchatItem(
+          achatId: achatId,
+          itemCode: item.profileCode?.trim().isNotEmpty == true
+              ? item.profileCode!.trim()
+              : item.name.replaceAll('\n', ' ').trim(),
+          itemName: item.name.replaceAll('\n', ' • ').trim(),
+          itemType: item.inventoryItemType!,
+          itemId: item.catalogItemId!,
+          colorId: item.colorId,
+          quantity: item.totalQuantity,
+          price: item.unitPrice,
+        );
+      }
+      await widget.db.updateAchatTotal(
+        achatId,
+        _purchaseDocumentItemsTotal(purchaseItems),
+      );
+      if (request['kind'] == _PurchaseDocumentKind.purchaseOrder) {
+        await widget.db.updateAchatStatus(achatId, 'Draft');
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AchatDetailsScreen(
+            achatId: achatId,
+            invoiceNumber: request['number'] as String,
+            supplierName: request['supplier_name'] as String,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_t('تعذر إنشاء وثيقة الشراء:')} $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCreatingPurchase = false);
+    }
+  }
+
+  double _purchaseDocumentItemsTotal(List<AggregatedGoodItem> items) =>
+      items.fold(0.0, (sum, item) => sum + item.totalCost);
 
   // ─────────────────────────────────────────────────────────────────
   // ترجمة الفئة إلى نص عربي
@@ -1641,6 +2002,93 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
   }
 
+  int _categorySortIndex(String category) {
+    const order = <String>[
+      'profile',
+      'accessory',
+      'glass',
+      'shutter',
+      'joint',
+      'panneau',
+    ];
+    final index = order.indexOf(category);
+    return index < 0 ? order.length : index;
+  }
+
+  String _normalisedColourName(String? value) => (value ?? '')
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s_\-]+'), ' ')
+      .replaceAll('ى', 'ي');
+
+  int _colourPriority(String? colorName) {
+    final color = _normalisedColourName(colorName);
+    if (color.isEmpty || color == 'خام' || color == 'raw') return 4;
+    if (color.contains('أبيض') ||
+        color.contains('white') ||
+        color.contains('blanc')) {
+      return 0;
+    }
+    if (color.contains('خشب') ||
+        color.contains('wood') ||
+        color.contains('bois') ||
+        color.contains('oak') ||
+        color.contains('desert') ||
+        color.contains('ديزر') ||
+        color.contains('walnut') ||
+        color.contains('noiset')) {
+      return 1;
+    }
+    if (color.contains('أسود') ||
+        color.contains('black') ||
+        color.contains('noir') ||
+        color.contains('داكن') ||
+        color.contains('dark') ||
+        color.contains('fonc') ||
+        color.contains('anthrac') ||
+        color.contains('7016')) {
+      return 2;
+    }
+    return 3;
+  }
+
+  String _colourSortKey(AggregatedGoodItem item) {
+    final priority = _colourPriority(item.colorName);
+    return '${priority.toString().padLeft(2, '0')}|${_normalisedColourName(item.colorName)}';
+  }
+
+  String _colourGroupKey(AggregatedGoodItem item) {
+    final priority = _colourPriority(item.colorName);
+    final color = item.colorName?.trim() ?? '';
+    switch (priority) {
+      case 0:
+        return '00|أبيض';
+      case 1:
+        return '01|خشبي';
+      case 2:
+        return '02|ألوان داكنة';
+      case 3:
+        return '03|${color.isEmpty ? 'ألوان أخرى' : color}';
+      default:
+        return '04|بدون لون';
+    }
+  }
+
+  List<MapEntry<String, List<AggregatedGoodItem>>> _colourGroupsFor(
+    List<AggregatedGoodItem> items,
+  ) {
+    final groups = <String, List<AggregatedGoodItem>>{};
+    for (final item in items) {
+      groups.putIfAbsent(_colourGroupKey(item), () => []).add(item);
+    }
+    final entries = groups.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    for (final entry in entries) {
+      entry.value.sort((a, b) => a.name.compareTo(b.name));
+    }
+    return entries;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1679,6 +2127,41 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         actions: [
           if (!_isLoading &&
               _errorMessage == null &&
+              _aggregatedItems.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.manage_search),
+              tooltip: _t('إظهار النواقص'),
+              onPressed: _showShortageReport,
+            ),
+          if (!_isLoading &&
+              _errorMessage == null &&
+              _cuttableCatalogItems.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.inventory_2_outlined),
+              tooltip: _t('اعتماد القص والبقايا'),
+              onPressed: _approveAndStoreCuttingRemainders,
+            ),
+          if (!_isLoading &&
+              _errorMessage == null &&
+              _aggregatedItems.isNotEmpty)
+            IconButton(
+              icon: _isCreatingPurchase
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.shopping_cart_checkout),
+              tooltip: _t('تحويل إلى طلب أو فاتورة شراء'),
+              onPressed: _isCreatingPurchase
+                  ? null
+                  : _convertRequiredGoodsToPurchase,
+            ),
+          if (!_isLoading &&
+              _errorMessage == null &&
               _productBreakdowns.isNotEmpty)
             TextButton.icon(
               icon: const Icon(Icons.table_chart_outlined, color: Colors.white),
@@ -1704,32 +2187,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       bottomNavigationBar: _isLoading || _errorMessage != null
           ? null
           : _buildBottomSummary(),
-      floatingActionButton:
-          _isLoading || _errorMessage != null || _aggregatedItems.isEmpty
-          ? null
-          : Wrap(
-              direction: Axis.vertical,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              spacing: 8,
-              children: [
-                FloatingActionButton.extended(
-                  heroTag: 'shortages',
-                  onPressed: _showShortageReport,
-                  icon: const Icon(Icons.manage_search),
-                  label: Text(_t('إظهار النواقص')),
-                ),
-                if (_cuttableCatalogItems.isNotEmpty)
-                  FloatingActionButton.extended(
-                    heroTag: 'save_remainders',
-                    onPressed: _approveAndStoreCuttingRemainders,
-                    backgroundColor: Colors.teal.shade700,
-                    foregroundColor: Colors.white,
-                    icon: const Icon(Icons.inventory_2_outlined),
-                    label: Text(_t('اعتماد القص والبقايا')),
-                  ),
-              ],
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -1918,62 +2375,94 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   Widget _buildGroupedList() {
-    // تجميع العناصر حسب الفئة
+    // تجميع العناصر حسب الفئة ثم اللون للبروفيلات والإكسسوارات.
     final Map<String, List<AggregatedGoodItem>> grouped = {};
     for (final item in _aggregatedItems) {
       grouped.putIfAbsent(item.category, () => []).add(item);
     }
+    final categories = grouped.keys.toList()
+      ..sort((a, b) => _categorySortIndex(a).compareTo(_categorySortIndex(b)));
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
-      itemCount: grouped.length,
-      itemBuilder: (context, groupIndex) {
-        final category = grouped.keys.elementAt(groupIndex);
-        final items = grouped[category]!;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // رأس المجموعة
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _categoryColor(category).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _categoryColor(category).withValues(alpha: 0.4),
+      children: [
+        for (final category in categories) ...[
+          Builder(
+            builder: (context) {
+              final items = grouped[category]!;
+              final categoryColor = _categoryColor(category);
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: categoryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: categoryColor.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Text(
+                        _categoryLabel(category),
+                        style: TextStyle(
+                          color: categoryColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      _categoryLabel(category),
+                    const SizedBox(width: 8),
+                    Text(
+                      '(${items.length} ${_t('صنف')})',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          if (category == 'profile' || category == 'accessory')
+            for (final colorGroup in _colourGroupsFor(grouped[category]!)) ...[
+              Padding(
+                padding: const EdgeInsetsDirectional.only(
+                  start: 8,
+                  end: 8,
+                  bottom: 5,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.palette_outlined,
+                      size: 15,
+                      color: _categoryColor(category),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      colorGroup.key.split('|').last,
                       style: TextStyle(
                         color: _categoryColor(category),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '(${items.length} ${_t('صنف')})',
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            // عناصر المجموعة
-            ...items.map((item) => _buildItemCard(item, category)),
-            const SizedBox(height: 4),
-          ],
-        );
-      },
+              ...colorGroup.value.map((item) => _buildItemCard(item, category)),
+            ]
+          else
+            ...grouped[category]!.map((item) => _buildItemCard(item, category)),
+          const SizedBox(height: 4),
+        ],
+      ],
     );
   }
 
@@ -2054,7 +2543,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _t('لن يُضاف شيء للمخزون قبل هذا الاعتماد. الباقي الذي يساوي الحد الأدنى أو يتجاوزه يُحفظ كقطعة قابلة للاستعمال، وما دونه يُسجل كهالك.'),
+                    _t(
+                      'لن يُضاف شيء للمخزون قبل هذا الاعتماد. الباقي الذي يساوي الحد الأدنى أو يتجاوزه يُحفظ كقطعة قابلة للاستعمال، وما دونه يُسجل كهالك.',
+                    ),
                   ),
                   const SizedBox(height: 14),
                   TextField(
@@ -2137,7 +2628,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 if (minimum == null || minimum <= 0) {
                   ScaffoldMessenger.of(dialogContext).showSnackBar(
                     SnackBar(
-                      content: Text(_t('أدخل أقل طول محفوظ بقيمة أكبر من صفر.')),
+                      content: Text(
+                        _t('أدخل أقل طول محفوظ بقيمة أكبر من صفر.'),
+                      ),
                     ),
                   );
                   return;
@@ -2248,8 +2741,88 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       return allocations;
     }
 
-    final reports = <Map<String, dynamic>>[];
+    // A Kit is a display/cost group, not an inventory product.  Stock must be
+    // checked against its expanded components from the Kits page.  Flatten
+    // those components here and aggregate equal catalogue records before
+    // reading stock so two Kits cannot both claim the same available piece.
+    final stockItemsByKey = <String, AggregatedGoodItem>{};
+
+    String stockKey(AggregatedGoodItem item) {
+      final identity =
+          item.catalogItemId != null && item.inventoryItemType != null
+          ? '${item.inventoryItemType}:${item.catalogItemId}'
+          : item.originalName;
+      return '$identity:${item.colorId ?? item.colorName ?? ''}:${item.unit}:${item.stockLength ?? ''}';
+    }
+
+    AggregatedGoodItem fromBom(BomItem bom) => AggregatedGoodItem(
+      name: requiredGoodsDisplayName(bom),
+      originalName: bom.originalName,
+      category: requiredGoodsCategoryForBom(bom),
+      unit: bom.unit,
+      imagePath: bom.imagePath,
+      unitPrice: bom.unitPrice,
+      totalQuantity: bom.purchaseQuantity,
+      totalCost: bom.total,
+      profileCode: bom.profileCode,
+      colorName: bom.colorName,
+      stockLength: bom.length,
+      glassHeight: bom.glassHeight,
+      catalogItemId: bom.catalogItemId,
+      inventoryItemType: bom.inventoryItemType,
+      colorId: bom.colorId,
+      isMissing: bom.isMissing,
+      cuttingPieces: bomUsesOrderLevelCutting(bom)
+          ? bom.pieces ?? const []
+          : const [],
+    );
+
+    void addStockItem(AggregatedGoodItem candidate) {
+      final key = stockKey(candidate);
+      final existing = stockItemsByKey[key];
+      if (existing == null) {
+        stockItemsByKey[key] = candidate;
+        return;
+      }
+      existing.totalQuantity += candidate.totalQuantity;
+      existing.totalCost += candidate.totalCost;
+      existing.cuttingPieces.addAll(candidate.cuttingPieces);
+    }
+
     for (final item in _aggregatedItems) {
+      final kitName = item.kitGroupName;
+      if (kitName != null && kitName.isNotEmpty) {
+        for (final child in item.kitSubItems) {
+          final isKitHeader = !child.originalName.startsWith('${kitName}_');
+          if (!isKitHeader) addStockItem(fromBom(child));
+        }
+      } else {
+        addStockItem(
+          AggregatedGoodItem(
+            name: item.name,
+            originalName: item.originalName,
+            category: item.category,
+            unit: item.unit,
+            imagePath: item.imagePath,
+            unitPrice: item.unitPrice,
+            totalQuantity: item.totalQuantity,
+            totalCost: item.totalCost,
+            profileCode: item.profileCode,
+            colorName: item.colorName,
+            stockLength: item.stockLength,
+            glassHeight: item.glassHeight,
+            catalogItemId: item.catalogItemId,
+            inventoryItemType: item.inventoryItemType,
+            colorId: item.colorId,
+            isMissing: item.isMissing,
+            cuttingPieces: item.cuttingPieces,
+          ),
+        );
+      }
+    }
+
+    final reports = <Map<String, dynamic>>[];
+    for (final item in stockItemsByKey.values) {
       final itemId = item.catalogItemId;
       final itemType = item.inventoryItemType;
       if (itemId == null || itemType == null) {
@@ -2650,7 +3223,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.name,
+                            _t(item.name),
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
@@ -2661,9 +3234,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            _currentLang == AppLanguage.french
-                                ? 'Contient ${item.kitSubItems.length} composants (Cliquez pour afficher)'
-                                : 'يحتوي على ${item.kitSubItems.length} مكونات (انقر للعرض)',
+                            _currentLang == AppLanguage.arabic
+                                ? 'يحتوي على ${item.kitSubItems.length} مكونات (انقر للعرض)'
+                                : _currentLang == AppLanguage.french
+                                ? 'Contient ${item.kitSubItems.length} composants (cliquez pour afficher)'
+                                : 'Contains ${item.kitSubItems.length} components (click to view)',
                             style: TextStyle(
                               color: isDark
                                   ? Colors.white60
@@ -2747,7 +3322,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              sub.name,
+                              _t(sub.name),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark ? Colors.white70 : Colors.black87,
@@ -2757,7 +3332,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                             ),
                           ),
                           Text(
-                            '$subRoundedQty ${sub.unit}',
+                            '$subRoundedQty ${_t(sub.unit)}',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -2811,7 +3386,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
-          onTap: () => _showSectionSelectionDialog(item, category),
+          onTap: category == 'profile'
+              ? () => _showSectionSelectionDialog(item, category)
+              : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
@@ -2851,9 +3428,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. العنوان الرئيسي بخط غليظ عريض (مثلاً: الغطاء الجانبي / Réducteur / القائم الجانبي)
+                      // الاسم الفعلي للصنف، مهم خصوصاً للإكسسوارات التي
+                      // تشترك أدوارها الحسابية في اسم عام واحد.
                       Text(
-                        item.originalName,
+                        _t(item.name),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -2861,9 +3439,23 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                               ? Colors.white
                               : const Color(0xFF1A1A2E),
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (item.name != item.originalName) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_t('المكوّن المطلوب')}: ${_t(item.originalName)}',
+                          style: TextStyle(
+                            color: isDark
+                                ? Colors.white60
+                                : Colors.grey.shade600,
+                            fontSize: 10.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                       if (itemMeta.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
@@ -2880,16 +3472,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         ),
                       ],
                       const SizedBox(height: 3),
-                      // 2. اسم وتفاصيل القطاع المختار المجلوبة من قاعدة البيانات أو الـ ShowDialog بخط رقيق تحته
+                      // السعر والوحدة؛ الاسم أعلاه هو اسم الصنف الفعلي.
                       Text(
-                        item.name != item.originalName
-                            ? '${item.profileCode != null && item.profileCode!.isNotEmpty ? "[${item.profileCode}] " : ""}${item.name} • ${item.unitPrice > 0 ? "${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}" : ""}'
-                            : (item.profileCode != null &&
-                                      item.profileCode!.isNotEmpty
-                                  ? '[${item.profileCode}] ${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
-                                  : (item.unitPrice > 0
-                                        ? '${item.unitPrice.toStringAsFixed(2)} دج / ${item.unit}'
-                                        : '📌 انقر هنا لاختيار القطاع المناسب')),
+                        item.unitPrice > 0
+                            ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}'
+                            : category == 'profile'
+                            ? '📌 ${_t('انقر هنا لاختيار القطاع المناسب')}'
+                            : _t('السعر غير محدد'),
                         style: TextStyle(
                           fontWeight: FontWeight.w400,
                           color: isDark ? Colors.white60 : Colors.grey.shade700,
@@ -3128,26 +3717,54 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         unit == 'بارة' ||
         unit == 'bar' ||
         unit == 'section') {
-      return '$formatted قطاع';
+      return '$formatted ${_t('قطاع')}';
     }
-    return '$formatted ${item.unit}';
+    return '$formatted ${_t(item.unit)}';
   }
 
   String _itemMeta(AggregatedGoodItem item) {
     final parts = <String>[];
     if (item.profileCode != null && item.profileCode!.trim().isNotEmpty) {
-      parts.add('الكود: ${item.profileCode}');
+      parts.add('${_t('الكود')}: ${item.profileCode}');
     }
-    if (item.colorName != null && item.colorName!.trim().isNotEmpty) {
-      parts.add('اللون: ${item.colorName}');
+    if (item.category != 'glass' &&
+        item.category != 'panneau' &&
+        item.colorName != null &&
+        item.colorName!.trim().isNotEmpty) {
+      parts.add('${_t('اللون')}: ${_t(item.colorName!)}');
+    }
+    if (item.category == 'glass' &&
+        (item.stockLength ?? 0) > 0 &&
+        (item.glassHeight ?? 0) > 0) {
+      parts.add(
+        '${_t('القياس')}: ${item.stockLength!.round()} × ${item.glassHeight!.round()} mm',
+      );
+      parts.add(
+        '${_t('المساحة المطلوبة')}: ${_roundQuantity(item.totalQuantity, 'm²')} m²',
+      );
+    } else if (item.stockLength != null && item.stockLength! > 0) {
+      final unit = item.category == 'profile' ? 'م' : '';
+      final value = item.category == 'profile'
+          ? item.stockLength!.toStringAsFixed(2)
+          : item.stockLength!.toStringAsFixed(0);
+      parts.add('${_t('القياس')}: $value ${_t(unit)}'.trim());
     }
     if (item.isMissing) {
-      parts.add('غير مرتبط بقاعدة البيانات');
+      parts.add(_t('غير مرتبط بقاعدة البيانات'));
     }
     final plan = item.cuttingPlan;
     if (plan != null) {
       parts.add('تقطيع موحّد: ${item.cuttingPieces.length} قطعة');
       parts.add('الباقي: ${(plan.wasteLength * 1000).round()} مم');
+    } else if (item.cuttingPieces.isNotEmpty) {
+      final visiblePieces = item.cuttingPieces
+          .take(5)
+          .map((piece) => '${(piece * 1000).round()}')
+          .join('، ');
+      final suffix = item.cuttingPieces.length > 5
+          ? ' (+${item.cuttingPieces.length - 5})'
+          : '';
+      parts.add('القصات: $visiblePieces مم$suffix');
     }
     return parts.join(' • ');
   }
@@ -3244,7 +3861,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'المقاس: ${pb.width.toStringAsFixed(0)} مم × ${pb.height.toStringAsFixed(0)} مم',
+                                  '${_t('المقاس')}: ${pb.width.toStringAsFixed(0)} mm × ${pb.height.toStringAsFixed(0)} mm',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: isDark
@@ -3254,7 +3871,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'الكمية: ${pb.qty} حبة',
+                                  '${_t('الكمية')}: ${pb.qty} ${_t('حبة')}',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
@@ -3265,7 +3882,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'السلسلة: ${pb.model.activeSeries?.name ?? pb.model.activeSlidingSeries?.name ?? "غير محدد"}',
+                                  '${_t('السلسلة')}: ${pb.model.activeSeries?.name ?? pb.model.activeSlidingSeries?.name ?? _t('غير محدد')}',
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: isDark
@@ -3281,7 +3898,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       const Divider(height: 24),
                       // 3. Materials List
                       Text(
-                        'العناصر والمواد المحسوبة لهذا المنتج:',
+                        _t('العناصر والمواد المحسوبة لهذا المنتج:'),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -3315,7 +3932,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                               Padding(
                                 padding: const EdgeInsets.all(6.0),
                                 child: Text(
-                                  'اسم العنصر',
+                                  _t('اسم العنصر'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
@@ -3328,7 +3945,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                               Padding(
                                 padding: const EdgeInsets.all(6.0),
                                 child: Text(
-                                  'الكمية',
+                                  _t('الكمية'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
@@ -3341,7 +3958,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                               Padding(
                                 padding: const EdgeInsets.all(6.0),
                                 child: Text(
-                                  'الوحدة',
+                                  _t('الوحدة'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
@@ -3354,7 +3971,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                               Padding(
                                 padding: const EdgeInsets.all(6.0),
                                 child: Text(
-                                  'التكلفة',
+                                  _t('التكلفة'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
@@ -3527,7 +4144,9 @@ class _OrderShortageReportPage extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
-                t('هذا تقرير حسابي: يستخدم البقايا المطابقة أولًا ثم القطاعات الكاملة الموجودة في المخزون، ولا يخصم فعليًا قبل اعتماد الصرف.'),
+                t(
+                  'هذا تقرير حسابي: يستخدم البقايا المطابقة أولًا ثم القطاعات الكاملة الموجودة في المخزون، ولا يخصم فعليًا قبل اعتماد الصرف.',
+                ),
               ),
             ),
           ),
@@ -3582,7 +4201,9 @@ class _OrderShortageReportPage extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          t('لا يمكن مقارنة هذا الصنف بالمخزون لأنه غير مرتبط بسجل كتالوج محدد.'),
+                          t(
+                            'لا يمكن مقارنة هذا الصنف بالمخزون لأنه غير مرتبط بسجل كتالوج محدد.',
+                          ),
                           style: const TextStyle(color: Colors.red),
                         ),
                       )

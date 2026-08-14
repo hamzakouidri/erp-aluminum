@@ -3,6 +3,199 @@ import '../app_settings.dart';
 /// User-facing text introduced by the recent kit, decorated-panel, cutting
 /// and required-goods developments.
 const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
+  // Quantity/cost table catalogue labels and units. These keys are displayed
+  // directly in the required-goods table, so they must never leave Arabic in
+  // a French or English interface.
+  'الصندوق (Caisson)': {
+    AppLanguage.arabic: 'الصندوق (Caisson)',
+    AppLanguage.french: 'Caisson',
+    AppLanguage.english: 'Shutter box',
+  },
+  'المحور (Axe)': {
+    AppLanguage.arabic: 'المحور (Axe)',
+    AppLanguage.french: 'Axe',
+    AppLanguage.english: 'Axle',
+  },
+  'المحرك (Moteur)': {
+    AppLanguage.arabic: 'المحرك (Moteur)',
+    AppLanguage.french: 'Moteur',
+    AppLanguage.english: 'Motor',
+  },
+  'المانيفال (Manivelle)': {
+    AppLanguage.arabic: 'المانيفال (Manivelle)',
+    AppLanguage.french: 'Manivelle',
+    AppLanguage.english: 'Crank',
+  },
+  'الشرائح (Lames)': {
+    AppLanguage.arabic: 'الشرائح (Lames)',
+    AppLanguage.french: 'Lames',
+    AppLanguage.english: 'Slats',
+  },
+  'الشريحة النهائية (Lame Finale)': {
+    AppLanguage.arabic: 'الشريحة النهائية (Lame Finale)',
+    AppLanguage.french: 'Lame finale',
+    AppLanguage.english: 'Bottom slat',
+  },
+  'السكك (Coulisses)': {
+    AppLanguage.arabic: 'السكك (Coulisses)',
+    AppLanguage.french: 'Coulisses',
+    AppLanguage.english: 'Guide rails',
+  },
+  'أغطية الشفرات (Bouchons Lames)': {
+    AppLanguage.arabic: 'أغطية الشفرات (Bouchons Lames)',
+    AppLanguage.french: 'Embouts de lames',
+    AppLanguage.english: 'Slat end caps',
+  },
+  'جوان بروس للستار (Joint Brosse Shutter)': {
+    AppLanguage.arabic: 'جوان بروس للستار (Joint Brosse Shutter)',
+    AppLanguage.french: 'Joint brosse du volet',
+    AppLanguage.english: 'Shutter brush seal',
+  },
+  'أطاش (Attache)': {
+    AppLanguage.arabic: 'أطاش (Attache)',
+    AppLanguage.french: 'Attache',
+    AppLanguage.english: 'Attachment',
+  },
+  'براغي الصندوق': {
+    AppLanguage.arabic: 'براغي الصندوق',
+    AppLanguage.french: 'Vis du caisson',
+    AppLanguage.english: 'Shutter box screws',
+  },
+  'براغي المحرك': {
+    AppLanguage.arabic: 'براغي المحرك',
+    AppLanguage.french: 'Vis du moteur',
+    AppLanguage.english: 'Motor screws',
+  },
+  'براغي المانيفال': {
+    AppLanguage.arabic: 'براغي المانيفال',
+    AppLanguage.french: 'Vis de manivelle',
+    AppLanguage.english: 'Crank screws',
+  },
+  'براغي الكيت': {
+    AppLanguage.arabic: 'براغي الكيت',
+    AppLanguage.french: 'Vis du kit',
+    AppLanguage.english: 'Kit screws',
+  },
+  'الامبو (Embout)': {
+    AppLanguage.arabic: 'الامبو (Embout)',
+    AppLanguage.french: 'Embout',
+    AppLanguage.english: 'End cap',
+  },
+  'سيبور رولمو (Support Roulement)': {
+    AppLanguage.arabic: 'سيبور رولمو (Support Roulement)',
+    AppLanguage.french: 'Support roulement',
+    AppLanguage.english: 'Bearing support',
+  },
+  'سيبور موتور (Support Moteur)': {
+    AppLanguage.arabic: 'سيبور موتور (Support Moteur)',
+    AppLanguage.french: 'Support moteur',
+    AppLanguage.english: 'Motor support',
+  },
+  'قطعة': {
+    AppLanguage.arabic: 'قطعة',
+    AppLanguage.french: 'pièce',
+    AppLanguage.english: 'piece',
+  },
+  'حبة': {
+    AppLanguage.arabic: 'حبة',
+    AppLanguage.french: 'unité',
+    AppLanguage.english: 'unit',
+  },
+  'متر': {
+    AppLanguage.arabic: 'متر',
+    AppLanguage.french: 'm',
+    AppLanguage.english: 'm',
+  },
+  'بارة': {
+    AppLanguage.arabic: 'بارة',
+    AppLanguage.french: 'barre',
+    AppLanguage.english: 'bar',
+  },
+  'قطاع': {
+    AppLanguage.arabic: 'قطاع',
+    AppLanguage.french: 'profilé',
+    AppLanguage.english: 'profile',
+  },
+  'طقم': {
+    AppLanguage.arabic: 'طقم',
+    AppLanguage.french: 'kit',
+    AppLanguage.english: 'kit',
+  },
+  'المكوّن المطلوب': {
+    AppLanguage.arabic: 'المكوّن المطلوب',
+    AppLanguage.french: 'Composant requis',
+    AppLanguage.english: 'Required component',
+  },
+  'السعر غير محدد': {
+    AppLanguage.arabic: 'السعر غير محدد',
+    AppLanguage.french: 'Prix non défini',
+    AppLanguage.english: 'Price not defined',
+  },
+  'انقر هنا لاختيار القطاع المناسب': {
+    AppLanguage.arabic: 'انقر هنا لاختيار القطاع المناسب',
+    AppLanguage.french: 'Cliquez ici pour choisir le profilé approprié',
+    AppLanguage.english: 'Click here to choose the appropriate profile',
+  },
+  'الكود': {
+    AppLanguage.arabic: 'الكود',
+    AppLanguage.french: 'Code',
+    AppLanguage.english: 'Code',
+  },
+  'اللون': {
+    AppLanguage.arabic: 'اللون',
+    AppLanguage.french: 'Couleur',
+    AppLanguage.english: 'Color',
+  },
+  'القياس': {
+    AppLanguage.arabic: 'القياس',
+    AppLanguage.french: 'Dimension',
+    AppLanguage.english: 'Size',
+  },
+  'المساحة المطلوبة': {
+    AppLanguage.arabic: 'المساحة المطلوبة',
+    AppLanguage.french: 'Surface requise',
+    AppLanguage.english: 'Required area',
+  },
+  'غير مرتبط بقاعدة البيانات': {
+    AppLanguage.arabic: 'غير مرتبط بقاعدة البيانات',
+    AppLanguage.french: 'Non associé à la base de données',
+    AppLanguage.english: 'Not linked to the database',
+  },
+  'المقاس': {
+    AppLanguage.arabic: 'المقاس',
+    AppLanguage.french: 'Dimensions',
+    AppLanguage.english: 'Size',
+  },
+  'السلسلة': {
+    AppLanguage.arabic: 'السلسلة',
+    AppLanguage.french: 'Gamme',
+    AppLanguage.english: 'Series',
+  },
+  'غير محدد': {
+    AppLanguage.arabic: 'غير محدد',
+    AppLanguage.french: 'Non défini',
+    AppLanguage.english: 'Not specified',
+  },
+  'العناصر والمواد المحسوبة لهذا المنتج:': {
+    AppLanguage.arabic: 'العناصر والمواد المحسوبة لهذا المنتج:',
+    AppLanguage.french: 'Éléments et matériaux calculés pour ce produit :',
+    AppLanguage.english: 'Calculated items and materials for this product:',
+  },
+  'اسم العنصر': {
+    AppLanguage.arabic: 'اسم العنصر',
+    AppLanguage.french: 'Nom de l’article',
+    AppLanguage.english: 'Item name',
+  },
+  'الوحدة': {
+    AppLanguage.arabic: 'الوحدة',
+    AppLanguage.french: 'Unité',
+    AppLanguage.english: 'Unit',
+  },
+  'التكلفة': {
+    AppLanguage.arabic: 'التكلفة',
+    AppLanguage.french: 'Coût',
+    AppLanguage.english: 'Cost',
+  },
   'الرسم المرتبط بهذا البانو:': {
     AppLanguage.arabic: 'الرسم المرتبط بهذا البانو:',
     AppLanguage.french: 'Dessin associé à ce panneau :',
@@ -379,7 +572,8 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
   'لا توجد قطاعات ذات خطة قص لاعتمادها.': {
     AppLanguage.arabic: 'لا توجد قطاعات ذات خطة قص لاعتمادها.',
     AppLanguage.french: 'Aucun profilé avec plan de coupe à valider.',
-    AppLanguage.english: 'There are no profiles with a cutting plan to approve.',
+    AppLanguage.english:
+        'There are no profiles with a cutting plan to approve.',
   },
   'اعتماد القص وتخزين البقايا': {
     AppLanguage.arabic: 'اعتماد القص وتخزين البقايا',
@@ -577,8 +771,7 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.english: 'product',
   },
   'مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة': {
-    AppLanguage.arabic:
-        'مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة',
+    AppLanguage.arabic: 'مطابقة لجدول الكمية والتكلفة • القطاعات بأعداد كاملة',
     AppLanguage.french:
         'Conforme au tableau des quantités et coûts • profilés en nombres entiers',
     AppLanguage.english:
@@ -629,7 +822,8 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
   },
   'تعذر حفظ سعر مكوّن الستارة.': {
     AppLanguage.arabic: 'تعذر حفظ سعر مكوّن الستارة.',
-    AppLanguage.french: 'Impossible d’enregistrer le prix du composant du volet.',
+    AppLanguage.french:
+        'Impossible d’enregistrer le prix du composant du volet.',
     AppLanguage.english: 'Could not save the shutter component price.',
   },
   'تعذر حفظ سعر القطاع': {
@@ -659,7 +853,8 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
   },
   'تغيير كيت الستار (المناسب ثم الأكبر)': {
     AppLanguage.arabic: 'تغيير كيت الستار (المناسب ثم الأكبر)',
-    AppLanguage.french: 'Changer le kit du volet (adapté puis tailles supérieures)',
+    AppLanguage.french:
+        'Changer le kit du volet (adapté puis tailles supérieures)',
     AppLanguage.english: 'Change shutter kit (matching size, then larger)',
   },
   'البروفيلات': {

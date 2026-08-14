@@ -411,16 +411,21 @@ class ComponentCalculator {
   }
 
   /// Every physical division uses two Tasso pieces. PVC adds one exceptional
-  /// pair only when a shutter is combined with the selected integrated-cover
-  /// frame; a plain PVC frame never adds that pair.
+  /// pair only for a regular caisson installed above the window, combined
+  /// with the selected integrated-cover frame. A caisson tunnel (behind the
+  /// window), or a shutter without a regular caisson, never adds that pair.
   static int tassoQuantity({
     required int divisionPieceCount,
     required bool isPvc,
-    required bool hasShutter,
+    required bool hasRegularCaissonAboveWindow,
     required bool selectedFrameHasIntegratedCover,
   }) {
     return (divisionPieceCount * 2) +
-        (isPvc && hasShutter && selectedFrameHasIntegratedCover ? 2 : 0);
+        (isPvc &&
+                hasRegularCaissonAboveWindow &&
+                selectedFrameHasIntegratedCover
+            ? 2
+            : 0);
   }
 
   /// Physical weight of the shutter curtain, calculated from the actual
@@ -617,11 +622,15 @@ class ComponentCalculator {
         .where((scope) => scope.isNotEmpty)
         .toSet();
     if (selectedScopes.contains('all')) return true;
+    // Filter the stored CSV before normalising it.  Normalising an empty
+    // string yields `all` for user-facing inputs, but an absent multi-scope
+    // column must fall back to the legacy single `mechanism_scope` instead.
     final scopes = (item['mechanism_scopes'] ?? '')
         .toString()
         .split(',')
-        .map(normalizeKitMechanismScope)
+        .map((scope) => scope.trim())
         .where((scope) => scope.isNotEmpty)
+        .map(normalizeKitMechanismScope)
         .toSet();
     if (scopes.isNotEmpty) {
       return scopes.contains('all') ||
@@ -1440,6 +1449,44 @@ class ComponentCalculator {
     double pvcJointBrosseSum = 0.0;
     Map<String, double> slidingGlassJoints = {};
 
+    // PVC sliding systems have their own cutting rules.  They deliberately
+    // live on the *sliding* series so a mixed drawing cannot inherit the
+    // opening-series overlap or width formula.
+    final Map<String, dynamic> slidingTableConfig =
+        window.slidingSeriesTableConfig ?? window.seriesTableConfig ?? const {};
+    double slidingRuleNumber(String key, {double fallback = 0.0}) {
+      final value = slidingTableConfig[key];
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? fallback;
+    }
+
+    double pvcSlidingWidthDeduction(int sashCount) {
+      switch (sashCount) {
+        case 2:
+          return slidingRuleNumber('sash_w_deduction_2');
+        case 3:
+          return slidingRuleNumber('sash_w_deduction_3');
+        case 4:
+          return slidingRuleNumber('sash_w_deduction_4');
+        default:
+          return 0.0;
+      }
+    }
+
+    final int pvcChicanePiecesPerJunction = math
+        .max(
+          1,
+          slidingRuleNumber(
+            'sliding_chicane_pieces_per_junction',
+            fallback: 1.0,
+          ).round(),
+        )
+        .toInt();
+    final double pvcRailClearance = math.max(
+      0.0,
+      slidingRuleNumber('sliding_rail_clearance', fallback: 1.0),
+    );
+
     for (var zone in window.zones) {
       if (zone.content == ZoneContent.singleSash ||
           zone.content == ZoneContent.doubleSash) {
@@ -1620,22 +1667,54 @@ class ComponentCalculator {
       double leafWidthMm = 0,
       double shutterWeightKg = 0,
       String mechanismScope = 'all',
+      Set<String>? mechanismScopes,
       String bladeScope = 'normal',
       bool isActive = true,
       int leafCount = 1,
       String category = 'accessory',
       String? variantValue,
+      bool includeFamilyItems = false,
+      bool groupExpandedItems = true,
     }) {
       final result = <BomItem>[];
+      final String? expandedItemGroupName = groupExpandedItems ? kitName : null;
+      final selectedMechanismScopes =
+          mechanismScopes ??
+          <String>{normalizeKitMechanismScope(mechanismScope)};
+      Map<String, dynamic>? itemFamily(Map<String, dynamic> item) {
+        final rawFamily = item['family'];
+        return rawFamily is Map ? Map<String, dynamic>.from(rawFamily) : null;
+      }
+
+      bool familyApplies(Map<String, dynamic> item) {
+        final family = itemFamily(item);
+        if (family == null) return true;
+        return kitItemAppliesToMechanisms(family, selectedMechanismScopes) &&
+            kitItemAppliesToBlade(family, bladeScope);
+      }
+
+      final applicableKitItems = kitItems.where(familyApplies).toList();
       final selectedCompatibilityGroup = selectKitCompatibilityGroup(
-        kitItems: kitItems,
+        kitItems: applicableKitItems,
         shutterWeightKg: shutterWeightKg,
         mechanismScope: mechanismScope,
+        mechanismScopes: selectedMechanismScopes,
         bladeScope: bladeScope,
       );
       for (final item in kitItems) {
-        if (!kitItemAppliesToMechanism(item, mechanismScope)) continue;
+        final family = itemFamily(item);
+        // A family is a selectable result of a kit range. Its children are
+        // not auto-selected merely because the family exists in the kit.
+        if (family != null && !includeFamilyItems) continue;
+        if (!familyApplies(item)) continue;
+        if (!kitItemAppliesToMechanisms(item, selectedMechanismScopes))
+          continue;
         if (!kitItemAppliesToBlade(item, bladeScope)) continue;
+        // A family is one small assembly inside its parent Kit.  Its child
+        // components are used once by default; it may explicitly opt into
+        // one occurrence per leaf.
+        final familyPerLeaf = (family?['per_leaf'] as num?)?.toInt() == 1;
+        final itemLeafCount = family == null || familyPerLeaf ? leafCount : 1;
         final mode = item['qty_mode'] as String? ?? 'fixed';
         final dimension = item['dimension'] as String?;
         const unit = 'قطعة';
@@ -1645,7 +1724,8 @@ class ComponentCalculator {
             (item['variants'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
         if (mode == 'fixed') {
-          final qty = ((item['base_qty'] as num?)?.toDouble() ?? 1) * leafCount;
+          final qty =
+              ((item['base_qty'] as num?)?.toDouble() ?? 1) * itemLeafCount;
           result.add(
             BomItem(
               category: category,
@@ -1655,7 +1735,7 @@ class ComponentCalculator {
               unit: unit,
               unitPrice: (item['price'] as num?)?.toDouble() ?? 0.0,
               isActive: isActive,
-              kitGroupName: kitName,
+              kitGroupName: expandedItemGroupName,
             ),
           );
         } else if (mode == 'by_range' && ranges.isNotEmpty) {
@@ -1693,8 +1773,47 @@ class ComponentCalculator {
           }
           if (matchedRanges.isNotEmpty) {
             for (final matchedRange in matchedRanges) {
-              final qty =
-                  ((matchedRange['qty'] as num?)?.toDouble() ?? 1) * leafCount;
+              final rangeQty = (matchedRange['qty'] as num?)?.toDouble() ?? 1;
+              final rawSelectedFamily = matchedRange['family'];
+              final selectedFamily = rawSelectedFamily is Map
+                  ? Map<String, dynamic>.from(rawSelectedFamily)
+                  : null;
+              final selectedFamilyItems =
+                  (selectedFamily?['items'] as List? ?? const <dynamic>[])
+                      .whereType<Map>()
+                      .map((child) => Map<String, dynamic>.from(child))
+                      .toList();
+              if (selectedFamily != null && selectedFamilyItems.isNotEmpty) {
+                final familyPerLeaf =
+                    (selectedFamily['per_leaf'] as num?)?.toInt() == 1;
+                final familyItems = expandKitBundle(
+                  kitName,
+                  selectedFamilyItems,
+                  leafHeightMm: leafHeightMm,
+                  leafWidthMm: leafWidthMm,
+                  shutterWeightKg: shutterWeightKg,
+                  mechanismScope: mechanismScope,
+                  mechanismScopes: selectedMechanismScopes,
+                  bladeScope: bladeScope,
+                  isActive: isActive,
+                  // A family marked "once" stays once for the whole Kit,
+                  // even when the containing Kit is configured per leaf.
+                  leafCount: familyPerLeaf ? leafCount : 1,
+                  category: category,
+                  variantValue: variantValue,
+                  includeFamilyItems: true,
+                  groupExpandedItems: groupExpandedItems,
+                );
+                result.addAll(
+                  familyItems.map(
+                    (familyItem) => familyItem.copyWith(
+                      qty: familyItem.quantity * rangeQty,
+                    ),
+                  ),
+                );
+                continue;
+              }
+              final qty = rangeQty * itemLeafCount;
               final rawLinkedComponent = matchedRange['shutter_component'];
               final linkedComponent = rawLinkedComponent is Map
                   ? Map<String, dynamic>.from(rawLinkedComponent)
@@ -1728,7 +1847,7 @@ class ComponentCalculator {
                   unitPrice: linkedPrice,
                   isActive: isActive,
                   isMissing: linkedId == null,
-                  kitGroupName: kitName,
+                  kitGroupName: expandedItemGroupName,
                   catalogItemId: linkedId,
                   inventoryItemType: linkedId == null
                       ? null
@@ -1753,7 +1872,7 @@ class ComponentCalculator {
                 unitPrice: 0,
                 isActive: isActive,
                 isMissing: true,
-                kitGroupName: kitName,
+                kitGroupName: expandedItemGroupName,
               ),
             );
           }
@@ -1770,7 +1889,8 @@ class ComponentCalculator {
           matchedVariant ??= variants.first;
 
           final qty =
-              ((matchedVariant['qty'] as num?)?.toDouble() ?? 1) * leafCount;
+              ((matchedVariant['qty'] as num?)?.toDouble() ?? 1) *
+              itemLeafCount;
           result.add(
             BomItem(
               category: category,
@@ -1780,7 +1900,7 @@ class ComponentCalculator {
               unit: unit,
               unitPrice: (matchedVariant['price'] as num?)?.toDouble() ?? 0,
               isActive: isActive,
-              kitGroupName: kitName,
+              kitGroupName: expandedItemGroupName,
             ),
           );
         }
@@ -2162,6 +2282,10 @@ class ComponentCalculator {
           double slidingOverlap = slidingSashOverride != null
               ? (slidingSashOverride['sash_overlap'] ?? 8.0).toDouble()
               : 8.0;
+          final configuredSlidingOverlap = slidingRuleNumber('sash_overlap_val');
+          if (window.isSlidingPVC && configuredSlidingOverlap > 0) {
+            slidingOverlap = configuredSlidingOverlap;
+          }
           double wForCalc = clearW;
           double hForCalc = clearH;
 
@@ -2199,7 +2323,9 @@ class ComponentCalculator {
               : 2;
           double sashW = (wForCalc + ((sashes - 1) * 26.0)) / sashes;
           if (window.isSlidingPVC) {
-            sashW = (wForCalc + ((sashes - 1) * slidingOverlap)) / sashes;
+            // The overlap is a *height* rule. Width is specific to every
+            // PVC sliding series and stored as a series deduction.
+            sashW = (wForCalc - pvcSlidingWidthDeduction(sashes)) / sashes;
           }
           double sashH = hForCalc + slidingOverlap * 2;
           final String seriesName =
@@ -2209,12 +2335,16 @@ class ComponentCalculator {
           final bool isTPI67000 =
               seriesName.contains('67000') || seriesName.contains('tpi');
           bool hasThreePiece =
-              (window.activeSlidingSeries?.hasThreePieceSash ?? false) ||
-              isTPI67000;
+              !window.isSlidingPVC &&
+              ((window.activeSlidingSeries?.hasThreePieceSash ?? false) ||
+                  isTPI67000);
           if (hasThreePiece) {
             sashH = window.height - 64.0;
           } else {
-            if (!window.isSlidingPVC) {
+            if (window.isSlidingPVC) {
+              // PVC: sash height = internal frame height + one overlap.
+              sashH = hForCalc + slidingOverlap;
+            } else {
               sashH = window.height - 81.0;
             }
           }
@@ -2288,11 +2418,18 @@ class ComponentCalculator {
           slidingTotalGacheCoulissant += gachesPerEspagnolette * 2;
 
           bool excludeChicane =
-              (window.system?.name.toLowerCase().contains('tpr') ?? false) ||
-              (window.system?.name.toLowerCase().contains('hps') ?? false);
+              !window.isSlidingPVC &&
+              ((window.system?.name.toLowerCase().contains('tpr') ?? false) ||
+                  (window.system?.name.toLowerCase().contains('hps') ?? false));
           if (!excludeChicane) {
-            for (int c = 0; c < sashes - 1; c++) {
-              slidingChicanePieces.add(sashH / 1000.0);
+            final int chicaneCount = window.isSlidingPVC
+                ? (sashes - 1) * pvcChicanePiecesPerJunction
+                : sashes - 1;
+            final double chicaneLength = window.isSlidingPVC
+                ? window.height - 5.0
+                : sashH;
+            for (int c = 0; c < chicaneCount; c++) {
+              slidingChicanePieces.add(chicaneLength / 1000.0);
             }
           }
 
@@ -2314,9 +2451,12 @@ class ComponentCalculator {
                   window.profileThickness;
             }
           }
-          double railLen = isTPRSeries
+          double railLen = window.isSlidingPVC
+              ? (window.width - (frameT * 2) - pvcRailClearance) / 1000.0
+              : isTPRSeries
               ? (window.width - (frameT * 2) - 1.0) / 1000.0
               : (wForCalc - 5.0) / 1000.0;
+          if (railLen < 0) railLen = 0;
           slidingRailPieces.add(railLen);
           slidingRailPieces.add(railLen);
         }
@@ -2531,23 +2671,31 @@ class ComponentCalculator {
 
       if (window.isPVC) {
         double renfortSashDeduction = 140.0;
-        if (window.sashOverride != null) {
+        final pvcSashOverride = window.isSlidingPVC
+            ? window.slidingSashOverride
+            : window.sashOverride;
+        if (pvcSashOverride != null) {
           renfortSashDeduction =
-              (window.sashOverride!['renfort_deduction'] as num?)?.toDouble() ??
+              (pvcSashOverride['renfort_deduction'] as num?)?.toDouble() ??
               140.0;
         }
-        List<double> renfortSashPieces = sashPieces.map((p) {
+        final pvcSashPieces = window.isSlidingPVC
+            ? <double>[...sashPieces, ...slidingSashPieces]
+            : sashPieces;
+        List<double> renfortSashPieces = pvcSashPieces.map((p) {
           double len = p - (renfortSashDeduction / 1000.0);
           return len < 0.0 ? 0.0 : len;
         }).toList();
-        items.add(
-          createProfile(
-            'حديد الظلفة (Renfort Sash)',
-            null,
-            pieces: renfortSashPieces,
-            unit: 'قطاع',
-          ),
-        );
+        if (renfortSashPieces.isNotEmpty) {
+          items.add(
+            createProfile(
+              'حديد الظلفة (Renfort Sash)',
+              null,
+              pieces: renfortSashPieces,
+              unit: 'قطاع',
+            ),
+          );
+        }
 
         double renfortSashMifsalDeduction = renfortSashDeduction;
         List<double> renfortSashMifsalPieces = [];
@@ -3082,10 +3230,12 @@ class ComponentCalculator {
           );
           items.add(
             createAccessory(
-              // Keep a distinct BOM key from the opening handle.  In mixed
-              // drawings both are present, and sharing a key made one manual
-              // selection overwrite the other.
-              'مقبض منزلق (Poignée Coulissante)',
+              // PVC sliding uses the same window handle catalogue as the
+              // French-opening system.  Only aluminium keeps a dedicated
+              // sliding-handle key.
+              window.isSlidingPVC
+                  ? 'مقبض نافذة (Poignée Fenêtre)'
+                  : 'مقبض منزلق (Poignée Coulissante)',
               color: accessoryColorName,
               qty: slidingTotalHandles,
             ),
@@ -3310,6 +3460,7 @@ class ComponentCalculator {
         String descriptionCode, {
         bool filterAxeItems = true,
         bool sizeBound = true,
+        bool showKitRow = true,
       }) {
         String? matchedKitName;
         String? actualKitName;
@@ -3366,10 +3517,11 @@ class ComponentCalculator {
           }
         }
 
-        // A kit must always come from KitBundles.  If it is not configured
-        // there, show the French catalogue query instead of inventing an
-        // Arabic component or borrowing a similarly named shutter part.
-        final String groupName = matchedKitName ?? 'Kit $descriptionCode';
+        // A kit must always come from KitBundles. Do not invent a generic
+        // "Kit" line from Accessories/ShutterComponents when no configured
+        // bundle exists on the Kits page.
+        if (matchedKitName == null) return;
+        final String groupName = matchedKitName;
         final bool perLeaf = kitPerLeafMap[groupName] ?? false;
         final double kitQty = perLeaf
             ? ((doubleSashCount * 2) + singleSashCount).toDouble()
@@ -3377,29 +3529,36 @@ class ComponentCalculator {
 
         // `isMotorized` describes the mechanism, but every kit uses the
         // same source: its KitBundles record and exact stored French name.
-        items.add(createKitBundle(uiKey, groupName, qty: kitQty));
+        // The tunnel kit is only a configuration container; its real child
+        // parts are listed directly instead of creating a fictitious BOM row.
+        if (showKitRow) {
+          items.add(createKitBundle(uiKey, groupName, qty: kitQty));
+        }
 
-        final matchedKitItems = matchedKitName == null
-            ? null
-            : kitBundleData[matchedKitName];
-        if (matchedKitName != null && matchedKitItems?.isNotEmpty == true) {
+        final matchedKitItems = kitBundleData[groupName];
+        if (matchedKitItems?.isNotEmpty == true) {
           final String shutterVariant = isExtrudedBlade ? 'extruded' : 'normal';
           final int leafCount = perLeaf
               ? ((doubleSashCount * 2) + singleSashCount)
               : 1;
           var expandedItems = expandKitBundle(
-            matchedKitName,
+            groupName,
             matchedKitItems!,
             leafHeightMm: window.height.toDouble(),
             leafWidthMm: window.width.toDouble(),
             shutterWeightKg: shutterWeightKg,
             mechanismScope: shutterMechanismScope(window.shutterMechanism),
+            mechanismScopes: shutterMechanismScopes(
+              window.shutterMechanism,
+              motorHasEmergencyCrank: motorHasEmergencyCrank,
+            ),
             bladeScope: isExtrudedBlade ? 'extruded' : 'normal',
             isActive: true,
             // دائماً مفعَّل — لا تُشطَب عناصر الكيت
             leafCount: leafCount,
             category: 'shutter',
             variantValue: shutterVariant,
+            groupExpandedItems: showKitRow,
           );
           // If Axe is 60mm (separate row), exclude axe items already inside kit bundle
           if (filterAxeItems) {
@@ -3457,48 +3616,22 @@ class ComponentCalculator {
         // براغي الكيت
         items.add(createShutter('براغي الكيت', qty: 8));
       } else {
+        // A caisson tunnel is sold and managed as its configured Kit only.
+        // Its children stay nested under that Kit for stock and costing, but
+        // no standalone shutter component may leak into the quantity table.
         addAndExpandKit(
           'كيت صندوق النفق (Kit Caisson Tunnel)',
           'CT',
           sizeBound: false,
+          filterAxeItems: false,
+          showKitRow: true,
         );
       }
 
-      // ===== 2. الصندوق وبراغيه (الصندوق يظهر دائماً ولكن النفق سعره 0) =====
-      if (isTunnel) {
-        List<double> caissonPieces = [window.width / 1000.0 - 0.01];
-        final originalBox = createShutter(
-          'الصندوق (Caisson)',
-          color: colorName,
-          pieces: caissonPieces,
-          unit: 'بارة',
-        );
-        final boxItem = BomItem(
-          category: originalBox.category,
-          originalName: originalBox.originalName,
-          name: "${originalBox.name} (صندوق نفق - لا يدخل في التكلفة)",
-          imagePath: originalBox.imagePath,
-          colorName: originalBox.colorName,
-          length: originalBox.length,
-          glassHeight: originalBox.glassHeight,
-          quantity: originalBox.quantity,
-          unit: originalBox.unit,
-          unitPrice: 0.0,
-          isMissing: originalBox.isMissing,
-          isInteractive: originalBox.isInteractive,
-          isActive: originalBox.isActive,
-          exclusionGroup: originalBox.exclusionGroup,
-          pieces: originalBox.pieces,
-          cuttingList: originalBox.cuttingList,
-          kitGroupName: originalBox.kitGroupName,
-          exactQuantity: originalBox.exactQuantity,
-          catalogItemId: originalBox.catalogItemId,
-          inventoryItemType: originalBox.inventoryItemType,
-          colorId: originalBox.colorId,
-        );
-        items.add(boxItem);
-        // براغي الصندوق لا تضاف في حالة Caisson Tunnel
-      } else {
+      // A tunnel must show only its grouped Kit. The physical shutter rows
+      // below belong exclusively to regular caissons.
+      if (!isTunnel) {
+        // ===== 2. الصندوق وبراغيه =====
         List<double> caissonPieces = [window.width / 1000.0 - 0.01];
         items.add(
           createShutter(
@@ -3509,220 +3642,223 @@ class ComponentCalculator {
           ),
         );
         items.add(createShutter('براغي الصندوق', qty: 10));
-      }
 
-      // ===== 3. المحور (Axe) =====
-      // Only add a separate Axe row if the selected Axe is 60mm (external).
-      // For 40mm/44mm the Axe is already included inside the kit bundle.
-      {
-        final axeOvr = window.componentOverrides['المحور (Axe)'];
-        final axeNm = axeOvr?['name']?.toString() ?? '';
-        final axeDm = axeOvr?['motor_diameter']?.toString() ?? '';
-        final axeStr = axeDm.isNotEmpty ? axeDm : axeNm;
-        final axeMtch = RegExp(r'(\d+)').firstMatch(axeStr);
-        final int selAxeDiam = axeMtch != null
-            ? (int.tryParse(axeMtch.group(1)!) ?? 0)
-            : 0;
-        // Always add the axe separately as requested by the user to allow manual selection and prevent it from disappearing
-        const bool addAxeSeparately = true;
-        if (addAxeSeparately) {
-          List<double> axePieces = [(window.width - 75) / 1000.0];
+        // ===== 3. المحور (Axe) =====
+        // Only add a separate Axe row if the selected Axe is 60mm (external).
+        // For 40mm/44mm the Axe is already included inside the kit bundle.
+        {
+          final axeOvr = window.componentOverrides['المحور (Axe)'];
+          final axeNm = axeOvr?['name']?.toString() ?? '';
+          final axeDm = axeOvr?['motor_diameter']?.toString() ?? '';
+          final axeStr = axeDm.isNotEmpty ? axeDm : axeNm;
+          final axeMtch = RegExp(r'(\d+)').firstMatch(axeStr);
+          final int selAxeDiam = axeMtch != null
+              ? (int.tryParse(axeMtch.group(1)!) ?? 0)
+              : 0;
+          // Always add the axe separately as requested by the user to allow manual selection and prevent it from disappearing
+          const bool addAxeSeparately = true;
+          if (addAxeSeparately) {
+            List<double> axePieces = [(window.width - 75) / 1000.0];
+            items.add(
+              createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
+            );
+          }
+        }
+
+        // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
+        if (window.shutterMechanism == 'مانيفال') {
           items.add(
-            createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
+            createShutter('المانيفال (Manivelle)', color: colorName, qty: 1),
+          );
+          items.add(createShutter('براغي المانيفال', qty: isTunnel ? 1 : 4));
+        } else if (window.shutterMechanism == 'محرك') {
+          items.add(createShutter('المحرك (Moteur)', color: colorName, qty: 1));
+          items.add(createShutter('براغي المحرك', qty: isTunnel ? 1 : 4));
+          if (window.motorHasInterrupteur) {
+            items.add(createShutter('قاطعة (Interrupteur)', qty: 1));
+          }
+          if (window.motorHasTelecommande) {
+            items.add(createShutter('جهاز تحكم (Télécommande)', qty: 1));
+          }
+        }
+
+        // ===== 5. الشفرات (Lames) =====
+        // The blade catalogue measurement is its physical height in mm.  It
+        // drives the number of blades; old records without a value retain the
+        // former 43 mm fallback.
+        final bladeHeightSource = (selectedBlade?['measurement'] ?? '')
+            .toString()
+            .trim();
+        final bladeHeightMatch = RegExp(
+          r'\d+(?:[.,]\d+)?',
+        ).firstMatch(bladeHeightSource);
+        final bladeHeightMm = bladeHeightMatch == null
+            ? 43.0
+            : (double.tryParse(
+                    bladeHeightMatch.group(0)!.replaceAll(',', '.'),
+                  ) ??
+                  43.0);
+        final safeBladeHeightMm = bladeHeightMm > 0 ? bladeHeightMm : 43.0;
+        int numBladesShutter = isTunnel
+            ? ((window.height + 100) / safeBladeHeightMm).ceil()
+            : ((window.height - window.shutterBoxHeight) / safeBladeHeightMm +
+                      2)
+                  .ceil();
+        if (numBladesShutter < 0) numBladesShutter = 0;
+
+        double bladeLengthM = (window.width - 65) / 1000.0;
+        // The exact cap linked to this blade shortens every blade at both ends.
+        // No generic cap or hard-coded thickness is allowed as a fallback.
+        if (linkedBladeEndCap != null) {
+          final rawThickness = linkedBladeEndCap['cap_thickness'];
+          final bladesCapThickness = rawThickness is num
+              ? rawThickness.toDouble()
+              : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
+          bladeLengthM -= (2 * bladesCapThickness) / 1000.0;
+        }
+        List<double> bladePieces = List.filled(numBladesShutter, bladeLengthM);
+        items.add(
+          createShutter(
+            'الشرائح (Lames)',
+            color: colorName,
+            pieces: bladePieces,
+            unit: 'بارة',
+          ),
+        );
+
+        // ===== 6. أغطية الشفرات (Bouchons Lames) =====
+        // الكمية = عدد قطع الشفرات (نفس numBladesShutter تماماً)
+        // End caps are automatic and are shown only in the quantity/cost table.
+        // They are never a blade choice or a user-toggleable variant.
+        if (isBouchonLameActive) {
+          items.add(
+            createShutter(
+              'أغطية الشفرات (Bouchons Lames)',
+              qty: numBladesShutter * 1.0,
+              unit: 'حبة',
+            ),
           );
         }
-      }
 
-      // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
-      if (window.shutterMechanism == 'مانيفال') {
-        items.add(
-          createShutter('المانيفال (Manivelle)', color: colorName, qty: 1),
-        );
-        items.add(createShutter('براغي المانيفال', qty: isTunnel ? 1 : 4));
-      } else if (window.shutterMechanism == 'محرك') {
-        items.add(createShutter('المحرك (Moteur)', color: colorName, qty: 1));
-        items.add(createShutter('براغي المحرك', qty: isTunnel ? 1 : 4));
-        if (window.motorHasInterrupteur) {
-          items.add(createShutter('قاطعة (Interrupteur)', qty: 1));
+        // ===== 7. الشريحة النهائية (Lame Finale) =====
+        double lameFinaleLengthM = (window.width - 65) / 1000.0;
+        if (linkedBladeEndCap != null) {
+          final rawThickness = linkedBladeEndCap['cap_thickness'];
+          final finalBladeCapThickness = rawThickness is num
+              ? rawThickness.toDouble()
+              : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
+          lameFinaleLengthM -= (2 * finalBladeCapThickness) / 1000.0;
         }
-        if (window.motorHasTelecommande) {
-          items.add(createShutter('جهاز تحكم (Télécommande)', qty: 1));
-        }
-      }
-
-      // ===== 5. الشفرات (Lames) =====
-      // The blade catalogue measurement is its physical height in mm.  It
-      // drives the number of blades; old records without a value retain the
-      // former 43 mm fallback.
-      final bladeHeightSource = (selectedBlade?['measurement'] ?? '')
-          .toString()
-          .trim();
-      final bladeHeightMatch = RegExp(
-        r'\d+(?:[.,]\d+)?',
-      ).firstMatch(bladeHeightSource);
-      final bladeHeightMm = bladeHeightMatch == null
-          ? 43.0
-          : (double.tryParse(bladeHeightMatch.group(0)!.replaceAll(',', '.')) ??
-                43.0);
-      final safeBladeHeightMm = bladeHeightMm > 0 ? bladeHeightMm : 43.0;
-      int numBladesShutter = isTunnel
-          ? ((window.height + 100) / safeBladeHeightMm).ceil()
-          : ((window.height - window.shutterBoxHeight) / safeBladeHeightMm + 2)
-                .ceil();
-      if (numBladesShutter < 0) numBladesShutter = 0;
-
-      double bladeLengthM = (window.width - 65) / 1000.0;
-      // The exact cap linked to this blade shortens every blade at both ends.
-      // No generic cap or hard-coded thickness is allowed as a fallback.
-      if (linkedBladeEndCap != null) {
-        final rawThickness = linkedBladeEndCap['cap_thickness'];
-        final bladesCapThickness = rawThickness is num
-            ? rawThickness.toDouble()
-            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
-        bladeLengthM -= (2 * bladesCapThickness) / 1000.0;
-      }
-      List<double> bladePieces = List.filled(numBladesShutter, bladeLengthM);
-      items.add(
-        createShutter(
-          'الشرائح (Lames)',
-          color: colorName,
-          pieces: bladePieces,
-          unit: 'بارة',
-        ),
-      );
-
-      // ===== 6. أغطية الشفرات (Bouchons Lames) =====
-      // الكمية = عدد قطع الشفرات (نفس numBladesShutter تماماً)
-      // End caps are automatic and are shown only in the quantity/cost table.
-      // They are never a blade choice or a user-toggleable variant.
-      if (isBouchonLameActive) {
+        List<double> lameFinalePieces = [lameFinaleLengthM];
         items.add(
           createShutter(
-            'أغطية الشفرات (Bouchons Lames)',
-            qty: numBladesShutter * 1.0,
-            unit: 'حبة',
+            'الشريحة النهائية (Lame Finale)',
+            color: colorName,
+            pieces: lameFinalePieces,
+            unit: 'بارة',
           ),
         );
-      }
 
-      // ===== 7. الشريحة النهائية (Lame Finale) =====
-      double lameFinaleLengthM = (window.width - 65) / 1000.0;
-      if (linkedBladeEndCap != null) {
-        final rawThickness = linkedBladeEndCap['cap_thickness'];
-        final finalBladeCapThickness = rawThickness is num
-            ? rawThickness.toDouble()
-            : double.tryParse(rawThickness?.toString() ?? '') ?? 0.0;
-        lameFinaleLengthM -= (2 * finalBladeCapThickness) / 1000.0;
-      }
-      List<double> lameFinalePieces = [lameFinaleLengthM];
-      items.add(
-        createShutter(
-          'الشريحة النهائية (Lame Finale)',
-          color: colorName,
-          pieces: lameFinalePieces,
-          unit: 'بارة',
-        ),
-      );
-
-      // ===== 8. السكك (Coulisses) =====
-      List<double> coulissePieces = [coulisseLengthM, coulisseLengthM];
-      items.add(
-        createShutter(
-          'السكك (Coulisses)',
-          color: colorName,
-          pieces: coulissePieces,
-          unit: 'بارة',
-        ),
-      );
-
-      // ===== 9. جوان بروس (Joint Brosse) =====
-      if (isTunnel) {
+        // ===== 8. السكك (Coulisses) =====
+        List<double> coulissePieces = [coulisseLengthM, coulisseLengthM];
         items.add(
           createShutter(
-            'جوان بروس للستار (Joint Brosse Shutter)',
-            qty: (coulisseLengthM * 4).ceilToDouble(),
-            unit: 'متر',
+            'السكك (Coulisses)',
+            color: colorName,
+            pieces: coulissePieces,
+            unit: 'بارة',
           ),
         );
-      } else {
-        items.add(
-          createJoint(
-            'جوان بروس للستار (Joint Brosse Shutter)',
-            qty: (coulisseLengthM * 4).ceilToDouble(),
-            unit: 'متر',
-          ),
-        );
-      }
 
-      // ===== 10. أطاش (Attache) =====
-      // Every active shutter kit contains two Attaches. Count the total from
-      // shutter width, then list only the remaining standalone Attaches:
-      // 2 below 1200 mm, 3 from 1200 mm, 4 from 1600 mm, and 5 from 2000 mm.
-      final int totalAttaches = window.width >= 2000
-          ? 5
-          : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
-      final int attachesIncludedByKit = isKitActive ? 2 : 0;
-      final int attachesToAdd = (totalAttaches - attachesIncludedByKit)
-          .clamp(0, totalAttaches)
-          .toInt();
-      if (attachesToAdd > 0) {
-        items.add(
-          createShutter('أطاش (Attache)', qty: attachesToAdd.toDouble()),
-        );
-      }
+        // ===== 9. جوان بروس (Joint Brosse) =====
+        if (isTunnel) {
+          items.add(
+            createShutter(
+              'جوان بروس للستار (Joint Brosse Shutter)',
+              qty: (coulisseLengthM * 4).ceilToDouble(),
+              unit: 'متر',
+            ),
+          );
+        } else {
+          items.add(
+            createJoint(
+              'جوان بروس للستار (Joint Brosse Shutter)',
+              qty: (coulisseLengthM * 4).ceilToDouble(),
+              unit: 'متر',
+            ),
+          );
+        }
 
-      // ===== 11. الإكسسوارات الفردية (Tandem, Embout, Support Roulement, Support Moteur) =====
-      if (showIndividualOptions) {
-        // X3D parts are required in addition to the standard motor kit, so
-        // they must remain visible even when a kit is active.
-        if (!isKitActive || isX3dPvcAssembly) {
-          if (!isX3dPvcAssembly) {
-            // Tandem is not part of the X3D PVC assembly.
-            items.add(
-              createInteractiveAccessory(
-                'طانديم (Tandem)',
-                'tandem_group',
-                isActive: isTandemActive,
-                qty: 1,
-                category: 'shutter',
-              ),
-            );
-          }
+        // ===== 10. أطاش (Attache) =====
+        // Every active shutter kit contains two Attaches. Count the total from
+        // shutter width, then list only the remaining standalone Attaches:
+        // 2 below 1200 mm, 3 from 1200 mm, 4 from 1600 mm, and 5 from 2000 mm.
+        final int totalAttaches = window.width >= 2000
+            ? 5
+            : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
+        final int attachesIncludedByKit = isKitActive ? 2 : 0;
+        final int attachesToAdd = (totalAttaches - attachesIncludedByKit)
+            .clamp(0, totalAttaches)
+            .toInt();
+        if (attachesToAdd > 0) {
+          items.add(
+            createShutter('أطاش (Attache)', qty: attachesToAdd.toDouble()),
+          );
+        }
 
-          // Embout and Support Roulement (only if Tandem is NOT active)
-          if (!isTandemActive || isX3dPvcAssembly) {
-            items.add(
-              createInteractiveAccessory(
-                'الامبو (Embout)',
-                'embout_group',
-                isActive: isEmboutActive,
-                qty: 1,
-                category: 'shutter',
-              ),
-            );
-            items.add(
-              createInteractiveAccessory(
-                'سيبور رولمو (Support Roulement)',
-                'roulement_group',
-                isActive: isSupportRoulementActive,
-                qty: 1,
-                category: 'shutter',
-              ),
-            );
-          }
+        // ===== 11. الإكسسوارات الفردية (Tandem, Embout, Support Roulement, Support Moteur) =====
+        if (showIndividualOptions) {
+          // X3D parts are required in addition to the standard motor kit, so
+          // they must remain visible even when a kit is active.
+          if (!isKitActive || isX3dPvcAssembly) {
+            if (!isX3dPvcAssembly) {
+              // Tandem is not part of the X3D PVC assembly.
+              items.add(
+                createInteractiveAccessory(
+                  'طانديم (Tandem)',
+                  'tandem_group',
+                  isActive: isTandemActive,
+                  qty: 1,
+                  category: 'shutter',
+                ),
+              );
+            }
 
-          // Support Moteur is needed for X3D only when the selected motor
-          // has no emergency manivelle.
-          if (!isX3dPvcAssembly || isSupportMoteurActive) {
-            items.add(
-              createInteractiveAccessory(
-                'سيبور موتور (Support Moteur)',
-                'motor_support_group',
-                isActive: isSupportMoteurActive,
-                qty: 1,
-                category: 'shutter',
-              ),
-            );
+            // Embout and Support Roulement (only if Tandem is NOT active)
+            if (!isTandemActive || isX3dPvcAssembly) {
+              items.add(
+                createInteractiveAccessory(
+                  'الامبو (Embout)',
+                  'embout_group',
+                  isActive: isEmboutActive,
+                  qty: 1,
+                  category: 'shutter',
+                ),
+              );
+              items.add(
+                createInteractiveAccessory(
+                  'سيبور رولمو (Support Roulement)',
+                  'roulement_group',
+                  isActive: isSupportRoulementActive,
+                  qty: 1,
+                  category: 'shutter',
+                ),
+              );
+            }
+
+            // Support Moteur is needed for X3D only when the selected motor
+            // has no emergency manivelle.
+            if (!isX3dPvcAssembly || isSupportMoteurActive) {
+              items.add(
+                createInteractiveAccessory(
+                  'سيبور موتور (Support Moteur)',
+                  'motor_support_group',
+                  isActive: isSupportMoteurActive,
+                  qty: 1,
+                  category: 'shutter',
+                ),
+              );
+            }
           }
         }
       }
@@ -4377,7 +4513,9 @@ class ComponentCalculator {
     final int tassoQty = tassoQuantity(
       divisionPieceCount: divisionPieceCount,
       isPvc: isOuterFramePvc,
-      hasShutter: hasShutter,
+      // The regular caisson is drawn above the window.  A tunnel caisson is
+      // installed behind it, so it must not receive the PVC Tasso pair.
+      hasRegularCaissonAboveWindow: hasShutter && !window.isCaissonTunnel,
       selectedFrameHasIntegratedCover: integratedFrameCoverWidth > 0,
     );
 
@@ -4570,10 +4708,29 @@ class ComponentCalculator {
           wForCalc = clearW - (frameT * 2.0);
           hForCalc = clearH - (frameT * 2.0);
         }
-        baseGw =
-            ((wForCalc + ((sashes - 1) * 26.0)) / sashes) -
-            (sw * 2) -
-            videVerre;
+        final slidingSashMap =
+            window.slidingSashOverride ??
+            window.getSlidingSectionByType('sash_sliding')?.toMap() ??
+            window.getSlidingSectionByType('sash')?.toMap();
+        final configuredSlidingSashVisibleWidth =
+            (slidingSashMap?['visible_width'] as num?)?.toDouble() ?? 0.0;
+        final double slidingSashVisibleWidth =
+            configuredSlidingSashVisibleWidth > 0
+            ? configuredSlidingSashVisibleWidth
+            : sw;
+        final double sashCutW = window.isSlidingPVC
+            ? (wForCalc - pvcSlidingWidthDeduction(sashes)) / sashes
+            : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
+        final configuredGlassSafety = slidingRuleNumber('glass_w_deduction');
+        final glassSafety = configuredGlassSafety > 0
+            ? configuredGlassSafety
+            : videVerre;
+        baseGw = window.isSlidingPVC
+            ? sashCutW - slidingSashVisibleWidth - glassSafety
+            : sashCutW - (sw * 2) - videVerre;
+        // The height formula stays unchanged for the sliding glazing groove.
+        // PVC has a series-specific sash overlap only on the sash height; it
+        // must not modify this established glazing-length calculation.
         baseGh = (hForCalc + 16.0) - (sw * 2) - videVerre;
         sashesCount = sashes;
       }
@@ -4730,9 +4887,27 @@ class ComponentCalculator {
               window.systemMode == 'coulissant' ||
               window.systemMode == 'منزلق' ||
               zone.content == ZoneContent.slidingSash;
+          final bool isPvcSlidingSystem =
+              isSlidingSystem && window.isSlidingPVC;
 
           if (isSlidingSystem) {
-            if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
+            if (isPvcSlidingSystem) {
+              // PVC sliding systems always retain glass with a parclose.
+              // A reducteur is an aluminium-only profile and must never be
+              // injected into their bill of materials.
+              final targetParclosePieces = cellThick > 10.0
+                  ? parcloseDoublePieces
+                  : parcloseSimplePieces;
+              for (int q = 0; q < pieceMultiplier; q++) {
+                targetParclosePieces.add(cellGw / 1000.0);
+                targetParclosePieces.add(cellGw / 1000.0);
+                targetParclosePieces.add(cellGh / 1000.0);
+                targetParclosePieces.add(cellGh / 1000.0);
+              }
+            }
+            if (!isPvcSlidingSystem &&
+                !isPanneau &&
+                cellGlass.structure != GlassStructure.closed) {
               final double reducteurThick =
                   (cellGlass.structure == GlassStructure.simple) ? 15.0 : 0.0;
               if (reducteurThick > 0) {
@@ -5239,7 +5414,12 @@ class ComponentCalculator {
     Map<String, dynamic>? parcloseSimple;
     Map<String, dynamic>? parcloseDouble;
 
-    final activeSeries = window.activeSeries;
+    final hasPvcSlidingZone =
+        window.isSlidingPVC &&
+        window.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+    final activeSeries = hasPvcSlidingZone
+        ? (window.activeSlidingSeries ?? window.activeSeries)
+        : window.activeSeries;
     if (activeSeries != null) {
       bool isParcloseSection(AluminumSection section) {
         final type = section.type.toLowerCase();

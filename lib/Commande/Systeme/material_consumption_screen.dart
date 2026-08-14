@@ -1866,6 +1866,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           final kitId = kit['id'] as int;
           final details = await sqlDb.readKitBundleItemsWithDetails(
             kitId,
+            topLevelOnly: true,
           ); // عناصر هذا الكيت بالتفصيل
           final mutableDetails = <Map<String, dynamic>>[];
           for (final item in details) {

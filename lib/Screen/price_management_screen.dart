@@ -184,11 +184,29 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     return double.tryParse(value?.toString().trim() ?? '') ?? 0.0;
   }
 
+  bool _isShutterGreyBaseColor(Map<String, dynamic> color) {
+    final name = (color['name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s_\-]+'), '')
+        .replaceAll('ى', 'ي');
+    return const {'grey', 'gray', 'gris', 'رمادي'}.contains(name);
+  }
+
+  Map<String, dynamic> _shutterColorMapFor(int colorId) {
+    return allColorList.firstWhere(
+      (color) => color['id'] == colorId,
+      orElse: () => {'id': colorId, 'name': 'Color $colorId'},
+    );
+  }
+
   Future<void> _loadAllData() async {
     // Ignore a slower, older reload if a more recent database event arrives
     // while it is still reading.  Otherwise its late setState can replace the
     // current list and reset the user's visible position.
     final requestId = ++_loadRequestId;
+    await db.ensureShutterComponentsUseGreyPrice();
     final dbInstance = (await db.db)!;
 
     Future<List<Map<String, dynamic>>> safeQuery(String table) async {
@@ -761,47 +779,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
-  Future<void> _updateShutterComponentPrice(
-    int id,
-    double price, {
-    bool showConfirmation = true,
-  }) async {
-    final lang = Provider.of<AppSettingsProvider>(
-      context,
-      listen: false,
-    ).language;
-    final updatedRows = await db.updateShutterComponentPrice(id, price);
-    if (!mounted) return;
-    if (updatedRows == 0) {
-      if (showConfirmation) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              Localization.translate('تعذر حفظ سعر مكوّن الستارة.', lang),
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      throw StateError('Shutter component price was not updated.');
-    }
-
-    setState(() {
-      final index = shutterList.indexWhere((item) => item['id'] == id);
-      if (index >= 0) {
-        shutterList[index] = {...shutterList[index], 'price': price};
-      }
-    });
-    if (showConfirmation) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(Localization.translate('تم تحديث السعر بنجاح', lang)),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
   Future<void> _updateSeriesColorPrice(
     int seriesId,
     int colorId,
@@ -1141,7 +1118,17 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
         final sColors = shutterColorPrices[shutterId] ?? {};
         final hasColorPrices = sColors.isNotEmpty;
-        final singlePrice = _readStoredPrice(shutter['price']);
+        final colorIds = sColors.keys.toList()
+          ..sort((left, right) {
+            final leftIsGrey = _isShutterGreyBaseColor(
+              _shutterColorMapFor(left),
+            );
+            final rightIsGrey = _isShutterGreyBaseColor(
+              _shutterColorMapFor(right),
+            );
+            if (leftIsGrey == rightIsGrey) return left.compareTo(right);
+            return leftIsGrey ? -1 : 1;
+          });
 
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
@@ -1215,65 +1202,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 ),
               ),
               const Divider(height: 1, thickness: 0.7),
-              // A shutter component always owns a base price.  Colour prices
-              // are optional overrides, not a prerequisite for pricing the
-              // component.  Keeping this row visible also lets an uncoloured
-              // component be priced immediately after it is created.
-              PriceEditRow(
-                title: Localization.translate('السعر الافتراضي', lang),
-                titleIcon: Icon(
-                  Icons.sell,
-                  size: 13,
-                  color: Colors.deepPurple.shade400,
-                ),
-                currentPrice: singlePrice,
-                canChangePrices: canChangePrices,
-                onSave: (parsed) =>
-                    _updateShutterComponentPrice(shutterId, parsed),
-                onPriceChanged: (parsed) {
-                  const pendingKeyPrefix = 'shutter-component-';
-                  final pendingKey = '$pendingKeyPrefix$shutterId';
-                  if (parsed == null) {
-                    _removeQueuedShutterPrice(pendingKey);
-                    return;
-                  }
-                  _queueShutterPrice(
-                    key: pendingKey,
-                    price: parsed,
-                    currentPrice: singlePrice,
-                    save: (price) => _updateShutterComponentPrice(
-                      shutterId,
-                      price,
-                      showConfirmation: false,
-                    ),
-                  );
-                },
-                onSaveCompleted: () =>
-                    _removeQueuedShutterPrice('shutter-component-$shutterId'),
-              ),
               if (hasColorPrices) ...[
-                Divider(
-                  height: 1,
-                  thickness: 0.5,
-                  indent: 16,
-                  endIndent: 16,
-                  color: Colors.grey.shade200,
-                ),
-                ...sColors.keys.toList().asMap().entries.map((entry) {
+                ...colorIds.asMap().entries.map((entry) {
                   final colorIdx = entry.key;
                   final cId = entry.value;
-                  final colorMap = allColorList.firstWhere(
-                    (c) => c['id'] == cId,
-                    orElse: () => {'name': 'Color $cId'},
-                  );
+                  final colorMap = _shutterColorMapFor(cId);
                   final cName = colorMap['name'].toString();
+                  final isGreyBaseColor = _isShutterGreyBaseColor(colorMap);
                   final currentPrice = sColors[cId] ?? 0.0;
                   final pendingKey = 'shutter-color-$shutterId-$cId';
 
                   return Column(
                     children: [
                       PriceEditRow(
-                        title: cName,
+                        title: isGreyBaseColor
+                            ? 'رمادي (السعر الأساسي)'
+                            : cName,
                         titleIcon: _buildColorCircle(colorMap, size: 24),
                         currentPrice: currentPrice,
                         canChangePrices: canChangePrices,
@@ -1299,7 +1243,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         onSaveCompleted: () =>
                             _removeQueuedShutterPrice(pendingKey),
                       ),
-                      if (colorIdx < sColors.length - 1)
+                      if (colorIdx < colorIds.length - 1)
                         Divider(
                           height: 1,
                           thickness: 0.5,
@@ -4201,15 +4145,23 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                   final color = allColorList[index];
                                   final cId = color['id'] as int;
                                   final isMapped = sColors.containsKey(cId);
+                                  final isGreyBaseColor =
+                                      _isShutterGreyBaseColor(color);
 
                                   return CheckboxListTile(
-                                    title: Text(color['name'].toString()),
+                                    title: Text(
+                                      isGreyBaseColor
+                                          ? 'رمادي (السعر الأساسي)'
+                                          : color['name'].toString(),
+                                    ),
                                     secondary: _buildColorCircle(
                                       color,
                                       size: 24,
                                     ),
                                     value: isMapped,
-                                    onChanged: (val) async {
+                                    onChanged: isGreyBaseColor
+                                        ? null
+                                        : (val) async {
                                       if (val == true) {
                                         final shut = shutterList.firstWhere(
                                           (s) => s['id'] == selectedShutId,

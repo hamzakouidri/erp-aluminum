@@ -21,6 +21,37 @@ void main() {
     expect(weight, closeTo(4.682, 0.001));
   });
 
+  test('hiding the bottom wall removes the lower side cover automatically', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1500)
+      ..hasSideCovers = true
+      ..useCustomSideCoverLayout = true
+      ..sideCoverSegments = const [
+        SideCoverSegment(
+          side: 'top',
+          startOffset: 0,
+          endOffset: 1200,
+          visibleWidth: 30,
+        ),
+        SideCoverSegment(
+          side: 'bottom',
+          startOffset: 0,
+          endOffset: 1200,
+          visibleWidth: 30,
+        ),
+      ];
+
+    model.toggleBottomWall();
+
+    expect(model.showBottomWall, isFalse);
+    expect(model.removedShutterSides, contains('bottom'));
+    expect(model.hiddenSideCoverSegments, contains('bottom'));
+    expect(
+      model.sideCoverSegments.map((segment) => segment.side),
+      isNot(contains('bottom')),
+    );
+    expect(model.isSideCoverSegmentEnabled('bottom'), isFalse);
+  });
+
   test('kit compatibility accepts common components in either family', () {
     final group = ComponentCalculator.selectKitCompatibilityGroup(
       shutterWeightKg: 12,
@@ -99,6 +130,188 @@ void main() {
       ComponentCalculator.kitItemAppliesToMechanism(item, 'crank'),
       isFalse,
     );
+  });
+
+  test(
+    'motor kit scopes distinguish an emergency crank from a plain motor',
+    () {
+      final emergencyScopes = ComponentCalculator.shutterMechanismScopes(
+        'محرك',
+        motorHasEmergencyCrank: true,
+      );
+      final plainScopes = ComponentCalculator.shutterMechanismScopes(
+        'محرك',
+        motorHasEmergencyCrank: false,
+      );
+
+      expect(
+        ComponentCalculator.kitItemAppliesToMechanisms(const {
+          'mechanism_scopes': 'motor_emergency',
+        }, emergencyScopes),
+        isTrue,
+      );
+      expect(
+        ComponentCalculator.kitItemAppliesToMechanisms(const {
+          'mechanism_scopes': 'motor_emergency',
+        }, plainScopes),
+        isFalse,
+      );
+      expect(
+        ComponentCalculator.kitItemAppliesToMechanisms(const {
+          'mechanism_scopes': 'motor_plain',
+        }, plainScopes),
+        isTrue,
+      );
+    },
+  );
+
+  test('tunnel shutter uses only its grouped kit and selected family', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400)
+      ..hasShutter = true
+      ..isCaissonTunnel = true
+      ..shutterMechanism = 'محرك';
+    model.componentOverrides['الشرائح (Lames)'] = {
+      'id': 1,
+      'component_type': 'blade',
+      'name': 'Lame test 55',
+      'measurement': '55',
+      'weight_per_sqm': 3,
+    };
+    model.componentOverrides['المحرك (Moteur)'] = {
+      'motor_has_emergency_crank': true,
+    };
+
+    final bom = ComponentCalculator.generateBom(
+      model,
+      const {},
+      kitBundleData: {
+        'Kit Caisson Tunnel': [
+          {
+            'component_type': 'Sélection famille moteur',
+            'qty_mode': 'by_range',
+            'dimension': 'shutter_weight',
+            'mechanism_scopes': 'motor',
+            'ranges': [
+              {
+                'min_mm': 0.0,
+                'max_mm': 100.0,
+                'qty': 1.0,
+                'family': {
+                  'name': 'Embout + Support Roulement secours',
+                  'mechanism_scopes': 'motor_emergency',
+                  'blade_scope': 'all',
+                  'per_leaf': 0,
+                  'items': [
+                    {
+                      'component_type': 'Embout moteur secours',
+                      'qty_mode': 'fixed',
+                      'base_qty': 1.0,
+                      'mechanism_scopes': 'motor',
+                      'family': {
+                        'name': 'Embout + Support Roulement secours',
+                        'mechanism_scopes': 'motor_emergency',
+                        'blade_scope': 'all',
+                        'per_leaf': 0,
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            // A created family is not active until a range selects it.
+            'component_type': 'Embout moteur normal',
+            'qty_mode': 'fixed',
+            'base_qty': 1.0,
+            'mechanism_scopes': 'motor',
+            'family': {
+              'name': 'Embout + Support Roulement normal',
+              'mechanism_scopes': 'motor_plain',
+              'blade_scope': 'all',
+              'per_leaf': 0,
+            },
+          },
+          {
+            // Components can still be used independently at the Kit root.
+            'component_type': 'Rondelle indépendante',
+            'qty_mode': 'fixed',
+            'base_qty': 1.0,
+            'mechanism_scopes': 'motor',
+          },
+          {
+            'component_type': 'Embout manivelle',
+            'qty_mode': 'fixed',
+            'base_qty': 1.0,
+            'mechanism_scopes': 'crank',
+          },
+        ],
+      },
+      kitBundleMetadata: {
+        'Kit Caisson Tunnel': {
+          'name': 'Kit Caisson Tunnel',
+          'description': 'CT',
+        },
+      },
+    );
+
+    final names = bom.map((item) => item.name).toList();
+    final tunnelKitRows = bom
+        .where((item) => item.kitGroupName == 'Kit Caisson Tunnel')
+        .toList();
+    expect(names, contains('Kit Caisson Tunnel'));
+    expect(names, contains('Embout moteur secours'));
+    expect(names, contains('Rondelle indépendante'));
+    expect(names, isNot(contains('Embout moteur normal')));
+    expect(names, isNot(contains('Embout manivelle')));
+    // The ordinary shutter bill of materials must not appear next to a
+    // Caisson Tunnel kit. Kit children remain grouped beneath the Kit row.
+    expect(names, isNot(contains('الصندوق (Caisson)')));
+    expect(names, isNot(contains('المحور (Axe)')));
+    expect(names, isNot(contains('المحرك (Moteur)')));
+    expect(names, isNot(contains('الشرائح (Lames)')));
+    expect(names, isNot(contains('السكك (Coulisses)')));
+    expect(tunnelKitRows, hasLength(3));
+    expect(
+      tunnelKitRows.first.originalName,
+      'كيت صندوق النفق (Kit Caisson Tunnel)',
+    );
+  });
+
+  test('an unselected kit family does not add its children', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400)
+      ..hasShutter = true
+      ..isCaissonTunnel = true
+      ..shutterMechanism = 'محرك';
+    final bom = ComponentCalculator.generateBom(
+      model,
+      const {},
+      kitBundleData: {
+        'Kit Caisson Tunnel': [
+          {
+            'component_type': 'Embout non sélectionné',
+            'qty_mode': 'fixed',
+            'base_qty': 1.0,
+            'mechanism_scopes': 'motor',
+            'family': {
+              'name': 'Famille non sélectionnée',
+              'mechanism_scopes': 'motor_emergency',
+              'blade_scope': 'all',
+              'per_leaf': 0,
+            },
+          },
+        ],
+      },
+      kitBundleMetadata: {
+        'Kit Caisson Tunnel': {
+          'name': 'Kit Caisson Tunnel',
+          'description': 'CT',
+        },
+      },
+    );
+
+    final names = bom.map((item) => item.name).toList();
+    expect(names, isNot(contains('Embout non sélectionné')));
   });
 
   test('kit components distinguish normal and extruded blades', () {
@@ -201,6 +414,42 @@ void main() {
 
     expect(price, 30.0);
   });
+
+  test('shutter component falls back to its grey colour base price', () {
+    final price = resolveShutterComponentUnitPrice(
+      component: {
+        'id': 55,
+        'name': 'Attache inox',
+        'component_type': 'attache',
+        'price': 999.0,
+      },
+      colorPrices: const [
+        {'shutter_component_id': 55, 'color_id': 4, 'price': 42.0},
+        {'shutter_component_id': 55, 'color_id': 9, 'price': 70.0},
+      ],
+      selectedColorId: 99,
+      fallbackColorId: 4,
+    );
+
+    expect(price, 42.0);
+  });
+
+  test(
+    'shutter component does not use an unrelated colour as its base price',
+    () {
+      final price = resolveShutterComponentUnitPrice(
+        component: {'id': 55, 'price': 0.0},
+        colorPrices: const [
+          {'shutter_component_id': 55, 'color_id': 4, 'price': 0.0},
+          {'shutter_component_id': 55, 'color_id': 9, 'price': 70.0},
+        ],
+        selectedColorId: 99,
+        fallbackColorId: 4,
+      );
+
+      expect(price, 0.0);
+    },
+  );
 
   test('purchase quantity rounds profiles without changing their cost', () {
     final profile = BomItem(
@@ -767,13 +1016,13 @@ void main() {
   });
 
   test(
-    'Tasso uses two pieces per division and only the PVC cover exception',
+    'Tasso uses two pieces per division and only the regular PVC caisson exception',
     () {
       expect(
         ComponentCalculator.tassoQuantity(
           divisionPieceCount: 3,
           isPvc: false,
-          hasShutter: false,
+          hasRegularCaissonAboveWindow: false,
           selectedFrameHasIntegratedCover: false,
         ),
         6,
@@ -782,7 +1031,7 @@ void main() {
         ComponentCalculator.tassoQuantity(
           divisionPieceCount: 0,
           isPvc: true,
-          hasShutter: true,
+          hasRegularCaissonAboveWindow: true,
           selectedFrameHasIntegratedCover: true,
         ),
         2,
@@ -791,7 +1040,7 @@ void main() {
         ComponentCalculator.tassoQuantity(
           divisionPieceCount: 0,
           isPvc: true,
-          hasShutter: true,
+          hasRegularCaissonAboveWindow: true,
           selectedFrameHasIntegratedCover: false,
         ),
         0,
@@ -800,13 +1049,56 @@ void main() {
         ComponentCalculator.tassoQuantity(
           divisionPieceCount: 0,
           isPvc: false,
-          hasShutter: true,
+          hasRegularCaissonAboveWindow: true,
+          selectedFrameHasIntegratedCover: true,
+        ),
+        0,
+      );
+      expect(
+        ComponentCalculator.tassoQuantity(
+          divisionPieceCount: 0,
+          isPvc: true,
+          // Caisson tunnel / shutter behind the window.
+          hasRegularCaissonAboveWindow: false,
           selectedFrameHasIntegratedCover: true,
         ),
         0,
       );
     },
   );
+
+  test('removing the bottom frame also removes its custom side cover', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400)
+      ..useCustomSideCoverLayout = true
+      ..hasSideCovers = true
+      ..sideCoverSegments = [
+        const SideCoverSegment(
+          side: 'bottom',
+          startOffset: 0,
+          endOffset: 1200,
+          visibleWidth: 20,
+        ),
+        const SideCoverSegment(
+          side: 'left',
+          startOffset: 0,
+          endOffset: 1400,
+          visibleWidth: 20,
+        ),
+      ];
+
+    model.toggleBottomFrame(false);
+
+    expect(model.hasBottomFrame, isFalse);
+    expect(
+      model.sideCoverSegments.map((segment) => segment.side),
+      isNot(contains('bottom')),
+    );
+    expect(
+      model.effectiveSideCoverSegments.map((segment) => segment.side),
+      isNot(contains('bottom')),
+    );
+    expect(model.hiddenSideCoverSegments, contains('bottom'));
+  });
 
   test('opening sash cuts always use the current frame, box and overlap', () {
     final frame = AluminumSection(

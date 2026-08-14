@@ -18,7 +18,7 @@ class AppTheme {
   static const Color error = Color(0xFFEF4444);
   static const Color soft = Color(0xFFEFF4FF);
 
-  static ThemeData lightTheme(double fontScale) {
+  static ThemeData lightTheme(double fontScale, {String fontFamily = 'Arial'}) {
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -42,16 +42,16 @@ class AppTheme {
       dividerColor: border,
       highlightColor: soft,
       splashColor: soft,
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: surface,
         foregroundColor: textPrimary,
         elevation: 0,
         iconTheme: IconThemeData(color: textPrimary),
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
           color: textPrimary,
-          fontFamily: 'Cairo',
+          fontFamily: fontFamily,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -110,21 +110,34 @@ class AppTheme {
         labelStyle: TextStyle(color: textSecondary, fontSize: 14 * fontScale),
       ),
       textTheme: TextTheme(
-        bodyMedium: TextStyle(fontSize: 14 * fontScale, color: textPrimary),
-        bodyLarge: TextStyle(fontSize: 16 * fontScale, color: textPrimary),
+        bodyMedium: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 14 * fontScale,
+          color: textPrimary,
+        ),
+        bodyLarge: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 16 * fontScale,
+          color: textPrimary,
+        ),
         titleLarge: TextStyle(
+          fontFamily: fontFamily,
           fontSize: 22 * fontScale,
           color: textPrimary,
           fontWeight: FontWeight.bold,
         ),
-        labelLarge: TextStyle(fontSize: 14 * fontScale, color: textPrimary),
+        labelLarge: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 14 * fontScale,
+          color: textPrimary,
+        ),
       ),
       dialogTheme: DialogThemeData(backgroundColor: surface),
     );
     return base;
   }
 
-  static ThemeData darkTheme(double fontScale) {
+  static ThemeData darkTheme(double fontScale, {String fontFamily = 'Arial'}) {
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -148,16 +161,16 @@ class AppTheme {
       dividerColor: const Color(0xFF334155),
       highlightColor: const Color(0xFF1E293B),
       splashColor: const Color(0xFF1E293B),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Color(0xFF111827),
         foregroundColor: Colors.white,
         elevation: 0,
         iconTheme: IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
           color: Colors.white,
-          fontFamily: 'Cairo',
+          fontFamily: fontFamily,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -222,14 +235,27 @@ class AppTheme {
         ),
       ),
       textTheme: TextTheme(
-        bodyMedium: TextStyle(fontSize: 14 * fontScale, color: Colors.white),
-        bodyLarge: TextStyle(fontSize: 16 * fontScale, color: Colors.white),
+        bodyMedium: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 14 * fontScale,
+          color: Colors.white,
+        ),
+        bodyLarge: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 16 * fontScale,
+          color: Colors.white,
+        ),
         titleLarge: TextStyle(
+          fontFamily: fontFamily,
           fontSize: 22 * fontScale,
           color: Colors.white,
           fontWeight: FontWeight.bold,
         ),
-        labelLarge: TextStyle(fontSize: 14 * fontScale, color: Colors.white),
+        labelLarge: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: 14 * fontScale,
+          color: Colors.white,
+        ),
       ),
       dialogTheme: DialogThemeData(backgroundColor: const Color(0xFF111827)),
     );

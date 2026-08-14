@@ -27,12 +27,13 @@ enum GlassStructure { simple, double, closed }
 /// Resolves the catalogue unit price of a shutter component.
 ///
 /// Component rows can legitimately keep a zero base price while their real
-/// price is stored in ShutterColorPrices. Prefer the selected colour, then a
-/// positive base price, then any configured colour price as a legacy fallback.
+/// price is stored in ShutterColorPrices. Prefer the selected colour, then the
+/// grey base colour, then the compatibility mirror on the component row.
 double resolveShutterComponentUnitPrice({
   required Map<String, dynamic> component,
   required Iterable<Map<String, dynamic>> colorPrices,
   int? selectedColorId,
+  int? fallbackColorId,
 }) {
   double readNumber(dynamic value) {
     if (value is num) return value.toDouble();
@@ -59,10 +60,25 @@ double resolveShutterComponentUnitPrice({
     }
   }
 
+  if (fallbackColorId != null) {
+    for (final row in matchingPrices) {
+      final rawColorId = row['color_id'];
+      final colorId = rawColorId is num
+          ? rawColorId.toInt()
+          : int.tryParse('$rawColorId');
+      final price = readNumber(row['price']);
+      if (colorId == fallbackColorId && price > 0) return price;
+    }
+  }
+
   for (final key in const ['price_dzd', 'price_per_meter', 'price']) {
     final price = readNumber(component[key]);
     if (price > 0) return price;
   }
+  // When the caller has supplied the grey base colour, a price belonging to
+  // some unrelated colour must not be used as a substitute.  Zero therefore
+  // remains an explicit missing-price signal for the required-goods table.
+  if (fallbackColorId != null) return 0.0;
   for (final row in matchingPrices) {
     final price = readNumber(row['price']);
     if (price > 0) return price;
@@ -2473,6 +2489,11 @@ class WindowModel extends ChangeNotifier {
   int? loadedSeriesId;
   int? loadedSlidingSeriesId;
   Map<String, dynamic>? seriesDesignConfig;
+  // Cutting rules are catalog data, separate from the drawing definition.
+  // Keep the sliding copy distinct so a mixed drawing never applies an
+  // opening-series formula to the sliding leaves.
+  Map<String, dynamic>? seriesTableConfig;
+  Map<String, dynamic>? slidingSeriesTableConfig;
 
   double archHeight = 0.0;
   double topSlantLeftY = 0.0;
@@ -3021,7 +3042,10 @@ class WindowModel extends ChangeNotifier {
   void setCaissonTunnelHeight(double value) {
     if (caissonTunnelHeight == value) return;
     _saveSnapshot();
+    final previousBoxHeight = shutterBoxHeight;
     caissonTunnelHeight = value;
+    _synchronizeZonesAfterShutterBoxChange(previousBoxHeight, shutterBoxHeight);
+    lastLayoutSize = null;
     notifyListeners();
   }
 
@@ -3223,12 +3247,22 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    bool isAtEdge(double value, double edge) => (value - edge).abs() < 0.01;
+    // Saved drawings can round a full-length cover by one or two millimetres.
+    // Treat that as attached to the outer edge so a couvre-joint still grows
+    // with the drawing instead of leaving a thin uncovered gap after resize.
+    bool isAtEdge(double value, double edge) => (value - edge).abs() <= 2.0;
 
     sideCoverSegments = sideCoverSegments.map((segment) {
       final oldLength = lengthFor(segment.side, oldWidth, oldHeight);
       final newLength = lengthFor(segment.side, newWidth, newHeight);
       if (oldLength <= 0 || newLength <= 0) return segment;
+
+      final spansWholeSide =
+          segment.startOffset.abs() <= 2.0 &&
+          isAtEdge(segment.endOffset, oldLength);
+      if (spansWholeSide) {
+        return segment.copyWith(startOffset: 0.0, endOffset: newLength);
+      }
 
       // Offset 0 is already fixed to the leading edge. Only values that were
       // anchored at the trailing edge should follow the resized frame.
@@ -3257,14 +3291,23 @@ class WindowModel extends ChangeNotifier {
   /// drawings may contain one edited side only; their other sides are the
   /// legacy full surround unless the user has explicitly switched one off.
   List<SideCoverSegment> get effectiveSideCoverSegments {
+    // A persisted/custom bottom cover is invalid as soon as the bottom frame
+    // is removed. Filter it here as a final drawing/BOM safeguard as well as
+    // removing it at the state transition below.
+    final storedSegments = sideCoverSegments
+        .where(
+          (segment) =>
+              segment.side != 'bottom' || (hasBottomFrame && showBottomWall),
+        )
+        .toList();
     if (!useCustomSideCoverLayout) {
-      return List<SideCoverSegment>.from(sideCoverSegments);
+      return storedSegments;
     }
 
-    final segments = List<SideCoverSegment>.from(sideCoverSegments);
+    final segments = storedSegments;
     const sides = ['top', 'left', 'right', 'bottom'];
     for (final side in sides) {
-      if (side == 'bottom' && !hasBottomFrame) continue;
+      if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) continue;
       if (hiddenSideCoverSegments.contains(side) ||
           removedShutterSides.contains(side) ||
           segments.any((segment) => segment.side == side)) {
@@ -3286,7 +3329,9 @@ class WindowModel extends ChangeNotifier {
 
   bool isSideCoverSegmentEnabled(String side) {
     final normalized = side.toLowerCase();
-    if (normalized == 'bottom' && !hasBottomFrame) return false;
+    if (normalized == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
+      return false;
+    }
     if (!useCustomSideCoverLayout) {
       return !removedShutterSides.contains(normalized);
     }
@@ -3305,7 +3350,7 @@ class WindowModel extends ChangeNotifier {
     const sides = ['top', 'left', 'right', 'bottom'];
     final segments = <SideCoverSegment>[];
     for (final side in sides) {
-      if (side == 'bottom' && !hasBottomFrame) continue;
+      if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) continue;
       if (removedShutterSides.contains(side)) continue;
       final length = sideCoverSideLength(side);
       if (length <= 0) continue;
@@ -3329,7 +3374,9 @@ class WindowModel extends ChangeNotifier {
     const allowedSides = {'left', 'right', 'top', 'bottom'};
     final normalized = side.toLowerCase();
     if (!allowedSides.contains(normalized)) return;
-    if (normalized == 'bottom' && !hasBottomFrame) return;
+    if (normalized == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
+      return;
+    }
 
     _saveSnapshot();
     _materializeLegacySideCoverSegments();
@@ -3361,7 +3408,7 @@ class WindowModel extends ChangeNotifier {
     const allowedSides = {'left', 'right', 'top', 'bottom'};
     final side = segment.side.toLowerCase();
     if (!allowedSides.contains(side)) return;
-    if (side == 'bottom' && !hasBottomFrame) return;
+    if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) return;
 
     final sideLength = sideCoverSideLength(side);
     if (sideLength <= 0) return;
@@ -5242,6 +5289,7 @@ class WindowModel extends ChangeNotifier {
             loadedSeriesId != series.id);
     activeSeries = series;
     seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
+    seriesTableConfig = await db.getSeriesTableConfig(series.id);
     final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
     List<AluminumSection> configuredSectionsFor(Iterable<String> roleKeys) {
       final ids = configuredRoleRows
@@ -5255,8 +5303,9 @@ class WindowModel extends ChangeNotifier {
           .toList();
     }
 
-    if (systemMode == 'sliding' && activeSlidingSeries == null) {
-      activeSlidingSeries = series;
+    if (systemMode == 'sliding') {
+      activeSlidingSeries ??= series;
+      slidingSeriesTableConfig = seriesTableConfig;
     }
 
     if (seriesChanged) {
@@ -6207,6 +6256,7 @@ class WindowModel extends ChangeNotifier {
             loadedSlidingSeriesId != series.id);
     activeSlidingSeries = series;
     seriesDesignConfig = await db.getSeriesDesignConfig(series.id);
+    slidingSeriesTableConfig = await db.getSeriesTableConfig(series.id);
     final configuredRoleRows = await db.getSeriesDesignRoles(series.id);
     List<AluminumSection> configuredSectionsFor(Iterable<String> roleKeys) {
       final ids = configuredRoleRows
@@ -7649,7 +7699,6 @@ class WindowModel extends ChangeNotifier {
     hasBottomFrame = snap.hasBottomFrame;
     removedShutterSides = Set<String>.from(snap.removedShutterSides);
     hasFramePlintheBottom = snap.hasFramePlintheBottom;
-    _hideBottomCoverWhenBottomFrameIsMissing();
     zones = snap.zones;
     mullionProfiles = snap.mullionProfiles;
     groovedMullionCavityOnPositiveSide = Map.from(
@@ -7683,6 +7732,7 @@ class WindowModel extends ChangeNotifier {
         .map((segment) => segment.copyWith())
         .toList();
     hiddenSideCoverSegments = Set<String>.from(snap.hiddenSideCoverSegments);
+    enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
     activeSubZone = null;
@@ -7739,7 +7789,6 @@ class WindowModel extends ChangeNotifier {
     hasBottomFrame = snap.hasBottomFrame;
     removedShutterSides = Set<String>.from(snap.removedShutterSides);
     hasFramePlintheBottom = snap.hasFramePlintheBottom;
-    _hideBottomCoverWhenBottomFrameIsMissing();
     zones = snap.zones;
     mullionProfiles = snap.mullionProfiles;
     groovedMullionCavityOnPositiveSide = Map.from(
@@ -7773,6 +7822,7 @@ class WindowModel extends ChangeNotifier {
         .map((segment) => segment.copyWith())
         .toList();
     hiddenSideCoverSegments = Set<String>.from(snap.hiddenSideCoverSegments);
+    enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
     activeSubZone = null;
@@ -10539,6 +10589,7 @@ class WindowModel extends ChangeNotifier {
   void toggleBottomWall() {
     _saveSnapshot();
     showBottomWall = !showBottomWall;
+    enforceBottomSideCoverConstraint();
     notifyListeners();
   }
 
@@ -10937,7 +10988,7 @@ class WindowModel extends ChangeNotifier {
 
   void toggleShutterSide(String side) {
     _saveSnapshot();
-    if (side == 'bottom' && !hasBottomFrame) {
+    if (side == 'bottom' && (!hasBottomFrame || !showBottomWall)) {
       removedShutterSides.add('bottom');
       notifyListeners();
       return;
@@ -10950,10 +11001,21 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// A bottom side cover cannot exist without a bottom frame.
+  /// A bottom side cover cannot exist without its bottom frame and wall.
   void _hideBottomCoverWhenBottomFrameIsMissing() {
-    if (!hasBottomFrame) {
+    enforceBottomSideCoverConstraint();
+  }
+
+  /// Normalises the bottom cover after a drawing is restored or altered.
+  /// The cover is not restored automatically when the frame/wall returns;
+  /// the user deliberately re-enables it from the side-cover controls.
+  void enforceBottomSideCoverConstraint() {
+    if (!hasBottomFrame || !showBottomWall) {
       removedShutterSides.add('bottom');
+      hiddenSideCoverSegments.add('bottom');
+      sideCoverSegments = sideCoverSegments
+          .where((segment) => segment.side != 'bottom')
+          .toList();
     }
   }
 
@@ -11071,13 +11133,18 @@ class WindowModel extends ChangeNotifier {
     bool? temperedOuter,
     bool? temperedInner,
   }) async {
-    if (selectedZone == null) return;
+    // Keep a stable target while selecting a compatible parclose performs its
+    // asynchronous catalogue lookup.  The drawer may rebuild during that
+    // lookup, but changing glass must never make the selected zone disappear.
+    final zone = selectedZone;
+    if (zone == null) return;
+    final selectedZoneId = zone.id;
     _saveSnapshot();
 
     final targetCellKey = activeSubZone;
     final baseSpec = (targetCellKey != null && targetCellKey.isNotEmpty)
-        ? selectedZone!.getGlassForCell(targetCellKey)
-        : selectedZone!.glass;
+        ? zone.getGlassForCell(targetCellKey)
+        : zone.glass;
 
     final targetStructure = structure ?? baseSpec.structure;
     double? resolvedThicknessOuter = thicknessOuter;
@@ -11176,12 +11243,12 @@ class WindowModel extends ChangeNotifier {
         hasRosettes: clearGlassDecor ? false : null,
       );
       final updatedCellGlass = Map<String, GlassSpecification>.from(
-        selectedZone!.cellGlassSpec,
+        zone.cellGlassSpec,
       );
       updatedCellGlass[targetCellKey] = updatedSpec;
-      selectedZone!.cellGlassSpec = updatedCellGlass;
+      zone.cellGlassSpec = updatedCellGlass;
     } else {
-      selectedZone!.glass = selectedZone!.glass.copyWith(
+      zone.glass = zone.glass.copyWith(
         structure: structure,
         finishOuter: finishOuter,
         finishInner: finishInner,
@@ -11209,9 +11276,9 @@ class WindowModel extends ChangeNotifier {
         decorVPositions: clearGlassDecor ? const [] : null,
         hasRosettes: clearGlassDecor ? false : null,
       );
-      if (selectedZone!.cellGlassSpec.isNotEmpty) {
+      if (zone.cellGlassSpec.isNotEmpty) {
         final updatedCellGlass = <String, GlassSpecification>{};
-        selectedZone!.cellGlassSpec.forEach((key, val) {
+        zone.cellGlassSpec.forEach((key, val) {
           updatedCellGlass[key] = val.copyWith(
             structure: structure,
             finishOuter: finishOuter,
@@ -11241,11 +11308,15 @@ class WindowModel extends ChangeNotifier {
             hasRosettes: clearGlassDecor ? false : null,
           );
         });
-        selectedZone!.cellGlassSpec = updatedCellGlass;
+        zone.cellGlassSpec = updatedCellGlass;
       }
-      WindowZone.globalDefaultGlass = selectedZone!.glass;
+      WindowZone.globalDefaultGlass = zone.glass;
     }
     await updateGlassGasket();
+    if (zones.any((candidate) => candidate.id == selectedZoneId)) {
+      selection = SelectionInfo.zone(selectedZoneId);
+      activeSubZone = targetCellKey;
+    }
     notifyListeners();
   }
 
@@ -12012,9 +12083,11 @@ class WindowModel extends ChangeNotifier {
     ]);
     await loadAccessory('كاش كوليسون (Gache coulissant)', [
       '%كاش كوليسون%',
+      '%كاش كوليس%',
       '%cache coulisson%',
-      '%collissante%',
-      '%كوليسون|جودة%',
+      '%cache coulisse%',
+      '%gâche coulisse%',
+      '%gache coulisse%',
       '%gâche coulissante%',
       '%gache coulissante%',
     ]);

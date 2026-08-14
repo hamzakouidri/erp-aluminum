@@ -31,6 +31,21 @@ class _GlassScreenState extends State<GlassScreen> {
         value.contains('ديكور');
   }
 
+  double _readDialogNumber(TextEditingController controller) {
+    return double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? 0.0;
+  }
+
+  String _decorPanelDefaultName(String designCode) {
+    return 'بانو ديكور - ${DecorPanelDesignCatalog.labelKeyFor(designCode)}';
+  }
+
+  void _showCatalogSaveError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -183,6 +198,8 @@ class _GlassScreenState extends State<GlassScreen> {
         builder: (context, setStateDialog) {
           final isPanneau = selectedType == 'Panneau';
           final isTempering = selectedType == 'Tempering';
+          final isDecorPanneau =
+              isPanneau && _isDecorSubtype(selectedSubtype);
           final hasMultipleColors =
               selectedType == 'Panneau' ||
               selectedType == 'Baguette' ||
@@ -199,33 +216,35 @@ class _GlassScreenState extends State<GlassScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: () async {
-                      final XFile? image = await _picker.pickImage(
-                        source: ImageSource.gallery,
-                      );
-                      if (image != null) {
-                        setStateDialog(() {
-                          imagePath = image.path;
-                        });
-                      }
-                    },
-                    child: CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.grey.shade200,
-                      backgroundImage: imagePath != null
-                          ? FileImage(File(imagePath!))
-                          : null,
-                      child: imagePath == null
-                          ? Icon(
-                              Icons.add_a_photo,
-                              size: 30,
-                              color: Colors.grey,
-                            )
-                          : null,
+                  if (!isDecorPanneau) ...[
+                    GestureDetector(
+                      onTap: () async {
+                        final XFile? image = await _picker.pickImage(
+                          source: ImageSource.gallery,
+                        );
+                        if (image != null) {
+                          setStateDialog(() {
+                            imagePath = image.path;
+                          });
+                        }
+                      },
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.grey.shade200,
+                        backgroundImage: imagePath != null
+                            ? FileImage(File(imagePath!))
+                            : null,
+                        child: imagePath == null
+                            ? Icon(
+                                Icons.add_a_photo,
+                                size: 30,
+                                color: Colors.grey,
+                              )
+                            : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 15),
+                    const SizedBox(height: 15),
+                  ],
                   if (!isTempering) ...[
                     TextField(
                       controller: nameCtrl,
@@ -447,44 +466,56 @@ class _GlassScreenState extends State<GlassScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
-                  final thickness = double.tryParse(thicknessCtrl.text) ?? 0.0;
-                  final decorWidth =
-                      double.tryParse(visibleWidthCtrl.text) ?? 0.0;
-                  final decorHeight = double.tryParse(heightCtrl.text) ?? 0.0;
+                  final thickness = _readDialogNumber(thicknessCtrl);
+                  final decorWidth = _readDialogNumber(visibleWidthCtrl);
+                  final decorHeight = _readDialogNumber(heightCtrl);
                   final isDecorPanneau =
                       selectedType == 'Panneau' &&
                       _isDecorSubtype(selectedSubtype);
+                  final enteredName = nameCtrl.text.trim();
                   final itemName = isTempering
                       ? 'Trempé ${thickness.toStringAsFixed(thickness == thickness.roundToDouble() ? 0 : 1)} mm'
-                      : nameCtrl.text.trim();
-                  if (isDecorPanneau && (decorWidth <= 0 || decorHeight <= 0)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          Localization.translate(
-                            'يجب إدخال عرض الديكور وطوله.',
-                            Provider.of<AppSettingsProvider>(context, listen: false).language,
-                          ),
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
+                      : (isDecorPanneau && enteredName.isEmpty
+                            ? _decorPanelDefaultName(selectedDecorDesignCode)
+                            : enteredName);
+                  if (isDecorPanneau &&
+                      !DecorPanelDesignCatalog.isSupported(
+                        selectedDecorDesignCode,
+                      )) {
+                    _showCatalogSaveError(
+                      'اختر الرسم المرتبط ببانو ديكور أولاً.',
                     );
                     return;
                   }
-                  if (itemName.isNotEmpty && thickness > 0) {
+                  if (isDecorPanneau && (decorWidth <= 0 || decorHeight <= 0)) {
+                    _showCatalogSaveError(
+                      'يجب إدخال عرض الديكور وطوله.',
+                    );
+                    return;
+                  }
+                  if (itemName.isEmpty) {
+                    _showCatalogSaveError('أدخل اسم المنتج أولاً.');
+                    return;
+                  }
+                  if (thickness <= 0) {
+                    _showCatalogSaveError('أدخل سماكة صحيحة للمنتج.');
+                    return;
+                  }
+
+                  try {
                     // تجميع اللون/الألوان بحسب النوع
                     final String colorValue = hasMultipleColors
                         ? selectedPanneauColors.join(',')
                         : (selectedColor == 'بدون لون' ? '' : selectedColor);
-                    await widget.db.insertGlass(
+                    final insertedId = await widget.db.insertGlass(
                       itemName,
                       selectedType,
                       thickness,
-                      isPanneau
-                          ? 0.0
-                          : (double.tryParse(priceCtrl.text) ?? 0.0),
+                      isPanneau ? 0.0 : _readDialogNumber(priceCtrl),
                       color: colorValue,
-                      imagePath: imagePath ?? '',
+                      // بانو ديكور يستخدم الرسم المختار في السجل، وليس صورة
+                      // منفصلة من معرض الملفات.
+                      imagePath: isDecorPanneau ? '' : (imagePath ?? ''),
                       subtype: isPanneau ? selectedSubtype : '',
                       height: selectedType == 'Rosette' || isDecorPanneau
                           ? decorHeight
@@ -498,8 +529,16 @@ class _GlassScreenState extends State<GlassScreen> {
                           ? selectedDecorDesignCode
                           : '',
                     );
-                    _loadItems();
+                    if (insertedId <= 0) {
+                      _showCatalogSaveError('تعذر حفظ بانو ديكور.');
+                      return;
+                    }
+                    await _loadItems();
                     if (context.mounted) Navigator.pop(context);
+                  } catch (_) {
+                    _showCatalogSaveError(
+                      'حدث خطأ أثناء حفظ المنتج. تحقق من البيانات ثم أعد المحاولة.',
+                    );
                   }
                 },
                 child: Text(
@@ -568,6 +607,8 @@ class _GlassScreenState extends State<GlassScreen> {
         builder: (context, setStateDialog) {
           final isPanneau = selectedType == 'Panneau';
           final isTempering = selectedType == 'Tempering';
+          final isDecorPanneau =
+              isPanneau && _isDecorSubtype(selectedSubtype);
           final hasMultipleColors =
               selectedType == 'Panneau' ||
               selectedType == 'Baguette' ||
@@ -584,35 +625,37 @@ class _GlassScreenState extends State<GlassScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: !isUserAdmin
-                        ? null
-                        : () async {
-                            final XFile? image = await _picker.pickImage(
-                              source: ImageSource.gallery,
-                            );
-                            if (image != null) {
-                              setStateDialog(() {
-                                imagePath = image.path;
-                              });
-                            }
-                          },
-                    child: CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.grey.shade200,
-                      backgroundImage: imagePath != null
-                          ? FileImage(File(imagePath!))
-                          : null,
-                      child: imagePath == null
-                          ? Icon(
-                              Icons.add_a_photo,
-                              size: 30,
-                              color: Colors.grey,
-                            )
-                          : null,
+                  if (!isDecorPanneau) ...[
+                    GestureDetector(
+                      onTap: !isUserAdmin
+                          ? null
+                          : () async {
+                              final XFile? image = await _picker.pickImage(
+                                source: ImageSource.gallery,
+                              );
+                              if (image != null) {
+                                setStateDialog(() {
+                                  imagePath = image.path;
+                                });
+                              }
+                            },
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.grey.shade200,
+                        backgroundImage: imagePath != null
+                            ? FileImage(File(imagePath!))
+                            : null,
+                        child: imagePath == null
+                            ? Icon(
+                                Icons.add_a_photo,
+                                size: 30,
+                                color: Colors.grey,
+                              )
+                            : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 15),
+                    const SizedBox(height: 15),
+                  ],
                   if (!isTempering) ...[
                     TextField(
                       controller: nameCtrl,
@@ -848,44 +891,54 @@ class _GlassScreenState extends State<GlassScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                 onPressed: () async {
-                  final thickness = double.tryParse(thicknessCtrl.text) ?? 0.0;
-                  final decorWidth =
-                      double.tryParse(visibleWidthCtrl.text) ?? 0.0;
-                  final decorHeight = double.tryParse(heightCtrl.text) ?? 0.0;
+                  final thickness = _readDialogNumber(thicknessCtrl);
+                  final decorWidth = _readDialogNumber(visibleWidthCtrl);
+                  final decorHeight = _readDialogNumber(heightCtrl);
                   final isDecorPanneau =
                       selectedType == 'Panneau' &&
                       _isDecorSubtype(selectedSubtype);
+                  final enteredName = nameCtrl.text.trim();
                   final itemName = isTempering
                       ? 'Trempé ${thickness.toStringAsFixed(thickness == thickness.roundToDouble() ? 0 : 1)} mm'
-                      : nameCtrl.text.trim();
-                  if (isDecorPanneau && (decorWidth <= 0 || decorHeight <= 0)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          Localization.translate(
-                            'يجب إدخال عرض الديكور وطوله.',
-                            Provider.of<AppSettingsProvider>(context, listen: false).language,
-                          ),
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
+                      : (isDecorPanneau && enteredName.isEmpty
+                            ? _decorPanelDefaultName(selectedDecorDesignCode)
+                            : enteredName);
+                  if (isDecorPanneau &&
+                      !DecorPanelDesignCatalog.isSupported(
+                        selectedDecorDesignCode,
+                      )) {
+                    _showCatalogSaveError(
+                      'اختر الرسم المرتبط ببانو ديكور أولاً.',
                     );
                     return;
                   }
-                  if (itemName.isNotEmpty && thickness > 0) {
+                  if (isDecorPanneau && (decorWidth <= 0 || decorHeight <= 0)) {
+                    _showCatalogSaveError(
+                      'يجب إدخال عرض الديكور وطوله.',
+                    );
+                    return;
+                  }
+                  if (itemName.isEmpty) {
+                    _showCatalogSaveError('أدخل اسم المنتج أولاً.');
+                    return;
+                  }
+                  if (thickness <= 0) {
+                    _showCatalogSaveError('أدخل سماكة صحيحة للمنتج.');
+                    return;
+                  }
+
+                  try {
                     final String colorValue = hasMultipleColors
                         ? selectedPanneauColors.join(',')
                         : (selectedColor == 'بدون لون' ? '' : selectedColor);
-                    await widget.db.updateGlass(
+                    final updatedRows = await widget.db.updateGlass(
                       item['id'],
                       itemName,
                       selectedType,
                       thickness,
-                      isPanneau
-                          ? 0.0
-                          : (double.tryParse(priceCtrl.text) ?? 0.0),
+                      isPanneau ? 0.0 : _readDialogNumber(priceCtrl),
                       color: colorValue,
-                      imagePath: imagePath ?? '',
+                      imagePath: isDecorPanneau ? '' : (imagePath ?? ''),
                       subtype: isPanneau ? selectedSubtype : '',
                       height: selectedType == 'Rosette' || isDecorPanneau
                           ? decorHeight
@@ -899,8 +952,18 @@ class _GlassScreenState extends State<GlassScreen> {
                           ? selectedDecorDesignCode
                           : '',
                     );
-                    _loadItems();
+                    if (updatedRows <= 0) {
+                      _showCatalogSaveError(
+                        'لم يتم العثور على المنتج المطلوب لتحديثه.',
+                      );
+                      return;
+                    }
+                    await _loadItems();
                     if (context.mounted) Navigator.pop(context);
+                  } catch (_) {
+                    _showCatalogSaveError(
+                      'حدث خطأ أثناء حفظ التعديل. تحقق من البيانات ثم أعد المحاولة.',
+                    );
                   }
                 },
                 child: Text(

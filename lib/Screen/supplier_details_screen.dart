@@ -51,6 +51,7 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
     setState(() => _isLoading = true);
 
     try {
+      await db.migrateLegacyTreasuryRecords();
       final myDb = await db.db;
       final supplierId = widget.supplier['id'] as int;
       final supplierName = widget.supplier['name']?.toString() ?? '';
@@ -65,7 +66,8 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
       // 2. Fetch Supplier Payments (Treasury)
       final treasuryList = await myDb.query(
         'Treasury',
-        where: "(entity_type = 'Supplier' AND entity_id = ?) OR (description LIKE ?)",
+        where:
+            "(entity_type = 'Supplier' AND entity_id = ?) OR (description LIKE ?)",
         whereArgs: [supplierId, '%$supplierName%'],
       );
 
@@ -112,7 +114,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
           date = DateTime.parse(createdAt);
         } catch (_) {}
 
-        if (type == 'Décaissement' || desc.contains('للمورد') || desc.contains('تسديد')) {
+        if (type == 'Décaissement' ||
+            type == 'DÃ©caissement' ||
+            desc.contains('للمورد') ||
+            desc.contains('تسديد')) {
           tPaid += amount;
           tempItems.add({
             'id': t['id'],
@@ -147,7 +152,9 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
       }
 
       // Sort items chronologically (newest first)
-      tempItems.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+      tempItems.sort(
+        (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
+      );
 
       if (mounted) {
         setState(() {
@@ -155,7 +162,9 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
           _totalPurchases = tPurchases;
           _totalPaid = tPaid;
           _totalReturns = tReturns;
-          _remainingDebt = tPurchases - tPaid - tReturns;
+          // A supplier refund reduces the net amount paid, so it is added
+          // back when calculating what remains due to that supplier.
+          _remainingDebt = tPurchases - tPaid + tReturns;
           _isLoading = false;
         });
       }
@@ -182,7 +191,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                 leading: const Icon(Icons.print, color: Colors.teal),
                 title: Text(
                   _tr('طباعة الوصل', 'Imprimer reçu', 'Print Receipt', lang),
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onTap: () async {
                   Navigator.pop(ctx);
@@ -196,7 +208,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                 leading: const Icon(Icons.share, color: Colors.orange),
                 title: Text(
                   _tr('مشاركة', 'Partager', 'Share', lang),
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onTap: () async {
                   Navigator.pop(ctx);
@@ -210,7 +225,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                 leading: const Icon(Icons.download, color: Colors.blue),
                 title: Text(
                   _tr('حفظ الوصل', 'Enregistrer reçu', 'Save Receipt', lang),
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onTap: () async {
                   Navigator.pop(ctx);
@@ -248,13 +266,21 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
     }).toList();
 
     return Directionality(
-      textDirection: lang == AppLanguage.arabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: lang == AppLanguage.arabic
+          ? TextDirection.rtl
+          : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade100,
+        backgroundColor: isDark
+            ? const Color(0xFF121212)
+            : Colors.grey.shade100,
         appBar: AppBar(
           title: Text(
             '${_tr('كشف حساب المورد: ', 'Fiche Fournisseur: ', 'Supplier Statement: ', lang)}${widget.supplier['name']}',
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
           ),
           backgroundColor: primaryColor,
           foregroundColor: Colors.white,
@@ -262,14 +288,32 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
           actions: [
             PopupMenuButton<String>(
               icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-              tooltip: _tr('تصدير كشف الحساب', 'Exporter extrait', 'Export Statement', lang),
+              tooltip: _tr(
+                'تصدير كشف الحساب',
+                'Exporter extrait',
+                'Export Statement',
+                lang,
+              ),
               onSelected: (val) {
                 if (val == 'print') {
-                  SupplierLedgerPdfService.printSupplierLedger(widget.supplier, _ledgerItems, lang: lang);
+                  SupplierLedgerPdfService.printSupplierLedger(
+                    widget.supplier,
+                    _ledgerItems,
+                    lang: lang,
+                  );
                 } else if (val == 'share') {
-                  SupplierLedgerPdfService.shareSupplierLedger(widget.supplier, _ledgerItems, lang: lang);
+                  SupplierLedgerPdfService.shareSupplierLedger(
+                    widget.supplier,
+                    _ledgerItems,
+                    lang: lang,
+                  );
                 } else if (val == 'save') {
-                  SupplierLedgerPdfService.saveSupplierLedger(widget.supplier, _ledgerItems, context, lang: lang);
+                  SupplierLedgerPdfService.saveSupplierLedger(
+                    widget.supplier,
+                    _ledgerItems,
+                    context,
+                    lang: lang,
+                  );
                 }
               },
               itemBuilder: (context) => [
@@ -279,7 +323,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                     children: [
                       const Icon(Icons.print, color: Colors.teal),
                       const SizedBox(width: 10),
-                      Text(_tr('طباعة PDF', 'Imprimer PDF', 'Print PDF', lang), style: const TextStyle(fontFamily: 'Cairo')),
+                      Text(
+                        _tr('طباعة PDF', 'Imprimer PDF', 'Print PDF', lang),
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
                     ],
                   ),
                 ),
@@ -289,7 +336,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                     children: [
                       const Icon(Icons.share, color: Colors.orange),
                       const SizedBox(width: 10),
-                      Text(_tr('مشاركة PDF', 'Partager PDF', 'Share PDF', lang), style: const TextStyle(fontFamily: 'Cairo')),
+                      Text(
+                        _tr('مشاركة PDF', 'Partager PDF', 'Share PDF', lang),
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
                     ],
                   ),
                 ),
@@ -299,7 +349,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                     children: [
                       const Icon(Icons.download, color: Colors.blue),
                       const SizedBox(width: 10),
-                      Text(_tr('حفظ PDF', 'Enregistrer PDF', 'Save PDF', lang), style: const TextStyle(fontFamily: 'Cairo')),
+                      Text(
+                        _tr('حفظ PDF', 'Enregistrer PDF', 'Save PDF', lang),
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
                     ],
                   ),
                 ),
@@ -314,14 +367,24 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                   // 1. Header Summary Cards
                   Container(
                     color: primaryColor,
-                    padding: const EdgeInsets.only(bottom: 16, left: 12, right: 12, top: 8),
+                    padding: const EdgeInsets.only(
+                      bottom: 16,
+                      left: 12,
+                      right: 12,
+                      top: 8,
+                    ),
                     child: Column(
                       children: [
                         Row(
                           children: [
                             Expanded(
                               child: _buildSummaryCard(
-                                title: _tr('إجمالي المشتريات', 'Total Achats', 'Total Purchases', lang),
+                                title: _tr(
+                                  'إجمالي المشتريات',
+                                  'Total Achats',
+                                  'Total Purchases',
+                                  lang,
+                                ),
                                 amount: _totalPurchases,
                                 icon: Icons.shopping_cart,
                                 color: Colors.blue.shade100,
@@ -331,7 +394,12 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: _buildSummaryCard(
-                                title: _tr('المدفوع', 'Total Payé', 'Total Paid', lang),
+                                title: _tr(
+                                  'المدفوع',
+                                  'Total Payé',
+                                  'Total Paid',
+                                  lang,
+                                ),
                                 amount: _totalPaid,
                                 icon: Icons.payments,
                                 color: Colors.green.shade100,
@@ -345,7 +413,12 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                           children: [
                             Expanded(
                               child: _buildSummaryCard(
-                                title: _tr('المرتجعات', 'Total Retours', 'Total Returns', lang),
+                                title: _tr(
+                                  'المرتجعات',
+                                  'Total Retours',
+                                  'Total Returns',
+                                  lang,
+                                ),
                                 amount: _totalReturns,
                                 icon: Icons.settings_backup_restore,
                                 color: Colors.orange.shade100,
@@ -355,11 +428,20 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: _buildSummaryCard(
-                                title: _tr('الديون / المستحق', 'Solde Dû', 'Remaining Due', lang),
+                                title: _tr(
+                                  'الديون / المستحق',
+                                  'Solde Dû',
+                                  'Remaining Due',
+                                  lang,
+                                ),
                                 amount: _remainingDebt,
                                 icon: Icons.account_balance_wallet,
-                                color: _remainingDebt > 0 ? Colors.red.shade100 : Colors.teal.shade100,
-                                textColor: _remainingDebt > 0 ? Colors.red.shade900 : Colors.teal.shade900,
+                                color: _remainingDebt > 0
+                                    ? Colors.red.shade100
+                                    : Colors.teal.shade100,
+                                textColor: _remainingDebt > 0
+                                    ? Colors.red.shade900
+                                    : Colors.teal.shade900,
                               ),
                             ),
                           ],
@@ -370,19 +452,35 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
 
                   // 2. Search & Filter Bar
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                     child: Column(
                       children: [
                         TextField(
                           onChanged: (v) => setState(() => _searchQuery = v),
                           decoration: InputDecoration(
-                            hintText: _tr('بحث برقم الفاتورة أو الوصف...', 'Rechercher par N° ou description...', 'Search invoice or desc...', lang),
-                            hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                            hintText: _tr(
+                              'بحث برقم الفاتورة أو الوصف...',
+                              'Rechercher par N° ou description...',
+                              'Search invoice or desc...',
+                              lang,
+                            ),
+                            hintStyle: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                            ),
                             prefixIcon: const Icon(Icons.search, size: 20),
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                              horizontal: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -390,10 +488,27 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
-                              _buildFilterChip('All', _tr('الكل', 'Tous', 'All', lang)),
-                              _buildFilterChip('Purchase', _tr('فواتير الشراء', 'Achats', 'Purchases', lang)),
-                              _buildFilterChip('Payment', _tr('المدفوعات', 'Paiements', 'Payments', lang)),
-                              _buildFilterChip('Return', _tr('المرتجعات', 'Retours', 'Returns', lang)),
+                              _buildFilterChip(
+                                'All',
+                                _tr('الكل', 'Tous', 'All', lang),
+                              ),
+                              _buildFilterChip(
+                                'Purchase',
+                                _tr(
+                                  'فواتير الشراء',
+                                  'Achats',
+                                  'Purchases',
+                                  lang,
+                                ),
+                              ),
+                              _buildFilterChip(
+                                'Payment',
+                                _tr('المدفوعات', 'Paiements', 'Payments', lang),
+                              ),
+                              _buildFilterChip(
+                                'Return',
+                                _tr('المرتجعات', 'Retours', 'Returns', lang),
+                              ),
                             ],
                           ),
                         ),
@@ -406,8 +521,17 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                     child: filteredItems.isEmpty
                         ? Center(
                             child: Text(
-                              _tr('لا توجد معاملات مسجلة لهذا المورد', 'Aucune transaction trouvée', 'No transactions found', lang),
-                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, color: Colors.grey),
+                              _tr(
+                                'لا توجد معاملات مسجلة لهذا المورد',
+                                'Aucune transaction trouvée',
+                                'No transactions found',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
                             ),
                           )
                         : ListView.builder(
@@ -448,11 +572,21 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 10, fontWeight: FontWeight.bold, color: textColor.withOpacity(0.8)),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: textColor.withOpacity(0.8),
+                  ),
                 ),
                 Text(
                   '${formatter.format(amount)} دج',
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: textColor),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
                 ),
               ],
             ),
@@ -467,16 +601,29 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: ChoiceChip(
-        label: Text(label, style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+        label: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
         selected: isSelected,
         onSelected: (_) => setState(() => _selectedFilter = filterKey),
         selectedColor: Colors.blue.shade700,
-        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black87),
+        labelStyle: TextStyle(
+          color: isSelected ? Colors.white : Colors.black87,
+        ),
       ),
     );
   }
 
-  Widget _buildTransactionCard(Map<String, dynamic> item, bool isDark, AppLanguage lang) {
+  Widget _buildTransactionCard(
+    Map<String, dynamic> item,
+    bool isDark,
+    AppLanguage lang,
+  ) {
     final String type = item['type'] ?? '';
     final double debit = (item['debit'] as num?)?.toDouble() ?? 0.0;
     final double credit = (item['credit'] as num?)?.toDouble() ?? 0.0;
@@ -575,7 +722,9 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 12,
-                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade700,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -584,13 +733,25 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
                       children: [
                         Text(
                           '📅 $dateStr',
-                          style: const TextStyle(fontSize: 10, color: Colors.grey),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey,
+                          ),
                         ),
                         Row(
                           children: [
                             Text(
-                              _tr('تفاعلي - انقر للتفاصيل ➔', 'Cliquer pour détails ➔', 'Click for details ➔', lang),
-                              style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.blue.shade400),
+                              _tr(
+                                'تفاعلي - انقر للتفاصيل ➔',
+                                'Cliquer pour détails ➔',
+                                'Click for details ➔',
+                                lang,
+                              ),
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 10,
+                                color: Colors.blue.shade400,
+                              ),
                             ),
                           ],
                         ),

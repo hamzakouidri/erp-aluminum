@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
@@ -123,6 +124,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   List<Map<String, dynamic>> _sections = [];
   Map<String, dynamic>? _selectedProfile;
   Map<String, dynamic>? _selectedSeries;
+  Map<String, dynamic>? _tableConfig;
 
   final Map<String, Set<int>> _sectionIdsByRole = {
     for (final role in _roles) role.key: <int>{},
@@ -136,15 +138,43 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   bool _loadingDefinition = false;
   bool _saving = false;
 
+  final _sashWidth2Controller = TextEditingController();
+  final _sashWidth3Controller = TextEditingController();
+  final _sashWidth4Controller = TextEditingController();
+  final _sashOverlapController = TextEditingController();
+  final _glassWidthController = TextEditingController();
+  final _chicanePiecesController = TextEditingController(text: '1');
+  final _railClearanceController = TextEditingController(text: '1');
+  final _formulaNotesController = TextEditingController();
+
   bool get _isArabic =>
       context.read<AppSettingsProvider>().language == AppLanguage.arabic;
   String _t(String ar, String fr) => _isArabic ? ar : fr;
   int? get _seriesId => (_selectedSeries?['id'] as num?)?.toInt();
+  bool get _isPvcProfile =>
+      (_selectedProfile?['name']?.toString().toLowerCase() ?? '')
+          .contains('pvc');
+  Iterable<_SeriesRole> get _availableRoles => _roles.where(
+    (role) => !_isPvcProfile || role.key != 'reducer',
+  );
 
   @override
   void initState() {
     super.initState();
     _loadProfiles();
+  }
+
+  @override
+  void dispose() {
+    _sashWidth2Controller.dispose();
+    _sashWidth3Controller.dispose();
+    _sashWidth4Controller.dispose();
+    _sashOverlapController.dispose();
+    _glassWidthController.dispose();
+    _chicanePiecesController.dispose();
+    _railClearanceController.dispose();
+    _formulaNotesController.dispose();
+    super.dispose();
   }
 
   @override
@@ -192,6 +222,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _sectionIdsByRole[role.key]!.clear();
       _defaultSectionByRole[role.key] = null;
     }
+    _tableConfig = null;
+    _sashWidth2Controller.clear();
+    _sashWidth3Controller.clear();
+    _sashWidth4Controller.clear();
+    _sashOverlapController.clear();
+    _glassWidthController.clear();
+    _chicanePiecesController.text = '1';
+    _railClearanceController.text = '1';
+    _formulaNotesController.clear();
   }
 
   Future<void> _selectSeries(Map<String, dynamic> series) async {
@@ -206,15 +245,53 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final results = await Future.wait<dynamic>([
       widget.db.readSectionsBySeries(seriesId),
       widget.db.getSeriesDesignRoles(seriesId),
+      widget.db.getSeriesTableConfig(seriesId),
     ]);
     if (!mounted) return;
 
     final roles = results[1] as List<Map<String, dynamic>>;
     _restoreDefinition(roles);
+    _restoreFormulaConfig(results[2] as Map<String, dynamic>?);
     setState(() {
       _sections = results[0] as List<Map<String, dynamic>>;
       _loadingDefinition = false;
     });
+  }
+
+  void _restoreFormulaConfig(Map<String, dynamic>? config) {
+    _tableConfig = config;
+    String number(String key, {String fallback = ''}) {
+      final value = config?[key];
+      if (value == null) return fallback;
+      final parsed = value is num ? value.toDouble() : double.tryParse('$value');
+      if (parsed == null) return fallback;
+      return parsed == parsed.roundToDouble()
+          ? parsed.toInt().toString()
+          : parsed.toString();
+    }
+
+    _sashWidth2Controller.text = number('sash_w_deduction_2');
+    _sashWidth3Controller.text = number('sash_w_deduction_3');
+    _sashWidth4Controller.text = number('sash_w_deduction_4');
+    _sashOverlapController.text = number('sash_overlap_val');
+    _glassWidthController.text = number('glass_w_deduction', fallback: '10');
+    _chicanePiecesController.text = number(
+      'sliding_chicane_pieces_per_junction',
+      fallback: '1',
+    );
+    _railClearanceController.text = number(
+      'sliding_rail_clearance',
+      fallback: '1',
+    );
+    _formulaNotesController.text = config?['custom_formula_notes']?.toString() ?? '';
+  }
+
+  double _decimal(TextEditingController controller, {double fallback = 0}) =>
+      double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? fallback;
+
+  int _positiveInt(TextEditingController controller, {int fallback = 1}) {
+    final value = _decimal(controller, fallback: fallback.toDouble()).round();
+    return value < 1 ? fallback : value;
   }
 
   void _restoreDefinition(List<Map<String, dynamic>> roles) {
@@ -267,7 +344,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     }
 
     final roles = <Map<String, dynamic>>[];
-    for (final role in _roles) {
+    for (final role in _availableRoles) {
       for (final sectionId in _sectionIdsByRole[role.key]!) {
         roles.add({
           'role_key': role.key,
@@ -282,6 +359,27 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     setState(() => _saving = true);
     try {
       await widget.db.saveSeriesDesignRoles(seriesId: seriesId, roles: roles);
+      await widget.db.upsertSeriesTableConfig(
+        seriesId: seriesId,
+        allowedSectionTypes:
+            _tableConfig?['allowed_section_types']?.toString() ?? '',
+        allowedAccessoryIds:
+            _tableConfig?['allowed_accessory_ids']?.toString() ?? '',
+        allowedAccessoryTypes:
+            _tableConfig?['allowed_accessory_types']?.toString() ?? '',
+        excludedAccessoryIds:
+            _tableConfig?['excluded_accessory_ids']?.toString() ?? '',
+        sashWDeduction2: _decimal(_sashWidth2Controller),
+        sashWDeduction3: _decimal(_sashWidth3Controller),
+        sashWDeduction4: _decimal(_sashWidth4Controller),
+        sashOverlapVal: _decimal(_sashOverlapController),
+        glassWDeduction: _decimal(_glassWidthController, fallback: 10),
+        slidingChicanePiecesPerJunction: _positiveInt(
+          _chicanePiecesController,
+        ),
+        slidingRailClearance: _decimal(_railClearanceController, fallback: 1),
+        customFormulaNotes: _formulaNotesController.text.trim(),
+      );
       if (mounted) {
         _showMessage(
           _t(
@@ -469,7 +567,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          for (final role in _roles) _roleCard(role),
+          if (_isPvcProfile) ...[
+            _pvcSlidingFormulaCard(),
+            const SizedBox(height: 14),
+          ],
+          for (final role in _availableRoles) _roleCard(role),
           const SizedBox(height: 90),
         ],
       ),
@@ -538,6 +640,81 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       ),
     );
   }
+
+  Widget _pvcSlidingFormulaCard() => Card(
+    color: Theme.of(context).colorScheme.primaryContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _t('حسابات المنزلق PVC', 'Calculs coulissant PVC'),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _t(
+              'عرض كل ضلفة = (العرض الداخلي − خصم السلسلة) ÷ عدد الضلفات. التداخل أدناه يخص طول الضلفة فقط.',
+              'Largeur ouvrant = (largeur intérieure − déduction série) ÷ nombre d’ouvrants. Le recouvrement ci-dessous ne concerne que la hauteur.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          _formulaField(
+            _sashWidth2Controller,
+            _t('خصم عرض ضلفتين (مم)', 'Déduction largeur 2 ouvrants (mm)'),
+          ),
+          _formulaField(
+            _sashWidth3Controller,
+            _t('خصم عرض 3 ضلفات (مم)', 'Déduction largeur 3 ouvrants (mm)'),
+          ),
+          _formulaField(
+            _sashWidth4Controller,
+            _t('خصم عرض 4 ضلفات (مم)', 'Déduction largeur 4 ouvrants (mm)'),
+          ),
+          _formulaField(
+            _sashOverlapController,
+            _t('تداخل طول الضلفة (مم)', 'Recouvrement hauteur ouvrant (mm)'),
+          ),
+          _formulaField(
+            _glassWidthController,
+            _t('خصم أمان عرض الزجاج (مم)', 'Jeu de sécurité largeur vitrage (mm)'),
+          ),
+          _formulaField(
+            _chicanePiecesController,
+            _t('قطع الشيكان لكل فاصل', 'Pièces chicane par jonction'),
+            integer: true,
+          ),
+          _formulaField(
+            _railClearanceController,
+            _t('خلوص تركيب السكة (مم)', 'Jeu de pose du rail (mm)'),
+          ),
+          TextField(
+            controller: _formulaNotesController,
+            minLines: 2,
+            maxLines: 4,
+            decoration: InputDecoration(
+              labelText: _t('ملاحظة خاصة بالسلسلة', 'Note propre à la série'),
+              alignLabelWithHint: true,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _formulaField(
+    TextEditingController controller,
+    String label, {
+    bool integer = false,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: TextField(
+      controller: controller,
+      keyboardType: TextInputType.numberWithOptions(decimal: !integer),
+      decoration: InputDecoration(labelText: label),
+    ),
+  );
 
   Widget _informationCard({
     required IconData icon,

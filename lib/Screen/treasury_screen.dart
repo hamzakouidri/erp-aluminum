@@ -71,9 +71,7 @@ class TreasuryScreen extends StatefulWidget {
   String _readableText(dynamic value) {
     final text = value?.toString() ?? '';
     if (text.isEmpty ||
-        (!text.contains('Ø') &&
-            !text.contains('Ã') &&
-            !text.contains('Â'))) {
+        (!text.contains('Ø') && !text.contains('Ã') && !text.contains('Â'))) {
       return text;
     }
     try {
@@ -198,237 +196,242 @@ class TreasuryScreen extends StatefulWidget {
                       interactive: true,
                       child: SingleChildScrollView(
                         controller: horizontalScrollController,
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.all(10),
-                      child: SizedBox(
-                        width: 1710,
-                        child: SingleChildScrollView(
-                          child: DataTable(
-                            headingRowColor: WidgetStatePropertyAll(
-                              headerColor,
-                            ),
-                            headingTextStyle: TextStyle(
-                              fontFamily: 'Cairo',
-                              color: textColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            dataRowMinHeight: 58,
-                            dataRowMaxHeight: 70,
-                            columnSpacing: 14,
-                            columns: [
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('التاريخ', lang),
-                                ),
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.all(10),
+                        child: SizedBox(
+                          width: 1710,
+                          child: SingleChildScrollView(
+                            child: DataTable(
+                              headingRowColor: WidgetStatePropertyAll(
+                                headerColor,
                               ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('أدخلها', lang),
-                                ),
+                              headingTextStyle: TextStyle(
+                                fontFamily: 'Cairo',
+                                color: textColor,
+                                fontWeight: FontWeight.bold,
                               ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('نوع العملية', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('الارتباط', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('طريقة الدفع', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('البيان', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('الدفع', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('السحب', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('الصندوق', lang),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
-                                  Localization.translate('الإيصال', lang),
-                                ),
-                              ),
-                              const DataColumn(label: Text('Actions')),
-                            ],
-                            rows: transactions.map((item) {
-                              final isIncome = _isIncomeTransaction(item);
-                              final amount =
-                                  (item['amount'] as num?)?.toDouble() ?? 0.0;
-                              final type =
-                                  item['transaction_type']?.toString() ?? '';
-                              final recordedBy =
-                                  item['recorded_by']?.toString().trim() ?? '';
-                              final method = _readableText(
-                                item['payment_method'],
-                              ).trim();
-                              final cashbox = _readableText(
-                                item['caisse_name'],
-                              ).trim();
-                              final description = _readableText(
-                                item['description'],
-                              ).trim();
-                              return DataRow(
-                                onSelectChanged: (selected) {
-                                  if (selected != true) return;
-                                  if (!readOnly && canEditPayments) {
-                                    onEdit(item);
-                                  } else {
-                                    onReceipt(item);
-                                  }
-                                },
-                                cells: [
-                                  _desktopTableCell(
-                                    _transactionDate(item),
-                                    width: 125,
-                                    color: mutedColor,
+                              dataRowMinHeight: 58,
+                              dataRowMaxHeight: 70,
+                              columnSpacing: 14,
+                              columns: [
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('التاريخ', lang),
                                   ),
-                                  _desktopTableCell(
-                                    recordedBy.isEmpty || recordedBy == 'system'
-                                        ? Localization.translate('النظام', lang)
-                                        : recordedBy,
-                                    width: 125,
-                                    color: textColor,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('أدخلها', lang),
                                   ),
-                                  _desktopTableCell(
-                                    type.isEmpty
-                                        ? (isIncome
-                                              ? Localization.translate(
-                                                  'دفع',
-                                                  lang,
-                                                )
-                                              : Localization.translate(
-                                                  'سحب',
-                                                  lang,
-                                                ))
-                                        : type,
-                                    width: 125,
-                                    color: isIncome
-                                        ? Colors.green.shade700
-                                        : Colors.red.shade700,
-                                    bold: true,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('نوع العملية', lang),
                                   ),
-                                  _desktopTableCell(
-                                    _transactionRelation(item, lang),
-                                    width: 190,
-                                    color: textColor,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('الارتباط', lang),
                                   ),
-                                  _desktopTableCell(
-                                    method.isEmpty
-                                        ? Localization.translate(
-                                            'نقداً / Espèce',
-                                            lang,
-                                          )
-                                        : method,
-                                    width: 150,
-                                    color: textColor,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('طريقة الدفع', lang),
                                   ),
-                                  _desktopTableCell(
-                                    description.isEmpty
-                                        ? Localization.translate(
-                                            'بدون بيان',
-                                            lang,
-                                          )
-                                        : description,
-                                    width: 260,
-                                    color: textColor,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('البيان', lang),
                                   ),
-                                  _desktopTableCell(
-                                    isIncome
-                                        ? '${formatter.format(amount)} $currency'
-                                        : '—',
-                                    width: 120,
-                                    color: isIncome
-                                        ? Colors.green.shade700
-                                        : mutedColor,
-                                    bold: isIncome,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('الدفع', lang),
                                   ),
-                                  _desktopTableCell(
-                                    isIncome
-                                        ? '—'
-                                        : '${formatter.format(amount)} $currency',
-                                    width: 120,
-                                    color: isIncome
-                                        ? mutedColor
-                                        : Colors.red.shade700,
-                                    bold: !isIncome,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('السحب', lang),
                                   ),
-                                  _desktopTableCell(
-                                    cashbox.isEmpty
-                                        ? Localization.translate(
-                                            'الصندوق الرئيسي',
-                                            lang,
-                                          )
-                                        : cashbox,
-                                    width: 130,
-                                    color: textColor,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('الصندوق', lang),
                                   ),
-                                  DataCell(
-                                    IconButton(
-                                      tooltip: Localization.translate(
-                                        'خيارات الوصل',
-                                        lang,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.receipt_long_outlined,
-                                        size: 19,
-                                      ),
-                                      color: isDark
-                                          ? Colors.tealAccent
-                                          : Colors.teal,
-                                      onPressed: () => onReceipt(item),
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    Localization.translate('الإيصال', lang),
+                                  ),
+                                ),
+                                const DataColumn(label: Text('Actions')),
+                              ],
+                              rows: transactions.map((item) {
+                                final isIncome = _isIncomeTransaction(item);
+                                final amount =
+                                    (item['amount'] as num?)?.toDouble() ?? 0.0;
+                                final type =
+                                    item['transaction_type']?.toString() ?? '';
+                                final recordedBy =
+                                    item['recorded_by']?.toString().trim() ??
+                                    '';
+                                final method = _readableText(
+                                  item['payment_method'],
+                                ).trim();
+                                final cashbox = _readableText(
+                                  item['caisse_name'],
+                                ).trim();
+                                final description = _readableText(
+                                  item['description'],
+                                ).trim();
+                                return DataRow(
+                                  onSelectChanged: (selected) {
+                                    if (selected != true) return;
+                                    if (!readOnly && canEditPayments) {
+                                      onEdit(item);
+                                    } else {
+                                      onReceipt(item);
+                                    }
+                                  },
+                                  cells: [
+                                    _desktopTableCell(
+                                      _transactionDate(item),
+                                      width: 125,
+                                      color: mutedColor,
                                     ),
-                                  ),
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (!readOnly && canEditPayments)
-                                          IconButton(
-                                            tooltip: 'Modifier',
-                                            icon: const Icon(
-                                              Icons.edit_outlined,
-                                              size: 19,
-                                            ),
-                                            color: Colors.blue,
-                                            onPressed: () => onEdit(item),
-                                          ),
-                                        if (!readOnly && canDeletePayments)
-                                          IconButton(
-                                            tooltip: 'Supprimer',
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              size: 19,
-                                            ),
-                                            color: Colors.red,
-                                            onPressed: () => onDelete(item),
-                                          ),
-                                      ],
+                                    _desktopTableCell(
+                                      recordedBy.isEmpty ||
+                                              recordedBy == 'system'
+                                          ? Localization.translate(
+                                              'النظام',
+                                              lang,
+                                            )
+                                          : recordedBy,
+                                      width: 125,
+                                      color: textColor,
                                     ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
+                                    _desktopTableCell(
+                                      type.isEmpty
+                                          ? (isIncome
+                                                ? Localization.translate(
+                                                    'دفع',
+                                                    lang,
+                                                  )
+                                                : Localization.translate(
+                                                    'سحب',
+                                                    lang,
+                                                  ))
+                                          : type,
+                                      width: 125,
+                                      color: isIncome
+                                          ? Colors.green.shade700
+                                          : Colors.red.shade700,
+                                      bold: true,
+                                    ),
+                                    _desktopTableCell(
+                                      _transactionRelation(item, lang),
+                                      width: 190,
+                                      color: textColor,
+                                    ),
+                                    _desktopTableCell(
+                                      method.isEmpty
+                                          ? Localization.translate(
+                                              'نقداً / Espèce',
+                                              lang,
+                                            )
+                                          : method,
+                                      width: 150,
+                                      color: textColor,
+                                    ),
+                                    _desktopTableCell(
+                                      description.isEmpty
+                                          ? Localization.translate(
+                                              'بدون بيان',
+                                              lang,
+                                            )
+                                          : description,
+                                      width: 260,
+                                      color: textColor,
+                                    ),
+                                    _desktopTableCell(
+                                      isIncome
+                                          ? '${formatter.format(amount)} $currency'
+                                          : '—',
+                                      width: 120,
+                                      color: isIncome
+                                          ? Colors.green.shade700
+                                          : mutedColor,
+                                      bold: isIncome,
+                                    ),
+                                    _desktopTableCell(
+                                      isIncome
+                                          ? '—'
+                                          : '${formatter.format(amount)} $currency',
+                                      width: 120,
+                                      color: isIncome
+                                          ? mutedColor
+                                          : Colors.red.shade700,
+                                      bold: !isIncome,
+                                    ),
+                                    _desktopTableCell(
+                                      cashbox.isEmpty
+                                          ? Localization.translate(
+                                              'الصندوق الرئيسي',
+                                              lang,
+                                            )
+                                          : cashbox,
+                                      width: 130,
+                                      color: textColor,
+                                    ),
+                                    DataCell(
+                                      IconButton(
+                                        tooltip: Localization.translate(
+                                          'خيارات الوصل',
+                                          lang,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.receipt_long_outlined,
+                                          size: 19,
+                                        ),
+                                        color: isDark
+                                            ? Colors.tealAccent
+                                            : Colors.teal,
+                                        onPressed: () => onReceipt(item),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (!readOnly && canEditPayments)
+                                            IconButton(
+                                              tooltip: 'Modifier',
+                                              icon: const Icon(
+                                                Icons.edit_outlined,
+                                                size: 19,
+                                              ),
+                                              color: Colors.blue,
+                                              onPressed: () => onEdit(item),
+                                            ),
+                                          if (!readOnly && canDeletePayments)
+                                            IconButton(
+                                              tooltip: 'Supprimer',
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                                size: 19,
+                                              ),
+                                              color: Colors.red,
+                                              onPressed: () => onDelete(item),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
                           ),
                         ),
-                      ),
                       ),
                     ),
                   ),
@@ -522,7 +525,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         final type = row['transaction_type']?.toString() ?? '';
         if (type == 'Encaissement' || type == 'income') {
           balance += (row['amount'] as num?)?.toDouble() ?? 0.0;
-        } else if (type == 'Décaissement' || type == 'expense') {
+        } else if (type == 'Décaissement' ||
+            type == 'DÃ©caissement' ||
+            type == 'expense') {
           balance -= (row['amount'] as num?)?.toDouble() ?? 0.0;
         } else {
           if (type.contains('Achat') || type.contains('Purchase')) {
@@ -571,6 +576,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             (!tType.contains('Achat') &&
                 !tType.contains('Purchase') &&
                 !tType.contains('Décaissement') &&
+                !tType.contains('DÃ©caissement') &&
                 !tType.contains('expense'));
         if (_selectedTypeFilter == 'income') {
           return isInc;
@@ -635,6 +641,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           (!tType.contains('Achat') &&
               !tType.contains('Purchase') &&
               !tType.contains('Décaissement') &&
+              !tType.contains('DÃ©caissement') &&
               !tType.contains('expense'));
       final amt = (row['amount'] as num?)?.toDouble() ?? 0.0;
       if (isInc) {
@@ -2265,7 +2272,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                         if (!widget.readOnly) ...[
                           const SizedBox(width: 6),
                           Tooltip(
-                            message: Localization.translate('معاملة جديدة', lang),
+                            message: Localization.translate(
+                              'معاملة جديدة',
+                              lang,
+                            ),
                             child: InkWell(
                               onTap: _showAddTransactionDialog,
                               borderRadius: BorderRadius.circular(6),
@@ -2286,13 +2296,20 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                     Icon(
                                       Icons.add,
                                       size: 16,
-                                      color: isDark ? Colors.black : Colors.white,
+                                      color: isDark
+                                          ? Colors.black
+                                          : Colors.white,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      Localization.translate('معاملة جديدة', lang),
+                                      Localization.translate(
+                                        'معاملة جديدة',
+                                        lang,
+                                      ),
                                       style: TextStyle(
-                                        color: isDark ? Colors.black : Colors.white,
+                                        color: isDark
+                                            ? Colors.black
+                                            : Colors.white,
                                         fontWeight: FontWeight.bold,
                                         fontFamily: 'Cairo',
                                         fontSize: 12,
@@ -2951,7 +2968,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 ],
               ),
             ),
-
     );
   }
 

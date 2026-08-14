@@ -107,7 +107,10 @@ class _ShowClientState extends State<ShowClient> {
     double remaining,
     String clientName,
   ) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final amountCtrl = TextEditingController();
     showDialog(
       context: context,
@@ -135,7 +138,9 @@ class _ShowClientState extends State<ShowClient> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? Theme.of(context).appBarTheme.backgroundColor
+                  : Colors.blue,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -144,7 +149,6 @@ class _ShowClientState extends State<ShowClient> {
             onPressed: () async {
               final amount = double.tryParse(amountCtrl.text) ?? 0.0;
               if (amount > 0) {
-                await db.addAdvanceToCommande(orderId, amount);
                 if (ctx.mounted) {
                   final settings = Provider.of<AppSettingsProvider>(
                     ctx,
@@ -161,7 +165,7 @@ class _ShowClientState extends State<ShowClient> {
                   );
                 }
                 if (ctx.mounted) Navigator.pop(ctx);
-                setState(() {});
+                if (mounted) _refreshClientData();
               }
             },
             child: Text(Localization.translate('Save payment', lang)),
@@ -205,7 +209,9 @@ class _ShowClientState extends State<ShowClient> {
           Localization.translate("Client Details", lang),
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.blue,
         foregroundColor: Colors.white,
         centerTitle: true,
         elevation: 0,
@@ -217,7 +223,8 @@ class _ShowClientState extends State<ShowClient> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ClientLedgerScreen(clientId: widget.clientId),
+                  builder: (context) =>
+                      ClientLedgerScreen(clientId: widget.clientId),
                 ),
               ).then((_) => _refreshClientData());
             },
@@ -231,7 +238,8 @@ class _ShowClientState extends State<ShowClient> {
             _cachedData = asyncSnapshot.data;
           }
 
-          if (asyncSnapshot.connectionState == ConnectionState.waiting && _cachedData == null) {
+          if (asyncSnapshot.connectionState == ConnectionState.waiting &&
+              _cachedData == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -242,13 +250,18 @@ class _ShowClientState extends State<ShowClient> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.warning_amber_rounded,
-                        size: 64, color: Colors.red.shade400),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 64,
+                      color: Colors.red.shade400,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       Localization.translate('Error loading data', lang),
                       style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     ElevatedButton.icon(
@@ -262,15 +275,14 @@ class _ShowClientState extends State<ShowClient> {
             );
           }
 
-          final rawData = asyncSnapshot.hasData ? asyncSnapshot.data! : (_cachedData ?? []);
+          final rawData = asyncSnapshot.hasData
+              ? asyncSnapshot.data!
+              : (_cachedData ?? []);
           if (rawData.isEmpty) {
-            return Center(
-              child: Text(Localization.translate('No Data', lang)),
-            );
+            return Center(child: Text(Localization.translate('No Data', lang)));
           }
 
-          final clientData =
-              rawData[0] as List<Map<String, dynamic>>;
+          final clientData = rawData[0] as List<Map<String, dynamic>>;
           if (clientData.isEmpty) {
             return Center(
               child: Text(Localization.translate('Client not found', lang)),
@@ -278,10 +290,8 @@ class _ShowClientState extends State<ShowClient> {
           }
 
           final client = clientData[0];
-          final orders =
-              rawData[1] as List<Map<String, dynamic>>;
-          final treasury =
-              rawData[2] as List<Map<String, dynamic>>;
+          final orders = rawData[1] as List<Map<String, dynamic>>;
+          final treasury = rawData[2] as List<Map<String, dynamic>>;
 
           double totalOrders = 0.0;
           for (var order in orders) {
@@ -316,10 +326,8 @@ class _ShowClientState extends State<ShowClient> {
               phone1.isNotEmpty && phone1 != '0' && phone1 != 'null';
           final bool hasPhone2 =
               phone2.isNotEmpty && phone2 != '0' && phone2 != 'null';
-          final bool hasEmail =
-              email.isNotEmpty && email != 'null';
-          final bool hasAddress =
-              address.isNotEmpty && address != 'null';
+          final bool hasEmail = email.isNotEmpty && email != 'null';
+          final bool hasAddress = address.isNotEmpty && address != 'null';
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(12),
@@ -345,7 +353,10 @@ class _ShowClientState extends State<ShowClient> {
                     children: [
                       CircleAvatar(
                         radius: 34,
-                        backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue.shade100,
+                        backgroundColor:
+                            Theme.of(context).brightness == Brightness.dark
+                            ? Theme.of(context).appBarTheme.backgroundColor
+                            : Colors.blue.shade100,
                         child: Text(
                           (firstName.isNotEmpty
                                   ? firstName[0]
@@ -354,7 +365,8 @@ class _ShowClientState extends State<ShowClient> {
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context).brightness == Brightness.dark
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
                                 ? Colors.blue.shade300
                                 : Colors.blue.shade700,
                           ),
@@ -373,42 +385,40 @@ class _ShowClientState extends State<ShowClient> {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                             if (createdAt.isNotEmpty)
-                               Text(
-                                 _formatDate(createdAt),
-                                 style: TextStyle(
-                                   fontSize: 13,
-                                 ),
-                               ),
-                             const SizedBox(height: 4),
-                             Row(
-                               children: [
-                                 Icon(
-                                   _creationPlatformIcon(creationPlatform),
-                                   size: 15,
-                                   color: Theme.of(context)
-                                       .colorScheme
-                                       .onSurfaceVariant,
-                                 ),
-                                 const SizedBox(width: 5),
-                                 Flexible(
-                                   child: Text(
-                                     _creationPlatformLabel(
-                                       creationPlatform,
-                                       lang,
-                                     ),
-                                     maxLines: 1,
-                                     overflow: TextOverflow.ellipsis,
-                                     style: TextStyle(
-                                       fontSize: 12,
-                                       color: Theme.of(context)
-                                           .colorScheme
-                                           .onSurfaceVariant,
-                                     ),
-                                   ),
-                                 ),
-                               ],
-                             ),
+                            if (createdAt.isNotEmpty)
+                              Text(
+                                _formatDate(createdAt),
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  _creationPlatformIcon(creationPlatform),
+                                  size: 15,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 5),
+                                Flexible(
+                                  child: Text(
+                                    _creationPlatformLabel(
+                                      creationPlatform,
+                                      lang,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -499,7 +509,9 @@ class _ShowClientState extends State<ShowClient> {
                   Card(
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     color: Theme.of(context).cardColor,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
@@ -507,23 +519,35 @@ class _ShowClientState extends State<ShowClient> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => ClientLedgerScreen(clientId: widget.clientId),
+                            builder: (context) =>
+                                ClientLedgerScreen(clientId: widget.clientId),
                           ),
                         ).then((_) => setState(() {}));
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 16,
+                        ),
                         child: Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Theme.of(context).primaryColor.withValues(alpha: 0.15)
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Theme.of(
+                                        context,
+                                      ).primaryColor.withValues(alpha: 0.15)
                                     : Colors.blue.shade50,
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.history_edu_rounded, color: Colors.blue.shade700, size: 24),
+                              child: Icon(
+                                Icons.history_edu_rounded,
+                                color: Colors.blue.shade700,
+                                size: 24,
+                              ),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -531,18 +555,37 @@ class _ShowClientState extends State<ShowClient> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    Localization.translate('عرض كشف الحساب التفصيلي (Chrono)', lang),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo'),
+                                    Localization.translate(
+                                      'عرض كشف الحساب التفصيلي (Chrono)',
+                                      lang,
+                                    ),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      fontFamily: 'Cairo',
+                                    ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    Localization.translate('سجل الطلبيات والمدفوعات مرتبة زمنياً', lang),
-                                    style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 11, fontFamily: 'Cairo'),
+                                    Localization.translate(
+                                      'سجل الطلبيات والمدفوعات مرتبة زمنياً',
+                                      lang,
+                                    ),
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.color,
+                                      fontSize: 11,
+                                      fontFamily: 'Cairo',
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                            Icon(Icons.chevron_right, color: Colors.blue.shade300),
+                            Icon(
+                              Icons.chevron_right,
+                              color: Colors.blue.shade300,
+                            ),
                           ],
                         ),
                       ),
@@ -561,8 +604,7 @@ class _ShowClientState extends State<ShowClient> {
                           child: Center(
                             child: Text(
                               Localization.translate('No Data', lang),
-                              style:
-                                  TextStyle(color: Colors.grey.shade500),
+                              style: TextStyle(color: Colors.grey.shade500),
                             ),
                           ),
                         )
@@ -570,76 +612,107 @@ class _ShowClientState extends State<ShowClient> {
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: orders.length,
-                          separatorBuilder: (_, _) =>
-                              const Divider(height: 1),
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final order = orders[index];
                             final netPay =
-                                (order['net_payable'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
+                                (order['net_payable'] as num?)?.toDouble() ??
+                                0.0;
                             final rawTotal =
-                                (order['total'] as num?)?.toDouble() ??
-                                    0.0;
-                            final orderTotal =
-                                netPay > 0 ? netPay : rawTotal;
+                                (order['total'] as num?)?.toDouble() ?? 0.0;
+                            final orderTotal = netPay > 0 ? netPay : rawTotal;
                             final orderAdvance =
                                 (order['advance_payment'] as num?)
-                                        ?.toDouble() ??
-                                    0.0;
-                            final orderRemaining =
-                                orderTotal - orderAdvance;
+                                    ?.toDouble() ??
+                                0.0;
+                            final orderRemaining = orderTotal - orderAdvance;
                             final isPaid = orderAdvance >= orderTotal;
-                            final orderDate =
-                                _formatDate(order['created_at']?.toString());
+                            final orderDate = _formatDate(
+                              order['created_at']?.toString(),
+                            );
 
                             return Container(
-                              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                              padding: EdgeInsets.symmetric(
+                                vertical: 12,
+                                horizontal: 8,
+                              ),
                               decoration: BoxDecoration(
-                                border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: Theme.of(context).dividerColor,
+                                  ),
+                                ),
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   CircleAvatar(
                                     radius: 20,
-                                    backgroundColor: isPaid ? Colors.green.shade50 : Colors.orange.shade50,
+                                    backgroundColor: isPaid
+                                        ? Colors.green.shade50
+                                        : Colors.orange.shade50,
                                     child: Icon(
-                                      isPaid ? Icons.check_circle : Icons.hourglass_bottom,
+                                      isPaid
+                                          ? Icons.check_circle
+                                          : Icons.hourglass_bottom,
                                       size: 20,
-                                      color: isPaid ? Colors.green : Colors.orange,
+                                      color: isPaid
+                                          ? Colors.green
+                                          : Colors.orange,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Wrap(
                                           spacing: 8,
                                           runSpacing: 4,
-                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
                                           children: [
                                             Text(
                                               '${Localization.translate("Order", lang)} #${order["id"]}',
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
                                             ),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
                                               decoration: BoxDecoration(
-                                                color: isPaid ? Colors.green.shade50 : Colors.orange.shade50,
-                                                borderRadius: BorderRadius.circular(10),
+                                                color: isPaid
+                                                    ? Colors.green.shade50
+                                                    : Colors.orange.shade50,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
                                                 border: Border.all(
-                                                  color: isPaid ? Colors.green.shade200 : Colors.orange.shade200,
+                                                  color: isPaid
+                                                      ? Colors.green.shade200
+                                                      : Colors.orange.shade200,
                                                 ),
                                               ),
                                               child: Text(
                                                 isPaid
-                                                    ? Localization.translate('Paid', lang)
-                                                    : Localization.translate('Unpaid', lang),
+                                                    ? Localization.translate(
+                                                        'Paid',
+                                                        lang,
+                                                      )
+                                                    : Localization.translate(
+                                                        'Unpaid',
+                                                        lang,
+                                                      ),
                                                 style: TextStyle(
                                                   fontSize: 11,
-                                                  color: isPaid ? Colors.green.shade700 : Colors.orange.shade700,
+                                                  color: isPaid
+                                                      ? Colors.green.shade700
+                                                      : Colors.orange.shade700,
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
@@ -649,7 +722,10 @@ class _ShowClientState extends State<ShowClient> {
                                         const SizedBox(height: 4),
                                         Text(
                                           orderDate,
-                                          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                                          style: TextStyle(
+                                            color: Colors.grey.shade500,
+                                            fontSize: 12,
+                                          ),
                                         ),
                                         const SizedBox(height: 4),
                                         Wrap(
@@ -658,12 +734,26 @@ class _ShowClientState extends State<ShowClient> {
                                           children: [
                                             Text(
                                               '${Localization.translate("Total:", lang)} ${orderTotal.toStringAsFixed(2)} دج',
-                                              style: const TextStyle(fontSize: 12, ),
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${Localization.translate("Amount paid", lang)} ${orderAdvance.toStringAsFixed(2)} دج',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.green.shade700,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                             if (!isPaid)
                                               Text(
                                                 '· ${Localization.translate("Remaining:", lang)} ${orderRemaining.toStringAsFixed(2)} دج',
-                                                style: TextStyle(fontSize: 12, color: Colors.red.shade600, fontWeight: FontWeight.bold),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.red.shade600,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                           ],
                                         ),
@@ -674,20 +764,51 @@ class _ShowClientState extends State<ShowClient> {
                                   if (!isPaid)
                                     ElevatedButton(
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Theme.of(context).brightness == Brightness.dark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+                                        backgroundColor:
+                                            Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Theme.of(
+                                                context,
+                                              ).appBarTheme.backgroundColor
+                                            : Colors.blue,
                                         foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
                                       ),
                                       onPressed: () {
-                                        final clientName = '${client['firstname'] ?? ''} ${client['lastname'] ?? ''}'.trim();
-                                        _showAddPaymentDialog(context, order['id'] as int, orderRemaining, clientName);
+                                        final clientName =
+                                            '${client['firstname'] ?? ''} ${client['lastname'] ?? ''}'
+                                                .trim();
+                                        _showAddPaymentDialog(
+                                          context,
+                                          order['id'] as int,
+                                          orderRemaining,
+                                          clientName,
+                                        );
                                       },
-                                      child: Text(Localization.translate('Add payment', lang)),
+                                      child: Text(
+                                        Localization.translate(
+                                          'Add payment',
+                                          lang,
+                                        ),
+                                      ),
                                     )
                                   else
-                                    Icon(Icons.check_circle, color: Colors.green.shade400),
+                                    Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green.shade400,
+                                    ),
                                 ],
                               ),
                             );
@@ -783,10 +904,7 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: TextStyle(
-                fontSize: 14,
-                color: colorScheme.onSurface,
-              ),
+              style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               children: [
                 TextSpan(
                   text: '$label  ',
@@ -831,9 +949,7 @@ class _StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border(
-          left: BorderSide(width: 5, color: color),
-        ),
+        border: Border(left: BorderSide(width: 5, color: color)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -861,8 +977,7 @@ class _StatCard extends StatelessWidget {
                 ),
                 Text(
                   label,
-                  style:
-                      TextStyle(fontSize: 12),
+                  style: TextStyle(fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

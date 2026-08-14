@@ -87,6 +87,16 @@ flutter:
     - images/
 
   fonts:
+    - family: Arial
+      fonts:
+        - asset: assets/fonts/Arial-Regular.ttf
+    # Arabic uses the Cairo family. Older screens that explicitly request it
+    # therefore remain consistent with the global Arabic theme.
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
     - family: Amiri
       fonts:
         - asset: assets/fonts/Amiri-Regular.ttf

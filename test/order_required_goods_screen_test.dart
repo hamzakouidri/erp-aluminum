@@ -63,6 +63,36 @@ void main() {
       );
     });
 
+    test('a Kit keeps its configured name and its header is not a child', () {
+      const kitName = 'Kit Volet 155';
+      final header = BomItem(
+        category: 'shutter',
+        originalName: 'كيت فولي (Kit Volet)',
+        name: kitName,
+        quantity: 1,
+        unit: 'kit',
+        unitPrice: 0,
+        kitGroupName: kitName,
+      );
+      final child = BomItem(
+        category: 'shutter',
+        originalName: '${kitName}_Embout',
+        name: 'Embout',
+        quantity: 2,
+        unit: 'قطعة',
+        unitPrice: 0,
+        kitGroupName: kitName,
+      );
+
+      expect(requiredGoodsKitDisplayName(kitName), kitName);
+      expect(isRequiredGoodsKitHeader(header, kitName), isTrue);
+      expect(isRequiredGoodsKitHeader(child, kitName), isFalse);
+      expect(
+        requiredGoodsKitAggregationKey('shutter', kitName),
+        requiredGoodsKitAggregationKey('shutter', ' kit volet 155 '),
+      );
+    });
+
     test('order cutting reuses leftovers across separate products', () {
       // Individually these two products need four 6 m bars:
       // product A = 3.0 + 3.0, product B = 2.8 + 2.8.

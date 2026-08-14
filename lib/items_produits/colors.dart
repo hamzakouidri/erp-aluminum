@@ -72,6 +72,16 @@ class _ColorsScreenState extends State<ColorsScreen> {
     }
   }
 
+  bool _isShutterGreyBaseColor(Map<String, dynamic> color) {
+    final name = (color['name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s_\-]+'), '')
+        .replaceAll('ى', 'ي');
+    return const {'grey', 'gray', 'gris', 'رمادي'}.contains(name);
+  }
+
   DecorationImage? _getDecorationImageFromName(String name) {
     name = name.toLowerCase();
 
@@ -975,6 +985,11 @@ class _ColorsScreenState extends State<ColorsScreen> {
       context,
       listen: false,
     ).language;
+    await widget.db.ensureShutterComponentsUseGreyPrice();
+    // The grey colour may have just been created during the migration; reload
+    // the palette so it appears as the locked base-price row in this dialog.
+    await _loadItems();
+    if (!mounted) return;
     final dbInstance = await widget.db.db;
     if (dbInstance == null) return;
 
@@ -1061,9 +1076,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                   final color = _items[index];
                                   final cId = color['id'] as int;
                                   final isMapped = sColors.contains(cId);
+                                  final isGreyBaseColor =
+                                      _isShutterGreyBaseColor(color);
                                   return CheckboxListTile(
                                     title: Text(
-                                      color['name'].toString(),
+                                      isGreyBaseColor
+                                          ? 'رمادي (السعر الأساسي)'
+                                          : color['name'].toString(),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -1083,7 +1102,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                       ),
                                     ),
                                     value: isMapped,
-                                    onChanged: (val) async {
+                                    onChanged: isGreyBaseColor
+                                        ? null
+                                        : (val) async {
                                       if (val == true) {
                                         final sh = shutterComponents.firstWhere(
                                           (s) => s['id'] == selectedShutId,

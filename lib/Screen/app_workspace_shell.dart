@@ -4,7 +4,8 @@ import 'dart:ui' show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -114,7 +115,8 @@ class WorkspaceController extends ChangeNotifier {
     }
 
     final index = _entries.length;
-    final resolvedId = entryId ?? 'entry_${DateTime.now().microsecondsSinceEpoch}';
+    final resolvedId =
+        entryId ?? 'entry_${DateTime.now().microsecondsSinceEpoch}';
     _entries.add(
       WorkspaceEntry(
         id: resolvedId,
@@ -493,11 +495,17 @@ class _WorkspaceHeader extends StatelessWidget {
                     children: [
                       Builder(
                         builder: (innerContext) => IconButton(
-                          tooltip: isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
-                          onPressed: onToggleSidebar ?? () => Scaffold.of(innerContext).openDrawer(),
+                          tooltip: isSidebarOpen
+                              ? 'إغلاق القائمة'
+                              : 'فتح القائمة',
+                          onPressed:
+                              onToggleSidebar ??
+                              () => Scaffold.of(innerContext).openDrawer(),
                           icon: Icon(
                             onToggleSidebar != null
-                                ? (isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded)
+                                ? (isSidebarOpen
+                                      ? Icons.menu_open_rounded
+                                      : Icons.menu_rounded)
                                 : Icons.menu_rounded,
                             color: Colors.white,
                           ),
@@ -636,7 +644,8 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
       final savedLogo = prefs.getString('workshop_logo_base64');
       if (mounted) {
         setState(() {
-          if (savedName != null && savedName.isNotEmpty) _workshopName = savedName;
+          if (savedName != null && savedName.isNotEmpty)
+            _workshopName = savedName;
           if (savedLogo != null && savedLogo.isNotEmpty) {
             _logoUrl = savedLogo;
             _updateLogoProvider(savedLogo);
@@ -670,12 +679,16 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
     return StreamBuilder<DocumentSnapshot>(
       stream: user == null
           ? null
-          : FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+          : FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasData && snapshot.data?.data() != null) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           final firestoreName = (data['workshopName'] as String?)?.trim();
-          final firestoreLogo = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+          final firestoreLogo =
+              (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
               ? data['workshopLogoUrl']
               : data['logoUrl'];
 
@@ -700,10 +713,7 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
             height: 20,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              image: DecorationImage(
-                image: _cachedLogo!,
-                fit: BoxFit.cover,
-              ),
+              image: DecorationImage(image: _cachedLogo!, fit: BoxFit.cover),
               border: Border.all(
                 color: widget.active ? const Color(0xFF0F172A) : Colors.white,
                 width: 1,
@@ -769,7 +779,8 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
       final savedLogo = prefs.getString('workshop_logo_base64');
       if (mounted) {
         setState(() {
-          if (savedName != null && savedName.isNotEmpty) _workshopName = savedName;
+          if (savedName != null && savedName.isNotEmpty)
+            _workshopName = savedName;
           if (savedLogo != null && savedLogo.isNotEmpty) {
             _logoUrl = savedLogo;
             _updateLogoProvider(savedLogo);
@@ -811,7 +822,8 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
         if (snapshot.hasData && snapshot.data?.data() != null) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           final firestoreName = (data['workshopName'] as String?)?.trim();
-          final firestoreLogo = (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
+          final firestoreLogo =
+              (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
               ? data['workshopLogoUrl']
               : data['logoUrl'];
 
@@ -888,6 +900,42 @@ class _TabbedWorkspaceView extends StatefulWidget {
   State<_TabbedWorkspaceView> createState() => _TabbedWorkspaceViewState();
 }
 
+/// A slim, always visible handle keeps the desktop navigation discoverable
+/// after the full sidebar is collapsed.  This is especially important on the
+/// dashboard, which intentionally has no separate workspace header.
+class _CollapsedDesktopSidebar extends StatelessWidget {
+  final VoidCallback onOpen;
+
+  const _CollapsedDesktopSidebar({required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: isDark ? const Color(0xFF172554) : const Color(0xFF3E55D9),
+      elevation: 6,
+      child: SafeArea(
+        right: false,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: IconButton(
+              tooltip: 'إظهار القائمة',
+              onPressed: onOpen,
+              icon: const Icon(Icons.menu_rounded),
+              color: Colors.white,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   bool _isSidebarOpen = true;
   final ScrollController _tabsScrollController = ScrollController();
@@ -960,7 +1008,11 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
-    final isDesktop = _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+    final isDesktop =
+        _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+    // The dashboard owns its own light header on desktop.  Keep the document
+    // tabs and command bar for every other workspace screen.
+    final showWorkspaceChrome = !_isWindowsDesktop || !workspace.isHomeActive;
     final activeEntryId = workspace.entries[workspace.activeIndex].id;
     if (_lastEnsuredActiveTabId != activeEntryId) {
       _lastEnsuredActiveTabId = activeEntryId;
@@ -978,151 +1030,186 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
         drawer: isDesktop ? null : const AppDrawer(),
         body: Column(
           children: [
-            Container(
-              color: const Color(0xFF0F172A),
-              child: SafeArea(
-                bottom: false,
-                child: SizedBox(
-                  height: 60,
-                  child: Row(
-                    children: [
-                      Builder(
-                        builder: (menuContext) => IconButton(
-                          tooltip: _isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
-                          onPressed: () {
-                            if (isDesktop) {
-                              setState(() => _isSidebarOpen = !_isSidebarOpen);
-                            } else {
-                              Scaffold.of(menuContext).openDrawer();
-                            }
-                          },
-                          icon: Icon(
-                            isDesktop
-                                ? (_isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded)
-                                : Icons.menu_rounded,
-                            color: Colors.white,
+            if (showWorkspaceChrome)
+              Container(
+                color: const Color(0xFF0F172A),
+                child: SafeArea(
+                  bottom: false,
+                  child: SizedBox(
+                    height: 60,
+                    child: Row(
+                      children: [
+                        Builder(
+                          builder: (menuContext) => IconButton(
+                            tooltip: _isSidebarOpen
+                                ? 'إغلاق القائمة'
+                                : 'فتح القائمة',
+                            onPressed: () {
+                              if (isDesktop) {
+                                setState(
+                                  () => _isSidebarOpen = !_isSidebarOpen,
+                                );
+                              } else {
+                                Scaffold.of(menuContext).openDrawer();
+                              }
+                            },
+                            icon: Icon(
+                              isDesktop
+                                  ? (_isSidebarOpen
+                                        ? Icons.menu_open_rounded
+                                        : Icons.menu_rounded)
+                                  : Icons.menu_rounded,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context).copyWith(
-                            scrollbars: isDesktop,
-                            dragDevices: const {
-                              PointerDeviceKind.touch,
-                              PointerDeviceKind.mouse,
-                              PointerDeviceKind.trackpad,
-                              PointerDeviceKind.stylus,
-                              PointerDeviceKind.invertedStylus,
-                              PointerDeviceKind.unknown,
-                            },
-                          ),
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerSignal: _handleTabsPointerSignal,
-                            child: _wrapTabsWithDesktopScrollbar(
-                              isDesktop: isDesktop,
-                              child: ListView.builder(
-                                controller: _tabsScrollController,
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                  isDesktop ? 0 : 8,
-                                  10,
-                                  12,
-                                  0,
-                                ),
-                                scrollDirection: Axis.horizontal,
-                                itemCount: workspace.entries.length,
-                                itemBuilder: (context, index) {
-                                  final entry = workspace.entries[index];
-                                  final active = index == workspace.activeIndex;
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: ScrollConfiguration(
+                            behavior: ScrollConfiguration.of(context).copyWith(
+                              scrollbars: isDesktop,
+                              dragDevices: const {
+                                PointerDeviceKind.touch,
+                                PointerDeviceKind.mouse,
+                                PointerDeviceKind.trackpad,
+                                PointerDeviceKind.stylus,
+                                PointerDeviceKind.invertedStylus,
+                                PointerDeviceKind.unknown,
+                              },
+                            ),
+                            child: Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerSignal: _handleTabsPointerSignal,
+                              child: _wrapTabsWithDesktopScrollbar(
+                                isDesktop: isDesktop,
+                                child: ListView.builder(
+                                  controller: _tabsScrollController,
+                                  padding: EdgeInsetsDirectional.fromSTEB(
+                                    isDesktop ? 0 : 8,
+                                    10,
+                                    12,
+                                    0,
+                                  ),
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: workspace.entries.length,
+                                  itemBuilder: (context, index) {
+                                    final entry = workspace.entries[index];
+                                    final active =
+                                        index == workspace.activeIndex;
 
-                                  return KeyedSubtree(
-                                    key: _tabKeyFor(entry.id),
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        workspace.activate(index);
-                                      },
-                                      child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                margin: const EdgeInsetsDirectional.only(end: 8),
-                                padding: const EdgeInsets.symmetric(horizontal: 14),
-                                decoration: BoxDecoration(
-                                  color: active
-                                      ? Colors.white
-                                      : Colors.white.withValues(alpha: 0.14),
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(14),
-                                    bottom: Radius.circular(6),
-                                  ),
-                                  border: Border.all(
-                                    color: active
-                                        ? Colors.white
-                                        : Colors.white.withValues(alpha: 0.18),
-                                    width: active ? 1.5 : 1,
-                                  ),
-                                ),
-                                child: entry.id == 'home'
-                                    ? _HomeTabBrandContent(active: active)
-                                    : Row(
-                                        children: [
-                                          Icon(
-                                            entry.icon,
-                                            size: 17,
+                                    return KeyedSubtree(
+                                      key: _tabKeyFor(entry.id),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          workspace.activate(index);
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(
+                                            milliseconds: 180,
+                                          ),
+                                          margin:
+                                              const EdgeInsetsDirectional.only(
+                                                end: 8,
+                                              ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                          ),
+                                          decoration: BoxDecoration(
                                             color: active
-                                                ? const Color(0xFF0F172A)
-                                                : Colors.white,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          ConstrainedBox(
-                                            constraints: const BoxConstraints(maxWidth: 190),
-                                            child: Text(
-                                              Localization.translate(
-                                                entry.title,
-                                                Provider.of<AppSettingsProvider>(
-                                                  context,
-                                                ).language,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                color: active
-                                                    ? const Color(0xFF0F172A)
-                                                    : Colors.white,
-                                              ),
+                                                ? Colors.white
+                                                : Colors.white.withValues(
+                                                    alpha: 0.14,
+                                                  ),
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                                  top: Radius.circular(14),
+                                                  bottom: Radius.circular(6),
+                                                ),
+                                            border: Border.all(
+                                              color: active
+                                                  ? Colors.white
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.18,
+                                                    ),
+                                              width: active ? 1.5 : 1,
                                             ),
                                           ),
-                                          if (entry.id != 'home') ...[
-                                            const SizedBox(width: 10),
-                                            InkWell(
-                                              onTap: () => workspace.close(index),
-                                              child: Icon(
-                                                Icons.close_rounded,
-                                                size: 16,
-                                                color: active
-                                                    ? const Color(0xFF0F172A)
-                                                    : Colors.white,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
+                                          child: entry.id == 'home'
+                                              ? _HomeTabBrandContent(
+                                                  active: active,
+                                                )
+                                              : Row(
+                                                  children: [
+                                                    Icon(
+                                                      entry.icon,
+                                                      size: 17,
+                                                      color: active
+                                                          ? const Color(
+                                                              0xFF0F172A,
+                                                            )
+                                                          : Colors.white,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    ConstrainedBox(
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                            maxWidth: 190,
+                                                          ),
+                                                      child: Text(
+                                                        Localization.translate(
+                                                          entry.title,
+                                                          Provider.of<
+                                                                AppSettingsProvider
+                                                              >(context)
+                                                              .language,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: active
+                                                              ? const Color(
+                                                                  0xFF0F172A,
+                                                                )
+                                                              : Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (entry.id != 'home') ...[
+                                                      const SizedBox(width: 10),
+                                                      InkWell(
+                                                        onTap: () => workspace
+                                                            .close(index),
+                                                        child: Icon(
+                                                          Icons.close_rounded,
+                                                          size: 16,
+                                                          color: active
+                                                              ? const Color(
+                                                                  0xFF0F172A,
+                                                                )
+                                                              : Colors.white,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                        ),
                                       ),
-                                      ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            if (_isWindowsDesktop)
+            if (_isWindowsDesktop && showWorkspaceChrome)
               DesktopCommandBar(
                 onOpen: (title, icon, screen) => openAdaptiveScreen(
                   context,
@@ -1174,13 +1261,17 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             curve: Curves.fastOutSlowIn,
-            width: _isSidebarOpen ? 310 : 0,
+            width: _isSidebarOpen ? 290 : 56,
             child: _isSidebarOpen
-                ? const Material(
+                ? Material(
                     elevation: 6,
-                    child: AppDrawer(),
+                    child: AppDrawer(
+                      onCollapse: () => setState(() => _isSidebarOpen = false),
+                    ),
                   )
-                : const SizedBox.shrink(),
+                : _CollapsedDesktopSidebar(
+                    onOpen: () => setState(() => _isSidebarOpen = true),
+                  ),
           ),
           Expanded(child: mainContent),
         ],
@@ -1204,7 +1295,8 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
   @override
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
-    final isDesktop = _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+    final isDesktop =
+        _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
     final immersiveIndex = workspace.entries.indexWhere(
       (entry) => entry.immersive,
     );
@@ -1321,7 +1413,9 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
                 _WorkspaceHeader(
                   modeTitle: 'نظام النوافذ',
                   modeSubtitle: 'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته',
-                  onToggleSidebar: isDesktop ? () => setState(() => _isSidebarOpen = !_isSidebarOpen) : null,
+                  onToggleSidebar: isDesktop
+                      ? () => setState(() => _isSidebarOpen = !_isSidebarOpen)
+                      : null,
                   isSidebarOpen: _isSidebarOpen,
                 ),
                 if (_isWindowsDesktop)
@@ -1347,13 +1441,17 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             curve: Curves.fastOutSlowIn,
-            width: _isSidebarOpen ? 310 : 0,
+            width: _isSidebarOpen ? 290 : 56,
             child: _isSidebarOpen
-                ? const Material(
+                ? Material(
                     elevation: 6,
-                    child: AppDrawer(),
+                    child: AppDrawer(
+                      onCollapse: () => setState(() => _isSidebarOpen = false),
+                    ),
                   )
-                : const SizedBox.shrink(),
+                : _CollapsedDesktopSidebar(
+                    onOpen: () => setState(() => _isSidebarOpen = true),
+                  ),
           ),
           Expanded(child: mainContent),
         ],

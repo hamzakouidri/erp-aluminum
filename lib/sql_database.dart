@@ -306,7 +306,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 59,
+          version: 61,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -317,7 +317,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 59,
+      version: 61,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -450,6 +450,7 @@ class SqlDatabase {
     await _ensureRemnantInventorySchema(db);
     await _ensureAdvancedKitCompatibilitySchema(db);
     await _ensureDecorPanelDesignSchema(db);
+    await _ensurePaymentAllocationSchema(db);
     await _ensureSyncTombstoneInfrastructure(db);
     await _backfillClientCodes(db);
 
@@ -852,6 +853,8 @@ class SqlDatabase {
               sash_w_deduction_4 REAL DEFAULT 0.0,
               sash_overlap_val REAL DEFAULT 0.0,
               glass_w_deduction REAL DEFAULT 0.0,
+              sliding_chicane_pieces_per_junction INTEGER DEFAULT 1,
+              sliding_rail_clearance REAL DEFAULT 1.0,
               custom_formula_notes TEXT DEFAULT '',
               updated_at TEXT NOT NULL DEFAULT ''
             )
@@ -880,6 +883,16 @@ class SqlDatabase {
     try {
       await db.execute(
         "ALTER TABLE SeriesTableConfig ADD COLUMN glass_w_deduction REAL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE SeriesTableConfig ADD COLUMN sliding_chicane_pieces_per_junction INTEGER DEFAULT 1;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE SeriesTableConfig ADD COLUMN sliding_rail_clearance REAL DEFAULT 1.0;',
       );
     } catch (_) {}
     try {
@@ -1131,6 +1144,7 @@ class SqlDatabase {
             CREATE TABLE IF NOT EXISTS KitBundleItems (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               kit_id INTEGER NOT NULL,
+              family_id INTEGER,
               component_type TEXT NOT NULL,
               qty_mode TEXT NOT NULL DEFAULT 'fixed',
               dimension TEXT,
@@ -1138,6 +1152,21 @@ class SqlDatabase {
               unit TEXT NOT NULL DEFAULT 'Ù‚Ø·Ø¹Ø©',
               mechanism_scope TEXT NOT NULL DEFAULT 'all',
               sort_order INTEGER NOT NULL DEFAULT 0,
+              FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
+            )
+          ''');
+    } catch (_) {}
+    try {
+      await db.execute('''
+            CREATE TABLE IF NOT EXISTS KitBundleFamilies (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kit_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              mechanism_scopes TEXT NOT NULL DEFAULT 'belt,crank,motor',
+              blade_scope TEXT NOT NULL DEFAULT 'all',
+              per_leaf INTEGER NOT NULL DEFAULT 0,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              is_active INTEGER NOT NULL DEFAULT 1,
               FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
             )
           ''');
@@ -1153,6 +1182,7 @@ class SqlDatabase {
               price REAL NOT NULL DEFAULT 0.0,
               qty REAL NOT NULL DEFAULT 1,
               compatibility_group INTEGER NOT NULL DEFAULT 0,
+              family_id INTEGER,
               FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
             )
           ''');
@@ -1237,6 +1267,7 @@ class SqlDatabase {
       await db.execute("ALTER TABLE Commandes ADD COLUMN project_id INTEGER;");
     } catch (_) {}
 
+    await _ensurePaymentAllocationSchema(db);
     // Install deletion tracking after every legacy table has been created.
     // This must happen before the user can delete anything in the UI.
     try {
@@ -1531,7 +1562,9 @@ class SqlDatabase {
     for (final statement in const [
       "ALTER TABLE KitBundleItems ADD COLUMN mechanism_scopes TEXT NOT NULL DEFAULT 'belt,crank,motor';",
       "ALTER TABLE KitBundleItems ADD COLUMN blade_scope TEXT NOT NULL DEFAULT 'all';",
+      'ALTER TABLE KitBundleItems ADD COLUMN family_id INTEGER;',
       'ALTER TABLE KitItemRanges ADD COLUMN shutter_component_id INTEGER;',
+      'ALTER TABLE KitItemRanges ADD COLUMN family_id INTEGER;',
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_name TEXT NOT NULL DEFAULT 'Console Quissonnel Standard';",
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_name TEXT NOT NULL DEFAULT 'Console Quissonnel Spécial';",
     ]) {
@@ -1539,6 +1572,30 @@ class SqlDatabase {
         await db.execute(statement);
       } catch (_) {}
     }
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS KitBundleFamilies (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kit_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          mechanism_scopes TEXT NOT NULL DEFAULT 'belt,crank,motor',
+          blade_scope TEXT NOT NULL DEFAULT 'all',
+          per_leaf INTEGER NOT NULL DEFAULT 0,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          FOREIGN KEY (kit_id) REFERENCES KitBundles(id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_kit_bundle_families_kit ON KitBundleFamilies(kit_id, sort_order, id);',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_kit_bundle_items_family ON KitBundleItems(family_id, sort_order, id);',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_kit_item_ranges_family ON KitItemRanges(family_id, item_id);',
+      );
+    } catch (_) {}
 
     // Preserve old single-scope choices while moving to multi-select scopes.
     try {
@@ -1578,6 +1635,16 @@ class SqlDatabase {
   }
 
   Future<void> _ensureDecorPanelDesignSchema(DatabaseExecutor db) async {
+    // Older workshop databases already contain the Glass table but predate
+    // the width field used by bardage and panneau décor.  Without this repair
+    // every insert/update carrying a décor size fails with
+    // "no such column: visible_width" and the product dialog appears not to
+    // save anything.
+    try {
+      await db.execute(
+        'ALTER TABLE Glass ADD COLUMN visible_width REAL DEFAULT NULL;',
+      );
+    } catch (_) {}
     try {
       await db.execute(
         "ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';",
@@ -2618,6 +2685,14 @@ class SqlDatabase {
     }
     if (oldVersion < 59) {
       await _ensureDecorPanelDesignSchema(db);
+      await _ensureSyncTombstoneInfrastructure(db);
+    }
+    if (oldVersion < 60) {
+      await _ensurePaymentAllocationSchema(db);
+      await _ensureSyncTombstoneInfrastructure(db);
+    }
+    if (oldVersion < 61) {
+      await _ensureAdvancedKitCompatibilitySchema(db);
       await _ensureSyncTombstoneInfrastructure(db);
     }
   }
@@ -6905,6 +6980,17 @@ class SqlDatabase {
         projectId,
       ],
     );
+    if (advancePayment > _paymentTolerance) {
+      await insertTreasury(
+        'Encaissement',
+        advancePayment,
+        'دفعة افتتاحية للطلبية #$distributedId',
+        referenceId: distributedId,
+        entityType: 'Client',
+        entityId: idClient,
+        createdAt: orderDate,
+      );
+    }
     CloudSyncService().notifyChange();
     return res;
   }
@@ -6934,8 +7020,9 @@ class SqlDatabase {
     if (tax != null) data['tva'] = tax;
     if (total != null) data['total'] = total;
     if (totalGlobal != null) data['total'] = totalGlobal;
-    if (advancePayment != null) data['advance_payment'] = advancePayment;
-    if (paymentStatus != null) data['payment_status'] = paymentStatus;
+    // Financial amounts are derived from Treasury allocations. Keeping these
+    // fields out of regular order edits prevents a payment that is invisible
+    // in the cash register and customer statement.
     if (netPayable != null) data['net_payable'] = netPayable;
     if (dateCommande != null) data['created_at'] = dateCommande;
     if (updateProjectId) data['project_id'] = projectId;
@@ -7184,61 +7271,74 @@ class SqlDatabase {
         );
       }
 
-      // Migrate legacy advance payments from Commandes to Treasury
-      final orders = await myDb.query(
-        'Commandes',
-        where: 'advance_payment > 0',
-      );
-      for (var order in orders) {
-        final orderId = order['id'] as int;
-        final advance = (order['advance_payment'] as num).toDouble();
-        final clientId = order['client_id'] as int?;
-        final createdAt =
-            order['created_at']?.toString() ?? DateTime.now().toIso8601String();
+      await _ensurePaymentAllocationSchema(myDb);
 
-        // Check if there is already a Treasury transaction for this order's payment
-        final existing = await myDb.query(
-          'Treasury',
-          where:
-              "entity_type = 'Client' AND reference_id = ? AND transaction_type = 'Encaissement'",
-          whereArgs: [orderId],
+      // Reconcile only records that pre-date PaymentAllocations. The old
+      // implementation created a second Treasury receipt each time this
+      // screen opened; the new path derives every order balance once from the
+      // actual receipts, and creates a clearly-labelled legacy record only
+      // when a historic advance has no cash entry at all.
+      final legacyClients = await myDb.rawQuery('''
+        SELECT DISTINCT client_id AS id FROM Commandes
+        WHERE advance_payment > 0
+        UNION
+        SELECT DISTINCT entity_id AS id FROM Treasury
+        WHERE entity_type = 'Client' AND transaction_type = 'Encaissement'
+      ''');
+      for (final row in legacyClients) {
+        final clientId = _paymentRecordId(row['id']);
+        if (clientId == null) continue;
+        final existingAllocations = await myDb.rawQuery(
+          '''
+          SELECT COALESCE(SUM(pa.amount), 0) AS allocated
+          FROM PaymentAllocations pa
+          JOIN Treasury t ON t.id = pa.treasury_id
+          WHERE t.entity_type = 'Client' AND t.entity_id = ?
+        ''',
+          [clientId],
         );
+        final recordedAdvance = await myDb.rawQuery(
+          'SELECT COALESCE(SUM(advance_payment), 0) AS paid '
+          'FROM Commandes WHERE client_id = ?',
+          [clientId],
+        );
+        if ((_paymentNumber(existingAllocations.first['allocated']) -
+                    _paymentNumber(recordedAdvance.first['paid']))
+                .abs() >
+            _paymentTolerance) {
+          await myDb.transaction(
+            (txn) => _rebuildClientPaymentLedger(txn, clientId),
+          );
+        }
+      }
 
-        if (existing.isEmpty) {
-          // Get client info to add to description
-          String clientDesc = 'Ø¯ÙØ¹Ø© Ù„Ø·Ù„Ø¨ÙŠØ© Ø±Ù‚Ù… $orderId';
-          if (clientId != null) {
-            try {
-              final clientRow = await myDb.query(
-                'Client',
-                where: 'id = ?',
-                whereArgs: [clientId],
-              );
-              if (clientRow.isNotEmpty) {
-                final fname = clientRow.first['firstname'] ?? '';
-                final lname = clientRow.first['lastname'] ?? '';
-                clientDesc =
-                    'Ø¯ÙØ¹Ø© Ù„Ø·Ù„Ø¨ÙŠØ© Ø±Ù‚Ù… $orderId Ù…Ù† Ø§Ù„Ø²Ø¨ÙˆÙ†: $lname $fname';
-              }
-            } catch (_) {}
-          }
-
-          await myDb.insert(
-            'Treasury',
-            _withDistributedId({
-              'transaction_type': 'Encaissement',
-              'amount': advance,
-              'description': clientDesc,
-              'reference_id': orderId,
-              'recorded_by': 'migration',
-              'entity_type': 'Client',
-              'entity_id': clientId,
-              'old_balance': 0.0,
-              'new_balance': 0.0,
-              'caisse_name': 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
-              'payment_method': 'Ù†Ù‚Ø¯Ø§Ù‹ / EspÃ¨ce',
-              'created_at': createdAt,
-            }),
+      final legacySuppliers = await myDb.rawQuery('''
+        SELECT DISTINCT supplier_id AS id FROM Achats
+        WHERE paid_amount > 0 AND supplier_id IS NOT NULL
+      ''');
+      for (final row in legacySuppliers) {
+        final supplierId = _paymentRecordId(row['id']);
+        if (supplierId == null) continue;
+        final existingAllocations = await myDb.rawQuery(
+          '''
+          SELECT COALESCE(SUM(pa.amount), 0) AS allocated
+          FROM PaymentAllocations pa
+          JOIN Treasury t ON t.id = pa.treasury_id
+          WHERE t.entity_type = 'Supplier' AND t.entity_id = ?
+        ''',
+          [supplierId],
+        );
+        final recordedPaid = await myDb.rawQuery(
+          'SELECT COALESCE(SUM(paid_amount), 0) AS paid '
+          'FROM Achats WHERE supplier_id = ?',
+          [supplierId],
+        );
+        if ((_paymentNumber(existingAllocations.first['allocated']) -
+                    _paymentNumber(recordedPaid.first['paid']))
+                .abs() >
+            _paymentTolerance) {
+          await myDb.transaction(
+            (txn) => _rebuildSupplierPaymentLedger(txn, supplierId),
           );
         }
       }
@@ -7384,27 +7484,26 @@ class SqlDatabase {
 
   Future<int> addAdvanceToCommande(int idCommande, double amount) async {
     Database? myDb = await db;
-    var orderData = await myDb!.query(
+    if (myDb == null || amount <= _paymentTolerance) return 0;
+    final orderData = await myDb.query(
       'Commandes',
       where: 'id = ?',
       whereArgs: [idCommande],
     );
-    if (orderData.isNotEmpty) {
-      double currentAdvance =
-          (orderData[0]['advance_payment'] as num?)?.toDouble() ?? 0.0;
-      double total = (orderData[0]['total'] as num?)?.toDouble() ?? 0.0;
-      double newAdvance = currentAdvance + amount;
-      String newStatus = newAdvance >= total ? 'Paid' : 'Partial';
-      var res = await myDb.update(
-        'Commandes',
-        {'advance_payment': newAdvance, 'payment_status': newStatus},
-        where: 'id = ?',
-        whereArgs: [idCommande],
-      );
-      CloudSyncService().notifyChange();
-      return res;
-    }
-    return 0;
+    if (orderData.isEmpty) return 0;
+    final clientId = _paymentRecordId(orderData.first['client_id']);
+    if (clientId == null) return 0;
+
+    // Old callers can still add a deposit, but never by writing directly to
+    // Commandes. The single Treasury record is allocated to this order.
+    return insertTreasury(
+      'Encaissement',
+      amount,
+      'دفعة للطلبية #$idCommande',
+      referenceId: idCommande,
+      entityType: 'Client',
+      entityId: clientId,
+    );
   }
 
   Future<int> insertAchat(
@@ -8537,6 +8636,121 @@ class SqlDatabase {
     CloudSyncService().notifyCatalogChange();
   }
 
+  bool _isShutterDefaultPriceColorName(dynamic rawName) {
+    final normalized = (rawName ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s_\-]+'), '')
+        .replaceAll('ى', 'ي');
+    return const {'grey', 'gray', 'gris', 'رمادي'}.contains(normalized);
+  }
+
+  Future<int> _ensureShutterDefaultPriceColor(DatabaseExecutor executor) async {
+    final colors = await executor.query(
+      'Colors',
+      columns: const ['id', 'name'],
+      orderBy: 'id ASC',
+    );
+    for (final color in colors) {
+      if (_isShutterDefaultPriceColorName(color['name'])) {
+        final id = color['id'];
+        if (id is num) return id.toInt();
+        final parsed = int.tryParse('$id');
+        if (parsed != null) return parsed;
+      }
+    }
+
+    return executor.insert('Colors', {
+      'name': 'رمادي',
+      'hex_code': '#808080',
+      'type': 'Global',
+      'price': 0.0,
+    });
+  }
+
+  /// Makes the grey colour the only base price for shutter components.
+  ///
+  /// The former `ShutterComponents.price` value is retained only as a mirror
+  /// for old screens that still read that column directly.  The editable and
+  /// authoritative value is always the row in `ShutterColorPrices` for the
+  /// grey colour.
+  Future<int> ensureShutterComponentsUseGreyPrice() async {
+    final myDb = await db;
+    if (myDb == null) {
+      throw StateError('Shutter component database is not available.');
+    }
+    // Very old local catalogues may predate this compatibility mirror.  It is
+    // no longer edited by the UI, but it remains available for older
+    // calculation paths while their values are migrated to grey.
+    try {
+      await myDb.execute(
+        'ALTER TABLE ShutterComponents ADD COLUMN price REAL NOT NULL DEFAULT 0.0;',
+      );
+    } catch (_) {
+      // The current schema already contains the column.
+    }
+    await _ensureShutterColorTables(myDb);
+
+    var changed = false;
+    final greyColorId = await myDb.transaction<int>((txn) async {
+      final defaultColorId = await _ensureShutterDefaultPriceColor(txn);
+      final components = await txn.query(
+        'ShutterComponents',
+        columns: const ['id', 'price'],
+      );
+
+      for (final component in components) {
+        final rawComponentId = component['id'];
+        final componentId = rawComponentId is num
+            ? rawComponentId.toInt()
+            : int.tryParse('$rawComponentId');
+        if (componentId == null) continue;
+
+        final legacyPrice = _readStoredNumber(component['price']) ?? 0.0;
+        final greyRows = await txn.query(
+          'ShutterColorPrices',
+          columns: const ['price'],
+          where: 'shutter_component_id = ? AND color_id = ?',
+          whereArgs: [componentId, defaultColorId],
+          limit: 1,
+        );
+        final greyPrice = greyRows.isEmpty
+            ? legacyPrice
+            : (_readStoredNumber(greyRows.first['price']) ?? 0.0);
+
+        if (greyRows.isEmpty) {
+          await txn.insert('ShutterColorPrices', {
+            'shutter_component_id': componentId,
+            'color_id': defaultColorId,
+            'price': greyPrice,
+          });
+          changed = true;
+        }
+        await txn.insert('ShutterComponentColors', {
+          'shutter_component_id': componentId,
+          'color_id': defaultColorId,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+        // Keep legacy calculation paths coherent while the old column is
+        // gradually retired.  It is never shown as an editable default price.
+        if ((legacyPrice - greyPrice).abs() > 0.000001) {
+          await txn.update(
+            'ShutterComponents',
+            {'price': greyPrice},
+            where: 'id = ?',
+            whereArgs: [componentId],
+          );
+          changed = true;
+        }
+      }
+      return defaultColorId;
+    });
+
+    if (changed) CloudSyncService().notifyCatalogChange();
+    return greyColorId;
+  }
+
   Future<void> setShutterColorForComponent({
     required int shutterComponentId,
     required int colorId,
@@ -8548,10 +8762,16 @@ class SqlDatabase {
       throw StateError('Shutter component database is not available.');
     }
 
-    // Colour-specific prices are optional.  Ensure their legacy tables are
-    // available when the user chooses to add one, instead of making the
-    // ordinary component price depend on a colour configuration.
+    // Every component has a grey base-colour price.  Other colours are
+    // optional overrides.
     await _ensureShutterColorTables(myDb);
+    final defaultColorId = await _ensureShutterDefaultPriceColor(myDb);
+    if (!enabled && colorId == defaultColorId) {
+      // The grey row is the base price and must remain available for the
+      // catalogue and required-goods calculations.
+      await ensureShutterComponentsUseGreyPrice();
+      return;
+    }
     final component = await myDb.query(
       'ShutterComponents',
       columns: const ['id'],
@@ -8574,6 +8794,14 @@ class SqlDatabase {
           'shutter_component_id': shutterComponentId,
           'color_id': colorId,
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        if (colorId == defaultColorId) {
+          await txn.update(
+            'ShutterComponents',
+            {'price': price},
+            where: 'id = ?',
+            whereArgs: [shutterComponentId],
+          );
+        }
       } else {
         await txn.delete(
           'ShutterColorPrices',
@@ -8973,6 +9201,15 @@ class SqlDatabase {
       'motor_has_emergency_crank': motorHasEmergencyCrank ? 1 : 0,
       'cap_thickness': capThickness,
     });
+    // A new shutter component starts with its price in the mandatory grey
+    // colour row, never in a separate editable default-price field.
+    final greyColorId = await _ensureShutterDefaultPriceColor(myDb);
+    await setShutterColorForComponent(
+      shutterComponentId: res,
+      colorId: greyColorId,
+      enabled: true,
+      price: price,
+    );
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -9028,14 +9265,23 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (res > 0) {
+      // Product-edit forms still pass a price for backwards compatibility;
+      // write it to the grey base-colour row as the authoritative value.
+      final greyColorId = await _ensureShutterDefaultPriceColor(myDb);
+      await setShutterColorForComponent(
+        shutterComponentId: id,
+        colorId: greyColorId,
+        enabled: true,
+        price: price,
+      );
+    }
     CloudSyncService().notifyCatalogChange();
     return res;
   }
 
-  /// Updates only the price from the price-management screen.  Keeping this
-  /// separate avoids replacing other component fields and marks the change as
-  /// a catalogue update, so an incoming catalogue cannot restore the old
-  /// price.
+  /// Legacy entry point kept for callers that have not yet moved to colour
+  /// pricing. The value is stored in the mandatory grey colour row.
   Future<int> updateShutterComponentPrice(int id, double price) async {
     final myDb = await db;
     if (myDb == null) {
@@ -9049,18 +9295,6 @@ class SqlDatabase {
       );
     }
 
-    // Older local databases can contain the component table from before the
-    // standalone component-price column was introduced.  Ensure the column is
-    // present here as well, so saving a price never depends on which screen
-    // happened to open first.
-    try {
-      await myDb.execute(
-        'ALTER TABLE ShutterComponents ADD COLUMN price REAL NOT NULL DEFAULT 0.0;',
-      );
-    } catch (_) {
-      // The column already exists on current databases.
-    }
-
     final component = await myDb.query(
       'ShutterComponents',
       columns: const ['id'],
@@ -9071,31 +9305,14 @@ class SqlDatabase {
     if (component.isEmpty) {
       return 0;
     }
-
-    final res = await myDb.update(
-      'ShutterComponents',
-      {'price': price},
-      where: 'id = ?',
-      whereArgs: [id],
+    final greyColorId = await _ensureShutterDefaultPriceColor(myDb);
+    await setShutterColorForComponent(
+      shutterComponentId: id,
+      colorId: greyColorId,
+      enabled: true,
+      price: price,
     );
-
-    // Some SQLite drivers report zero modified rows when the value is already
-    // the requested value.  Verify the record instead of showing a false
-    // "could not save" message in that valid case.
-    final savedRow = await myDb.query(
-      'ShutterComponents',
-      columns: const ['price'],
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (savedRow.isEmpty) return 0;
-
-    final stored = _readStoredNumber(savedRow.first['price']);
-    if (stored == null || (stored - price).abs() > 0.000001) return 0;
-
-    CloudSyncService().notifyCatalogChange();
-    return res > 0 ? res : 1;
+    return 1;
   }
 
   Future<int> deleteShutterComponent(int id) async {
@@ -9335,182 +9552,433 @@ class SqlDatabase {
     return await myDb!.query('Treasury', orderBy: 'created_at DESC');
   }
 
-  Future<void> allocateClientPayment(int clientId, double amount) async {
-    Database? myDb = await db;
-    if (myDb == null || amount <= 0) return;
+  /// Exact links between a treasury transaction and the orders or purchase
+  /// invoices it settles. This makes Treasury the financial source of truth.
+  Future<void> _ensurePaymentAllocationSchema(DatabaseExecutor executor) async {
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS PaymentAllocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        treasury_id INTEGER NOT NULL,
+        document_type TEXT NOT NULL,
+        document_id INTEGER NOT NULL,
+        amount REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(treasury_id, document_type, document_id)
+      )
+    ''');
+    await executor.execute('''
+      CREATE INDEX IF NOT EXISTS idx_payment_allocations_treasury
+      ON PaymentAllocations(treasury_id)
+    ''');
+    await executor.execute('''
+      CREATE INDEX IF NOT EXISTS idx_payment_allocations_document
+      ON PaymentAllocations(document_type, document_id)
+    ''');
+  }
 
-    // Fetch all client orders that are not fully paid
-    // i.e. advance_payment < net_payable (or total if net_payable <= 0)
-    final orders = await myDb.query(
-      'Commandes',
-      where:
-          'client_id = ? AND advance_payment < CASE WHEN net_payable > 0 THEN net_payable ELSE total END',
-      whereArgs: [clientId],
-      orderBy: 'id ASC', // oldest first
+  static const double _paymentTolerance = 0.0001;
+
+  static int? _paymentRecordId(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static double _paymentNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  static String _normalisedTreasuryType(String value) {
+    return _repairLegacyTextEncoding(
+      value,
+    ).trim().toLowerCase().replaceAll('é', 'e');
+  }
+
+  static bool _isClientReceipt(Map<String, dynamic> row) {
+    return row['entity_type']?.toString().trim().toLowerCase() == 'client' &&
+        _normalisedTreasuryType(row['transaction_type']?.toString() ?? '') ==
+            'encaissement';
+  }
+
+  static bool _isSupplierPayment(Map<String, dynamic> row) {
+    return row['entity_type']?.toString().trim().toLowerCase() == 'supplier' &&
+        _normalisedTreasuryType(row['transaction_type']?.toString() ?? '') ==
+            'decaissement';
+  }
+
+  Future<void> _insertPaymentAllocation(
+    DatabaseExecutor executor, {
+    required int treasuryId,
+    required String documentType,
+    required int documentId,
+    required double amount,
+  }) async {
+    if (amount <= _paymentTolerance) return;
+    await executor.insert(
+      'PaymentAllocations',
+      _withDistributedId({
+        'treasury_id': treasuryId,
+        'document_type': documentType,
+        'document_id': documentId,
+        'amount': amount,
+        'created_at': DateTime.now().toIso8601String(),
+      }),
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
 
-    double remainingPayment = amount;
-    for (var row in orders) {
-      if (remainingPayment <= 0) break;
-      final orderId = row['id'] as int;
-      final net = (row['net_payable'] as num?)?.toDouble() ?? 0.0;
-      final raw = (row['total'] as num?)?.toDouble() ?? 0.0;
-      final total = net > 0 ? net : raw;
-      final advance = (row['advance_payment'] as num?)?.toDouble() ?? 0.0;
-
-      final needed = total - advance;
-      if (needed <= 0) continue;
-
-      if (remainingPayment >= needed) {
-        // This order is fully paid
-        await myDb.update(
-          'Commandes',
-          {'advance_payment': total, 'payment_status': 'Paid'},
-          where: 'id = ?',
-          whereArgs: [orderId],
-        );
-        remainingPayment -= needed;
-      } else {
-        // This order is partially paid
-        final newAdvance = advance + remainingPayment;
-        await myDb.update(
-          'Commandes',
-          {'advance_payment': newAdvance, 'payment_status': 'Partial'},
-          where: 'id = ?',
-          whereArgs: [orderId],
-        );
-        remainingPayment = 0;
-      }
-    }
+  Future<void> allocateClientPayment(int clientId, double amount) async {
+    // Kept for old callers. Amount is already recorded in Treasury; rebuild
+    // the document ledger from that canonical source instead of mutating an
+    // arbitrary open order.
+    await reconcileClientPayments(clientId);
   }
 
   Future<void> allocateSupplierPayment(int supplierId, double amount) async {
-    Database? myDb = await db;
-    if (myDb == null || amount <= 0) return;
-
-    // Fetch all supplier purchases that are not fully paid
-    // i.e. paid_amount < total
-    final purchases = await myDb.query(
-      'Achats',
-      where: 'supplier_id = ? AND paid_amount < total',
-      whereArgs: [supplierId],
-      orderBy: 'id ASC', // oldest first
-    );
-
-    double remainingPayment = amount;
-    for (var row in purchases) {
-      if (remainingPayment <= 0) break;
-      final purchaseId = row['id'] as int;
-      final total = (row['total'] as num?)?.toDouble() ?? 0.0;
-      final paid = (row['paid_amount'] as num?)?.toDouble() ?? 0.0;
-
-      final needed = total - paid;
-      if (needed <= 0) continue;
-
-      if (remainingPayment >= needed) {
-        // This purchase is fully paid
-        await myDb.update(
-          'Achats',
-          {'paid_amount': total},
-          where: 'id = ?',
-          whereArgs: [purchaseId],
-        );
-        remainingPayment -= needed;
-      } else {
-        // This purchase is partially paid
-        final newPaid = paid + remainingPayment;
-        await myDb.update(
-          'Achats',
-          {'paid_amount': newPaid},
-          where: 'id = ?',
-          whereArgs: [purchaseId],
-        );
-        remainingPayment = 0;
-      }
-    }
+    await reconcileSupplierPayments(supplierId);
   }
 
   Future<void> deallocateClientPayment(int clientId, double amount) async {
-    Database? myDb = await db;
-    if (myDb == null || amount <= 0) return;
-
-    final orders = await myDb.query(
-      'Commandes',
-      where: 'client_id = ? AND advance_payment > 0',
-      whereArgs: [clientId],
-      orderBy: 'id DESC',
-    );
-
-    double remainingToReclaim = amount;
-    for (var row in orders) {
-      if (remainingToReclaim <= 0) break;
-      final orderId = row['id'] as int;
-      final advance = (row['advance_payment'] as num?)?.toDouble() ?? 0.0;
-
-      if (advance <= 0) continue;
-
-      if (remainingToReclaim >= advance) {
-        await myDb.update(
-          'Commandes',
-          {'advance_payment': 0.0, 'payment_status': 'Unpaid'},
-          where: 'id = ?',
-          whereArgs: [orderId],
-        );
-        remainingToReclaim -= advance;
-      } else {
-        final newAdvance = advance - remainingToReclaim;
-        await myDb.update(
-          'Commandes',
-          {
-            'advance_payment': newAdvance,
-            'payment_status': newAdvance > 0 ? 'Partial' : 'Unpaid',
-          },
-          where: 'id = ?',
-          whereArgs: [orderId],
-        );
-        remainingToReclaim = 0;
-      }
-    }
+    await reconcileClientPayments(clientId);
   }
 
   Future<void> deallocateSupplierPayment(int supplierId, double amount) async {
-    Database? myDb = await db;
-    if (myDb == null || amount <= 0) return;
+    await reconcileSupplierPayments(supplierId);
+  }
 
-    final purchases = await myDb.query(
-      'Achats',
-      where: 'supplier_id = ? AND paid_amount > 0',
-      whereArgs: [supplierId],
-      orderBy: 'id DESC',
+  Future<void> _rebuildClientPaymentLedger(
+    DatabaseExecutor executor,
+    int clientId,
+  ) async {
+    await _ensurePaymentAllocationSchema(executor);
+    final orders = await executor.query(
+      'Commandes',
+      where: 'client_id = ?',
+      whereArgs: [clientId],
+      orderBy: 'created_at ASC, id ASC',
     );
+    final allTransactions = await executor.query(
+      'Treasury',
+      where: 'entity_type = ? AND entity_id = ?',
+      whereArgs: ['Client', clientId],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    final receipts = allTransactions.where(_isClientReceipt).toList();
 
-    double remainingToReclaim = amount;
-    for (var row in purchases) {
-      if (remainingToReclaim <= 0) break;
-      final purchaseId = row['id'] as int;
-      final paid = (row['paid_amount'] as num?)?.toDouble() ?? 0.0;
-
-      if (paid <= 0) continue;
-
-      if (remainingToReclaim >= paid) {
-        await myDb.update(
-          'Achats',
-          {'paid_amount': 0.0},
-          where: 'id = ?',
-          whereArgs: [purchaseId],
+    // Bring forward only the part of historic advances that has no matching
+    // cash receipt yet. This avoids the old duplicate-migration behaviour.
+    var missingLegacy =
+        orders.fold<double>(
+          0.0,
+          (sum, row) => sum + _paymentNumber(row['advance_payment']),
+        ) -
+        receipts.fold<double>(
+          0.0,
+          (sum, row) => sum + _paymentNumber(row['amount']),
         );
-        remainingToReclaim -= paid;
-      } else {
-        final newPaid = paid - remainingToReclaim;
-        await myDb.update(
-          'Achats',
-          {'paid_amount': newPaid},
-          where: 'id = ?',
-          whereArgs: [purchaseId],
+    if (missingLegacy > _paymentTolerance) {
+      for (final order in orders) {
+        if (missingLegacy <= _paymentTolerance) break;
+        final orderId = _paymentRecordId(order['id']);
+        final recordedAdvance = _paymentNumber(order['advance_payment']);
+        if (orderId == null || recordedAdvance <= _paymentTolerance) continue;
+        final amount = recordedAdvance < missingLegacy
+            ? recordedAdvance
+            : missingLegacy;
+        final legacyId = _nextDistributedId();
+        final createdAt = order['created_at']?.toString();
+        await executor.insert(
+          'Treasury',
+          _withDistributedId({
+            'id': legacyId,
+            'transaction_type': 'Encaissement',
+            'amount': amount,
+            'description': 'ترحيل دفعة قديمة للطلبية #$orderId',
+            'reference_id': orderId,
+            'recorded_by': 'migration',
+            'entity_type': 'Client',
+            'entity_id': clientId,
+            'old_balance': 0.0,
+            'new_balance': 0.0,
+            'caisse_name': 'الصندوق الرئيسي',
+            'payment_method': 'نقداً / Espèce',
+            'created_at': (createdAt == null || createdAt.trim().isEmpty)
+                ? DateTime.now().toIso8601String()
+                : createdAt,
+          }),
         );
-        remainingToReclaim = 0;
+        receipts.add({
+          'id': legacyId,
+          'reference_id': orderId,
+          'amount': amount,
+          'created_at': createdAt ?? DateTime.now().toIso8601String(),
+        });
+        missingLegacy -= amount;
       }
     }
+
+    receipts.sort((a, b) {
+      final byDate = (a['created_at']?.toString() ?? '').compareTo(
+        b['created_at']?.toString() ?? '',
+      );
+      return byDate != 0
+          ? byDate
+          : (_paymentRecordId(a['id']) ?? 0).compareTo(
+              _paymentRecordId(b['id']) ?? 0,
+            );
+    });
+    final receiptIds = receipts
+        .map((row) => _paymentRecordId(row['id']))
+        .whereType<int>()
+        .toList();
+    if (receiptIds.isNotEmpty) {
+      final placeholders = List.filled(receiptIds.length, '?').join(',');
+      await executor.rawDelete(
+        'DELETE FROM PaymentAllocations WHERE treasury_id IN ($placeholders)',
+        receiptIds,
+      );
+    }
+
+    final settledByOrder = <int, double>{};
+    double orderTotal(Map<String, dynamic> order) {
+      final net = _paymentNumber(order['net_payable']);
+      return net > 0 ? net : _paymentNumber(order['total']);
+    }
+
+    for (final receipt in receipts) {
+      final treasuryId = _paymentRecordId(receipt['id']);
+      if (treasuryId == null) continue;
+      var amountLeft = _paymentNumber(receipt['amount']);
+      final preferredId = _paymentRecordId(receipt['reference_id']);
+      final referencedOrders = orders
+          .where((row) => _paymentRecordId(row['id']) == preferredId)
+          .toList();
+      // An invoice-specific receipt must not silently settle a different
+      // order. Any excess remains a visible customer credit in Treasury.
+      final candidates = preferredId != null && referencedOrders.isNotEmpty
+          ? referencedOrders
+          : orders;
+      for (final order in candidates) {
+        if (amountLeft <= _paymentTolerance) break;
+        final orderId = _paymentRecordId(order['id']);
+        if (orderId == null) continue;
+        final due = orderTotal(order) - (settledByOrder[orderId] ?? 0.0);
+        if (due <= _paymentTolerance) continue;
+        final allocated = amountLeft < due ? amountLeft : due;
+        await _insertPaymentAllocation(
+          executor,
+          treasuryId: treasuryId,
+          documentType: 'Commande',
+          documentId: orderId,
+          amount: allocated,
+        );
+        settledByOrder[orderId] = (settledByOrder[orderId] ?? 0.0) + allocated;
+        amountLeft -= allocated;
+      }
+    }
+
+    for (final order in orders) {
+      final orderId = _paymentRecordId(order['id']);
+      if (orderId == null) continue;
+      final total = orderTotal(order);
+      final paid = (settledByOrder[orderId] ?? 0.0)
+          .clamp(0.0, total)
+          .toDouble();
+      final paymentStatus =
+          total > _paymentTolerance && paid >= total - _paymentTolerance
+          ? 'Paid'
+          : paid > _paymentTolerance
+          ? 'Partial'
+          : 'Unpaid';
+      if ((_paymentNumber(order['advance_payment']) - paid).abs() <=
+              _paymentTolerance &&
+          order['payment_status']?.toString() == paymentStatus) {
+        continue;
+      }
+      await executor.update(
+        'Commandes',
+        {
+          'advance_payment': paid,
+          'payment_status': paymentStatus,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+    }
+  }
+
+  Future<void> reconcileClientPayments(int clientId) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.transaction(
+      (transaction) => _rebuildClientPaymentLedger(transaction, clientId),
+    );
+    CloudSyncService().notifyChangeImmediate();
+  }
+
+  Future<void> _rebuildSupplierPaymentLedger(
+    DatabaseExecutor executor,
+    int supplierId,
+  ) async {
+    await _ensurePaymentAllocationSchema(executor);
+    final purchases = await executor.query(
+      'Achats',
+      where: 'supplier_id = ?',
+      whereArgs: [supplierId],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    final allTransactions = await executor.query(
+      'Treasury',
+      where: 'entity_type = ? AND entity_id = ?',
+      whereArgs: ['Supplier', supplierId],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    final payments = allTransactions.where(_isSupplierPayment).toList();
+
+    var missingLegacy =
+        purchases.fold<double>(
+          0.0,
+          (sum, row) => sum + _paymentNumber(row['paid_amount']),
+        ) -
+        payments.fold<double>(
+          0.0,
+          (sum, row) => sum + _paymentNumber(row['amount']),
+        );
+    if (missingLegacy > _paymentTolerance) {
+      for (final purchase in purchases) {
+        if (missingLegacy <= _paymentTolerance) break;
+        final purchaseId = _paymentRecordId(purchase['id']);
+        final recordedPaid = _paymentNumber(purchase['paid_amount']);
+        if (purchaseId == null || recordedPaid <= _paymentTolerance) continue;
+        final amount = recordedPaid < missingLegacy
+            ? recordedPaid
+            : missingLegacy;
+        final legacyId = _nextDistributedId();
+        final createdAt = purchase['created_at']?.toString();
+        await executor.insert(
+          'Treasury',
+          _withDistributedId({
+            'id': legacyId,
+            'transaction_type': 'Décaissement',
+            'amount': amount,
+            'description': 'ترحيل دفع قديم لفاتورة الشراء #$purchaseId',
+            'reference_id': purchaseId,
+            'recorded_by': 'migration',
+            'entity_type': 'Supplier',
+            'entity_id': supplierId,
+            'old_balance': 0.0,
+            'new_balance': 0.0,
+            'caisse_name': 'الصندوق الرئيسي',
+            'payment_method': 'نقداً / Espèce',
+            'created_at': (createdAt == null || createdAt.trim().isEmpty)
+                ? DateTime.now().toIso8601String()
+                : createdAt,
+          }),
+        );
+        payments.add({
+          'id': legacyId,
+          'reference_id': purchaseId,
+          'amount': amount,
+          'created_at': createdAt ?? DateTime.now().toIso8601String(),
+        });
+        missingLegacy -= amount;
+      }
+    }
+
+    payments.sort((a, b) {
+      final byDate = (a['created_at']?.toString() ?? '').compareTo(
+        b['created_at']?.toString() ?? '',
+      );
+      return byDate != 0
+          ? byDate
+          : (_paymentRecordId(a['id']) ?? 0).compareTo(
+              _paymentRecordId(b['id']) ?? 0,
+            );
+    });
+    final paymentIds = payments
+        .map((row) => _paymentRecordId(row['id']))
+        .whereType<int>()
+        .toList();
+    if (paymentIds.isNotEmpty) {
+      final placeholders = List.filled(paymentIds.length, '?').join(',');
+      await executor.rawDelete(
+        'DELETE FROM PaymentAllocations WHERE treasury_id IN ($placeholders)',
+        paymentIds,
+      );
+    }
+
+    final settledByPurchase = <int, double>{};
+    for (final payment in payments) {
+      final treasuryId = _paymentRecordId(payment['id']);
+      if (treasuryId == null) continue;
+      var amountLeft = _paymentNumber(payment['amount']);
+      final preferredId = _paymentRecordId(payment['reference_id']);
+      final referencedPurchases = purchases
+          .where((row) => _paymentRecordId(row['id']) == preferredId)
+          .toList();
+      final candidates = preferredId != null && referencedPurchases.isNotEmpty
+          ? referencedPurchases
+          : purchases;
+      for (final purchase in candidates) {
+        if (amountLeft <= _paymentTolerance) break;
+        final purchaseId = _paymentRecordId(purchase['id']);
+        if (purchaseId == null) continue;
+        final total = _paymentNumber(purchase['total']);
+        final due = total - (settledByPurchase[purchaseId] ?? 0.0);
+        if (due <= _paymentTolerance) continue;
+        final allocated = amountLeft < due ? amountLeft : due;
+        await _insertPaymentAllocation(
+          executor,
+          treasuryId: treasuryId,
+          documentType: 'Achat',
+          documentId: purchaseId,
+          amount: allocated,
+        );
+        settledByPurchase[purchaseId] =
+            (settledByPurchase[purchaseId] ?? 0.0) + allocated;
+        amountLeft -= allocated;
+      }
+    }
+
+    // Do not infer a purchase workflow status from payment; a confirmed
+    // purchase may legitimately be only partially paid. Only its financial
+    // figures are derived from Treasury here.
+    for (final purchase in purchases) {
+      final purchaseId = _paymentRecordId(purchase['id']);
+      if (purchaseId == null) continue;
+      final total = _paymentNumber(purchase['total']);
+      final paid = (settledByPurchase[purchaseId] ?? 0.0)
+          .clamp(0.0, total)
+          .toDouble();
+      final remaining = (total - paid).clamp(0.0, double.infinity).toDouble();
+      if ((_paymentNumber(purchase['paid_amount']) - paid).abs() <=
+              _paymentTolerance &&
+          (_paymentNumber(purchase['remaining_amount']) - remaining).abs() <=
+              _paymentTolerance) {
+        continue;
+      }
+      await executor.update(
+        'Achats',
+        {
+          'paid_amount': paid,
+          'remaining_amount': remaining,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [purchaseId],
+      );
+    }
+  }
+
+  Future<void> reconcileSupplierPayments(int supplierId) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.transaction(
+      (transaction) => _rebuildSupplierPaymentLedger(transaction, supplierId),
+    );
+    CloudSyncService().notifyChangeImmediate();
   }
 
   Future<void> deallocateWorkerPayment(
@@ -9586,37 +10054,36 @@ class SqlDatabase {
     String? createdAt,
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert(
-      'Treasury',
-      _withDistributedId({
-        'transaction_type': transactionType,
-        'amount': amount,
-        'description': description,
-        'reference_id': referenceId,
-        'recorded_by': recordedBy ?? 'system',
-        'entity_type': entityType,
-        'entity_id': entityId,
-        'phone': phone,
-        'old_balance': oldBalance ?? 0.0,
-        'new_balance': newBalance ?? 0.0,
-        'caisse_name': caisseName ?? 'Ø§Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
-        'payment_method': paymentMethod ?? 'Ù†Ù‚Ø¯Ø§Ù‹ / EspÃ¨ce',
-        'created_at': createdAt ?? DateTime.now().toIso8601String(),
-      }),
-    );
+    if (myDb == null) return 0;
+    final transactionAt = createdAt ?? DateTime.now().toIso8601String();
+    final treasuryData = _withDistributedId({
+      'transaction_type': transactionType,
+      'amount': amount,
+      'description': description,
+      'reference_id': referenceId,
+      'recorded_by': recordedBy ?? 'system',
+      'entity_type': entityType,
+      'entity_id': entityId,
+      'phone': phone,
+      'old_balance': oldBalance ?? 0.0,
+      'new_balance': newBalance ?? 0.0,
+      'caisse_name': caisseName ?? 'الصندوق الرئيسي',
+      'payment_method': paymentMethod ?? 'نقداً / Espèce',
+      'created_at': transactionAt,
+    });
+    final res = await myDb.transaction((txn) async {
+      await _ensurePaymentAllocationSchema(txn);
+      final id = await txn.insert('Treasury', treasuryData);
+      if (_isClientReceipt(treasuryData) && entityId != null) {
+        await _rebuildClientPaymentLedger(txn, entityId);
+      } else if (_isSupplierPayment(treasuryData) && entityId != null) {
+        await _rebuildSupplierPaymentLedger(txn, entityId);
+      }
+      return id;
+    });
 
-    if (entityType == 'Client' &&
-        transactionType == 'Encaissement' &&
-        entityId != null &&
-        referenceId == null) {
-      await allocateClientPayment(entityId, amount);
-    } else if (entityType == 'Supplier' &&
-        transactionType == 'DÃ©caissement' &&
-        entityId != null &&
-        referenceId == null) {
-      await allocateSupplierPayment(entityId, amount);
-    } else if (entityType == 'Worker' &&
-        transactionType == 'DÃ©caissement' &&
+    if (entityType == 'Worker' &&
+        _normalisedTreasuryType(transactionType) == 'decaissement' &&
         entityId != null &&
         referenceId == null) {
       final workerRows = await myDb.query(
@@ -9629,7 +10096,7 @@ class SqlDatabase {
             ? workerRows.first['uid'].toString()
             : (workerRows.first['id']?.toString() ?? entityId.toString());
 
-        final txTime = createdAt ?? DateTime.now().toIso8601String();
+        final txTime = transactionAt;
         final existingTxs = await myDb.query(
           'WorkerTransactions',
           where: 'created_at = ? AND amount = ?',
@@ -9666,23 +10133,33 @@ class SqlDatabase {
     );
     if (records.isEmpty) return 0;
     final row = records.first;
-    final type = row['transaction_type'] as String;
     final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
-    final entityType = row['entity_type'] as String?;
-    final entityId = row['entity_id'] as int?;
+    final entityId = _paymentRecordId(row['entity_id']);
+    final isClientReceipt = _isClientReceipt(row);
+    final isSupplierPayment = _isSupplierPayment(row);
 
-    final res = await myDb.delete('Treasury', where: 'id = ?', whereArgs: [id]);
+    final res = await myDb.transaction((txn) async {
+      await _ensurePaymentAllocationSchema(txn);
+      final deleted = await txn.delete(
+        'Treasury',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await txn.delete(
+        'PaymentAllocations',
+        where: 'treasury_id = ?',
+        whereArgs: [id],
+      );
+      if (deleted > 0 && isClientReceipt && entityId != null) {
+        await _rebuildClientPaymentLedger(txn, entityId);
+      } else if (deleted > 0 && isSupplierPayment && entityId != null) {
+        await _rebuildSupplierPaymentLedger(txn, entityId);
+      }
+      return deleted;
+    });
 
     if (res > 0) {
-      if (entityType == 'Client' &&
-          type == 'Encaissement' &&
-          entityId != null) {
-        await deallocateClientPayment(entityId, amount);
-      } else if (entityType == 'Supplier' &&
-          type == 'DÃ©caissement' &&
-          entityId != null) {
-        await deallocateSupplierPayment(entityId, amount);
-      } else if (entityType == 'Worker' && entityId != null) {
+      if (row['entity_type']?.toString() == 'Worker' && entityId != null) {
         await deallocateWorkerPayment(
           entityId,
           amount,
@@ -9712,80 +10189,77 @@ class SqlDatabase {
     );
     if (records.isEmpty) return 0;
     final row = records.first;
-    final type = row['transaction_type'] as String;
-    final oldAmount = (row['amount'] as num?)?.toDouble() ?? 0.0;
-    final entityType = row['entity_type'] as String?;
-    final entityId = row['entity_id'] as int?;
+    final entityId = _paymentRecordId(row['entity_id']);
+    final isClientReceipt = _isClientReceipt(row);
+    final isSupplierPayment = _isSupplierPayment(row);
 
-    final res = await myDb.update(
-      'Treasury',
-      {
-        'amount': newAmount,
-        'description': newDescription,
-        'caisse_name': newCaisse,
-        'payment_method': newPaymentMethod,
-        'created_at': newCreatedAt,
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final res = await myDb.transaction((txn) async {
+      await _ensurePaymentAllocationSchema(txn);
+      final updated = await txn.update(
+        'Treasury',
+        {
+          'amount': newAmount,
+          'description': newDescription,
+          'caisse_name': newCaisse,
+          'payment_method': newPaymentMethod,
+          'created_at': newCreatedAt,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (updated > 0 && isClientReceipt && entityId != null) {
+        await _rebuildClientPaymentLedger(txn, entityId);
+      } else if (updated > 0 && isSupplierPayment && entityId != null) {
+        await _rebuildSupplierPaymentLedger(txn, entityId);
+      }
+      return updated;
+    });
 
     if (res > 0) {
-      final delta = newAmount - oldAmount;
-      if (entityType == 'Client' &&
-          type == 'Encaissement' &&
-          entityId != null) {
-        if (delta > 0) {
-          await allocateClientPayment(entityId, delta);
-        } else if (delta < 0) {
-          await deallocateClientPayment(entityId, -delta);
-        }
-      } else if (entityType == 'Supplier' &&
-          type == 'DÃ©caissement' &&
-          entityId != null) {
-        if (delta > 0) {
-          await allocateSupplierPayment(entityId, delta);
-        } else if (delta < 0) {
-          await deallocateSupplierPayment(entityId, -delta);
-        }
-      }
-      CloudSyncService().notifyChange();
+      CloudSyncService().notifyChangeImmediate();
     }
     return res;
   }
 
-  /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ø²Ø¨ÙˆÙ† = Ù…Ø¬Ù…ÙˆØ¹ net_payable - advance_payment - Ù…Ø¯ÙÙˆØ¹Ø§Øª Ø§Ù„Ø®Ø²ÙŠÙ†Ø©
+  /// Customer balance is calculated from invoices and the treasury ledger.
+  /// `advance_payment` is only a cached allocation total, so subtracting it
+  /// as well as Treasury would count every receipt twice.
   Future<double> getClientBalance(int clientId) async {
     final myDb = await db;
     if (myDb == null) return 0.0;
 
-    // Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„ÙÙˆØ§ØªÙŠØ±: net_payable (Ø£Ùˆ total Ø¥Ø°Ø§ ÙƒØ§Ù† 0) Ù…Ø·Ø±ÙˆØ­Ø§Ù‹ Ù…Ù†Ù‡ advance_payment
     final commandesRes = await myDb.rawQuery(
       '''
       SELECT
         COALESCE(SUM(
           CASE WHEN net_payable > 0 THEN net_payable ELSE total END
-        ), 0) as invoices,
-        COALESCE(SUM(advance_payment), 0) as advances
+        ), 0) as invoices
       FROM Commandes WHERE client_id = ?
       ''',
       [clientId],
     );
     final totalInvoices =
         (commandesRes.first['invoices'] as num?)?.toDouble() ?? 0.0;
-    final totalAdvances =
-        (commandesRes.first['advances'] as num?)?.toDouble() ?? 0.0;
-
-    // Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ù…Ø§ Ø¯ÙÙØ¹ Ù…Ù† Ø®Ù„Ø§Ù„ Ù…Ø¹Ø§Ù…Ù„Ø§Øª Ø§Ù„Ø®Ø²ÙŠÙ†Ø© Ø§Ù„Ù…Ø±ØªØ¨Ø·Ø© Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø²Ø¨ÙˆÙ†
-    final treasuryRes = await myDb.rawQuery(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM Treasury WHERE entity_type = 'Client' AND entity_id = ? AND transaction_type = 'Encaissement'",
-      [clientId],
+    final transactions = await myDb.query(
+      'Treasury',
+      where: 'entity_type = ? AND entity_id = ?',
+      whereArgs: ['Client', clientId],
     );
-    final totalTreasuryPaid =
-        (treasuryRes.first['total'] as num?)?.toDouble() ?? 0.0;
-
-    // Ø§Ù„Ø±ØµÙŠØ¯ = (ÙÙˆØ§ØªÙŠØ±) - (Ø³Ù„ÙØ©) - (Ù…Ø¯ÙÙˆØ¹Ø§Øª Ø®Ø²ÙŠÙ†Ø©). Ù…ÙˆØ¬Ø¨ = Ø§Ù„Ø²Ø¨ÙˆÙ† Ù…Ø¯ÙŠÙ† Ù„Ù„Ù…Ø­Ù„
-    return totalInvoices - totalAdvances - totalTreasuryPaid;
+    var receipts = 0.0;
+    var refunds = 0.0;
+    for (final row in transactions) {
+      final amount = _paymentNumber(row['amount']);
+      final type = _normalisedTreasuryType(
+        row['transaction_type']?.toString() ?? '',
+      );
+      if (type == 'encaissement') {
+        receipts += amount;
+      } else if (type == 'decaissement') {
+        refunds += amount;
+      }
+    }
+    // Positive = the customer still owes the workshop.
+    return totalInvoices - receipts + refunds;
   }
 
   /// Ø­Ø³Ø§Ø¨ Ø±ØµÙŠØ¯ Ø§Ù„Ù…ÙˆØ±Ø¯ = SUM(total) - SUM(paid_amount) Ù…Ù† Achats
@@ -9841,6 +10315,7 @@ class SqlDatabase {
         'Achats',
         'Achat_items',
         'Suppliers',
+        'PaymentAllocations',
         'Treasury',
         'WorkerTransactions',
         'Employees',
@@ -10427,6 +10902,7 @@ class SqlDatabase {
       } catch (_) {}
     }
     await _ensureSeriesDesignTables(db);
+    await _ensurePaymentAllocationSchema(db);
     await _ensureSyncTombstoneInfrastructure(db);
   }
 
@@ -10644,6 +11120,7 @@ class SqlDatabase {
       'KitItemVariants',
       'Caisses',
       'Treasury',
+      'PaymentAllocations',
       'WorkerTransactions',
       'WorkerAllocations',
       'WorkerAttendance',
@@ -10681,6 +11158,7 @@ class SqlDatabase {
       'Measurements',
       'Caisses',
       'Treasury',
+      'PaymentAllocations',
       'WorkerTransactions',
       'WorkerAllocations',
       'WorkerAttendance',
@@ -12468,17 +12946,126 @@ class SqlDatabase {
     );
   }
 
-  // ========================= KIT BUNDLE ITEMS CRUD =========================
+  // ========================= KIT BUNDLE FAMILIES CRUD =========================
 
-  /// Ù‚Ø±Ø§Ø¡Ø© Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø­Ø¯Ø¯
-  Future<List<Map<String, dynamic>>> readKitBundleItems(int kitId) async {
+  /// Families are optional small groups inside a Kit.  They do not represent
+  /// stock themselves; only the child KitBundleItems do.
+  Future<List<Map<String, dynamic>>> readKitBundleFamilies(int kitId) async {
     final database = await db;
     if (database == null) return [];
     await _ensureAdvancedKitCompatibilitySchema(database);
+    return database.query(
+      'KitBundleFamilies',
+      where: 'kit_id = ? AND is_active = 1',
+      whereArgs: [kitId],
+      orderBy: 'sort_order ASC, id ASC',
+    );
+  }
+
+  Future<int> insertKitBundleFamily({
+    required int kitId,
+    required String name,
+    String mechanismScopes = 'belt,crank,motor',
+    String bladeScope = 'all',
+    bool perLeaf = false,
+    int sortOrder = 0,
+  }) async {
+    final database = await db;
+    if (database == null) return -1;
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    final result = await database.insert('KitBundleFamilies', {
+      'kit_id': kitId,
+      'name': name.trim(),
+      'mechanism_scopes': mechanismScopes,
+      'blade_scope': bladeScope.toLowerCase() == 'x3d'
+          ? 'extruded'
+          : const {'normal', 'extruded'}.contains(bladeScope.toLowerCase())
+          ? bladeScope.toLowerCase()
+          : 'all',
+      'per_leaf': perLeaf ? 1 : 0,
+      'sort_order': sortOrder,
+      'is_active': 1,
+    });
+    CloudSyncService().notifyCatalogChange();
+    return result;
+  }
+
+  Future<void> updateKitBundleFamily(
+    int id, {
+    required String name,
+    String mechanismScopes = 'belt,crank,motor',
+    String bladeScope = 'all',
+    required bool perLeaf,
+    required int sortOrder,
+  }) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    await database.update(
+      'KitBundleFamilies',
+      {
+        'name': name.trim(),
+        'mechanism_scopes': mechanismScopes,
+        'blade_scope': bladeScope.toLowerCase() == 'x3d'
+            ? 'extruded'
+            : const {'normal', 'extruded'}.contains(bladeScope.toLowerCase())
+            ? bladeScope.toLowerCase()
+            : 'all',
+        'per_leaf': perLeaf ? 1 : 0,
+        'sort_order': sortOrder,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<void> deleteKitBundleFamily(int id) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    await database.transaction((txn) async {
+      // Keep the components usable: removing a family returns its children
+      // to the Kit root instead of deleting catalogue configuration.
+      await txn.update(
+        'KitBundleItems',
+        {'family_id': null},
+        where: 'family_id = ?',
+        whereArgs: [id],
+      );
+      await txn.update(
+        'KitBundleFamilies',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  // ========================= KIT BUNDLE ITEMS CRUD =========================
+
+  /// Ù‚Ø±Ø§Ø¡Ø© Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø­Ø¯Ø¯
+  Future<List<Map<String, dynamic>>> readKitBundleItems(
+    int kitId, {
+    int? familyId,
+    bool topLevelOnly = false,
+  }) async {
+    final database = await db;
+    if (database == null) return [];
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    String where = 'kit_id = ?';
+    final whereArgs = <Object?>[kitId];
+    if (familyId != null) {
+      where += ' AND family_id = ?';
+      whereArgs.add(familyId);
+    } else if (topLevelOnly) {
+      where += ' AND family_id IS NULL';
+    }
     return await database.query(
       'KitBundleItems',
-      where: 'kit_id = ?',
-      whereArgs: [kitId],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'sort_order ASC, id ASC',
     );
   }
@@ -12494,6 +13081,7 @@ class SqlDatabase {
     String mechanismScope = 'all',
     String mechanismScopes = 'belt,crank,motor',
     String bladeScope = 'all',
+    int? familyId,
     int sortOrder = 0,
   }) async {
     final database = await db;
@@ -12501,6 +13089,7 @@ class SqlDatabase {
     await _ensureAdvancedKitCompatibilitySchema(database);
     final result = await database.insert('KitBundleItems', {
       'kit_id': kitId,
+      'family_id': familyId,
       'component_type': componentType,
       'qty_mode': qtyMode,
       'dimension': dimension,
@@ -12609,6 +13198,21 @@ class SqlDatabase {
               .toList();
         }
       }
+      final familyId = (row['family_id'] as num?)?.toInt();
+      if (familyId != null) {
+        final families = await database.query(
+          'KitBundleFamilies',
+          where: 'id = ? AND is_active = 1',
+          whereArgs: [familyId],
+          limit: 1,
+        );
+        if (families.isNotEmpty) {
+          final family = Map<String, dynamic>.from(families.first);
+          row['product_name'] =
+              family['name']?.toString() ?? row['product_name'];
+          row['family'] = family;
+        }
+      }
       result.add(row);
     }
     return result;
@@ -12624,19 +13228,26 @@ class SqlDatabase {
     double qty = 1,
     int compatibilityGroup = 0,
     int? shutterComponentId,
+    int? familyId,
   }) async {
     final database = await db;
     if (database == null) return -1;
     await _ensureAdvancedKitCompatibilitySchema(database);
-    if (shutterComponentId != null) {
+    final linkedColumn = shutterComponentId != null
+        ? 'shutter_component_id'
+        : familyId != null
+        ? 'family_id'
+        : null;
+    final linkedId = shutterComponentId ?? familyId;
+    if (linkedColumn != null && linkedId != null) {
       final duplicate = await database.query(
         'KitItemRanges',
         columns: const ['id'],
         where:
-            'item_id = ? AND shutter_component_id = ? AND min_mm < ? AND max_mm > ? AND compatibility_group = ?',
+            'item_id = ? AND $linkedColumn = ? AND min_mm < ? AND max_mm > ? AND compatibility_group = ?',
         whereArgs: [
           itemId,
-          shutterComponentId,
+          linkedId,
           maxMm,
           minMm,
           compatibilityGroup.clamp(0, 2),
@@ -12654,6 +13265,7 @@ class SqlDatabase {
       'qty': qty,
       'compatibility_group': compatibilityGroup.clamp(0, 2),
       'shutter_component_id': shutterComponentId,
+      'family_id': familyId,
     });
     CloudSyncService().notifyCatalogChange();
     return result;
@@ -12669,22 +13281,29 @@ class SqlDatabase {
     required double qty,
     int compatibilityGroup = 0,
     int? shutterComponentId,
+    int? familyId,
   }) async {
     final database = await db;
     if (database == null) return 0;
     await _ensureAdvancedKitCompatibilitySchema(database);
-    if (shutterComponentId != null) {
+    final linkedColumn = shutterComponentId != null
+        ? 'shutter_component_id'
+        : familyId != null
+        ? 'family_id'
+        : null;
+    final linkedId = shutterComponentId ?? familyId;
+    if (linkedColumn != null && linkedId != null) {
       final duplicate = await database.query(
         'KitItemRanges',
         columns: const ['id'],
         where:
             'id != ? AND item_id = (SELECT item_id FROM KitItemRanges WHERE id = ?) '
-            'AND shutter_component_id = ? AND min_mm < ? AND max_mm > ? '
+            'AND $linkedColumn = ? AND min_mm < ? AND max_mm > ? '
             'AND compatibility_group = ?',
         whereArgs: [
           id,
           id,
-          shutterComponentId,
+          linkedId,
           maxMm,
           minMm,
           compatibilityGroup.clamp(0, 2),
@@ -12703,6 +13322,7 @@ class SqlDatabase {
         'qty': qty,
         'compatibility_group': compatibilityGroup.clamp(0, 2),
         'shutter_component_id': shutterComponentId,
+        'family_id': familyId,
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -12822,17 +13442,84 @@ class SqlDatabase {
 
   /// Ù‚Ø±Ø§Ø¡Ø© ÙƒÙ„ Ù…Ø±ÙƒØ¨Ø§Øª Kit Ù…Ø¹ Ù†Ø·Ø§Ù‚Ø§ØªÙ‡Ø§ ÙˆÙ…ØªØºÙŠØ±Ø§ØªÙ‡Ø§ â€” Ù„Ù„Ø­Ø³Ø§Ø¨ ÙÙŠ BOM
   Future<List<Map<String, dynamic>>> readKitBundleItemsWithDetails(
-    int kitId,
-  ) async {
+    int kitId, {
+    int? familyId,
+    bool topLevelOnly = false,
+  }) async {
     final database = await db;
     if (database == null) return [];
-    final items = await readKitBundleItems(kitId);
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    final items = await readKitBundleItems(
+      kitId,
+      familyId: familyId,
+      topLevelOnly: topLevelOnly,
+    );
+    final families = await readKitBundleFamilies(kitId);
+    final familyById = <int, Map<String, dynamic>>{
+      for (final family in families)
+        if (family['id'] is num)
+          (family['id'] as num).toInt(): Map<String, dynamic>.from(family),
+    };
     final result = <Map<String, dynamic>>[];
     for (final item in items) {
       final itemId = item['id'] as int;
       final ranges = await readKitItemRanges(itemId);
       final variants = await readKitItemVariants(itemId);
-      result.add({...item, 'ranges': ranges, 'variants': variants});
+      final itemMap = Map<String, dynamic>.from(item);
+      final rawFamilyId = itemMap['family_id'];
+      final itemFamilyId = rawFamilyId is num
+          ? rawFamilyId.toInt()
+          : int.tryParse('$rawFamilyId');
+      result.add({
+        ...itemMap,
+        'ranges': ranges,
+        'variants': variants,
+        if (itemFamilyId != null && familyById[itemFamilyId] != null)
+          'family': familyById[itemFamilyId],
+      });
+    }
+
+    // Families are selectable outcomes of a root item's ranges.  They are
+    // deliberately not flattened into the root list, otherwise merely
+    // creating a family would add every child to every BOM.
+    if (familyId == null && topLevelOnly) {
+      final selectedFamilyIds = <int>{};
+      for (final item in result) {
+        for (final rawRange in item['ranges'] as List? ?? const []) {
+          if (rawRange is! Map) continue;
+          final rawId = rawRange['family_id'];
+          final id = rawId is num
+              ? rawId.toInt()
+              : int.tryParse(rawId?.toString() ?? '');
+          if (id != null && familyById.containsKey(id)) {
+            selectedFamilyIds.add(id);
+          }
+        }
+      }
+      final selectedFamilies = <int, Map<String, dynamic>>{};
+      for (final id in selectedFamilyIds) {
+        final family = Map<String, dynamic>.from(familyById[id]!);
+        family['items'] = await readKitBundleItemsWithDetails(
+          kitId,
+          familyId: id,
+        );
+        selectedFamilies[id] = family;
+      }
+      for (final item in result) {
+        final rawRanges = item['ranges'] as List? ?? const [];
+        item['ranges'] = rawRanges.map((rawRange) {
+          if (rawRange is! Map) return rawRange;
+          final range = Map<String, dynamic>.from(rawRange);
+          final rawId = range['family_id'];
+          final id = rawId is num
+              ? rawId.toInt()
+              : int.tryParse(rawId?.toString() ?? '');
+          if (id != null && selectedFamilies[id] != null) {
+            range['family'] = selectedFamilies[id];
+          }
+          return range;
+        }).toList();
+      }
     }
     return result;
   }
@@ -12986,6 +13673,8 @@ class SqlDatabase {
     double sashWDeduction4 = 0.0,
     double sashOverlapVal = 0.0,
     double glassWDeduction = 0.0,
+    int slidingChicanePiecesPerJunction = 1,
+    double slidingRailClearance = 1.0,
     String customFormulaNotes = '',
   }) async {
     final myDb = await db;
@@ -12994,8 +13683,9 @@ class SqlDatabase {
       '''
       INSERT INTO SeriesTableConfig (
         series_id, allowed_section_types, allowed_accessory_ids, allowed_accessory_types, excluded_accessory_ids,
-        sash_w_deduction_2, sash_w_deduction_3, sash_w_deduction_4, sash_overlap_val, glass_w_deduction, custom_formula_notes, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sash_w_deduction_2, sash_w_deduction_3, sash_w_deduction_4, sash_overlap_val, glass_w_deduction,
+        sliding_chicane_pieces_per_junction, sliding_rail_clearance, custom_formula_notes, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(series_id) DO UPDATE SET
         allowed_section_types = excluded.allowed_section_types,
         allowed_accessory_ids = excluded.allowed_accessory_ids,
@@ -13006,6 +13696,8 @@ class SqlDatabase {
         sash_w_deduction_4 = excluded.sash_w_deduction_4,
         sash_overlap_val = excluded.sash_overlap_val,
         glass_w_deduction = excluded.glass_w_deduction,
+        sliding_chicane_pieces_per_junction = excluded.sliding_chicane_pieces_per_junction,
+        sliding_rail_clearance = excluded.sliding_rail_clearance,
         custom_formula_notes = excluded.custom_formula_notes,
         updated_at = excluded.updated_at
     ''',
@@ -13020,6 +13712,8 @@ class SqlDatabase {
         sashWDeduction4,
         sashOverlapVal,
         glassWDeduction,
+        slidingChicanePiecesPerJunction,
+        slidingRailClearance,
         customFormulaNotes,
         DateTime.now().toIso8601String(),
       ],

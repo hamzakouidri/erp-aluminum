@@ -44,6 +44,12 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          actionsOverflowAlignment: OverflowBarAlignment.end,
+          actionsOverflowButtonSpacing: 8,
           title: Text(
             kit == null
                 ? Localization.translate('اضافة Kit', lang)
@@ -268,13 +274,20 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
 class KitItemsScreen extends StatefulWidget {
   final SqlDatabase db;
   final Map<String, dynamic> kit;
-  const KitItemsScreen({super.key, required this.db, required this.kit});
+  final Map<String, dynamic>? family;
+  const KitItemsScreen({
+    super.key,
+    required this.db,
+    required this.kit,
+    this.family,
+  });
   @override
   State<KitItemsScreen> createState() => _KitItemsScreenState();
 }
 
 class _KitItemsScreenState extends State<KitItemsScreen> {
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _families = [];
   bool _loading = true;
   List<String> _suggestedNames = [];
   late String _group1Name;
@@ -327,12 +340,24 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
 
   Future<void> _loadItems() async {
     setState(() => _loading = true);
-    final items = await widget.db.readKitBundleItemsWithDetails(
-      widget.kit['id'],
-    );
+    final familyId = (widget.family?['id'] as num?)?.toInt();
+    final results = await Future.wait<dynamic>([
+      widget.db.readKitBundleItemsWithDetails(
+        widget.kit['id'],
+        familyId: familyId,
+        topLevelOnly: widget.family == null,
+      ),
+      if (widget.family == null)
+        widget.db.readKitBundleFamilies(widget.kit['id']),
+    ]);
+    final items = results.first as List<Map<String, dynamic>>;
+    final families = widget.family == null && results.length > 1
+        ? results[1] as List<Map<String, dynamic>>
+        : <Map<String, dynamic>>[];
     if (mounted)
       setState(() {
         _items = items;
+        _families = families;
         _loading = false;
       });
   }
@@ -366,8 +391,26 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
     return '';
   }
 
+  bool get _isShutterStyleKit {
+    final code = (widget.kit['description'] ?? '')
+        .toString()
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[\s,;:_-]+'), '');
+    if (const {'V', 'M', 'MT', 'CT'}.contains(code)) return true;
+    final name = (widget.kit['name'] ?? '').toString().toLowerCase();
+    return name.contains('caisson') ||
+        name.contains('tunnel') ||
+        name.contains('volet') ||
+        name.contains('shutter') ||
+        name.contains('ستار');
+  }
+
   Future<void> _editCompatibilityGroupNames() async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final first = TextEditingController(text: _group1Name);
     final second = TextEditingController(text: _group2Name);
     final saved = await showDialog<bool>(
@@ -424,6 +467,170 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
     }
   }
 
+  static const _mechanismOptions = <(String, String)>[
+    ('belt', 'حزام'),
+    ('crank', 'مانيفال'),
+    ('motor', 'كل المحركات'),
+    ('motor_plain', 'محرك عادي'),
+    ('motor_emergency', 'محرك مع مانيفال احتياطي'),
+  ];
+
+  String _mechanismLabel(Set<String> scopes, AppLanguage lang) {
+    if (scopes.isEmpty) return Localization.translate('كل الميكانيزمات', lang);
+    return _mechanismOptions
+        .where((option) => scopes.contains(option.$1))
+        .map((option) => Localization.translate(option.$2, lang))
+        .join('، ');
+  }
+
+  Future<void> _showAddEditFamilyDialog({Map<String, dynamic>? family}) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final nameCtrl = TextEditingController(
+      text: family?['name']?.toString() ?? '',
+    );
+    final selectedMechanisms = (family?['mechanism_scopes'] ?? '')
+        .toString()
+        .split(',')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    String bladeScope = family?['blade_scope']?.toString() ?? 'all';
+    if (bladeScope == 'x3d') bladeScope = 'extruded';
+    bool perLeaf = (family?['per_leaf'] as num?)?.toInt() == 1;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          actionsOverflowAlignment: OverflowBarAlignment.end,
+          actionsOverflowButtonSpacing: 8,
+          title: Text(
+            family == null ? 'إضافة عائلة داخل الكيت' : 'تعديل عائلة الكيت',
+          ),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 560,
+              maxHeight:
+                  (MediaQuery.of(ctx).size.height -
+                      MediaQuery.of(ctx).viewInsets.bottom) *
+                  0.52,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم العائلة',
+                      hintText: 'مثال: Embout + Support Roulement',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('فلترة اختيارية حسب الميكانيزم:'),
+                  const Text(
+                    'اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  for (final option in _mechanismOptions)
+                    CheckboxListTile(
+                      value: selectedMechanisms.contains(option.$1),
+                      title: Text(Localization.translate(option.$2, lang)),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (checked) => setDialogState(() {
+                        if (checked == true) {
+                          selectedMechanisms.add(option.$1);
+                        } else {
+                          selectedMechanisms.remove(option.$1);
+                        }
+                      }),
+                    ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: bladeScope,
+                    decoration: const InputDecoration(
+                      labelText: 'نوع الشفرة',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'all', child: Text('كل الشفرات')),
+                      DropdownMenuItem(
+                        value: 'normal',
+                        child: Text('الشفرة العادية فقط'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'extruded',
+                        child: Text('شفرة Extrudé فقط'),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => bladeScope = value ?? 'all'),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('تتكرر لكل ضلفة'),
+                    subtitle: const Text(
+                      'اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.',
+                    ),
+                    value: perLeaf,
+                    onChanged: (value) => setDialogState(() => perLeaf = value),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(Localization.translate('الغاء', lang)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty) return;
+                final scopes = selectedMechanisms.toList()..sort();
+                if (family == null) {
+                  await widget.db.insertKitBundleFamily(
+                    kitId: widget.kit['id'],
+                    name: nameCtrl.text.trim(),
+                    mechanismScopes: scopes.join(','),
+                    bladeScope: bladeScope,
+                    perLeaf: perLeaf,
+                    sortOrder: _families.length,
+                  );
+                } else {
+                  await widget.db.updateKitBundleFamily(
+                    family['id'],
+                    name: nameCtrl.text.trim(),
+                    mechanismScopes: scopes.join(','),
+                    bladeScope: bladeScope,
+                    perLeaf: perLeaf,
+                    sortOrder: (family['sort_order'] as num?)?.toInt() ?? 0,
+                  );
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+                _loadItems();
+              },
+              child: Text(
+                Localization.translate(family == null ? 'اضافة' : 'حفظ', lang),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showAddEditItemDialog({Map<String, dynamic>? item}) async {
     final typeCtrl = TextEditingController(text: item?['component_type'] ?? '');
     String qtyMode = item?['qty_mode'] ?? 'fixed';
@@ -451,198 +658,212 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          actionsOverflowAlignment: OverflowBarAlignment.end,
+          actionsOverflowButtonSpacing: 8,
           title: Text(
             item == null
                 ? Localization.translate('اضافة مركب', lang)
                 : Localization.translate('تعديل مركب', lang),
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Autocomplete<String>(
-                  initialValue: TextEditingValue(text: typeCtrl.text),
-                  optionsBuilder: (TextEditingValue textEditingValue) {
-                    if (textEditingValue.text.isEmpty) return _suggestedNames;
-                    return _suggestedNames.where(
-                      (option) => option.toLowerCase().contains(
-                        textEditingValue.text.toLowerCase(),
-                      ),
-                    );
-                  },
-                  onSelected: (selection) => typeCtrl.text = selection,
-                  fieldViewBuilder: (ctx, ctrl, node, onSubmit) {
-                    ctrl.addListener(() => typeCtrl.text = ctrl.text);
-                    return TextField(
-                      controller: ctrl,
-                      focusNode: node,
-                      onSubmitted: (v) => onSubmit(),
-                      decoration: InputDecoration(
-                        labelText: Localization.translate('نوع المركب', lang),
-                        hintText: Localization.translate(
-                          'اكتب أو اختر من القائمة...',
-                          lang,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 520,
+              maxHeight:
+                  (MediaQuery.of(ctx).size.height -
+                      MediaQuery.of(ctx).viewInsets.bottom) *
+                  0.52,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Autocomplete<String>(
+                    initialValue: TextEditingValue(text: typeCtrl.text),
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      if (textEditingValue.text.isEmpty) return _suggestedNames;
+                      return _suggestedNames.where(
+                        (option) => option.toLowerCase().contains(
+                          textEditingValue.text.toLowerCase(),
                         ),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.arrow_drop_down),
-                          onPressed: () {
-                            node.requestFocus();
-                            if (ctrl.text.isEmpty) {
-                              // trigger optionsBuilder
-                              ctrl.text = ' ';
-                              ctrl.text = '';
-                            }
-                          },
+                      );
+                    },
+                    onSelected: (selection) => typeCtrl.text = selection,
+                    fieldViewBuilder: (ctx, ctrl, node, onSubmit) {
+                      ctrl.addListener(() => typeCtrl.text = ctrl.text);
+                      return TextField(
+                        controller: ctrl,
+                        focusNode: node,
+                        onSubmitted: (v) => onSubmit(),
+                        decoration: InputDecoration(
+                          labelText: Localization.translate('نوع المركب', lang),
+                          hintText: Localization.translate(
+                            'اكتب أو اختر من القائمة...',
+                            lang,
+                          ),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.arrow_drop_down),
+                            onPressed: () {
+                              node.requestFocus();
+                              if (ctrl.text.isEmpty) {
+                                // trigger optionsBuilder
+                                ctrl.text = ' ';
+                                ctrl.text = '';
+                              }
+                            },
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  Localization.translate('نوع الكمية:', lang),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                RadioListTile<String>(
-                  title: Text(Localization.translate('ثابتة', lang)),
-                  value: 'fixed',
-                  groupValue: qtyMode,
-                  onChanged: (v) => setS(() => qtyMode = v!),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                ),
-                RadioListTile<String>(
-                  title: Text(
-                    Localization.translate('بالنطاق (حسب القياس)', lang),
+                      );
+                    },
                   ),
-                  value: 'by_range',
-                  groupValue: qtyMode,
-                  onChanged: (v) => setS(() => qtyMode = v!),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                ),
-                RadioListTile<String>(
-                  title: Text(
-                    Localization.translate(
-                      'بالنوع (Simple/Double Ouvrant)',
-                      lang,
-                    ),
-                  ),
-                  value: 'by_variant',
-                  groupValue: qtyMode,
-                  onChanged: (v) => setS(() => qtyMode = v!),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                ),
-                if (qtyMode == 'fixed') ...[
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: baseQtyCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: Localization.translate('الكمية', lang),
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-                if (qtyMode == 'by_range') ...[
                   const SizedBox(height: 12),
                   Text(
-                    Localization.translate('القياس المرجعي:', lang),
+                    Localization.translate('نوع الكمية:', lang),
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  RadioListTile<String?>(
-                    title: Text(Localization.translate('طول الضلفة', lang)),
-                    value: 'leaf_height',
-                    groupValue: dimension,
-                    onChanged: (v) => setS(() => dimension = v),
+                  RadioListTile<String>(
+                    title: Text(Localization.translate('ثابتة', lang)),
+                    value: 'fixed',
+                    groupValue: qtyMode,
+                    onChanged: (v) => setS(() => qtyMode = v!),
                     contentPadding: EdgeInsets.zero,
                     dense: true,
                   ),
-                  RadioListTile<String?>(
-                    title: Text(Localization.translate('عرض الضلفة', lang)),
-                    value: 'leaf_width',
-                    groupValue: dimension,
-                    onChanged: (v) => setS(() => dimension = v),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  ),
-                  RadioListTile<String?>(
-                    title: Text(Localization.translate('وزن الستار (كغ)', lang)),
-                    value: 'shutter_weight',
-                    groupValue: dimension,
-                    onChanged: (v) => setS(() => dimension = v),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Text(
-                  Localization.translate(
-                    'استعمال المركب (يمكن اختيار أكثر من نوع):',
-                    lang,
-                  ),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                for (final option in const [
-                  ('belt', 'حزام'),
-                  ('crank', 'مانيفال'),
-                  ('motor', 'محرك'),
-                ])
-                  CheckboxListTile(
-                    value: selectedMechanisms.contains(option.$1),
-                    title: Text(Localization.translate(option.$2, lang)),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (checked) => setS(() {
-                      if (checked == true) {
-                        selectedMechanisms.add(option.$1);
-                      } else {
-                        selectedMechanisms.remove(option.$1);
-                      }
-                    }),
-                  ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: bladeScope,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: Localization.translate(
-                      'نوع الشفرة المرتبط بالمركب',
-                      lang,
+                  RadioListTile<String>(
+                    title: Text(
+                      Localization.translate('بالنطاق (حسب القياس)', lang),
                     ),
-                    border: const OutlineInputBorder(),
+                    value: 'by_range',
+                    groupValue: qtyMode,
+                    onChanged: (v) => setS(() => qtyMode = v!),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
                   ),
-                  items: [
-                    DropdownMenuItem(
-                      value: 'all',
-                      child: Text(Localization.translate('كل الشفرات', lang)),
-                    ),
-                    DropdownMenuItem(
-                      value: 'normal',
-                      child: Text(
-                        Localization.translate('الشفرة العادية فقط', lang),
+                  RadioListTile<String>(
+                    title: Text(
+                      Localization.translate(
+                        'بالنوع (Simple/Double Ouvrant)',
+                        lang,
                       ),
                     ),
-                    DropdownMenuItem(
-                      value: 'extruded',
-                      child: Text(
-                        Localization.translate('شفرة Extrudé فقط', lang),
+                    value: 'by_variant',
+                    groupValue: qtyMode,
+                    onChanged: (v) => setS(() => qtyMode = v!),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                  if (qtyMode == 'fixed') ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: baseQtyCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate('الكمية', lang),
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                   ],
-                  onChanged: (value) => setS(() => bladeScope = value ?? 'all'),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  Localization.translate('الوحدة ثابتة: قطعة', lang),
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ],
+                  if (qtyMode == 'by_range') ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      Localization.translate('القياس المرجعي:', lang),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    RadioListTile<String?>(
+                      title: Text(Localization.translate('طول الضلفة', lang)),
+                      value: 'leaf_height',
+                      groupValue: dimension,
+                      onChanged: (v) => setS(() => dimension = v),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                    RadioListTile<String?>(
+                      title: Text(Localization.translate('عرض الضلفة', lang)),
+                      value: 'leaf_width',
+                      groupValue: dimension,
+                      onChanged: (v) => setS(() => dimension = v),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                    RadioListTile<String?>(
+                      title: Text(
+                        Localization.translate('وزن الستار (كغ)', lang),
+                      ),
+                      value: 'shutter_weight',
+                      groupValue: dimension,
+                      onChanged: (v) => setS(() => dimension = v),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    Localization.translate(
+                      'استعمال المركب (يمكن اختيار أكثر من نوع):',
+                      lang,
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  for (final option in _mechanismOptions)
+                    CheckboxListTile(
+                      value: selectedMechanisms.contains(option.$1),
+                      title: Text(Localization.translate(option.$2, lang)),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (checked) => setS(() {
+                        if (checked == true) {
+                          selectedMechanisms.add(option.$1);
+                        } else {
+                          selectedMechanisms.remove(option.$1);
+                        }
+                      }),
+                    ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: bladeScope,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: Localization.translate(
+                        'نوع الشفرة المرتبط بالمركب',
+                        lang,
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text(Localization.translate('كل الشفرات', lang)),
+                      ),
+                      DropdownMenuItem(
+                        value: 'normal',
+                        child: Text(
+                          Localization.translate('الشفرة العادية فقط', lang),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'extruded',
+                        child: Text(
+                          Localization.translate('شفرة Extrudé فقط', lang),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setS(() => bladeScope = value ?? 'all'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    Localization.translate('الوحدة ثابتة: قطعة', lang),
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -668,6 +889,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     mechanismScope: 'all',
                     mechanismScopes: mechanismScopes.join(','),
                     bladeScope: bladeScope,
+                    familyId: (widget.family?['id'] as num?)?.toInt(),
                     sortOrder: _items.length,
                   );
                 } else {
@@ -705,14 +927,20 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          '${widget.kit['name']} - ' + Localization.translate('المركبات', lang),
+          '${widget.kit['name']}${widget.family == null ? '' : ' › ${widget.family!['name']}'} - ${Localization.translate('المركبات', lang)}',
         ),
         actions: [
-          if (isAdmin)
+          if (isAdmin && widget.family == null)
             IconButton(
               tooltip: Localization.translate('تسمية مجموعتي التوافق', lang),
               icon: const Icon(Icons.drive_file_rename_outline),
               onPressed: _editCompatibilityGroupNames,
+            ),
+          if (isAdmin && widget.family == null)
+            IconButton(
+              tooltip: 'إضافة عائلة داخل الكيت',
+              icon: const Icon(Icons.account_tree_outlined),
+              onPressed: () => _showAddEditFamilyDialog(),
             ),
           if (isAdmin)
             IconButton(
@@ -723,15 +951,90 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
+          : _items.isEmpty && _families.isEmpty
           ? Center(
-              child: Text(Localization.translate('لا توجد مركبات بعد', lang)),
+              child: Text(
+                widget.family == null
+                    ? 'لا توجد مركبات أو عائلات بعد'
+                    : 'لا توجد مركبات داخل هذه العائلة بعد',
+              ),
             )
           : ListView.builder(
               padding: const EdgeInsets.all(12),
-              itemCount: _items.length,
+              itemCount: _families.length + _items.length,
               itemBuilder: (ctx, i) {
-                final item = _items[i];
+                if (i < _families.length) {
+                  final family = _families[i];
+                  final scopes = (family['mechanism_scopes'] ?? '')
+                      .toString()
+                      .split(',')
+                      .map((scope) => scope.trim())
+                      .where((scope) => scope.isNotEmpty)
+                      .toSet();
+                  final bladeScope = family['blade_scope']?.toString() ?? 'all';
+                  final bladeLabel = bladeScope == 'normal'
+                      ? Localization.translate('شفرة عادية', lang)
+                      : bladeScope == 'extruded' || bladeScope == 'x3d'
+                      ? Localization.translate('شفرة Extrudé', lang)
+                      : Localization.translate('كل الشفرات', lang);
+                  final onceLabel = (family['per_leaf'] as num?)?.toInt() == 1
+                      ? 'لكل ضلفة'
+                      : 'مرة واحدة داخل الكيت';
+                  return Card(
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.account_tree_outlined),
+                      ),
+                      title: Text(
+                        family['name']?.toString() ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        '$onceLabel | ${_mechanismLabel(scopes, lang)} | $bladeLabel',
+                      ),
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => KitItemsScreen(
+                              db: widget.db,
+                              kit: widget.kit,
+                              family: family,
+                            ),
+                          ),
+                        );
+                        _loadItems();
+                      },
+                      trailing: isAdmin
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () =>
+                                      _showAddEditFamilyDialog(family: family),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () async {
+                                    await widget.db.deleteKitBundleFamily(
+                                      family['id'],
+                                    );
+                                    _loadItems();
+                                  },
+                                ),
+                              ],
+                            )
+                          : const Icon(Icons.chevron_right),
+                    ),
+                  );
+                }
+                final item = _items[i - _families.length];
                 final mode = (item['qty_mode'] ?? 'fixed') as String;
                 final dim = item['dimension'] as String?;
                 final ranges = item['ranges'] as List? ?? [];
@@ -741,20 +1044,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     .split(',')
                     .where((scope) => scope.trim().isNotEmpty)
                     .toSet();
-                final mechanismLabel = scopes.isEmpty
-                    ? [
-                        Localization.translate('حزام', lang),
-                        Localization.translate('مانيفال', lang),
-                        Localization.translate('محرك', lang),
-                      ].join('، ')
-                    : [
-                        if (scopes.contains('belt'))
-                          Localization.translate('حزام', lang),
-                        if (scopes.contains('crank'))
-                          Localization.translate('مانيفال', lang),
-                        if (scopes.contains('motor'))
-                          Localization.translate('محرك', lang),
-                      ].join('، ');
+                final mechanismLabel = _mechanismLabel(scopes, lang);
                 final bladeScope = item['blade_scope']?.toString() ?? 'all';
                 final bladeLabel = bladeScope == 'normal'
                     ? Localization.translate('شفرة عادية', lang)
@@ -821,16 +1111,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                           .join(', ') +
                       ')';
                 } else if (mode == 'by_variant' && variants.isNotEmpty) {
-                  final isShutter =
-                      (widget.kit['name'] ?? '')
-                          .toString()
-                          .toLowerCase()
-                          .contains('volet') ||
-                      (widget.kit['name'] ?? '')
-                          .toString()
-                          .toLowerCase()
-                          .contains('shutter') ||
-                      (widget.kit['name'] ?? '').toString().contains('ستار');
+                  final isShutter = _isShutterStyleKit;
                   modeDetails =
                       ' (' +
                       variants
@@ -909,6 +1190,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                                   db: widget.db,
                                   item: item,
                                   kitName: widget.kit['name'] ?? '',
+                                  isShutterKit: _isShutterStyleKit,
                                 ),
                               ),
                             ),
@@ -964,6 +1246,7 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
   List<Map<String, dynamic>> _ranges = [];
   bool _loading = true;
   List<Map<String, dynamic>> _shutterComponents = [];
+  List<Map<String, dynamic>> _families = [];
 
   @override
   void initState() {
@@ -975,6 +1258,10 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
   Future<void> _loadSuggestions() async {
     try {
       final shutterComps = await widget.db.readShutterComponents();
+      final kitId = (widget.item['kit_id'] as num?)?.toInt();
+      final families = kitId == null
+          ? <Map<String, dynamic>>[]
+          : await widget.db.readKitBundleFamilies(kitId);
       if (mounted) {
         setState(() {
           _shutterComponents =
@@ -992,6 +1279,9 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                   (a, b) =>
                       a['name'].toString().compareTo(b['name'].toString()),
                 );
+          _families = families
+              .map((family) => Map<String, dynamic>.from(family))
+              .toList();
         });
       }
     } catch (_) {}
@@ -1021,7 +1311,10 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
   }
 
   Future<void> _showAddEditRangeDialog({Map<String, dynamic>? range}) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final isWeight = widget.item['dimension'] == 'shutter_weight';
     final divisor = isWeight ? 1.0 : 10.0;
     final unitLabel = isWeight ? 'كغ' : 'سم';
@@ -1043,6 +1336,16 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
         )) {
       selectedComponentId = null;
     }
+    int? selectedFamilyId = (range?['family_id'] as num?)?.toInt();
+    if (selectedFamilyId != null &&
+        !_families.any((family) => family['id'] == selectedFamilyId)) {
+      selectedFamilyId = null;
+    }
+    String? selectedTarget = selectedComponentId != null
+        ? 'component:$selectedComponentId'
+        : selectedFamilyId != null
+        ? 'family:$selectedFamilyId'
+        : null;
     final qtyCtrl = TextEditingController(
       text: (range?['qty'] ?? 1).toString(),
     );
@@ -1052,123 +1355,167 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          actionsOverflowAlignment: OverflowBarAlignment.end,
+          actionsOverflowButtonSpacing: 8,
           title: Text(
             Localization.translate(
               range == null ? 'إضافة نطاق' : 'تعديل النطاق',
               lang,
             ),
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _dimLabel(lang),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: minCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText:
-                              '${Localization.translate('من', lang)} ($unitLabel)',
-                          hintText: isWeight ? '1' : '80',
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: maxCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText:
-                              '${Localization.translate('إلى', lang)} ($unitLabel)',
-                          hintText: isWeight ? '15' : '120',
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<int>(
-                  initialValue: selectedComponentId,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: Localization.translate(
-                      'اسم المنتج من مركّبات الستائر',
-                      lang,
-                    ),
-                    helperText: Localization.translate(
-                      'السعر يؤخذ مباشرة من إدارة أسعار هذا المركّب',
-                      lang,
-                    ),
-                    border: const OutlineInputBorder(),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 560,
+              maxHeight:
+                  (MediaQuery.of(ctx).size.height -
+                      MediaQuery.of(ctx).viewInsets.bottom) *
+                  0.52,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _dimLabel(lang),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  items: _shutterComponents
-                      .map(
-                        (component) => DropdownMenuItem<int>(
-                          value: (component['id'] as num).toInt(),
-                          child: Text(
-                            component['name'].toString(),
-                            overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: minCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText:
+                                '${Localization.translate('من', lang)} ($unitLabel)',
+                            hintText: isWeight ? '1' : '80',
+                            border: const OutlineInputBorder(),
                           ),
                         ),
-                      )
-                      .toList(),
-                  onChanged: (value) =>
-                      setDialogState(() => selectedComponentId = value),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: qtyCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: maxCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText:
+                                '${Localization.translate('إلى', lang)} ($unitLabel)',
+                            hintText: isWeight ? '15' : '120',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  decoration: InputDecoration(
-                    labelText: Localization.translate('الكمية (قطعة)', lang),
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                if (isWeight) ...[
                   const SizedBox(height: 10),
-                  DropdownButtonFormField<int>(
-                    value: compatibilityGroup,
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedTarget,
+                    isExpanded: true,
                     decoration: InputDecoration(
-                      labelText: Localization.translate('مجموعة التوافق', lang),
+                      labelText: Localization.translate(
+                        'العنصر داخل النطاق',
+                        lang,
+                      ),
+                      helperText: Localization.translate(
+                        'اختر مركّباً منفرداً أو عائلة؛ العائلة لا تدخل إلا عند هذا الاختيار.',
+                        lang,
+                      ),
                       border: const OutlineInputBorder(),
                     ),
                     items: [
-                      DropdownMenuItem(
-                        value: 0,
-                        child: Text(
-                          Localization.translate('مشترك بين المجموعتين', lang),
+                      ..._shutterComponents.map(
+                        (component) => DropdownMenuItem<String>(
+                          value:
+                              'component:${(component['id'] as num).toInt()}',
+                          child: Text(
+                            'مركّب: ${component['name']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                      DropdownMenuItem(
-                        value: 1,
-                        child: Text(widget.group1Name),
-                      ),
-                      DropdownMenuItem(
-                        value: 2,
-                        child: Text(widget.group2Name),
+                      ..._families.map(
+                        (family) => DropdownMenuItem<String>(
+                          value: 'family:${(family['id'] as num).toInt()}',
+                          child: Text(
+                            'عائلة: ${family['name']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
                     ],
                     onChanged: (value) =>
-                        setDialogState(() => compatibilityGroup = value ?? 0),
+                        setDialogState(() => selectedTarget = value),
                   ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: qtyCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('الكمية (قطعة)', lang),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  if (isWeight) ...[
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<int>(
+                      value: compatibilityGroup,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'مجموعة التوافق',
+                          lang,
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 0,
+                          child: Text(
+                            Localization.translate(
+                              'مشترك بين المجموعتين',
+                              lang,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 1,
+                          child: Text(
+                            widget.group1Name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 2,
+                          child: Text(
+                            widget.group2Name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => compatibilityGroup = value ?? 0),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           actions: [
@@ -1182,11 +1529,19 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                     double.tryParse(minCtrl.text.replaceAll(',', '.')) ?? 0;
                 final maxValue =
                     double.tryParse(maxCtrl.text.replaceAll(',', '.')) ?? 0;
-                if (selectedComponentId == null || minValue >= maxValue) return;
-                final component = _shutterComponents.firstWhere(
-                  (row) => row['id'] == selectedComponentId,
-                );
-                final productName = component['name'].toString();
+                if (selectedTarget == null || minValue >= maxValue) return;
+                final targetParts = selectedTarget!.split(':');
+                final targetId = int.tryParse(targetParts.last);
+                if (targetId == null) return;
+                final isFamily = targetParts.first == 'family';
+                final selected = isFamily
+                    ? _families.firstWhere((row) => row['id'] == targetId)
+                    : _shutterComponents.firstWhere(
+                        (row) => row['id'] == targetId,
+                      );
+                final productName = selected['name'].toString();
+                final linkedComponentId = isFamily ? null : targetId;
+                final linkedFamilyId = isFamily ? targetId : null;
                 if (range == null) {
                   final insertResult = await widget.db.insertKitItemRange(
                     itemId: widget.item['id'],
@@ -1196,7 +1551,8 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                     price: 0,
                     qty: double.tryParse(qtyCtrl.text) ?? 1,
                     compatibilityGroup: compatibilityGroup,
-                    shutterComponentId: selectedComponentId,
+                    shutterComponentId: linkedComponentId,
+                    familyId: linkedFamilyId,
                   );
                   if (insertResult == -2) {
                     if (ctx.mounted) {
@@ -1222,7 +1578,8 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                     price: 0,
                     qty: double.tryParse(qtyCtrl.text) ?? 1,
                     compatibilityGroup: compatibilityGroup,
-                    shutterComponentId: selectedComponentId,
+                    shutterComponentId: linkedComponentId,
+                    familyId: linkedFamilyId,
                   );
                   if (updateResult == -2) {
                     if (ctx.mounted) {
@@ -1288,8 +1645,14 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                   const SizedBox(height: 6),
                   Text(
                     widget.item['dimension'] == 'shutter_weight'
-                        ? Localization.translate('مثال: من 1 كغ إلى 15 كغ', lang)
-                        : Localization.translate('مثال: من 80 سم إلى 120 سم', lang),
+                        ? Localization.translate(
+                            'مثال: من 1 كغ إلى 15 كغ',
+                            lang,
+                          )
+                        : Localization.translate(
+                            'مثال: من 80 سم إلى 120 سم',
+                            lang,
+                          ),
                     style: TextStyle(color: Colors.grey[400], fontSize: 12),
                   ),
                 ],
@@ -1345,11 +1708,17 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                       ),
                     ),
                     title: Text(
-                      r['product_name'] ?? '',
+                      r['family_id'] == null
+                          ? r['product_name'] ?? ''
+                          : 'عائلة: ${r['product_name'] ?? ''}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
-                      '${r['shutter_component_id'] == null ? "⚠ ${Localization.translate('غير مرتبط بمركّب ستار', lang)}" : Localization.translate('السعر مرتبط بإدارة الأسعار', lang)}'
+                      '${r['family_id'] != null
+                          ? "تُضاف عناصر العائلة فقط عند مطابقة هذا النطاق"
+                          : r['shutter_component_id'] == null
+                          ? "⚠ ${Localization.translate('غير مرتبط بمركّب ستار', lang)}"
+                          : Localization.translate('السعر مرتبط بإدارة الأسعار', lang)}'
                       '  |  ${Localization.translate('الكمية', lang)}: ${r['qty']?.toStringAsFixed(0)} ${Localization.translate('قطعة', lang)}'
                       '${isWeight ? "  |  $groupLabel" : ""}',
                     ),
@@ -1396,11 +1765,13 @@ class KitItemVariantsScreen extends StatefulWidget {
   final SqlDatabase db;
   final Map<String, dynamic> item;
   final String kitName;
+  final bool isShutterKit;
   const KitItemVariantsScreen({
     super.key,
     required this.db,
     required this.item,
     required this.kitName,
+    this.isShutterKit = false,
   });
   @override
   State<KitItemVariantsScreen> createState() => _KitItemVariantsScreenState();
@@ -1449,7 +1820,10 @@ class _KitItemVariantsScreenState extends State<KitItemVariantsScreen> {
 
   bool get _isShutterKit {
     final nameLower = widget.kitName.toLowerCase();
-    return nameLower.contains('volet') ||
+    return widget.isShutterKit ||
+        nameLower.contains('caisson') ||
+        nameLower.contains('tunnel') ||
+        nameLower.contains('volet') ||
         nameLower.contains('shutter') ||
         nameLower.contains('ستار');
   }
@@ -1457,7 +1831,10 @@ class _KitItemVariantsScreenState extends State<KitItemVariantsScreen> {
   Future<void> _showAddEditVariantDialog({
     Map<String, dynamic>? variant,
   }) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     String ouvrantType =
         variant?['ouvrant_type'] ?? (_isShutterKit ? 'normal' : 'simple');
     final nameCtrl = TextEditingController(
@@ -1492,7 +1869,9 @@ class _KitItemVariantsScreenState extends State<KitItemVariantsScreen> {
               const SizedBox(height: 8),
               if (_isShutterKit) ...[
                 RadioListTile<String>(
-                  title: Text(Localization.translate('شفرة عادية (Normal)', lang)),
+                  title: Text(
+                    Localization.translate('شفرة عادية (Normal)', lang),
+                  ),
                   value: 'normal',
                   groupValue: ouvrantType,
                   onChanged: (v) => setS(() => ouvrantType = v!),
