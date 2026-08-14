@@ -88,10 +88,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   Timer? _reloadDebounce;
   final PageStorageBucket _scrollStorage = PageStorageBucket();
   int _loadRequestId = 0;
-  static const String _selectedTabStorageKey =
-      'price-management-selected-tab';
-  static const String _shutterModeStorageKey =
-      'price-management-shutter-mode';
+  static const String _selectedTabStorageKey = 'price-management-selected-tab';
+  static const String _shutterModeStorageKey = 'price-management-shutter-mode';
   static int? _sessionSelectedTab;
   static int? _sessionShutterMode;
   bool _restoredPageState = false;
@@ -140,8 +138,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       context,
       identifier: _shutterModeStorageKey,
     );
-    final restoredShutterMode =
-        savedShutterMode is int ? savedShutterMode : _sessionShutterMode;
+    final restoredShutterMode = savedShutterMode is int
+        ? savedShutterMode
+        : _sessionShutterMode;
     if (restoredShutterMode != null &&
         restoredShutterMode >= 0 &&
         restoredShutterMode <= 1) {
@@ -165,11 +164,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     if (_shutterPricingMode == mode) return;
     setState(() => _shutterPricingMode = mode);
     _sessionShutterMode = mode;
-    PageStorage.maybeOf(context)?.writeState(
+    PageStorage.maybeOf(
       context,
-      mode,
-      identifier: _shutterModeStorageKey,
-    );
+    )?.writeState(context, mode, identifier: _shutterModeStorageKey);
   }
 
   /// A catalogue import can emit more than one catalogue event in a short
@@ -778,8 +775,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     if (updatedRows == 0) {
       if (showConfirmation) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر حفظ سعر مكوّن الستارة.'),
+          SnackBar(
+            content: Text(
+              Localization.translate('تعذر حفظ سعر مكوّن الستارة.', lang),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -1114,12 +1113,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       final name = (item['name'] ?? '').toString().toLowerCase();
       final code = (item['code'] ?? '').toString().toLowerCase();
       final type = (item['component_type'] ?? '').toString().toLowerCase();
-      final subtype = (item['shutter_subtype'] ?? '')
-          .toString()
-          .toLowerCase();
-      final measurement = (item['measurement'] ?? '')
-          .toString()
-          .toLowerCase();
+      final subtype = (item['shutter_subtype'] ?? '').toString().toLowerCase();
+      final measurement = (item['measurement'] ?? '').toString().toLowerCase();
       return name.contains(query) ||
           code.contains(query) ||
           type.contains(query) ||
@@ -2091,10 +2086,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
             decoration: InputDecoration(
-              hintText: Localization.translate(
-                'بحث في الإكسسوارات...',
-                lang,
-              ),
+              hintText: Localization.translate('بحث في الإكسسوارات...', lang),
               prefixIcon: const Icon(Icons.search),
               isDense: true,
               border: const OutlineInputBorder(
@@ -2152,194 +2144,349 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       );
     }
 
-    return ListView.builder(
-      key: const PageStorageKey<String>('price-accessories-standard-list'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: filteredAccessories.length,
-      itemBuilder: (context, index) {
-        final acc = filteredAccessories[index];
-        final accId = acc['id'] as int;
-        final accName = acc['name'].toString();
+    filteredAccessories.sort((a, b) {
+      final categoryOrder = _accessoryCategoryPriority(
+        a,
+      ).compareTo(_accessoryCategoryPriority(b));
+      if (categoryOrder != 0) return categoryOrder;
+      final category = _accessoryCategoryLabel(
+        a,
+      ).compareTo(_accessoryCategoryLabel(b));
+      if (category != 0) return category;
+      return (a['name'] ?? '').toString().toLowerCase().compareTo(
+        (b['name'] ?? '').toString().toLowerCase(),
+      );
+    });
 
-        final aColors = accessoryColorPrices[accId] ?? {};
-        final hasColorPrices = aColors.isNotEmpty;
-        final singlePrice = (acc['price'] is num)
-            ? (acc['price'] as num).toDouble()
-            : 0.0;
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final accessory in filteredAccessories) {
+      grouped
+          .putIfAbsent(_accessoryCategoryLabel(accessory), () => [])
+          .add(accessory);
+    }
 
-        return Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF1E1E1E)
-                : Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.amber.shade700.withValues(
-                alpha: isDark ? 0.5 : 0.35,
-              ),
-              width: 1,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 760;
+        final children = <Widget>[];
+        for (final group in grouped.entries) {
+          children.add(
+            _buildAccessoryCategoryHeader(group.key, group.value.length),
+          );
+          for (final accessory in group.value) {
+            children.add(
+              isDesktop
+                  ? _buildDesktopAccessoryPriceCard(accessory, lang, isDark)
+                  : _buildMobileAccessoryPriceTile(accessory, lang, isDark),
+            );
+          }
+          children.add(const SizedBox(height: 12));
+        }
+        return ListView(
+          key: const PageStorageKey<String>('price-accessories-standard-list'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          children: children,
+        );
+      },
+    );
+  }
+
+  String _accessorySearchText(Map<String, dynamic> accessory) {
+    return '${accessory['type'] ?? ''} ${accessory['name'] ?? ''}'
+        .toLowerCase();
+  }
+
+  String _accessoryCategoryLabel(Map<String, dynamic> accessory) {
+    final text = _accessorySearchText(accessory);
+    if (text.contains('handle') ||
+        text.contains('poign') ||
+        text.contains('مقبض')) {
+      return 'المقابض';
+    }
+    if (text.contains('hinge') ||
+        text.contains('paum') ||
+        text.contains('مفصل')) {
+      return 'المفاصل';
+    }
+    if (text.contains('lock') ||
+        text.contains('serrure') ||
+        text.contains('verrou') ||
+        text.contains('قفل') ||
+        text.contains('فيرو')) {
+      return 'الأقفال والإغلاقات';
+    }
+    if (text.contains('roul') ||
+        text.contains('wheel') ||
+        text.contains('عجل')) {
+      return 'العجلات';
+    }
+    if (text.contains('gache') ||
+        text.contains('gâche') ||
+        text.contains('قاش')) {
+      return 'القاشات';
+    }
+    if (text.contains('cremone') ||
+        text.contains('crémone') ||
+        text.contains('كريمون')) {
+      return 'الكريمونات';
+    }
+    if (text.contains('bouchon') || text.contains('بوشون')) {
+      return 'الأغطية والبوشونات';
+    }
+    final rawType = (accessory['type'] ?? '').toString().trim();
+    return rawType.isEmpty ? 'إكسسوارات أخرى' : rawType;
+  }
+
+  int _accessoryCategoryPriority(Map<String, dynamic> accessory) {
+    switch (_accessoryCategoryLabel(accessory)) {
+      case 'المقابض':
+        return 0;
+      case 'المفاصل':
+        return 1;
+      case 'الأقفال والإغلاقات':
+        return 2;
+      case 'العجلات':
+        return 3;
+      case 'القاشات':
+        return 4;
+      case 'الكريمونات':
+        return 5;
+      case 'الأغطية والبوشونات':
+        return 6;
+      default:
+        return 20;
+    }
+  }
+
+  Widget _buildAccessoryCategoryHeader(String label, int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      child: Row(
+        children: [
+          const Icon(Icons.folder_copy_outlined, color: Colors.deepPurple),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.25)
-                    : Colors.grey.withValues(alpha: 0.08),
-                spreadRadius: 1,
-                blurRadius: 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Card header
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.category,
-                      color: Colors.amber.shade700,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        accName,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Colors.amber.shade800,
-                        ),
-                      ),
-                    ),
-                    // Badge: with colors or single price
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: hasColorPrices
-                            ? Colors.deepPurple.withValues(
-                                alpha: isDark ? 0.25 : 0.1,
-                              )
-                            : (isDark
-                                  ? const Color(0xFF2C2C2C)
-                                  : Colors.grey.shade100),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: hasColorPrices
-                              ? (isDark
-                                    ? Colors.deepPurple.shade300
-                                    : Colors.deepPurple.shade200)
-                              : (isDark
-                                    ? Colors.grey.shade700
-                                    : Colors.grey.shade300),
-                        ),
-                      ),
-                      child: Text(
-                        hasColorPrices
-                            ? Localization.translate('بالألوان', lang)
-                            : Localization.translate('خام', lang),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: hasColorPrices
-                              ? (isDark
-                                    ? Colors.purple.shade200
-                                    : Colors.deepPurple)
-                              : (isDark
-                                    ? Colors.grey.shade400
-                                    : Colors.grey.shade600),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    // Button to open color picker for this accessory
-                    Tooltip(
-                      message: Localization.translate('تخصيص الألوان', lang),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () => _showCustomizeAccessoryColorsDialog(
-                          initialAccId: accId,
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: hasColorPrices
-                                ? Colors.deepPurple.withValues(alpha: isDark ? 0.2 : 0.08)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Icon(
-                            Icons.palette_outlined,
-                            size: 18,
-                            color: hasColorPrices
-                                ? (isDark ? Colors.purple.shade200 : Colors.deepPurple)
-                                : (isDark ? Colors.grey.shade400 : Colors.grey.shade500),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, thickness: 0.7),
-              // If has color prices: show a row per color
-              if (hasColorPrices) ...[
-                ...aColors.keys.toList().asMap().entries.map((entry) {
-                  final colorIdx = entry.key;
-                  final cId = entry.value;
-                  final colorMap = allColorList.firstWhere(
-                    (c) => c['id'] == cId,
-                    orElse: () => {'name': 'Color $cId'},
-                  );
-                  final cName = colorMap['name'].toString();
-                  final currentPrice = aColors[cId] ?? 0.0;
+          Chip(label: Text('$count')),
+        ],
+      ),
+    );
+  }
 
-                  return Column(
-                    children: [
-                      PriceEditRow(
-                        title: cName,
-                        titleIcon: _buildColorCircle(colorMap, size: 24),
-                        currentPrice: currentPrice,
-                        canChangePrices: canChangePrices,
-                        onSave: (parsed) {
-                          _updateAccessoryColorPrice(accId, cId, parsed);
-                        },
-                      ),
-                      if (colorIdx < aColors.length - 1)
-                        Divider(
-                          height: 1,
-                          thickness: 0.5,
-                          indent: 16,
-                          endIndent: 16,
-                          color: Colors.grey.shade200,
+  Widget _buildDesktopAccessoryPriceCard(
+    Map<String, dynamic> accessory,
+    AppLanguage lang,
+    bool isDark,
+  ) {
+    final accessoryId = accessory['id'] as int;
+    final name = (accessory['name'] ?? '').toString();
+    final colors = accessoryColorPrices[accessoryId] ?? {};
+    final basePrice = _readStoredPrice(accessory['price']);
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      color: isDark ? const Color(0xFF1E1E1E) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.amber.shade700.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.category_outlined),
+            title: Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              '${accessory['code'] ?? ''}${(accessory['code'] ?? '').toString().isNotEmpty ? ' • ' : ''}${accessory['type'] ?? ''}',
+            ),
+            trailing: IconButton(
+              tooltip: Localization.translate('تخصيص الألوان', lang),
+              icon: const Icon(Icons.palette_outlined),
+              onPressed: () => _showCustomizeAccessoryColorsDialog(
+                initialAccId: accessoryId,
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: colors.isEmpty
+                  ? [
+                      _buildDesktopAccessoryPriceBox(
+                        label: Localization.translate('خام', lang),
+                        icon: Icon(
+                          Icons.sell_outlined,
+                          color: Colors.amber.shade700,
                         ),
-                    ],
-                  );
-                }),
-              ] else ...[
-                // No color prices: show single price row
-                PriceEditRow(
-                  title: Localization.translate('خام', lang),
-                  titleIcon: Icon(
-                    Icons.sell,
-                    size: 13,
-                    color: Colors.amber.shade600,
+                        price: basePrice,
+                        onSave: (price) => _updatePrice(
+                          'Accessories',
+                          accessoryId,
+                          'price',
+                          price,
+                        ),
+                      ),
+                    ]
+                  : colors.entries.map((entry) {
+                      final color = allColorList.firstWhere(
+                        (item) => item['id'] == entry.key,
+                        orElse: () => {'name': 'Color ${entry.key}'},
+                      );
+                      return _buildDesktopAccessoryPriceBox(
+                        label: (color['name'] ?? '').toString(),
+                        icon: _buildColorCircle(color, size: 24),
+                        price: entry.value,
+                        onSave: (price) => _updateAccessoryColorPrice(
+                          accessoryId,
+                          entry.key,
+                          price,
+                        ),
+                      );
+                    }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopAccessoryPriceBox({
+    required String label,
+    required Widget icon,
+    required double price,
+    required ValueChanged<double> onSave,
+  }) {
+    return SizedBox(
+      width: 320,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              child: Row(
+                children: [
+                  icon,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  currentPrice: singlePrice,
-                  canChangePrices: canChangePrices,
-                  onSave: (parsed) {
-                    _updatePrice('Accessories', accId, 'price', parsed);
-                  },
-                ),
-              ],
-              const SizedBox(height: 4),
-            ],
+                ],
+              ),
+            ),
+            PriceEditRow(
+              title: 'السعر',
+              currentPrice: price,
+              canChangePrices: canChangePrices,
+              onSave: onSave,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileAccessoryPriceTile(
+    Map<String, dynamic> accessory,
+    AppLanguage lang,
+    bool isDark,
+  ) {
+    final id = accessory['id'] as int;
+    final colorCount = (accessoryColorPrices[id] ?? {}).length;
+    return Card(
+      color: isDark ? const Color(0xFF1E1E1E) : null,
+      child: ListTile(
+        leading: const Icon(Icons.category_outlined),
+        title: Text(
+          (accessory['name'] ?? '').toString(),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          colorCount == 0 ? 'سعر خام' : '$colorCount أسعار حسب اللون',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _showAccessoryPriceEditor(accessory, lang),
+      ),
+    );
+  }
+
+  Future<void> _showAccessoryPriceEditor(
+    Map<String, dynamic> accessory,
+    AppLanguage lang,
+  ) async {
+    final id = accessory['id'] as int;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final colors = accessoryColorPrices[id] ?? {};
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    title: Text(
+                      (accessory['name'] ?? '').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(_accessoryCategoryLabel(accessory)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.palette_outlined),
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _showCustomizeAccessoryColorsDialog(initialAccId: id);
+                      },
+                    ),
+                  ),
+                  const Divider(),
+                  if (colors.isEmpty)
+                    PriceEditRow(
+                      title: Localization.translate('خام', lang),
+                      currentPrice: _readStoredPrice(accessory['price']),
+                      canChangePrices: canChangePrices,
+                      onSave: (price) =>
+                          _updatePrice('Accessories', id, 'price', price),
+                    )
+                  else
+                    ...colors.entries.map((entry) {
+                      final color = allColorList.firstWhere(
+                        (item) => item['id'] == entry.key,
+                        orElse: () => {'name': 'Color ${entry.key}'},
+                      );
+                      return PriceEditRow(
+                        title: (color['name'] ?? '').toString(),
+                        titleIcon: _buildColorCircle(color, size: 24),
+                        currentPrice: entry.value,
+                        canChangePrices: canChangePrices,
+                        onSave: (price) =>
+                            _updateAccessoryColorPrice(id, entry.key, price),
+                      );
+                    }),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -2537,7 +2684,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تعذر حفظ سعر القطاع: $error'),
+          content: Text(
+            '${Localization.translate('تعذر حفظ سعر القطاع', lang)}: $error',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -2695,20 +2844,31 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   }
 
   Future<void> _showEditBarLengthDialog(Map<String, dynamic> section) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final ctrl = TextEditingController(
       text: section['bar_length']?.toString() ?? '6.0',
     );
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('تعديل طول البار - ${section['name']}'),
+        title: Text(
+          '${Localization.translate('تعديل طول البار', lang)} - ${section['name']}',
+        ),
         content: TextField(
           controller: ctrl,
           keyboardType: TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'طول البار (بالمتر)'),
+          decoration: InputDecoration(
+            labelText: Localization.translate('طول البار (بالمتر)', lang),
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(Localization.translate('إلغاء', lang)),
+          ),
           ElevatedButton(
             onPressed: () async {
               final newLength = double.tryParse(ctrl.text) ?? 6.0;
@@ -2725,7 +2885,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 _loadAllData();
               }
             },
-            child: Text('حفظ'),
+            child: Text(Localization.translate('حفظ', lang)),
           ),
         ],
       ),
@@ -4176,6 +4336,7 @@ class _PriceEditRowState extends State<PriceEditRow> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -4306,8 +4467,13 @@ class _PriceEditRowState extends State<PriceEditRow> {
                           double? parsed = double.tryParse(normalizedPrice);
                           if (parsed == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('أدخل سعراً رقمياً صحيحاً.'),
+                              SnackBar(
+                                content: Text(
+                                  Localization.translate(
+                                    'أدخل سعراً رقمياً صحيحاً.',
+                                    lang,
+                                  ),
+                                ),
                                 backgroundColor: Colors.red,
                               ),
                             );
@@ -4338,9 +4504,14 @@ class _PriceEditRowState extends State<PriceEditRow> {
                             if (!mounted) return;
                             setState(() => _isSaving = false);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('تعذر حفظ السعر. حاول مرة أخرى.'),
+                              SnackBar(
                                 backgroundColor: Colors.red,
+                                content: Text(
+                                  Localization.translate(
+                                    'تعذر حفظ السعر. حاول مرة أخرى.',
+                                    lang,
+                                  ),
+                                ),
                               ),
                             );
                           }

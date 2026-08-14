@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:database_data/Commande/texture_cache.dart';
+import 'package:database_data/Commande/decor_panel_designs.dart';
 // Force compile sync trigger
 import 'package:flutter/material.dart';
 
@@ -11,6 +12,7 @@ import 'package:database_data/Commande/Systeme/model.dart';
 class WindowPainter extends CustomPainter {
   final WindowModel model;
   final bool? overrideIsInternalView;
+
   /// Technical dimensions are reserved for the interactive drawing editor.
   /// Previews, PDFs and customer-facing images stay clean.
   final bool showDrawingDimensions;
@@ -24,8 +26,7 @@ class WindowPainter extends CustomPainter {
     required this.model,
     this.overrideIsInternalView,
     this.showDrawingDimensions = false,
-  })
-    : super(repaint: model) {
+  }) : super(repaint: model) {
     _initWoodShader();
   }
 
@@ -238,7 +239,6 @@ class WindowPainter extends CustomPainter {
             patternPaint,
           );
         }
-
       }
     }
 
@@ -893,7 +893,8 @@ class WindowPainter extends CustomPainter {
 
   String? _effectivePanneauColor(GlassSpecification? spec) {
     if (spec == null) return null;
-    final isBardage = spec.finishOuter == GlassFinish.bardage ||
+    final isBardage =
+        spec.finishOuter == GlassFinish.bardage ||
         spec.finishInner == GlassFinish.bardage ||
         (spec.panneauSubtype ?? '').toLowerCase().contains('bardage');
     if (isBardage && spec.bardageUsesFrameColor) {
@@ -1619,25 +1620,15 @@ class WindowPainter extends CustomPainter {
     }
 
     final bp = Paint()
-      ..color =
-          isWholeDrawingFrameSelected
-          ? Colors.green
-          : _fb
+      ..color = isWholeDrawingFrameSelected ? Colors.green : _fb
       ..style = PaintingStyle.stroke
-      ..strokeWidth =
-          isWholeDrawingFrameSelected
-          ? 3.0
-          : 1.5;
+      ..strokeWidth = isWholeDrawingFrameSelected ? 3.0 : 1.5;
 
     if (model.hasBottomFrame) {
       canvas.drawPath(outerPath, bp);
       canvas.drawPath(
         innerPath,
-        bp
-          ..strokeWidth =
-              isWholeDrawingFrameSelected
-              ? 1.5
-              : 0.8,
+        bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
       );
     } else {
       final Path outerOpen = Path()
@@ -1685,11 +1676,7 @@ class WindowPainter extends CustomPainter {
       innerOpen.lineTo(w - t, h - model.bottomSlantRightY);
       canvas.drawPath(
         innerOpen,
-        bp
-          ..strokeWidth =
-              isWholeDrawingFrameSelected
-              ? 1.5
-              : 0.8,
+        bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
       );
 
       // رسم الإطار السفلي تحت الأجزاء الثابتة فقط عند نزع الإطار السفلي للضلفة
@@ -1749,12 +1736,7 @@ class WindowPainter extends CustomPainter {
     }
   }
 
-  void _drawCustomSideCovers(
-    Canvas canvas,
-    double w,
-    double h,
-    double topY,
-  ) {
+  void _drawCustomSideCovers(Canvas canvas, double w, double h, double topY) {
     final segments = model.effectiveSideCoverSegments;
     if (!model.hasSideCovers || segments.isEmpty) return;
 
@@ -1774,8 +1756,7 @@ class WindowPainter extends CustomPainter {
     // A partial cover must not change the cut of the unrelated sides.
     final geometry = <String, Map<String, double>>{};
     for (final segment in segments) {
-      final isVertical =
-          segment.side == 'left' || segment.side == 'right';
+      final isVertical = segment.side == 'left' || segment.side == 'right';
       final sideLength = isVertical ? h - topY : w;
       if (sideLength <= 0) continue;
 
@@ -1785,17 +1766,14 @@ class WindowPainter extends CustomPainter {
       // A custom value is a visible projection, never an instruction to let
       // a cover grow beyond the selected cover profile itself.  This also
       // repairs older drawings that accidentally stored a larger value.
-      final visible = (segment.visibleWidth > 0
-              ? segment.visibleWidth
-              : model.sideCoverWidth)
-          .clamp(0.0, model.sideCoverWidth)
-          .toDouble();
+      final visible =
+          (segment.visibleWidth > 0
+                  ? segment.visibleWidth
+                  : model.sideCoverWidth)
+              .clamp(0.0, model.sideCoverWidth)
+              .toDouble();
       if (visible <= 0) continue;
-      geometry[segment.side] = {
-        'start': start,
-        'end': end,
-        'visible': visible,
-      };
+      geometry[segment.side] = {'start': start, 'end': end, 'visible': visible};
     }
     if (geometry.isEmpty) return;
 
@@ -1804,8 +1782,7 @@ class WindowPainter extends CustomPainter {
     bool reachesEnd(String side) {
       final data = geometry[side];
       if (data == null) return false;
-      final sideLength =
-          (side == 'left' || side == 'right') ? h - topY : w;
+      final sideLength = (side == 'left' || side == 'right') ? h - topY : w;
       return (sideLength - (data['end'] ?? 0.0)).abs() <= 0.1;
     }
 
@@ -1834,11 +1811,7 @@ class WindowPainter extends CustomPainter {
     final topLeftSpan = jointSpan('top', 'left', joinTopLeft);
     final topRightSpan = jointSpan('top', 'right', joinTopRight);
     final bottomLeftSpan = jointSpan('bottom', 'left', joinBottomLeft);
-    final bottomRightSpan = jointSpan(
-      'bottom',
-      'right',
-      joinBottomRight,
-    );
+    final bottomRightSpan = jointSpan('bottom', 'right', joinBottomRight);
 
     for (final entry in geometry.entries) {
       final side = entry.key;
@@ -1854,10 +1827,7 @@ class WindowPainter extends CustomPainter {
           final bottomSpan = bottomLeftSpan;
           path = Path()
             ..moveTo(0, topY + start)
-            ..lineTo(
-              topSpan > 0 ? -topSpan : -visible,
-              topY + start - topSpan,
-            );
+            ..lineTo(topSpan > 0 ? -topSpan : -visible, topY + start - topSpan);
           if (topSpan > 0 && visible > topSpan) {
             path.lineTo(-visible, topY + start - topSpan);
           }
@@ -2526,9 +2496,7 @@ class WindowPainter extends CustomPainter {
     final sashOverride = model.usesSlidingPrimaryProfiles
         ? model.slidingSashOverride
         : model.sashOverride;
-    final overriddenSashCode = (sashOverride?['code'] ?? '')
-        .toString()
-        .trim();
+    final overriddenSashCode = (sashOverride?['code'] ?? '').toString().trim();
     final sashCode = overriddenSashCode.isNotEmpty
         ? overriddenSashCode
         : (model.getSectionByType('sash')?.code ?? '').trim();
@@ -2556,8 +2524,7 @@ class WindowPainter extends CustomPainter {
         sashRect.right - 4,
         sashRect.top + sashThickness - 2,
       );
-      if (profile.width < text.width + 8 ||
-          profile.height < text.height + 4) {
+      if (profile.width < text.width + 8 || profile.height < text.height + 4) {
         return;
       }
       text.paint(
@@ -2580,8 +2547,7 @@ class WindowPainter extends CustomPainter {
         onRight ? sashRect.right - 2 : sashRect.left + sashThickness - 2,
         sashRect.bottom - sashThickness - 4,
       );
-      if (profile.height < text.width + 8 ||
-          profile.width < text.height + 4) {
+      if (profile.height < text.width + 8 || profile.width < text.height + 4) {
         return;
       }
       canvas.save();
@@ -2615,10 +2581,9 @@ class WindowPainter extends CustomPainter {
           ? zone.doubleSashRatio
           : (1.0 - zone.doubleSashRatio);
       final totalCutWidth = r.width + overlap * 2;
-      displayWLeft =
-          totalCutWidth * effectiveRatio - finishedSashWeldLoss;
-      displayWRight = totalCutWidth * (1.0 - effectiveRatio) -
-          finishedSashWeldLoss;
+      displayWLeft = totalCutWidth * effectiveRatio - finishedSashWeldLoss;
+      displayWRight =
+          totalCutWidth * (1.0 - effectiveRatio) - finishedSashWeldLoss;
       displayHeight = r.height + overlap * 2 - finishedSashWeldLoss;
     } else if (zone.content == ZoneContent.slidingSash) {
       final slidingSashOverride =
@@ -3149,14 +3114,35 @@ class WindowPainter extends CustomPainter {
         }
       }
     } else if (activeFinish == GlassFinish.paneauSandwitchDecore) {
-      Paint linePaint = Paint()
-        ..color = _fb.withValues(alpha: 0.3)
-        ..strokeWidth = 1.5;
-      for (double x = r.left + 30; x < r.right; x += 30) {
-        canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), linePaint);
-      }
-      for (double y = r.top + 30; y < r.bottom; y += 30) {
-        canvas.drawLine(Offset(r.left, y), Offset(r.right, y), linePaint);
+      final designCode = DecorPanelDesignCatalog.resolveForProduct(
+        productId: effectiveSpec?.panneauProductId,
+        glassProducts: model.allGlassCache,
+      );
+      if (designCode != null) {
+        DecorPanelDesignPainter.paintDesign(
+          canvas,
+          r,
+          designCode,
+          panelColor: _getColorsForLayer(
+            GlassStructure.closed,
+            effectiveSpec?.colorOuter ?? GlassColor.transparent,
+            activeFinish,
+            effectiveSpec?.colorP ?? ClosedGlassColor.white,
+            pColor,
+          ).first,
+        );
+      } else {
+        // Keep the old neutral texture for existing products that have not
+        // been linked to one of the lightweight code-drawn motifs yet.
+        final linePaint = Paint()
+          ..color = _fb.withValues(alpha: 0.3)
+          ..strokeWidth = 1.5;
+        for (double x = r.left + 30; x < r.right; x += 30) {
+          canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), linePaint);
+        }
+        for (double y = r.top + 30; y < r.bottom; y += 30) {
+          canvas.drawLine(Offset(r.left, y), Offset(r.right, y), linePaint);
+        }
       }
     }
     canvas.restore();
@@ -5827,12 +5813,14 @@ class WindowPainter extends CustomPainter {
       // sash face. Its offset is scaled from the profile thickness so it is
       // also correct for the wider series.
       final revealOffset = (t * 0.28).clamp(9.0, 18.0).toDouble();
-      double x = onRight ? sashR.right + revealOffset : sashR.left - revealOffset;
+      double x = onRight
+          ? sashR.right + revealOffset
+          : sashR.left - revealOffset;
       // OB keeps only the upper and lower hinges, positioned directly at the
       // ends of the sash rather than at the usual 100 mm inset.
       final double endInset = isFullObHandleSash ? 44.0 : 100.0;
       double startY =
-          getSashTopY(x, sashR.top, t, topOffset, isTopBound) + endInset,
+              getSashTopY(x, sashR.top, t, topOffset, isTopBound) + endInset,
           step = (sashR.bottom - endInset - startY) / (hingeCount - 1);
       for (int i = 0; i < hingeCount; i++) {
         double yPos = startY + (step * i);
@@ -5851,7 +5839,9 @@ class WindowPainter extends CustomPainter {
       }
     } else if (onTop || onBottom) {
       final revealOffset = (t * 0.28).clamp(9.0, 18.0).toDouble();
-      double y = onBottom ? sashR.bottom + revealOffset : sashR.top - revealOffset;
+      double y = onBottom
+          ? sashR.bottom + revealOffset
+          : sashR.top - revealOffset;
       final double endInset = isFullObHandleSash ? 44.0 : 100.0;
       double startX = sashR.left + endInset,
           step = (sashR.right - endInset - startX) / (hingeCount - 1);
@@ -5870,7 +5860,8 @@ class WindowPainter extends CustomPainter {
         }
         double finalY = y;
         if (onTop) {
-          finalY = getSashTopY(xPos, sashR.top, t, topOffset, isTopBound) -
+          finalY =
+              getSashTopY(xPos, sashR.top, t, topOffset, isTopBound) -
               revealOffset;
         }
         drawHinge(Offset(xPos, finalY), true);
@@ -6336,7 +6327,6 @@ class WindowPainter extends CustomPainter {
         );
       }
     }
-
   }
 
   void _drawRealisticParclose(

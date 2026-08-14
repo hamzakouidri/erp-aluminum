@@ -6,6 +6,18 @@ import '../../sql_database.dart';
 
 enum DimensionTap { none, width, height }
 
+/// SQLite returns `Map<String, Object?>` rows.  Calls made through a dynamic
+/// database handle can otherwise preserve a lazy `MappedListIterable` whose
+/// runtime generic type is not compatible with `Map<String, dynamic>`.
+/// Materialize and normalize the rows before passing them to typed helpers.
+List<Map<String, dynamic>> normalizeDatabaseRows(dynamic rawRows) {
+  if (rawRows is! Iterable) return <Map<String, dynamic>>[];
+  return rawRows
+      .whereType<Map>()
+      .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
+      .toList(growable: false);
+}
+
 enum LockType { none, clef, condamnation, point, rouleau, cremone, rouleau2000 }
 
 enum ZoneContent { empty, fixedGlass, singleSash, doubleSash, slidingSash }
@@ -68,6 +80,85 @@ class ShutterBoxResolution {
   final double boxSize;
   final bool exceedsAllLimits;
   final double maximumSupportedHeight;
+}
+
+/// Short codes saved in `KitBundles.description`. They are the stable source
+/// of truth for kit purpose; names remain free commercial labels.
+String normalizeKitDescriptionCode(dynamic raw) {
+  return (raw ?? '').toString().trim().toUpperCase().replaceAll(
+    RegExp(r'[\s,;:_-]+'),
+    '',
+  );
+}
+
+bool kitHasDescriptionCode(Map<String, dynamic> kit, String expectedCode) {
+  return normalizeKitDescriptionCode(kit['description']) ==
+      normalizeKitDescriptionCode(expectedCode);
+}
+
+String shutterKitCodeForMechanism(String mechanism) {
+  final normalized = mechanism.trim().toLowerCase();
+  if (normalized == 'محرك' || normalized.contains('moteur')) return 'MT';
+  // V is the common shutter kit for belt and crank assemblies. M identifies
+  // the separate crank-only tool kit, not the main shutter kit.
+  return 'V';
+}
+
+bool isShutterKitForMechanism(
+  Map<String, dynamic> kit,
+  String mechanism, {
+  bool tunnel = false,
+}) {
+  return kitHasDescriptionCode(
+    kit,
+    tunnel ? 'CT' : shutterKitCodeForMechanism(mechanism),
+  );
+}
+
+double? kitBundleSizeMm(Map<String, dynamic> kit) {
+  for (final field in const ['measurement', 'name']) {
+    final value = (kit[field] ?? '').toString();
+    final matches = RegExp(
+      r'(?<!\d)(\d{2,3}(?:[.,]\d+)?)(?!\d)',
+    ).allMatches(value).toList();
+    if (matches.isEmpty) continue;
+    var size = double.tryParse(matches.last.group(1)!.replaceAll(',', '.'));
+    if (size == null || size <= 0) continue;
+    if ((size - 15.5).abs() < 0.01) size = 155;
+    if ((size - 18.5).abs() < 0.01) size = 185;
+    if ((size - 20.5).abs() < 0.01) size = 205;
+    if ((size - 15).abs() < 0.01) size = 150;
+    if ((size - 18).abs() < 0.01) size = 180;
+    if ((size - 20).abs() < 0.01) size = 200;
+    if (size < 100) size *= 10;
+    return size;
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> compatibleKitBundles({
+  required Iterable<Map<String, dynamic>> kits,
+  required String descriptionCode,
+  double? minimumSizeMm,
+  bool allowWithoutSize = false,
+}) {
+  final result = kits
+      .where((kit) {
+        if (!kitHasDescriptionCode(kit, descriptionCode)) return false;
+        final size = kitBundleSizeMm(kit);
+        if (size == null) return allowWithoutSize;
+        return minimumSizeMm == null || size + 0.5 >= minimumSizeMm;
+      })
+      .map(Map<String, dynamic>.from)
+      .toList();
+  result.sort((a, b) {
+    final aSize = kitBundleSizeMm(a) ?? double.infinity;
+    final bSize = kitBundleSizeMm(b) ?? double.infinity;
+    final sizeCompare = aSize.compareTo(bSize);
+    if (sizeCompare != 0) return sizeCompare;
+    return (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString());
+  });
+  return result;
 }
 
 /// The number of ordinary hinges is based on the height of the actual sash.
@@ -2077,7 +2168,7 @@ class WindowModel extends ChangeNotifier {
     final bladeName = (blade['name'] ?? '').toString().trim().toLowerCase();
     final candidates = compatibleShutterTracks(
       Map<String, dynamic>.from(blade),
-      rows.map(Map<String, dynamic>.from),
+      normalizeDatabaseRows(rows),
     ).where((track) => _isX3dShutterComponent(track) == bladeIsX3d).toList();
     if (candidates.isEmpty) return;
 
@@ -2114,10 +2205,10 @@ class WindowModel extends ChangeNotifier {
       'ShutterComponents',
       where: '(is_active = 1 OR is_active IS NULL)',
     );
-    final catalogue = rows.map(Map<String, dynamic>.from).toList();
-    final colorPrices = (await database.query(
-      'ShutterColorPrices',
-    )).map(Map<String, dynamic>.from).toList();
+    final catalogue = normalizeDatabaseRows(rows);
+    final colorPrices = normalizeDatabaseRows(
+      await database.query('ShutterColorPrices'),
+    );
     final selectedColorId = selectedDbColor?['id'] is num
         ? (selectedDbColor!['id'] as num).toInt()
         : int.tryParse('${selectedDbColor?['id'] ?? ''}');
@@ -2216,7 +2307,7 @@ class WindowModel extends ChangeNotifier {
       'ShutterComponents',
       where: '(is_active = 1 OR is_active IS NULL)',
     );
-    final catalogue = rows.map(Map<String, dynamic>.from).toList();
+    final catalogue = normalizeDatabaseRows(rows);
     final axes = _compatibleShutterAxes(
       catalogue.where((row) => _matchesShutterRole(row, 'axis')),
       blade: Map<String, dynamic>.from(blade),
@@ -11452,7 +11543,8 @@ class WindowModel extends ChangeNotifier {
           return readPrice(accessory['price_dzd'] ?? accessory['price']);
         }
 
-        final selectedColorId = selectedDbColor?['id'];
+        final selectedColorId =
+            selectedAccessoryColor?['id'] ?? selectedDbColor?['id'];
         if (selectedColorId == null) return 0.0;
         for (final colorPrice in colorPrices) {
           if (colorPrice['color_id']?.toString() ==
@@ -11645,6 +11737,22 @@ class WindowModel extends ChangeNotifier {
         final isWindowHandleKey =
             key == 'المقبض (Handle)' || key == 'مقبض نافذة (Poignée Fenêtre)';
         if (isWindowHandleKey) {
+          final category = ty.split('|').first.trim();
+          final isExplicitWindowHandle =
+              category.contains('poignée fenêtre') ||
+              category.contains('poignee fenetre') ||
+              category.contains('window handle') ||
+              category.contains('مقبض نافذة');
+          if (isExplicitWindowHandle) return true;
+
+          final isExplicitDoorHandle =
+              category.contains('poignée porte') ||
+              category.contains('poignee porte') ||
+              category.contains('door handle') ||
+              category.contains('مقبض باب') ||
+              category.contains('condamnation');
+          if (isExplicitDoorHandle) return false;
+
           final hasHandle =
               n.contains('poignée') ||
               ty.contains('poignée') ||

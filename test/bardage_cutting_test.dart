@@ -29,22 +29,14 @@ void main() {
           'qty_mode': 'by_range',
           'dimension': 'shutter_weight',
           'ranges': [
-            {
-              'min_mm': 1.0,
-              'max_mm': 15.0,
-              'compatibility_group': 1,
-            },
+            {'min_mm': 1.0, 'max_mm': 15.0, 'compatibility_group': 1},
           ],
         },
         {
           'qty_mode': 'by_range',
           'dimension': 'shutter_weight',
           'ranges': [
-            {
-              'min_mm': 1.0,
-              'max_mm': 30.0,
-              'compatibility_group': 0,
-            },
+            {'min_mm': 1.0, 'max_mm': 30.0, 'compatibility_group': 0},
           ],
         },
       ],
@@ -61,27 +53,15 @@ void main() {
           'qty_mode': 'by_range',
           'dimension': 'shutter_weight',
           'ranges': [
-            {
-              'min_mm': 1.0,
-              'max_mm': 15.0,
-              'compatibility_group': 1,
-            },
-            {
-              'min_mm': 10.0,
-              'max_mm': 30.0,
-              'compatibility_group': 2,
-            },
+            {'min_mm': 1.0, 'max_mm': 15.0, 'compatibility_group': 1},
+            {'min_mm': 10.0, 'max_mm': 30.0, 'compatibility_group': 2},
           ],
         },
         {
           'qty_mode': 'by_range',
           'dimension': 'shutter_weight',
           'ranges': [
-            {
-              'min_mm': 1.0,
-              'max_mm': 30.0,
-              'compatibility_group': 0,
-            },
+            {'min_mm': 1.0, 'max_mm': 30.0, 'compatibility_group': 0},
           ],
         },
       ],
@@ -94,19 +74,115 @@ void main() {
     expect(ComponentCalculator.shutterMechanismScope('حزام'), 'belt');
     expect(ComponentCalculator.shutterMechanismScope('مانيفال'), 'crank');
     expect(
-      ComponentCalculator.kitItemAppliesToMechanism(
-        {'mechanism_scope': 'belt'},
-        'crank',
-      ),
+      ComponentCalculator.kitItemAppliesToMechanism({
+        'mechanism_scope': 'belt',
+      }, 'crank'),
       isFalse,
     );
     expect(
-      ComponentCalculator.kitItemAppliesToMechanism(
-        {'mechanism_scope': 'all'},
-        'crank',
-      ),
+      ComponentCalculator.kitItemAppliesToMechanism({
+        'mechanism_scope': 'all',
+      }, 'crank'),
       isTrue,
     );
+  });
+
+  test('kit components support multiple mechanisms including motor', () {
+    expect(ComponentCalculator.shutterMechanismScope('محرك'), 'motor');
+    const item = {'mechanism_scopes': 'belt,motor'};
+    expect(ComponentCalculator.kitItemAppliesToMechanism(item, 'belt'), isTrue);
+    expect(
+      ComponentCalculator.kitItemAppliesToMechanism(item, 'motor'),
+      isTrue,
+    );
+    expect(
+      ComponentCalculator.kitItemAppliesToMechanism(item, 'crank'),
+      isFalse,
+    );
+  });
+
+  test('kit components distinguish normal and extruded blades', () {
+    expect(
+      ComponentCalculator.kitItemAppliesToBlade(const {
+        'blade_scope': 'extruded',
+      }, 'extruded'),
+      isTrue,
+    );
+    expect(
+      ComponentCalculator.kitItemAppliesToBlade(const {
+        'blade_scope': 'extruded',
+      }, 'normal'),
+      isFalse,
+    );
+    expect(
+      ComponentCalculator.kitItemAppliesToBlade(const {
+        'blade_scope': 'all',
+      }, 'normal'),
+      isTrue,
+    );
+    expect(
+      ComponentCalculator.kitItemAppliesToBlade(const {
+        'blade_scope': 'x3d',
+      }, 'extruded'),
+      isTrue,
+      reason: 'old X3D values remain compatible with Extrudé',
+    );
+  });
+
+  test('weight kit expands every matching range from the selected kit', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400);
+    model.hasShutter = true;
+    model.customShutterBoxHeight = 155;
+    model.shutterMechanism = 'حزام';
+    model.componentOverrides['الشرائح (Lames)'] = {
+      'id': 1,
+      'component_type': 'blade',
+      'name': 'Lame test 55',
+      'measurement': '55',
+      'weight_per_sqm': 3,
+      'price': 0,
+      'unit': 'bar',
+    };
+
+    final bom = ComponentCalculator.generateBom(
+      model,
+      const {},
+      kitBundleData: {
+        'Kit volet 155': [
+          {
+            'qty_mode': 'by_range',
+            'dimension': 'shutter_weight',
+            'component_type': 'Console Quissonnel',
+            'ranges': [
+              {
+                'min_mm': 1.0,
+                'max_mm': 10.0,
+                'product_name': 'أومبو 40',
+                'qty': 1.0,
+                'compatibility_group': 1,
+              },
+              {
+                'min_mm': 1.0,
+                'max_mm': 10.0,
+                'product_name': 'سيبور رولمان 40',
+                'qty': 1.0,
+                'compatibility_group': 1,
+              },
+            ],
+          },
+        ],
+      },
+      kitBundleMetadata: {
+        'Kit volet 155': {'name': 'Kit volet 155', 'description': 'V'},
+      },
+    );
+
+    final kitItems = bom
+        .where((item) => item.kitGroupName == 'Kit volet 155')
+        .map((item) => item.name)
+        .toList();
+    expect(kitItems, contains('أومبو 40'));
+    expect(kitItems, contains('سيبور رولمان 40'));
   });
 
   test('shutter component uses its configured colour price over zero base', () {

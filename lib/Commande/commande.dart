@@ -2113,7 +2113,7 @@ class _CommandeState extends State<Commande> {
                       color: Colors.indigo,
                     ),
                     title: Text(
-                      Localization.translate('كميات الطلبية المطلوبة', lang),
+                      Localization.translate('كمية السلع المطلوبة', lang),
                     ),
                     subtitle: Text(
                       Localization.translate(

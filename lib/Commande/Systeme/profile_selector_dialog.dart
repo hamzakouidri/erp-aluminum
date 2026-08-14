@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/section_image.dart';
 import '../../sql_database.dart';
+import 'model.dart';
 
 /// The component row that opened the selector belongs either to an opening
 /// sash or to a sliding sash.  It must not be inferred from a commercial
@@ -70,6 +71,58 @@ bool _isHandleAccessory(Map<String, dynamic> accessory) => _containsAny(
   _accessorySearchText(accessory),
   const ['poignée', 'poignee', 'handle', 'مقبض', 'بواني'],
 );
+
+/// Returns whether an accessory belongs in the normal window-handle picker.
+///
+/// The catalogue category is authoritative. A product may contain a brand or
+/// model name such as "Rotax" while still being explicitly classified as a
+/// window handle. Text exclusions are used only for old/generic records that
+/// do not have a precise category.
+bool isWindowHandleAccessory(Map<String, dynamic> accessory) {
+  final name = (accessory['name'] ?? '').toString().toLowerCase();
+  final rawType = (accessory['type'] ?? '').toString().toLowerCase();
+  final category = rawType.split('|').first.trim();
+
+  final isExplicitWindowHandle = _containsAny(category, const [
+    'poignée fenêtre',
+    'poignee fenetre',
+    'window handle',
+    'مقبض نافذة',
+  ]);
+  if (isExplicitWindowHandle) return true;
+
+  final isExplicitDoorHandle = _containsAny(category, const [
+    'poignée porte',
+    'poignee porte',
+    'door handle',
+    'مقبض باب',
+    'condamnation',
+  ]);
+  if (isExplicitDoorHandle) return false;
+
+  final text = '$name $rawType';
+  final hasHandle = _containsAny(text, const [
+    'poignée',
+    'poignee',
+    'handle',
+    'مقبض',
+    'بواني',
+  ]);
+  if (!hasHandle) return false;
+
+  final isDoorOrSpecial = _containsAny(text, const [
+    'porte',
+    'door',
+    'clé',
+    'clef',
+    'condamnation',
+    'rotax',
+    'calimaster',
+    'maréchal',
+    'marechal',
+  ]);
+  return !isDoorOrSpecial;
+}
 
 /// Filters hardware using the actual sash type that produced its BOM row.
 /// In particular, an unqualified espagnolette or window handle is an opening
@@ -142,6 +195,7 @@ class ProfileSelectorDialog extends StatefulWidget {
   final String? materialType;
   final double? windowHeight;
   final double? targetSize;
+  final String? kitDescriptionCode;
 
   /// الحد الأقصى لطول الإسبانيوليت المطلوب للرسم. لا تعرض النافذة
   /// الإسبانيوليت الأطول منه لأنها لا تصلح للتركيب في هذه النافذة.
@@ -168,6 +222,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.materialType,
     this.windowHeight,
     this.targetSize,
+    this.kitDescriptionCode,
     this.maxAccessoryLength,
     this.accessoryDrawingMode,
     this.bladeId,
@@ -685,35 +740,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             final ty = (a['type'] ?? '').toString().toLowerCase();
 
             if (tLower == 'is_window_handle') {
-              final hasHandle =
-                  n.contains('poignée') ||
-                  ty.contains('poignée') ||
-                  n.contains('poignee') ||
-                  ty.contains('poignee') ||
-                  n.contains('handle') ||
-                  ty.contains('handle') ||
-                  n.contains('مقبض') ||
-                  ty.contains('مقبض');
-              final isDoorOnly =
-                  n.contains('porte') ||
-                  ty.contains('porte') ||
-                  n.contains('door') ||
-                  ty.contains('door') ||
-                  n.contains('clé') ||
-                  ty.contains('clé') ||
-                  n.contains('clef') ||
-                  ty.contains('clef') ||
-                  n.contains('condamnation') ||
-                  ty.contains('condamnation') ||
-                  n.contains('rotax') ||
-                  ty.contains('rotax') ||
-                  n.contains('calimaster') ||
-                  ty.contains('calimaster') ||
-                  n.contains('maréchal') ||
-                  ty.contains('maréchal') ||
-                  n.contains('marechal') ||
-                  ty.contains('marechal');
-              return hasHandle && !isDoorOnly;
+              return isWindowHandleAccessory(a);
             }
 
             if (tLower == 'فيرو' || tLower == 'verrou' || tLower == 'viro') {
@@ -1135,6 +1162,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 (e) => {
                   'id': e['id'],
                   'name': e['name'],
+                  'description': e['description'],
                   'price': 0.0,
                   'price_dzd': 0.0,
                   'component_type': 'كيت',
@@ -1143,6 +1171,15 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 },
               )
               .toList();
+
+          if (widget.kitDescriptionCode != null &&
+              widget.kitDescriptionCode!.trim().isNotEmpty) {
+            data = compatibleKitBundles(
+              kits: data,
+              descriptionCode: widget.kitDescriptionCode!,
+              minimumSizeMm: widget.targetSize,
+            );
+          }
 
           // Filter kits list by material type and series name
           final activeSeriesNameLower = activeSeriesName.toLowerCase();
@@ -1210,7 +1247,9 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             return true;
           }).toList();
 
-          if (widget.windowHeight != null) {
+          if (widget.windowHeight != null &&
+              (widget.kitDescriptionCode == null ||
+                  widget.kitDescriptionCode!.trim().isEmpty)) {
             data = data.where((a) {
               final sizeDigits = getComponentSize(a);
               if (sizeDigits != null) {

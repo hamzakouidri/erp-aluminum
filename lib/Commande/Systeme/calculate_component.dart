@@ -443,8 +443,7 @@ class ComponentCalculator {
       0.0,
       (windowWidthMm - 65.0 - (2.0 * bladeEndCapThicknessMm)) / 1000.0,
     );
-    final curtainAreaSqm =
-        bladeLengthM * bladeCount * (bladeHeightMm / 1000.0);
+    final curtainAreaSqm = bladeLengthM * bladeCount * (bladeHeightMm / 1000.0);
     return curtainAreaSqm * bladeWeightPerSqm;
   }
 
@@ -454,37 +453,83 @@ class ComponentCalculator {
     required List<Map<String, dynamic>> kitItems,
     required double shutterWeightKg,
     String mechanismScope = 'all',
+    Set<String>? mechanismScopes,
+    String bladeScope = 'normal',
   }) {
+    final selectedMechanismScopes =
+        mechanismScopes ?? <String>{normalizeKitMechanismScope(mechanismScope)};
     final weightItems = kitItems.where((item) {
       return (item['qty_mode'] as String? ?? 'fixed') == 'by_range' &&
           item['dimension'] == 'shutter_weight' &&
-          kitItemAppliesToMechanism(item, mechanismScope);
+          kitItemAppliesToMechanisms(item, selectedMechanismScopes) &&
+          kitItemAppliesToBlade(item, bladeScope);
     }).toList();
     if (weightItems.isEmpty) return null;
     if (shutterWeightKg <= 0) return null;
+    int? bestGroup;
+    var bestMissingItems = 1 << 20;
+    var bestFamilyMatches = -1;
     for (final group in const [1, 2]) {
-      final groupIsComplete = weightItems.every((item) {
+      var familyMatches = 0;
+      var missingItems = 0;
+      for (final item in weightItems) {
         final ranges =
             (item['ranges'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-        return ranges.any((range) {
+        final participatesInGroup = ranges.any((range) {
           final rangeGroup =
-              ((range['compatibility_group'] as num?)?.toInt() ?? 0)
-                  .clamp(0, 2);
+              ((range['compatibility_group'] as num?)?.toInt() ?? 0).clamp(
+                0,
+                2,
+              );
+          return rangeGroup == group || rangeGroup == 0;
+        });
+        if (!participatesInGroup) continue;
+
+        final matches = ranges.where((range) {
+          final rangeGroup =
+              ((range['compatibility_group'] as num?)?.toInt() ?? 0).clamp(
+                0,
+                2,
+              );
           final min = (range['min_mm'] as num?)?.toDouble() ?? 0;
-          final max =
-              (range['max_mm'] as num?)?.toDouble() ?? double.infinity;
+          final max = (range['max_mm'] as num?)?.toDouble() ?? double.infinity;
           return (rangeGroup == 0 || rangeGroup == group) &&
               shutterWeightKg >= min &&
               shutterWeightKg <= max;
-        });
-      });
-      if (groupIsComplete) return group;
+        }).toList();
+        if (matches.isEmpty) {
+          missingItems++;
+          continue;
+        }
+        familyMatches += matches.where((range) {
+          final rangeGroup =
+              ((range['compatibility_group'] as num?)?.toInt() ?? 0).clamp(
+                0,
+                2,
+              );
+          return rangeGroup == group;
+        }).length;
+      }
+      if (familyMatches == 0) continue;
+      if (missingItems < bestMissingItems ||
+          (missingItems == bestMissingItems &&
+              familyMatches > bestFamilyMatches)) {
+        bestGroup = group;
+        bestMissingItems = missingItems;
+        bestFamilyMatches = familyMatches;
+      }
     }
-    return null;
+    return bestGroup;
   }
 
   static String shutterMechanismScope(String mechanism) {
     final normalized = mechanism.toLowerCase().trim();
+    if (normalized.contains('moteur') ||
+        normalized.contains('motor') ||
+        normalized.contains('محرك') ||
+        normalized.contains('Ù…Ø­Ø±Ùƒ')) {
+      return 'motor';
+    }
     if (normalized.contains('maniv') ||
         normalized.contains('مانيف') ||
         normalized.contains('منايف')) {
@@ -498,12 +543,111 @@ class ComponentCalculator {
     return 'all';
   }
 
+  static String normalizeKitMechanismScope(String scope) {
+    final normalized = scope.toLowerCase().trim().replaceAll(
+      RegExp(r'[\s-]+'),
+      '_',
+    );
+    if (normalized.contains('secours') ||
+        normalized.contains('emergency') ||
+        normalized.contains('sos') ||
+        normalized.contains('سوكور') ||
+        normalized.contains('احتياط')) {
+      if (normalized.contains('sans') ||
+          normalized.contains('without') ||
+          normalized.contains('no_') ||
+          normalized.contains('بدون')) {
+        return 'motor_plain';
+      }
+      return 'motor_emergency';
+    }
+    if (normalized.contains('plain') ||
+        normalized.contains('standard_motor') ||
+        normalized.contains('motor_plain') ||
+        normalized.contains('motor_without')) {
+      return 'motor_plain';
+    }
+    if (normalized.contains('moteur') ||
+        normalized.contains('motor') ||
+        normalized.contains('محرك') ||
+        normalized.contains('Ù…Ø­Ø±Ùƒ')) {
+      return 'motor';
+    }
+    if (normalized.contains('maniv') ||
+        normalized.contains('crank') ||
+        normalized.contains('مانيف') ||
+        normalized.contains('منايف')) {
+      return 'crank';
+    }
+    if (normalized.contains('sangle') ||
+        normalized.contains('belt') ||
+        normalized.contains('حزام')) {
+      return 'belt';
+    }
+    return normalized.isEmpty ? 'all' : normalized;
+  }
+
+  static Set<String> shutterMechanismScopes(
+    String mechanism, {
+    bool motorHasEmergencyCrank = false,
+  }) {
+    final primary = shutterMechanismScope(mechanism);
+    if (primary != 'motor') return {primary};
+    return {
+      'motor',
+      motorHasEmergencyCrank ? 'motor_emergency' : 'motor_plain',
+    };
+  }
+
   static bool kitItemAppliesToMechanism(
     Map<String, dynamic> item,
     String mechanismScope,
   ) {
-    final itemScope = item['mechanism_scope']?.toString() ?? 'all';
-    return itemScope == 'all' || itemScope == mechanismScope;
+    return kitItemAppliesToMechanisms(item, {
+      normalizeKitMechanismScope(mechanismScope),
+    });
+  }
+
+  static bool kitItemAppliesToMechanisms(
+    Map<String, dynamic> item,
+    Set<String> mechanismScopes,
+  ) {
+    final selectedScopes = mechanismScopes
+        .map(normalizeKitMechanismScope)
+        .where((scope) => scope.isNotEmpty)
+        .toSet();
+    if (selectedScopes.contains('all')) return true;
+    final scopes = (item['mechanism_scopes'] ?? '')
+        .toString()
+        .split(',')
+        .map(normalizeKitMechanismScope)
+        .where((scope) => scope.isNotEmpty)
+        .toSet();
+    if (scopes.isNotEmpty) {
+      return scopes.contains('all') ||
+          scopes.any((scope) => selectedScopes.contains(scope));
+    }
+    final itemScope = normalizeKitMechanismScope(
+      item['mechanism_scope']?.toString() ?? 'all',
+    );
+    return itemScope == 'all' || selectedScopes.contains(itemScope);
+  }
+
+  static bool kitItemAppliesToBlade(
+    Map<String, dynamic> item,
+    String bladeScope,
+  ) {
+    String normalize(dynamic value) {
+      final normalized = value?.toString().trim().toLowerCase() ?? 'all';
+      if (normalized == 'x3d' || normalized.startsWith('extrud')) {
+        return 'extruded';
+      }
+      return normalized == 'normal' ? 'normal' : 'all';
+    }
+
+    final required = normalize(item['blade_scope']);
+    final selected = normalize(bladeScope);
+    return required == 'all' || required == selected;
   }
 
   /// Cut length in millimetres for a customised standalone side-cover piece.
@@ -587,6 +731,7 @@ class ComponentCalculator {
     Map<String, List<Map<String, dynamic>>> kitBundleData = const {},
     Map<String, bool> kitPerLeafMap = const {},
     Map<String, double> kitBundlePrices = const {},
+    Map<String, Map<String, dynamic>> kitBundleMetadata = const {},
   }) {
     int? catalogueId(dynamic component) {
       if (component is! Map) return null;
@@ -699,6 +844,28 @@ class ComponentCalculator {
     }
 
     String? getKitKey(String baseName) {
+      String? descriptionCode;
+      if (baseName == 'System OB' || baseName == 'Demi System OB') {
+        descriptionCode = 'OB';
+      } else if (baseName == 'Verrou Central') {
+        descriptionCode = 'VC';
+      }
+      if (descriptionCode != null && kitBundleMetadata.isNotEmpty) {
+        final coded = kitBundleMetadata.entries.where(
+          (entry) => kitHasDescriptionCode(entry.value, descriptionCode!),
+        );
+        for (final entry in coded) {
+          final normalizedName = entry.key.toLowerCase();
+          final isDemi =
+              normalizedName.contains('demi') ||
+              normalizedName.contains('dim') ||
+              normalizedName.contains('نصف');
+          if (baseName == 'Demi System OB' && isDemi) return entry.key;
+          if (baseName == 'System OB' && !isDemi) return entry.key;
+          if (baseName == 'Verrou Central') return entry.key;
+        }
+      }
+
       final List<String> aliases;
       if (baseName == 'System OB') {
         aliases = [
@@ -1236,6 +1403,11 @@ class ComponentCalculator {
     String colorName = window.selectedDbColor != null
         ? window.selectedDbColor!['name']
         : window.frameColor.toString().split('.').last;
+    // Accessories follow the profile colour automatically, unless the user
+    // chose a separate accessory colour in the drawing properties.
+    final String accessoryColorName = window.selectedAccessoryColor != null
+        ? (window.selectedAccessoryColor!['name'] ?? colorName).toString()
+        : colorName;
 
     int totalHandles = 0;
     int octoHandles = 0;
@@ -1448,6 +1620,7 @@ class ComponentCalculator {
       double leafWidthMm = 0,
       double shutterWeightKg = 0,
       String mechanismScope = 'all',
+      String bladeScope = 'normal',
       bool isActive = true,
       int leafCount = 1,
       String category = 'accessory',
@@ -1458,12 +1631,14 @@ class ComponentCalculator {
         kitItems: kitItems,
         shutterWeightKg: shutterWeightKg,
         mechanismScope: mechanismScope,
+        bladeScope: bladeScope,
       );
       for (final item in kitItems) {
         if (!kitItemAppliesToMechanism(item, mechanismScope)) continue;
+        if (!kitItemAppliesToBlade(item, bladeScope)) continue;
         final mode = item['qty_mode'] as String? ?? 'fixed';
         final dimension = item['dimension'] as String?;
-        final unit = item['unit'] as String? ?? 'قطعة';
+        const unit = 'قطعة';
         final ranges =
             (item['ranges'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         final variants =
@@ -1498,7 +1673,7 @@ class ComponentCalculator {
             return aMax.compareTo(bMax);
           });
 
-          Map<String, dynamic>? matchedRange;
+          final matchedRanges = <Map<String, dynamic>>[];
           for (final r in sortedRanges) {
             final mn = (r['min_mm'] as num?)?.toDouble() ?? 0;
             final mx = (r['max_mm'] as num?)?.toDouble() ?? double.infinity;
@@ -1506,34 +1681,62 @@ class ComponentCalculator {
                 ((r['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
             final groupMatches =
                 !isWeight ||
+                selectedCompatibilityGroup == null ||
                 (selectedCompatibilityGroup != null &&
                     (rangeGroup == 0 ||
                         rangeGroup == selectedCompatibilityGroup));
             // The range matches if dimValue falls within [mn, mx)
             if (groupMatches && dimValue >= mn && dimValue <= mx) {
-              matchedRange = r;
-              break;
+              matchedRanges.add(r);
+              if (!isWeight) break;
             }
           }
-          if (matchedRange != null) {
-            final qty =
-                ((matchedRange['qty'] as num?)?.toDouble() ?? 1) * leafCount;
-            result.add(
-              BomItem(
-                category: category,
-                originalName: '${kitName}_${matchedRange['product_name']}',
-                name:
-                    matchedRange['product_name'] as String? ??
-                    item['component_type'] as String? ??
-                    '',
-                quantity: qty,
-                unit: unit,
-                unitPrice: (matchedRange['price'] as num?)?.toDouble() ?? 0,
-                isActive: isActive,
-                isMissing: false,
-                kitGroupName: kitName,
-              ),
-            );
+          if (matchedRanges.isNotEmpty) {
+            for (final matchedRange in matchedRanges) {
+              final qty =
+                  ((matchedRange['qty'] as num?)?.toDouble() ?? 1) * leafCount;
+              final rawLinkedComponent = matchedRange['shutter_component'];
+              final linkedComponent = rawLinkedComponent is Map
+                  ? Map<String, dynamic>.from(rawLinkedComponent)
+                  : null;
+              final linkedColorPrices =
+                  (matchedRange['shutter_color_prices'] as List?)
+                      ?.whereType<Map>()
+                      .map((row) => Map<String, dynamic>.from(row))
+                      .toList() ??
+                  const <Map<String, dynamic>>[];
+              final linkedId = catalogueId(linkedComponent);
+              final linkedName = linkedComponent?['name']?.toString().trim();
+              final linkedPrice = linkedComponent == null
+                  ? (matchedRange['price'] as num?)?.toDouble() ?? 0
+                  : resolveShutterComponentUnitPrice(
+                      component: linkedComponent,
+                      colorPrices: linkedColorPrices,
+                      selectedColorId: catalogueColorId(null),
+                    );
+              result.add(
+                BomItem(
+                  category: category,
+                  originalName: '${kitName}_${matchedRange['product_name']}',
+                  name: linkedName?.isNotEmpty == true
+                      ? linkedName!
+                      : matchedRange['product_name'] as String? ??
+                            item['component_type'] as String? ??
+                            '',
+                  quantity: qty,
+                  unit: unit,
+                  unitPrice: linkedPrice,
+                  isActive: isActive,
+                  isMissing: linkedId == null,
+                  kitGroupName: kitName,
+                  catalogItemId: linkedId,
+                  inventoryItemType: linkedId == null
+                      ? null
+                      : 'ShutterComponent',
+                  colorId: linkedId == null ? null : catalogueColorId(null),
+                ),
+              );
+            }
           } else {
             // لا يوجد نطاق مطابق - أضف كعنصر مفقود للتنبيه
             result.add(
@@ -2670,7 +2873,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'كريمون (Cremone)',
-            color: colorName,
+            color: accessoryColorName,
             qty: cremoneQty,
           ),
         );
@@ -2680,7 +2883,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض أوكتو (Octo)',
-            color: colorName,
+            color: accessoryColorName,
             qty: octoHandles,
           ),
         );
@@ -2689,7 +2892,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض نافذة بي في سي (Poignée Fenêtre PVC)',
-            color: colorName,
+            color: accessoryColorName,
             qty: pvcHandlesOnAlu,
           ),
         );
@@ -2699,7 +2902,7 @@ class ComponentCalculator {
           items.add(
             createAccessory(
               'مقبض نافذة (Poignée Fenêtre)',
-              color: colorName,
+              color: accessoryColorName,
               qty: totalHandles,
             ),
           );
@@ -2707,7 +2910,7 @@ class ComponentCalculator {
           items.add(
             createAccessory(
               'المقبض (Handle)',
-              color: colorName,
+              color: accessoryColorName,
               qty: totalHandles,
             ),
           );
@@ -2718,7 +2921,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'كومباس (Compas)',
-            color: colorName,
+            color: accessoryColorName,
             qty: totalCompas,
           ),
         );
@@ -2727,7 +2930,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض الباب عادي (Poignée Porte)',
-            color: colorName,
+            color: accessoryColorName,
             qty: normalDoorHandles,
           ),
         );
@@ -2736,7 +2939,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض كبير ماريشال 1.25 متر (Poignée Maréchal 1.25m)',
-            color: colorName,
+            color: accessoryColorName,
             qty: marechal125Handles,
           ),
         );
@@ -2745,7 +2948,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)',
-            color: colorName,
+            color: accessoryColorName,
             qty: marechal2mHandles,
           ),
         );
@@ -2754,7 +2957,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'قفل رولون (Serrure à Rouleau)',
-            color: colorName,
+            color: accessoryColorName,
             qty: rollerLocks,
           ),
         );
@@ -2763,7 +2966,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض الباب (Poignée Porte à Clé)',
-            color: colorName,
+            color: accessoryColorName,
             qty: keyHandles,
           ),
         );
@@ -2772,7 +2975,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'مقبض الباب Condamnation (Poignée Condamnation)',
-            color: colorName,
+            color: accessoryColorName,
             qty: condamnationHandles,
           ),
         );
@@ -2781,7 +2984,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'قفل الباب (Serrure)',
-            color: colorName,
+            color: accessoryColorName,
             qty: keyLocks,
           ),
         );
@@ -2790,21 +2993,25 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'قفل الباب Condamnation (Serrure Condamnation)',
-            color: colorName,
+            color: accessoryColorName,
             qty: condamnationLocks,
           ),
         );
       }
       if (pointLocks > 0 && window.systemMode != 'sliding') {
         items.add(
-          createAccessory('قفل نقطة', color: colorName, qty: pointLocks),
+          createAccessory(
+            'قفل نقطة',
+            color: accessoryColorName,
+            qty: pointLocks,
+          ),
         );
       }
       if (doorCanons > 0 && window.systemMode != 'sliding') {
         items.add(
           createAccessory(
             'الأسطوانة (Canon)',
-            color: colorName,
+            color: accessoryColorName,
             qty: doorCanons,
           ),
         );
@@ -2813,7 +3020,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'قاش بورت (Gache Porte)',
-            color: colorName,
+            color: accessoryColorName,
             qty: gachePortes,
           ),
         );
@@ -2822,7 +3029,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'المفاصل (Hinges)',
-            color: colorName,
+            color: accessoryColorName,
             qty: totalHinges,
           ),
         );
@@ -2832,7 +3039,7 @@ class ComponentCalculator {
         items.add(
           createAccessory(
             'عجلات المنزلق (Roulettes)',
-            color: colorName,
+            color: accessoryColorName,
             qty: slidingTotalRoulettes,
           ),
         );
@@ -2861,7 +3068,7 @@ class ComponentCalculator {
           items.add(
             createAccessory(
               'أونتروماتيك (Entrematique)',
-              color: colorName,
+              color: accessoryColorName,
               qty: slidingTotalHandles,
             ),
           );
@@ -2869,7 +3076,7 @@ class ComponentCalculator {
           items.add(
             createAccessory(
               'اسبانيولات المنزلق (Espagnolette)',
-              color: colorName,
+              color: accessoryColorName,
               qty: slidingTotalEspagnolettes,
             ),
           );
@@ -2879,7 +3086,7 @@ class ComponentCalculator {
               // drawings both are present, and sharing a key made one manual
               // selection overwrite the other.
               'مقبض منزلق (Poignée Coulissante)',
-              color: colorName,
+              color: accessoryColorName,
               qty: slidingTotalHandles,
             ),
           );
@@ -2890,7 +3097,7 @@ class ComponentCalculator {
             items.add(
               createAccessory(
                 'Gâche coulissant TPR',
-                color: colorName,
+                color: accessoryColorName,
                 qty: slidingTotalEspagnolettes,
               ),
             );
@@ -2898,7 +3105,7 @@ class ComponentCalculator {
             items.add(
               createAccessory(
                 'كاش كوليسون (Gache coulissant)',
-                color: colorName,
+                color: accessoryColorName,
                 qty: slidingTotalGacheCoulissant,
               ),
             );
@@ -2910,7 +3117,11 @@ class ComponentCalculator {
             window.system?.name.toLowerCase().contains('porte') ?? false;
         if (isDoor) {
           items.add(
-            createAccessory('قاش بورت (Gache Porte)', color: colorName, qty: 2),
+            createAccessory(
+              'قاش بورت (Gache Porte)',
+              color: accessoryColorName,
+              qty: 2,
+            ),
           );
         }
 
@@ -2951,7 +3162,7 @@ class ComponentCalculator {
           items.add(
             createAccessory(
               'بوشون بارك لوز (Bouchon Parclose)',
-              color: colorName,
+              color: accessoryColorName,
               qty: 4 * (singleSashCount + doubleSashCount),
             ),
           );
@@ -2959,7 +3170,11 @@ class ComponentCalculator {
         if (!useCremone &&
             window.componentOverrides.containsKey('كريمون (Cremone)')) {
           items.add(
-            createAccessory('كريمون (Cremone)', color: colorName, qty: 0),
+            createAccessory(
+              'كريمون (Cremone)',
+              color: accessoryColorName,
+              qty: 0,
+            ),
           );
         }
       }
@@ -3090,117 +3305,121 @@ class ComponentCalculator {
       );
 
       // ===== 1. الكيت (Kit) - أول مركب، فقط لغير النفق =====
-      if (!isTunnel) {
-        void addAndExpandKit(
-          String uiKey,
-          List<String> defaultKeywords,
-          bool _isMotorized, {
-          bool filterAxeItems = true,
-        }) {
-          String? matchedKitName;
-          String? actualKitName;
-          if (window.componentOverrides.containsKey(uiKey)) {
-            final overrideItem = window.componentOverrides[uiKey];
-            // Ignore legacy values that were incorrectly saved from
-            // ShutterComponents.  Only a KitBundles selection is allowed to
-            // override the actual bundle chosen below.
-            if (overrideItem['catalog_source'] == 'KitBundles') {
-              actualKitName = overrideItem['name']?.toString();
-            }
-          }
-
-          List<String> searchPriority = [];
-          if (actualKitName != null && actualKitName.isNotEmpty) {
-            searchPriority.add(actualKitName);
-          }
-          searchPriority.addAll(defaultKeywords);
-
-          // Pass 1: Exact key match in kitBundleData
-          for (final possibleName in searchPriority) {
-            if (kitBundleData.containsKey(possibleName) &&
-                (kitBundleData[possibleName]?.isNotEmpty ?? false)) {
-              matchedKitName = possibleName;
-              break;
-            }
-          }
-
-          // Pass 2: Partial substring match — handles 'Kit volet 1' → 'Kit volet 155'
-          if (matchedKitName == null) {
-            final candidates = <String>[];
-            for (final keyword in searchPriority) {
-              final lowerKw = keyword.toLowerCase();
-              for (final bundleKey in kitBundleData.keys) {
-                if (bundleKey.toLowerCase().contains(lowerKw) &&
-                    (kitBundleData[bundleKey]?.isNotEmpty ?? false)) {
-                  candidates.add(bundleKey);
-                }
-              }
-            }
-            if (candidates.isNotEmpty) {
-              final targetBoxSize = window.shutterBoxHeight.round();
-              matchedKitName = candidates.firstWhere((name) {
-                final size = RegExp(
-                  r'(?<!\d)(\d{3})(?!\d)',
-                ).firstMatch(name)?.group(1);
-                return size != null && int.tryParse(size) == targetBoxSize;
-              }, orElse: () => candidates.first);
-            }
-          }
-
-          // A kit must always come from KitBundles.  If it is not configured
-          // there, show the French catalogue query instead of inventing an
-          // Arabic component or borrowing a similarly named shutter part.
-          final String groupName = matchedKitName ?? defaultKeywords.first;
-          final bool perLeaf = kitPerLeafMap[groupName] ?? false;
-          final double kitQty = perLeaf
-              ? ((doubleSashCount * 2) + singleSashCount).toDouble()
-              : 1.0;
-
-          // `isMotorized` describes the mechanism, but every kit uses the
-          // same source: its KitBundles record and exact stored French name.
-          items.add(createKitBundle(uiKey, groupName, qty: kitQty));
-
-          if (matchedKitName != null) {
-            final String shutterVariant = isExtrudedBlade
-                ? 'extruded'
-                : 'normal';
-            final int leafCount = perLeaf
-                ? ((doubleSashCount * 2) + singleSashCount)
-                : 1;
-            var expandedItems = expandKitBundle(
-              matchedKitName,
-              kitBundleData[matchedKitName]!,
-              leafHeightMm: window.height.toDouble(),
-              leafWidthMm: window.width.toDouble(),
-              shutterWeightKg: shutterWeightKg,
-              mechanismScope: shutterMechanismScope(
-                window.shutterMechanism,
-              ),
-              isActive: true,
-              // دائماً مفعَّل — لا تُشطَب عناصر الكيت
-              leafCount: leafCount,
-              category: 'shutter',
-              variantValue: shutterVariant,
-            );
-            // If Axe is 60mm (separate row), exclude axe items already inside kit bundle
-            if (filterAxeItems) {
-              expandedItems = expandedItems.where((bi) {
-                final n = bi.name.toLowerCase();
-                final on = bi.originalName.toLowerCase();
-                return !n.contains('laxe') &&
-                    !n.contains('axe') &&
-                    !n.contains('محور') &&
-                    !n.contains('أوم') &&
-                    !on.contains('laxe') &&
-                    !on.contains('_laxe') &&
-                    !on.contains('_axe') &&
-                    !on.contains('محور');
-              }).toList();
-            }
-            items.addAll(expandedItems);
+      void addAndExpandKit(
+        String uiKey,
+        String descriptionCode, {
+        bool filterAxeItems = true,
+        bool sizeBound = true,
+      }) {
+        String? matchedKitName;
+        String? actualKitName;
+        if (window.componentOverrides.containsKey(uiKey)) {
+          final overrideItem = window.componentOverrides[uiKey];
+          // Ignore legacy values that were incorrectly saved from
+          // ShutterComponents.  Only a KitBundles selection is allowed to
+          // override the actual bundle chosen below.
+          if (overrideItem['catalog_source'] == 'KitBundles') {
+            actualKitName = overrideItem['name']?.toString();
           }
         }
 
+        final candidates = compatibleKitBundles(
+          kits: kitBundleMetadata.values,
+          descriptionCode: descriptionCode,
+          minimumSizeMm: sizeBound ? window.shutterBoxHeight : null,
+          allowWithoutSize: !sizeBound,
+        );
+        if (actualKitName != null && actualKitName.isNotEmpty) {
+          final manual = candidates.where(
+            (kit) => (kit['name'] ?? '').toString() == actualKitName,
+          );
+          if (manual.isNotEmpty) {
+            matchedKitName = actualKitName;
+          }
+        }
+        matchedKitName ??= candidates.isEmpty
+            ? null
+            : (candidates.first['name'] ?? '').toString();
+
+        // Compatibility fallback for orders saved before description codes
+        // were introduced. New catalogues always use the code above.
+        if (matchedKitName == null && kitBundleMetadata.isEmpty) {
+          final targetSize = window.shutterBoxHeight;
+          final legacy =
+              kitBundleData.keys.where((name) {
+                final normalized = name.toLowerCase();
+                if (descriptionCode == 'MT')
+                  return normalized.contains('moteur');
+                return normalized.contains('kit volet') &&
+                    !normalized.contains('moteur');
+              }).toList()..sort((a, b) {
+                final aSize = kitBundleSizeMm({'name': a}) ?? double.infinity;
+                final bSize = kitBundleSizeMm({'name': b}) ?? double.infinity;
+                return aSize.compareTo(bSize);
+              });
+          for (final name in legacy) {
+            final size = kitBundleSizeMm({'name': name});
+            if (size != null && size + 0.5 >= targetSize) {
+              matchedKitName = name;
+              break;
+            }
+          }
+        }
+
+        // A kit must always come from KitBundles.  If it is not configured
+        // there, show the French catalogue query instead of inventing an
+        // Arabic component or borrowing a similarly named shutter part.
+        final String groupName = matchedKitName ?? 'Kit $descriptionCode';
+        final bool perLeaf = kitPerLeafMap[groupName] ?? false;
+        final double kitQty = perLeaf
+            ? ((doubleSashCount * 2) + singleSashCount).toDouble()
+            : 1.0;
+
+        // `isMotorized` describes the mechanism, but every kit uses the
+        // same source: its KitBundles record and exact stored French name.
+        items.add(createKitBundle(uiKey, groupName, qty: kitQty));
+
+        final matchedKitItems = matchedKitName == null
+            ? null
+            : kitBundleData[matchedKitName];
+        if (matchedKitName != null && matchedKitItems?.isNotEmpty == true) {
+          final String shutterVariant = isExtrudedBlade ? 'extruded' : 'normal';
+          final int leafCount = perLeaf
+              ? ((doubleSashCount * 2) + singleSashCount)
+              : 1;
+          var expandedItems = expandKitBundle(
+            matchedKitName,
+            matchedKitItems!,
+            leafHeightMm: window.height.toDouble(),
+            leafWidthMm: window.width.toDouble(),
+            shutterWeightKg: shutterWeightKg,
+            mechanismScope: shutterMechanismScope(window.shutterMechanism),
+            bladeScope: isExtrudedBlade ? 'extruded' : 'normal',
+            isActive: true,
+            // دائماً مفعَّل — لا تُشطَب عناصر الكيت
+            leafCount: leafCount,
+            category: 'shutter',
+            variantValue: shutterVariant,
+          );
+          // If Axe is 60mm (separate row), exclude axe items already inside kit bundle
+          if (filterAxeItems) {
+            expandedItems = expandedItems.where((bi) {
+              final n = bi.name.toLowerCase();
+              final on = bi.originalName.toLowerCase();
+              return !n.contains('laxe') &&
+                  !n.contains('axe') &&
+                  !n.contains('محور') &&
+                  !on.contains('laxe') &&
+                  !on.contains('_laxe') &&
+                  !on.contains('_axe') &&
+                  !on.contains('محور');
+            }).toList();
+          }
+          items.addAll(expandedItems);
+        }
+      }
+
+      if (!isTunnel) {
         // ── Determine exact mechanism ────────────────────────────────────────────
         final mech = window.shutterMechanism;
         final bool isCrank =
@@ -3222,44 +3441,27 @@ class ComponentCalculator {
 
           addAndExpandKit(
             'كيت فولي موتور (Kit Volet Moteur)',
-            // DB: "Kit volet Moteur 155", "Kit volet moteur 185"
-            ['Kit volet Moteur', 'Kit volet moteur', 'kit volet moteur'],
-            true,
+            'MT',
             filterAxeItems: true,
           );
         } else if (isCrank) {
           // Belt and crank share one shutter kit. Each component declares
           // whether it is common, belt-only or crank-only.
-          addAndExpandKit(
-            'كيت فولي مانيفر (Kit Volet Manivelle)',
-            [
-              'Kit volet 1',
-              'Kit volet 2',
-              'kit volet 1',
-              'kit volet 2',
-              'Kit volet 0',
-              'Kit volet manivelle',
-              'kit volet manivelle',
-              'Kit Volet Manivelle',
-              'Kit Manivelle',
-              'kit manivelle',
-              'kit_manivelle',
-            ],
-            false,
-          );
+          addAndExpandKit('كيت فولي مانيفر (Kit Volet Manivelle)', 'V');
+          addAndExpandKit('كيت مانيفر (Kit Manivelle)', 'M', sizeBound: false);
         } else {
           // حزام (Sangle): DB: "Kit volet 155", "Kit volet 185", "Kit volet 205"
           // الاسم الدقيق يؤخذ من componentOverrides تلقائياً، keywords هي فقط للاحتياط
-          addAndExpandKit('كيت فولي (Kit Volet)', [
-            'Kit volet 1',
-            'Kit volet 2',
-            'kit volet 1',
-            'kit volet 2',
-            'Kit volet 0',
-          ], true);
+          addAndExpandKit('كيت فولي (Kit Volet)', 'V');
         }
         // براغي الكيت
         items.add(createShutter('براغي الكيت', qty: 8));
+      } else {
+        addAndExpandKit(
+          'كيت صندوق النفق (Kit Caisson Tunnel)',
+          'CT',
+          sizeBound: false,
+        );
       }
 
       // ===== 2. الصندوق وبراغيه (الصندوق يظهر دائماً ولكن النفق سعره 0) =====

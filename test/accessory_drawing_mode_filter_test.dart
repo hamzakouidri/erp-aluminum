@@ -3,17 +3,24 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   Map<String, dynamic> accessory(String name, String type) => {
-        'name': name,
-        'type': type,
-      };
+    'name': name,
+    'type': type,
+  };
 
   test('opening selectors reject sliding espagnolettes and handles', () {
-    final openingEspagnolette = accessory('Espagnolette PVC 120', 'Espagnolette');
-    final slidingEspagnolette =
-        accessory('Espagnolette Coulissante PVC', 'Espagnolette Coulissante');
+    final openingEspagnolette = accessory(
+      'Espagnolette PVC 120',
+      'Espagnolette',
+    );
+    final slidingEspagnolette = accessory(
+      'Espagnolette Coulissante PVC',
+      'Espagnolette Coulissante',
+    );
     final openingHandle = accessory('Poignée Fenêtre', 'Poignée Fenêtre');
-    final slidingHandle =
-        accessory('Poignée Coulissante', 'Poignée Coulissante');
+    final slidingHandle = accessory(
+      'Poignée Coulissante',
+      'Poignée Coulissante',
+    );
 
     expect(
       accessoryMatchesDrawingMode(
@@ -40,12 +47,19 @@ void main() {
   });
 
   test('sliding selectors accept only sliding espagnolettes and handles', () {
-    final openingEspagnolette = accessory('Espagnolette PVC 120', 'Espagnolette');
-    final slidingEspagnolette =
-        accessory('Espagnolette Coulissante PVC', 'Espagnolette Coulissante');
+    final openingEspagnolette = accessory(
+      'Espagnolette PVC 120',
+      'Espagnolette',
+    );
+    final slidingEspagnolette = accessory(
+      'Espagnolette Coulissante PVC',
+      'Espagnolette Coulissante',
+    );
     final openingHandle = accessory('Poignée Fenêtre', 'Poignée Fenêtre');
-    final slidingHandle =
-        accessory('Poignée Coulissante', 'Poignée Coulissante');
+    final slidingHandle = accessory(
+      'Poignée Coulissante',
+      'Poignée Coulissante',
+    );
 
     expect(
       accessoryMatchesDrawingMode(
@@ -86,5 +100,38 @@ void main() {
         isFalse,
       );
     }
+  });
+
+  test(
+    'explicit window-handle category wins over a brand word in the name',
+    () {
+      expect(
+        isWindowHandleAccessory(
+          accessory('Poignee rotaxe', 'Poignée Fenêtre|Qualité'),
+        ),
+        isTrue,
+      );
+      expect(
+        isWindowHandleAccessory(
+          accessory('Poignee faux roto', 'Poignée Fenêtre|Qualité'),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test('door-handle catalogue categories stay out of window-handle picker', () {
+    expect(
+      isWindowHandleAccessory(
+        accessory('Poignee rotax cond', 'Poignée Porte Condamnation|Qualité'),
+      ),
+      isFalse,
+    );
+    expect(
+      isWindowHandleAccessory(
+        accessory('Poignee rotax a clé', 'Poignée Porte à Clé|Qualité'),
+      ),
+      isFalse,
+    );
   });
 }

@@ -306,7 +306,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 56,
+          version: 59,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -317,7 +317,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 56,
+      version: 59,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -447,6 +447,10 @@ class SqlDatabase {
 
     await _ensureSeriesDesignTables(db);
     await _ensureClientCodeInfrastructure(db);
+    await _ensureRemnantInventorySchema(db);
+    await _ensureAdvancedKitCompatibilitySchema(db);
+    await _ensureDecorPanelDesignSchema(db);
+    await _ensureSyncTombstoneInfrastructure(db);
     await _backfillClientCodes(db);
 
     // Automatically link section and profile images based on their codes
@@ -1521,6 +1525,66 @@ class SqlDatabase {
     );
   }
 
+  Future<void> _ensureAdvancedKitCompatibilitySchema(
+    DatabaseExecutor db,
+  ) async {
+    for (final statement in const [
+      "ALTER TABLE KitBundleItems ADD COLUMN mechanism_scopes TEXT NOT NULL DEFAULT 'belt,crank,motor';",
+      "ALTER TABLE KitBundleItems ADD COLUMN blade_scope TEXT NOT NULL DEFAULT 'all';",
+      'ALTER TABLE KitItemRanges ADD COLUMN shutter_component_id INTEGER;',
+      "ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_name TEXT NOT NULL DEFAULT 'Console Quissonnel Standard';",
+      "ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_name TEXT NOT NULL DEFAULT 'Console Quissonnel Spécial';",
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
+
+    // Preserve old single-scope choices while moving to multi-select scopes.
+    try {
+      await db.execute('''
+        UPDATE KitBundleItems
+        SET mechanism_scopes = CASE LOWER(TRIM(mechanism_scope))
+          WHEN 'belt' THEN 'belt'
+          WHEN 'crank' THEN 'crank'
+          WHEN 'motor' THEN 'motor'
+          ELSE 'belt,crank,motor'
+        END
+        WHERE mechanism_scopes IS NULL
+           OR TRIM(mechanism_scopes) = ''
+           OR mechanism_scopes = 'belt,crank,motor'
+      ''');
+    } catch (_) {}
+    try {
+      await db.execute('''
+        UPDATE KitBundles
+        SET compatibility_group_1_name = 'Console Quissonnel Standard',
+            compatibility_group_2_name = 'Console Quissonnel Spécial'
+        WHERE UPPER(TRIM(description)) = 'CT'
+          AND (
+            compatibility_group_1_name IS NULL OR
+            TRIM(compatibility_group_1_name) = '' OR
+            compatibility_group_1_name = 'المجموعة 1'
+          )
+      ''');
+    } catch (_) {}
+    try {
+      await db.execute('''
+        UPDATE KitBundleItems
+        SET blade_scope = 'extruded'
+        WHERE LOWER(TRIM(blade_scope)) = 'x3d'
+      ''');
+    } catch (_) {}
+  }
+
+  Future<void> _ensureDecorPanelDesignSchema(DatabaseExecutor db) async {
+    try {
+      await db.execute(
+        "ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';",
+      );
+    } catch (_) {}
+  }
+
   /// These roles are independent of the legacy `type` field: one profile can
   /// be offered as a frame, sash and/or mullion.  Keep the schema repair here
   /// too because users can edit the catalogue in a session that started before
@@ -2544,6 +2608,18 @@ class SqlDatabase {
         );
       } catch (_) {}
     }
+    if (oldVersion < 57) {
+      await _ensureRemnantInventorySchema(db);
+      await _ensureSyncTombstoneInfrastructure(db);
+    }
+    if (oldVersion < 58) {
+      await _ensureAdvancedKitCompatibilitySchema(db);
+      await _ensureSyncTombstoneInfrastructure(db);
+    }
+    if (oldVersion < 59) {
+      await _ensureDecorPanelDesignSchema(db);
+      await _ensureSyncTombstoneInfrastructure(db);
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -2961,6 +3037,7 @@ class SqlDatabase {
         UNIQUE(item_id, item_type, color_id, location_id)
       )
     ''');
+    await _ensureRemnantInventorySchema(db);
 
     // Kit Bundles tables
     await db.execute('''
@@ -3011,6 +3088,8 @@ class SqlDatabase {
         FOREIGN KEY (item_id) REFERENCES KitBundleItems(id) ON DELETE CASCADE
       )
     ''');
+    await _ensureAdvancedKitCompatibilitySchema(db);
+    await _ensureDecorPanelDesignSchema(db);
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ShutterBoxLimits (
@@ -8665,7 +8744,8 @@ class SqlDatabase {
   //////////////////////////////////// Glass //////////////////////////////////////
   Future<List<Map<String, dynamic>>> readGlass() async {
     Database? myDb = await db;
-    return await myDb!.query(
+    await _ensureDecorPanelDesignSchema(myDb!);
+    return await myDb.query(
       'Glass',
       where: 'is_active = 1 OR is_active IS NULL',
     );
@@ -8681,9 +8761,11 @@ class SqlDatabase {
     String subtype = '',
     double height = 0.0,
     double? visibleWidth,
+    String decorDesignCode = '',
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.insert('Glass', {
+    await _ensureDecorPanelDesignSchema(myDb!);
+    var res = await myDb.insert('Glass', {
       'name': name,
       'type': type,
       'thickness': thickness,
@@ -8693,6 +8775,7 @@ class SqlDatabase {
       'subtype': subtype,
       'height': height,
       if (visibleWidth != null) 'visible_width': visibleWidth,
+      'decor_design_code': decorDesignCode.trim(),
     });
     CloudSyncService().notifyChange();
     return res;
@@ -8709,9 +8792,11 @@ class SqlDatabase {
     String subtype = '',
     double height = 0.0,
     double? visibleWidth,
+    String? decorDesignCode,
   }) async {
     Database? myDb = await db;
-    var res = await myDb!.update(
+    await _ensureDecorPanelDesignSchema(myDb!);
+    var res = await myDb.update(
       'Glass',
       {
         'name': name,
@@ -8723,6 +8808,8 @@ class SqlDatabase {
         'subtype': subtype,
         'height': height,
         if (visibleWidth != null) 'visible_width': visibleWidth,
+        if (decorDesignCode != null)
+          'decor_design_code': decorDesignCode.trim(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -10564,6 +10651,10 @@ class SqlDatabase {
       'Locations',
       'InventoryTransactions',
       'CurrentStock',
+      'InventorySettings',
+      'OrderCuttingSessions',
+      'MaterialRemnants',
+      'MaterialScrap',
     ];
     final importTables = <String>[
       ...orderedTables.where(data.containsKey),
@@ -10596,6 +10687,10 @@ class SqlDatabase {
       'WorkerDailyJobs',
       'InventoryTransactions',
       'CurrentStock',
+      'InventorySettings',
+      'OrderCuttingSessions',
+      'MaterialRemnants',
+      'MaterialScrap',
     };
 
     await myDb.transaction((txn) async {
@@ -11208,6 +11303,353 @@ class SqlDatabase {
       glissieres = ['GlissiÃ¨re 25', 'GlissiÃ¨re 120', 'GlissiÃ¨re 100'];
 
     return {'lames': lames, 'glissieres': glissieres};
+  }
+
+  Future<void> _ensureRemnantInventorySchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS InventorySettings (
+        id INTEGER PRIMARY KEY,
+        setting_key TEXT NOT NULL UNIQUE,
+        numeric_value REAL,
+        text_value TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS OrderCuttingSessions (
+        id INTEGER PRIMARY KEY,
+        order_id INTEGER NOT NULL UNIQUE,
+        plan_signature TEXT NOT NULL,
+        minimum_reusable_length_mm REAL NOT NULL,
+        location_id INTEGER NOT NULL,
+        rack_code TEXT,
+        shelf_code TEXT,
+        bin_code TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS MaterialRemnants (
+        id INTEGER PRIMARY KEY,
+        ticket_code TEXT NOT NULL UNIQUE,
+        item_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL,
+        series_id INTEGER,
+        color_id INTEGER,
+        length_mm REAL NOT NULL,
+        source_order_id INTEGER,
+        source_bar_index INTEGER,
+        location_id INTEGER NOT NULL,
+        rack_code TEXT,
+        shelf_code TEXT,
+        bin_code TEXT,
+        status TEXT NOT NULL DEFAULT 'available',
+        reserved_order_id INTEGER,
+        reserved_at TEXT,
+        consumed_order_id INTEGER,
+        consumed_at TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS MaterialScrap (
+        id INTEGER PRIMARY KEY,
+        ticket_code TEXT NOT NULL UNIQUE,
+        item_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL,
+        series_id INTEGER,
+        color_id INTEGER,
+        length_mm REAL NOT NULL,
+        scrap_kind TEXT NOT NULL DEFAULT 'short_offcut',
+        source_order_id INTEGER,
+        source_bar_index INTEGER,
+        location_id INTEGER NOT NULL,
+        rack_code TEXT,
+        shelf_code TEXT,
+        bin_code TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_material_remnants_match '
+      'ON MaterialRemnants(item_type, item_id, color_id, series_id, status, length_mm)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_material_scrap_source '
+      'ON MaterialScrap(source_order_id, item_type, item_id)',
+    );
+  }
+
+  Future<double?> readMinimumReusableLengthMm() async {
+    final myDb = await db;
+    if (myDb == null) return null;
+    await _ensureRemnantInventorySchema(myDb);
+    final rows = await myDb.query(
+      'InventorySettings',
+      columns: const ['numeric_value'],
+      where: 'setting_key = ?',
+      whereArgs: const ['minimum_reusable_length_mm'],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final value = _readStoredNumber(rows.first['numeric_value']);
+    return value != null && value > 0 ? value : null;
+  }
+
+  Future<void> saveMinimumReusableLengthMm(double lengthMm) async {
+    if (lengthMm <= 0) {
+      throw ArgumentError.value(lengthMm, 'lengthMm', 'Must be positive');
+    }
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
+    final rows = await myDb.query(
+      'InventorySettings',
+      columns: const ['id'],
+      where: 'setting_key = ?',
+      whereArgs: const ['minimum_reusable_length_mm'],
+      limit: 1,
+    );
+    final values = {
+      'numeric_value': lengthMm,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    if (rows.isEmpty) {
+      await myDb.insert(
+        'InventorySettings',
+        _withDistributedId({
+          'setting_key': 'minimum_reusable_length_mm',
+          ...values,
+        }),
+      );
+    } else {
+      await myDb.update(
+        'InventorySettings',
+        values,
+        where: 'id = ?',
+        whereArgs: [rows.first['id']],
+      );
+    }
+    CloudSyncService().notifyChange();
+  }
+
+  String _materialTicketCode(String prefix, int orderId, int barIndex, int id) {
+    final suffix = id.toString();
+    return '$prefix-$orderId-${barIndex + 1}-${suffix.substring(max(0, suffix.length - 7))}';
+  }
+
+  /// Persists the physical result of an approved cutting plan exactly once.
+  /// Each map needs item_id, item_type, color_id, series_id, bar_index,
+  /// remainder_mm and kerf_loss_mm.
+  Future<Map<String, dynamic>> saveOrderCuttingRemainders({
+    required int orderId,
+    required String planSignature,
+    required List<Map<String, dynamic>> bars,
+    required double minimumReusableLengthMm,
+    required int locationId,
+    String? rackCode,
+    String? shelfCode,
+    String? binCode,
+  }) async {
+    if (minimumReusableLengthMm <= 0) {
+      throw ArgumentError('Minimum reusable length must be positive.');
+    }
+    final myDb = await db;
+    if (myDb == null) return const {'saved': false};
+    await _ensureRemnantInventorySchema(myDb);
+    final createdRemnants = <Map<String, dynamic>>[];
+    var scrapRows = 0;
+    var alreadySaved = false;
+
+    await myDb.transaction((txn) async {
+      final existing = await txn.query(
+        'OrderCuttingSessions',
+        columns: const ['id', 'plan_signature'],
+        where: 'order_id = ?',
+        whereArgs: [orderId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        alreadySaved = true;
+        return;
+      }
+
+      final timestamp = DateTime.now().toIso8601String();
+      await txn.insert(
+        'OrderCuttingSessions',
+        _withDistributedId({
+          'order_id': orderId,
+          'plan_signature': planSignature,
+          'minimum_reusable_length_mm': minimumReusableLengthMm,
+          'location_id': locationId,
+          'rack_code': rackCode?.trim(),
+          'shelf_code': shelfCode?.trim(),
+          'bin_code': binCode?.trim(),
+          'created_at': timestamp,
+          'updated_at': timestamp,
+        }),
+      );
+
+      for (final bar in bars) {
+        final itemId = (bar['item_id'] as num?)?.toInt();
+        final itemType = bar['item_type']?.toString().trim() ?? '';
+        final barIndex = (bar['bar_index'] as num?)?.toInt() ?? 0;
+        final remainderMm = _readStoredNumber(bar['remainder_mm']) ?? 0;
+        final kerfLossMm = _readStoredNumber(bar['kerf_loss_mm']) ?? 0;
+        if (itemId == null || itemType.isEmpty) continue;
+
+        final common = <String, dynamic>{
+          'item_id': itemId,
+          'item_type': itemType,
+          'series_id': (bar['series_id'] as num?)?.toInt(),
+          'color_id': (bar['color_id'] as num?)?.toInt(),
+          'source_order_id': orderId,
+          'source_bar_index': barIndex,
+          'location_id': locationId,
+          'rack_code': rackCode?.trim(),
+          'shelf_code': shelfCode?.trim(),
+          'bin_code': binCode?.trim(),
+          'created_at': timestamp,
+          'updated_at': timestamp,
+        };
+
+        if (remainderMm > 0.5) {
+          final reusable = remainderMm + 0.01 >= minimumReusableLengthMm;
+          final id = _nextDistributedId();
+          final ticket = _materialTicketCode(
+            reusable ? 'REM' : 'SCR',
+            orderId,
+            barIndex,
+            id,
+          );
+          if (reusable) {
+            final row = {
+              'id': id,
+              'ticket_code': ticket,
+              ...common,
+              'length_mm': remainderMm,
+              'status': 'available',
+            };
+            await txn.insert('MaterialRemnants', row);
+            createdRemnants.add(row);
+          } else {
+            await txn.insert('MaterialScrap', {
+              'id': id,
+              'ticket_code': ticket,
+              ...common,
+              'length_mm': remainderMm,
+              'scrap_kind': 'short_offcut',
+            });
+            scrapRows++;
+          }
+        }
+
+        if (kerfLossMm > 0.5) {
+          final id = _nextDistributedId();
+          await txn.insert('MaterialScrap', {
+            'id': id,
+            'ticket_code': _materialTicketCode('KERF', orderId, barIndex, id),
+            ...common,
+            'length_mm': kerfLossMm,
+            'scrap_kind': 'saw_kerf',
+          });
+          scrapRows++;
+        }
+      }
+    });
+    if (!alreadySaved) CloudSyncService().notifyChange();
+    return {
+      'saved': !alreadySaved,
+      'already_saved': alreadySaved,
+      'remnants': createdRemnants,
+      'scrap_count': scrapRows,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> readAvailableMaterialRemnants({
+    required int itemId,
+    required String itemType,
+    int? colorId,
+    int? seriesId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureRemnantInventorySchema(myDb);
+    final where = StringBuffer(
+      'r.item_id = ? AND r.item_type = ? AND r.status = ? '
+      'AND (r.color_id = ? OR (r.color_id IS NULL AND ? IS NULL))',
+    );
+    final args = <Object?>[itemId, itemType, 'available', colorId, colorId];
+    if (seriesId != null) {
+      where.write(' AND (r.series_id = ? OR r.series_id IS NULL)');
+      args.add(seriesId);
+    }
+    return myDb.rawQuery('''
+      SELECT r.*, l.name AS location_name, c.name AS color_name,
+             se.name AS series_name,
+             COALESCE(s.name, sc.name, a.name, j.name, g.name) AS item_name,
+             s.code AS item_code
+      FROM MaterialRemnants r
+      LEFT JOIN Locations l ON l.id = r.location_id
+      LEFT JOIN Colors c ON c.id = r.color_id
+      LEFT JOIN Sections s ON r.item_type = 'Section' AND s.id = r.item_id
+      LEFT JOIN Series se ON se.id = COALESCE(r.series_id, s.series_id)
+      LEFT JOIN ShutterComponents sc
+        ON r.item_type = 'ShutterComponent' AND sc.id = r.item_id
+      LEFT JOIN Accessories a ON r.item_type = 'Accessory' AND a.id = r.item_id
+      LEFT JOIN Joints j ON r.item_type = 'Joints' AND j.id = r.item_id
+      LEFT JOIN Glass g ON r.item_type = 'Glass' AND g.id = r.item_id
+      WHERE $where
+      ORDER BY r.length_mm ASC, r.created_at ASC
+      ''', args);
+  }
+
+  Future<List<Map<String, dynamic>>> readStockAvailability({
+    required int itemId,
+    required String itemType,
+    int? colorId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    return myDb.rawQuery(
+      '''
+      SELECT cs.*, l.name AS location_name
+      FROM CurrentStock cs
+      LEFT JOIN Locations l ON l.id = cs.location_id
+      WHERE cs.item_id = ? AND cs.item_type = ?
+        AND (cs.color_id = ? OR (cs.color_id IS NULL AND ? IS NULL))
+        AND cs.quantity > 0
+      ORDER BY cs.quantity DESC, cs.location_id ASC
+      ''',
+      [itemId, itemType, colorId, colorId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> readMaterialRemnantsForOrder(
+    int orderId,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureRemnantInventorySchema(myDb);
+    return myDb.rawQuery(
+      '''
+      SELECT r.*, l.name AS location_name, c.name AS color_name,
+             se.name AS series_name, s.name AS item_name, s.code AS item_code
+      FROM MaterialRemnants r
+      LEFT JOIN Locations l ON l.id = r.location_id
+      LEFT JOIN Colors c ON c.id = r.color_id
+      LEFT JOIN Sections s ON r.item_type = 'Section' AND s.id = r.item_id
+      LEFT JOIN Series se ON se.id = COALESCE(r.series_id, s.series_id)
+      WHERE r.source_order_id = ?
+      ORDER BY r.source_bar_index ASC
+      ''',
+      [orderId],
+    );
   }
 
   // ==================== INVENTORY MANAGEMENT ====================
@@ -11973,6 +12415,7 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readKitBundles() async {
     final database = await db;
     if (database == null) return [];
+    await _ensureAdvancedKitCompatibilitySchema(database);
     return await database.query(
       'KitBundles',
       where: 'is_active = 1',
@@ -12031,6 +12474,7 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readKitBundleItems(int kitId) async {
     final database = await db;
     if (database == null) return [];
+    await _ensureAdvancedKitCompatibilitySchema(database);
     return await database.query(
       'KitBundleItems',
       where: 'kit_id = ?',
@@ -12048,22 +12492,33 @@ class SqlDatabase {
     double baseQty = 1,
     String unit = 'Ù‚Ø·Ø¹Ø©',
     String mechanismScope = 'all',
+    String mechanismScopes = 'belt,crank,motor',
+    String bladeScope = 'all',
     int sortOrder = 0,
   }) async {
     final database = await db;
     if (database == null) return -1;
-    return await database.insert('KitBundleItems', {
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    final result = await database.insert('KitBundleItems', {
       'kit_id': kitId,
       'component_type': componentType,
       'qty_mode': qtyMode,
       'dimension': dimension,
       'base_qty': baseQty,
-      'unit': unit,
+      'unit': 'Ù‚Ø·Ø¹Ø©',
       'mechanism_scope': const {'belt', 'crank'}.contains(mechanismScope)
           ? mechanismScope
           : 'all',
+      'mechanism_scopes': mechanismScopes,
+      'blade_scope': bladeScope.toLowerCase() == 'x3d'
+          ? 'extruded'
+          : const {'normal', 'extruded'}.contains(bladeScope.toLowerCase())
+          ? bladeScope.toLowerCase()
+          : 'all',
       'sort_order': sortOrder,
     });
+    CloudSyncService().notifyCatalogChange();
+    return result;
   }
 
   /// ØªØ¹Ø¯ÙŠÙ„ Ù…Ø±ÙƒØ¨ Kit
@@ -12075,10 +12530,13 @@ class SqlDatabase {
     required double baseQty,
     required String unit,
     String mechanismScope = 'all',
+    String mechanismScopes = 'belt,crank,motor',
+    String bladeScope = 'all',
     required int sortOrder,
   }) async {
     final database = await db;
     if (database == null) return;
+    await _ensureAdvancedKitCompatibilitySchema(database);
     await database.update(
       'KitBundleItems',
       {
@@ -12086,15 +12544,22 @@ class SqlDatabase {
         'qty_mode': qtyMode,
         'dimension': dimension,
         'base_qty': baseQty,
-        'unit': unit,
+        'unit': 'Ù‚Ø·Ø¹Ø©',
         'mechanism_scope': const {'belt', 'crank'}.contains(mechanismScope)
             ? mechanismScope
+            : 'all',
+        'mechanism_scopes': mechanismScopes,
+        'blade_scope': bladeScope.toLowerCase() == 'x3d'
+            ? 'extruded'
+            : const {'normal', 'extruded'}.contains(bladeScope.toLowerCase())
+            ? bladeScope.toLowerCase()
             : 'all',
         'sort_order': sortOrder,
       },
       where: 'id = ?',
       whereArgs: [id],
     );
+    CloudSyncService().notifyCatalogChange();
   }
 
   /// Ø­Ø°Ù Ù…Ø±ÙƒØ¨ Kit
@@ -12111,12 +12576,42 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readKitItemRanges(int itemId) async {
     final database = await db;
     if (database == null) return [];
-    return await database.query(
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    final rows = await database.query(
       'KitItemRanges',
       where: 'item_id = ?',
       whereArgs: [itemId],
       orderBy: 'min_mm ASC',
     );
+    final result = <Map<String, dynamic>>[];
+    for (final raw in rows) {
+      final row = Map<String, dynamic>.from(raw);
+      final componentId = (row['shutter_component_id'] as num?)?.toInt();
+      if (componentId != null) {
+        final components = await database.query(
+          'ShutterComponents',
+          where: 'id = ?',
+          whereArgs: [componentId],
+          limit: 1,
+        );
+        if (components.isNotEmpty) {
+          final component = Map<String, dynamic>.from(components.first);
+          final prices = await database.query(
+            'ShutterColorPrices',
+            where: 'shutter_component_id = ?',
+            whereArgs: [componentId],
+          );
+          row['product_name'] =
+              component['name']?.toString() ?? row['product_name'];
+          row['shutter_component'] = component;
+          row['shutter_color_prices'] = prices
+              .map((price) => Map<String, dynamic>.from(price))
+              .toList();
+        }
+      }
+      result.add(row);
+    }
+    return result;
   }
 
   /// Ø¥Ø¶Ø§ÙØ© Ù†Ø·Ø§Ù‚
@@ -12128,10 +12623,29 @@ class SqlDatabase {
     double price = 0.0,
     double qty = 1,
     int compatibilityGroup = 0,
+    int? shutterComponentId,
   }) async {
     final database = await db;
     if (database == null) return -1;
-    return await database.insert('KitItemRanges', {
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    if (shutterComponentId != null) {
+      final duplicate = await database.query(
+        'KitItemRanges',
+        columns: const ['id'],
+        where:
+            'item_id = ? AND shutter_component_id = ? AND min_mm < ? AND max_mm > ? AND compatibility_group = ?',
+        whereArgs: [
+          itemId,
+          shutterComponentId,
+          maxMm,
+          minMm,
+          compatibilityGroup.clamp(0, 2),
+        ],
+        limit: 1,
+      );
+      if (duplicate.isNotEmpty) return -2;
+    }
+    final result = await database.insert('KitItemRanges', {
       'item_id': itemId,
       'min_mm': minMm,
       'max_mm': maxMm,
@@ -12139,11 +12653,14 @@ class SqlDatabase {
       'price': price,
       'qty': qty,
       'compatibility_group': compatibilityGroup.clamp(0, 2),
+      'shutter_component_id': shutterComponentId,
     });
+    CloudSyncService().notifyCatalogChange();
+    return result;
   }
 
   /// ØªØ¹Ø¯ÙŠÙ„ Ù†Ø·Ø§Ù‚
-  Future<void> updateKitItemRange(
+  Future<int> updateKitItemRange(
     int id, {
     required double minMm,
     required double maxMm,
@@ -12151,10 +12668,32 @@ class SqlDatabase {
     required double price,
     required double qty,
     int compatibilityGroup = 0,
+    int? shutterComponentId,
   }) async {
     final database = await db;
-    if (database == null) return;
-    await database.update(
+    if (database == null) return 0;
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    if (shutterComponentId != null) {
+      final duplicate = await database.query(
+        'KitItemRanges',
+        columns: const ['id'],
+        where:
+            'id != ? AND item_id = (SELECT item_id FROM KitItemRanges WHERE id = ?) '
+            'AND shutter_component_id = ? AND min_mm < ? AND max_mm > ? '
+            'AND compatibility_group = ?',
+        whereArgs: [
+          id,
+          id,
+          shutterComponentId,
+          maxMm,
+          minMm,
+          compatibilityGroup.clamp(0, 2),
+        ],
+        limit: 1,
+      );
+      if (duplicate.isNotEmpty) return -2;
+    }
+    final result = await database.update(
       'KitItemRanges',
       {
         'min_mm': minMm,
@@ -12163,10 +12702,37 @@ class SqlDatabase {
         'price': price,
         'qty': qty,
         'compatibility_group': compatibilityGroup.clamp(0, 2),
+        'shutter_component_id': shutterComponentId,
       },
       where: 'id = ?',
       whereArgs: [id],
     );
+    CloudSyncService().notifyCatalogChange();
+    return result;
+  }
+
+  Future<void> updateKitCompatibilityGroupNames(
+    int kitId, {
+    required String group1Name,
+    required String group2Name,
+  }) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureAdvancedKitCompatibilitySchema(database);
+    await database.update(
+      'KitBundles',
+      {
+        'compatibility_group_1_name': group1Name.trim().isEmpty
+            ? 'Console Quissonnel Standard'
+            : group1Name.trim(),
+        'compatibility_group_2_name': group2Name.trim().isEmpty
+            ? 'Console Quissonnel SpÃ©cial'
+            : group2Name.trim(),
+      },
+      where: 'id = ?',
+      whereArgs: [kitId],
+    );
+    CloudSyncService().notifyCatalogChange();
   }
 
   /// Ø­Ø°Ù Ù†Ø·Ø§Ù‚

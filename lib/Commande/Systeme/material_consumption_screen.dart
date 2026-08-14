@@ -120,6 +120,43 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         : (widget.model.isPVC ? 'PVC' : 'Aluminium');
   }
 
+  int? _selectedAccessoryColorId() {
+    final rawId =
+        widget.model.selectedAccessoryColor?['id'] ??
+        widget.model.selectedDbColor?['id'];
+    return rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
+  }
+
+  /// Accessories may keep their real selling price in AccessoryColorPrices
+  /// while their base price remains zero. Use the accessory colour selected in
+  /// the drawing (or the profile colour when it was left automatic).
+  Future<double> _resolveSelectedAccessoryPrice(
+    Database database,
+    Map<String, dynamic> accessory,
+  ) async {
+    final rawId = accessory['id'];
+    final accessoryId = rawId is num
+        ? rawId.toInt()
+        : int.tryParse('${rawId ?? ''}');
+    final colorId = _selectedAccessoryColorId();
+
+    if (accessoryId != null && colorId != null) {
+      final colorRows = await database.query(
+        'AccessoryColorPrices',
+        columns: const ['price'],
+        where: 'accessory_id = ? AND color_id = ?',
+        whereArgs: [accessoryId, colorId],
+        limit: 1,
+      );
+      if (colorRows.isNotEmpty) {
+        final colorPrice = _safeDouble(colorRows.first['price']);
+        if (colorPrice > 0) return colorPrice;
+      }
+    }
+
+    return _safeDouble(accessory['price_dzd'] ?? accessory['price']);
+  }
+
   // ------------------ إعدادات التسعير (تُحمَّل من SharedPreferences وقاعدة البيانات) ------------------
   double _profitMargin = 0.0; // نسبة الربح % (طريقة الحساب بالنسبة المئوية)
   double _pricePerSqm = 0.0; // سعر المتر المربع (طريقة الحساب بالمتر المربع)
@@ -144,6 +181,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       {}; // يحدد لكل كيت هل الكمية تُحسب لكل ضلفة (per leaf) أو لا
   Map<String, double> _kitBundlePrices =
       {}; // أسعار الكيت من كتالوج الستائر (وليس من صفحة تركيب الكيت)
+  Map<String, Map<String, dynamic>> _kitBundleMetadata = {};
   final Map<String, bool> _kitGroupExpanded =
       {}; // حالة توسعة/طي كل مجموعة كيت في الجدول
 
@@ -151,6 +189,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   /// Bundles also stores window hardware (System OB, Verrou Central, ...),
   /// which must never appear in the shutter-kit selector.
   bool _isShutterKitBundle(Map<String, dynamic> kit) {
+    final code = normalizeKitDescriptionCode(kit['description']);
+    if (const {'V', 'M', 'MT', 'CT'}.contains(code)) return true;
+    if (const {'OB', 'VC'}.contains(code) || code.startsWith('OB')) {
+      return false;
+    }
     final text = '${kit['name'] ?? ''} ${kit['description'] ?? ''}'
         .toLowerCase();
     final isOtherSystemKit =
@@ -588,6 +631,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ? false
         : isCrank;
     activeVariants['كيت مانيفر (Kit Manivelle)'] = isTunnel ? false : isCrank;
+    activeVariants['كيت صندوق النفق (Kit Caisson Tunnel)'] = isTunnel;
     activeVariants['كيت فولي (Kit Volet)'] = isTunnel
         ? false
         : (!isMotor && !isCrank); // الافتراضي (حزام) لو مو محرك ولا مانيفيل
@@ -633,7 +677,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     try {
       final colorId = widget
           .model
-          .selectedDbColor?['id']; // معرّف اللون المختار حاليًا (للأسعار الملونة)
+          .selectedDbColor?['id']; // معرّف لون البروفيل المختار حاليًا
+      final accessoryColorId =
+          _selectedAccessoryColorId(); // لون الإكسسوار، أو لون البروفيل تلقائيًا
       final sqlDb = SqlDatabase();
       // تنظيف ذاتي: إزالة أي "براغي" محفوظة غلط كأنها تخص "فيرو" (verrou) بدل نوعها الصحيح
       widget.model.componentOverrides.removeWhere((key, val) {
@@ -689,28 +735,20 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               for (var row in compRes) {
                 if (!_isShutterKitBundle(row)) continue;
-                final kitName = (row['name'] ?? '').toString().toLowerCase();
-                if (isMotor && !kitName.contains('moteur')) continue;
-                if (isCrank && !kitName.contains('manivelle')) continue;
-                if (!isMotor &&
-                    !isCrank &&
-                    (kitName.contains('moteur') ||
-                        kitName.contains('manivelle'))) {
+                if (!isShutterKitForMechanism(
+                  Map<String, dynamic>.from(row),
+                  widget.model.shutterMechanism,
+                )) {
                   continue;
                 }
-                final rowSize = getComponentSize(row);
-                // دالة مقارنة مقاسين بمرونة (تقارن أول رقمين فقط إذا كان الطول كافيًا)
-                bool isSameSize(String? size1, String? size2) {
-                  if (size1 == null || size2 == null) return false;
-                  final s1 = size1.replaceAll(RegExp(r'[^0-9]'), '').trim();
-                  final s2 = size2.replaceAll(RegExp(r'[^0-9]'), '').trim();
-                  if (s1.length >= 2 && s2.length >= 2) {
-                    return s1.substring(0, 2) == s2.substring(0, 2);
-                  }
-                  return s1 == s2;
-                }
-
-                bool matches = isSameSize(rowSize, caissonDigits);
+                final rowSizeValue = kitBundleSizeMm(
+                  Map<String, dynamic>.from(row),
+                );
+                final caissonSizeValue = double.tryParse(caissonDigits);
+                final matches =
+                    rowSizeValue != null &&
+                    caissonSizeValue != null &&
+                    (rowSizeValue - caissonSizeValue).abs() <= 0.5;
                 if (matches) {
                   // Store the real KitBundles choice with its French name.
                   final matchedKit = await _withShutterKitPrice(
@@ -1054,7 +1092,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         final override = widget.model.componentOverrides[key];
         if (override != null && override is Map) {
           final id = override['id'];
-          if (id != null && colorId != null) {
+          if (id != null && (colorId != null || accessoryColorId != null)) {
             final mutable = Map<String, dynamic>.from(override);
             // IDs are local to every table. Shutter rows carry
             // `component_type`, so resolve them before Accessories: an
@@ -1100,7 +1138,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 whereArgs: [id],
               );
               final selectedColorRows = accessoryColorPrices.where(
-                (row) => row['color_id']?.toString() == colorId.toString(),
+                (row) =>
+                    accessoryColorId != null &&
+                    row['color_id']?.toString() == accessoryColorId.toString(),
               );
               final colorPrice = selectedColorRows.isEmpty
                   ? 0.0
@@ -1122,7 +1162,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             final accPrice = await dbInstance.query(
               'AccessoryColorPrices',
               where: 'accessory_id = ? AND color_id = ?',
-              whereArgs: [id, colorId],
+              whereArgs: [id, accessoryColorId],
             );
             if (accessoryRows.isNotEmpty && accPrice.isNotEmpty) {
               final double p = _safeDouble(accPrice.first['price']);
@@ -1901,6 +1941,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _kitBundleData =
           kitBundleData; // حفظ في الحالة (State) لاستخدامها في بناء الجدول
       _kitPerLeafMap = kitPerLeafMap;
+      _kitBundleMetadata = {
+        for (final kit in kits)
+          if ((kit['name'] ?? '').toString().isNotEmpty)
+            (kit['name'] ?? '').toString(): Map<String, dynamic>.from(kit),
+      };
       final kitBundlePrices = <String, double>{};
       for (final kit in kits) {
         final kitName = kit['name']?.toString() ?? '';
@@ -1916,6 +1961,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         kitBundleData: kitBundleData,
         kitPerLeafMap: kitPerLeafMap,
         kitBundlePrices: kitBundlePrices,
+        kitBundleMetadata: _kitBundleMetadata,
       );
       for (var item in bomItems) {
         final itemAccessoryMode = _accessoryDrawingModeForItem(item);
@@ -3152,6 +3198,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final selectedName = (mutableSelected['name'] ?? '')
         .toString()
         .toLowerCase();
+    final selectedCode = normalizeKitDescriptionCode(
+      mutableSelected['description'],
+    );
     // Check if it is a sliding system kit
     final bool isSliding = widget.model.systemMode == 'sliding';
     if (isSliding) {
@@ -3186,24 +3235,38 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     String
     targetKitKey; // المفتاح الصحيح لحفظ هذا الكيت تحته في componentOverrides
     // استنتاج نوع الآلية من اسم الكيت (محرك/مانيفيل مع فولي أو بدون/حزام)
-    if (selectedName.contains('moteur') || selectedName.contains('محرك')) {
+    if (selectedCode == 'MT') {
       newMech = 'محرك';
       targetKitKey = 'كيت فولي موتور (Kit Volet Moteur)';
-    } else if (selectedName.contains('manivelle') ||
-        selectedName.contains('مانيفال') ||
-        selectedName.contains('مانيفر')) {
-      newMech = 'مانيفال';
-      if (selectedName.contains('volet') || selectedName.contains('فولي')) {
-        targetKitKey = 'كيت فولي مانيفر (Kit Volet Manivelle)';
-      } else {
-        targetKitKey = 'كيت مانيفر (Kit Manivelle)';
-      }
+    } else if (selectedCode == 'V') {
+      final isCurrentCrank =
+          widget.model.shutterMechanism == 'منايفال' ||
+          widget.model.shutterMechanism == 'مانيفال' ||
+          widget.model.shutterMechanism == 'مانيفر';
+      newMech = isCurrentCrank ? 'مانيفال' : 'حزام';
+      targetKitKey = isCurrentCrank
+          ? 'كيت فولي مانيفر (Kit Volet Manivelle)'
+          : 'كيت فولي (Kit Volet)';
     } else {
-      newMech = 'حزام';
-      if (selectedName.contains('sangle') || selectedName.contains('حزام')) {
-        targetKitKey = 'كيت حزام (Kit Sangle)';
+      // Legacy records without a description code keep their old name-based
+      // behaviour. Coded records never rely on commercial names.
+      if (selectedName.contains('moteur') || selectedName.contains('محرك')) {
+        newMech = 'محرك';
+        targetKitKey = 'كيت فولي موتور (Kit Volet Moteur)';
+      } else if (selectedName.contains('manivelle') ||
+          selectedName.contains('مانيفال') ||
+          selectedName.contains('مانيفر')) {
+        newMech = 'مانيفال';
+        targetKitKey =
+            selectedName.contains('volet') || selectedName.contains('فولي')
+            ? 'كيت فولي مانيفر (Kit Volet Manivelle)'
+            : 'كيت مانيفر (Kit Manivelle)';
       } else {
-        targetKitKey = 'كيت فولي (Kit Volet)';
+        newMech = 'حزام';
+        targetKitKey =
+            selectedName.contains('sangle') || selectedName.contains('حزام')
+            ? 'كيت حزام (Kit Sangle)'
+            : 'كيت فولي (Kit Volet)';
       }
     }
     // تحديث آلية الستار في النموذج
@@ -3448,6 +3511,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       kitBundleData: _kitBundleData,
       kitPerLeafMap: _kitPerLeafMap,
       kitBundlePrices: _kitBundlePrices,
+      kitBundleMetadata: _kitBundleMetadata,
     );
     return Scaffold(
       appBar: AppBar(
@@ -4012,6 +4076,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       kitBundleData: _kitBundleData,
       kitPerLeafMap: _kitPerLeafMap,
       kitBundlePrices: _kitBundlePrices,
+      kitBundleMetadata: _kitBundleMetadata,
     );
     final totals = _calculateTotals(items);
     final double totalCostNoWaste =
@@ -4377,6 +4442,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           'KitBundles',
           where: 'is_active = 1 OR is_active IS NULL',
         );
+        double minimumRequiredSize = widget.model.height <= 1600
+            ? 155
+            : widget.model.height <= 2400
+            ? 185
+            : 205;
+        final bladeId =
+            widget.model.componentOverrides['الشرائح (Lames)']?['id'];
+        if (bladeId != null) {
+          final limits = await dbInstance.query(
+            'ShutterBoxLimits',
+            where: 'blade_id = ?',
+            whereArgs: [bladeId],
+            orderBy: 'box_size ASC',
+          );
+          final resolution = WindowModel.resolveShutterBoxFromLimits(
+            windowHeight: widget.model.height,
+            limits: limits,
+          );
+          if (resolution != null) {
+            minimumRequiredSize = resolution.boxSize;
+          }
+        }
         final shutterKits = rows
             .map((r) => Map<String, dynamic>.from(r))
             .where(_isShutterKitBundle);
@@ -4390,6 +4477,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 'component_type': 'kit',
                 'measurement': extractSizeDigits(kit['name'].toString()),
                 'catalog_source': 'KitBundles',
+                'minimum_required_size': minimumRequiredSize,
               },
             )
             .toList();
@@ -4404,57 +4492,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           );
         }
         final allKits = snapshot.data!;
-        // تحديد الحد الأدنى المسموح لمقاس الكيت حسب ارتفاع النافذة (قاعدة عمل: كلما زاد الارتفاع زاد الحد الأدنى)
-        final double currentHeight = widget.model.height;
-        double minAllowedSize = 155.0;
-        if (currentHeight > 1600 && currentHeight <= 2400) {
-          minAllowedSize = 185.0;
-        } else if (currentHeight > 2400) {
-          minAllowedSize = 205.0;
-        }
-        // استخراج مقاس الكيت الحالي المختار (إن وُجد) وتوحيد صيغته
+        final requiredCode = shutterKitCodeForMechanism(
+          widget.model.shutterMechanism,
+        );
+        // The minimum comes from ShutterBoxLimits without treating a larger
+        // manual choice as a new minimum. Thus a 155 drawing always offers
+        // 155/185/205, while a 185 drawing offers 185/205.
+        final minAllowedSize = allKits.isEmpty
+            ? widget.model.shutterBoxHeight
+            : (allKits.first['minimum_required_size'] as num?)?.toDouble() ??
+                  widget.model.shutterBoxHeight;
         final currentKit = widget.model.componentOverrides[item.originalName];
-        double currentKitSize = 0.0;
-        if (currentKit != null) {
-          final currentSizeStr = getComponentSize(currentKit);
-          if (currentSizeStr != null) {
-            currentKitSize = double.tryParse(currentSizeStr) ?? 0.0;
-            // تصحيح صيغ مقاسات مختصرة شائعة (15.5 → 155، 18.5 → 185 إلخ)
-            if (currentKitSize == 15.5) currentKitSize = 155.0;
-            if (currentKitSize == 18.5) currentKitSize = 185.0;
-            if (currentKitSize == 20.5) currentKitSize = 205.0;
-            if (currentKitSize == 15.0) currentKitSize = 150.0;
-            if (currentKitSize == 18.0) currentKitSize = 180.0;
-            if (currentKitSize == 20.0) currentKitSize = 200.0;
-            if (currentKitSize < 100.0) {
-              currentKitSize =
-                  currentKitSize *
-                  10.0; // مقاسات صغيرة جدًا تُضرب ×10 لتصحيح الوحدة
-            }
-          }
-        }
-        // الحد الأدنى الفعلي = الأكبر بين (الحد حسب الارتفاع) و(مقاس الكيت الحالي) — لضمان عدم التراجع لمقاس أصغر
-        final double finalMinSize = currentKitSize > minAllowedSize
-            ? currentKitSize
-            : minAllowedSize;
-        // فلترة الكيتات المسموح عرضها فقط (مقاسها ≥ الحد الأدنى الفعلي)
-        final allowedKits = allKits.where((k) {
-          final sizeDigits = getComponentSize(k);
-          if (sizeDigits != null) {
-            double compSize = double.tryParse(sizeDigits) ?? 0.0;
-            if (compSize == 15.5) compSize = 155.0;
-            if (compSize == 18.5) compSize = 185.0;
-            if (compSize == 20.5) compSize = 205.0;
-            if (compSize == 15.0) compSize = 150.0;
-            if (compSize == 18.0) compSize = 180.0;
-            if (compSize == 20.0) compSize = 200.0;
-            if (compSize < 100.0) {
-              compSize = compSize * 10.0;
-            }
-            return compSize >= finalMinSize;
-          }
-          return true; // إذا ما قدرنا نحدد مقاسه، نعرضه احتياطًا
-        }).toList();
+        // عرض المقاس المناسب وكل المقاسات الأكبر فقط.
+        final allowedKits = compatibleKitBundles(
+          kits: allKits,
+          descriptionCode: requiredCode,
+          minimumSizeMm: minAllowedSize,
+        );
         final currentKitId = currentKit?['id'];
         // بناء قائمة منسدلة (Popup Menu) مع علامة ✓ أمام الكيت الحالي
         return PopupMenuButton<Map<String, dynamic>>(
@@ -4463,7 +4517,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             color: Colors.blue,
             size: 20,
           ),
-          tooltip: 'تغيير كيت الستار (ترقية فقط)',
+          tooltip: Localization.translate(
+            'تغيير كيت الستار (المناسب ثم الأكبر)',
+            Provider.of<AppSettingsProvider>(context).language,
+          ),
           onSelected: (selectedKit) async {
             await _handleKitSelection(
               selectedKit,
@@ -4534,6 +4591,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           name == 'كيت فولي موتور (Kit Volet Moteur)' ||
           name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
           name == 'كيت مانيفر (Kit Manivelle)' ||
+          name == 'كيت صندوق النفق (Kit Caisson Tunnel)' ||
           name == 'كيت حزام (Kit Sangle)' ||
           name == 'كيت فولي (Kit Volet)';
       // عدد العناصر المرئية الفعلية داخل المجموعة (باستثناء رأس الكيت وعناصر OB/Verrou الخاصة)
@@ -4587,6 +4645,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         'verocentral',
       ]);
       final isShutterKit = !isSystemOb && !isDemiOb && !isVerrouCentral;
+      final shutterKitCode = normalizeKitDescriptionCode(
+        _kitBundleMetadata[kitName]?['description'],
+      );
+      final isResizableShutterKit = const {'V', 'MT'}.contains(shutterKitCode);
       // العنصر الذي يمثل "رأس" هذه المجموعة (أول رأس كيت موجود، أو أول عنصر كخطة بديلة)
       final kitItem = children.firstWhere(
         (c) => isKitItem(c.originalName),
@@ -4675,7 +4737,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (isShutterKit && isGroupActive)
+                        if (isShutterKit &&
+                            isResizableShutterKit &&
+                            isGroupActive)
                           Padding(
                             padding: const EdgeInsets.only(right: 4.0),
                             child: _buildKitDropdown(
@@ -5002,6 +5066,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           name == 'كيت فولي موتور (Kit Volet Moteur)' ||
           name == 'كيت فولي مانيفر (Kit Volet Manivelle)' ||
           name == 'كيت مانيفر (Kit Manivelle)' ||
+          name == 'كيت صندوق النفق (Kit Caisson Tunnel)' ||
           name == 'كيت حزام (Kit Sangle)' ||
           name == 'كيت فولي (Kit Volet)';
       bool isMatch(String baseName, List<String> aliases) {
@@ -6575,6 +6640,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         accessoryDrawingMode: accessoryDrawingMode,
         windowHeight: widget.model.height,
         targetSize: widget.model.shutterBoxHeight,
+        kitDescriptionCode: pCategory == 'shutter' && pType == 'كيت'
+            ? shutterKitCodeForMechanism(widget.model.shutterMechanism)
+            : null,
         maxAccessoryLength: pType == 'اسبانيوليت'
             ? maxEspagnoletteLength
             : null,
@@ -6595,6 +6663,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           if (price <= 0) {
             price = _safeDouble(selected['price_dzd'] ?? selected['price']);
           }
+        } else if (pCategory == 'accessory') {
+          final dbInstance = await db.db;
+          price = dbInstance == null
+              ? _safeDouble(selected['price_dzd'] ?? selected['price'])
+              : await _resolveSelectedAccessoryPrice(dbInstance, selected);
         } else {
           price = _safeDouble(selected['price_dzd'] ?? selected['price']);
         }
@@ -6639,52 +6712,25 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   activeKitKeys = ['كيت فولي (Kit Volet)'];
                 }
                 for (var kitKey in activeKitKeys) {
-                  // كلمات مفتاحية مختلفة للبحث حسب نوع الكيت المطلوب
-                  List<String> keywords = [];
-                  if (kitKey == 'كيت فولي موتور (Kit Volet Moteur)') {
-                    keywords = ['Kit volet Moteur', 'Kit volet moteur'];
-                  } else if (kitKey ==
-                      'كيت فولي مانيفر (Kit Volet Manivelle)') {
-                    keywords = [
-                      'Kit volet manivelle',
-                      'kit volet manivelle',
-                      'كيت فولي مانيفر',
-                    ];
-                  } else if (kitKey == 'كيت مانيفر (Kit Manivelle)') {
-                    keywords = [
-                      'kit_manivelle',
-                      'Kit Manivelle',
-                      'كيت مانيفال',
-                      'kit manivelle',
-                    ];
-                  } else if (kitKey == 'كيت حزام (Kit Sangle)') {
-                    keywords = [
-                      'kit_sangle',
-                      'Kit Sangle',
-                      'kit sangle',
-                      'كيت حزام',
-                    ];
-                  }
-                  // KitBundles has no component_type: kits are not shutter
-                  // components and must be selected by their saved name.
-                  String whereClause = keywords
-                      .map((_) => 'name LIKE ?')
-                      .join(' OR ');
-                  List<String> args = [];
-                  for (var kw in keywords) {
-                    args.add('%$kw%');
-                  }
                   final compRes = await dbInstance.query(
                     'KitBundles',
-                    where:
-                        "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
-                    whereArgs: args,
+                    where: 'is_active = 1 OR is_active IS NULL',
                   );
                   for (var row in compRes) {
-                    if (!_isShutterKitBundle(row)) continue;
-                    if (getComponentSize(row) == selectedDigits) {
+                    final rowMap = Map<String, dynamic>.from(row);
+                    if (!isShutterKitForMechanism(
+                      rowMap,
+                      widget.model.shutterMechanism,
+                    )) {
+                      continue;
+                    }
+                    final selectedSize = double.tryParse(selectedDigits);
+                    final kitSize = kitBundleSizeMm(rowMap);
+                    if (selectedSize != null &&
+                        kitSize != null &&
+                        (kitSize - selectedSize).abs() <= 0.5) {
                       // Found a KitBundles row matching the new caisson size.
-                      final matchedCompanion = Map<String, dynamic>.from(row);
+                      final matchedCompanion = rowMap;
                       matchedCompanion['catalog_source'] = 'KitBundles';
                       widget.model.componentOverrides[kitKey] =
                           matchedCompanion;
@@ -7070,7 +7116,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final int? dbId =
         override?['id']
             as int?; // معرّف السجل في قاعدة البيانات (إن كان مرتبطًا)
-    final colorId = widget.model.selectedDbColor?['id'];
+    final colorId = item.category == 'accessory'
+        ? _selectedAccessoryColorId()
+        : widget.model.selectedDbColor?['id'];
     String? errorMsg; // رسالة خطأ تُعرض للمستخدم إن فشلت العملية
     bool success = false;
     try {
