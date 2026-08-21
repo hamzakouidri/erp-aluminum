@@ -12,6 +12,7 @@ Future<Uint8List> captureWindowImage(
   WindowModel model, {
   int maxSide = 1400,
 }) async {
+  model.clearSelection();
   if (model.isGlassWork) {
     final selectedPath = model.glassWorkPayload?['imagePath']?.toString() ?? '';
     if (selectedPath.isNotEmpty) {

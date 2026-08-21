@@ -412,6 +412,7 @@ extension WindowModelSerialization on WindowModel {
       'useVerrouCentral': useVerrouCentral,
       'hasSideCovers': hasSideCovers,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
+      'hasInternalSlidingSideCover': hasInternalSlidingSideCover,
       'useCustomSideCoverLayout': useCustomSideCoverLayout,
       'sideCoverSegments': sideCoverSegments
           .map((segment) => segment.toMap())
@@ -440,6 +441,7 @@ extension WindowModelSerialization on WindowModel {
       'frameOverride': frameOverride,
       'sashOverride': sashOverride,
       'sideCoverOverride': sideCoverOverride,
+      'internalSlidingSideCoverOverride': internalSlidingSideCoverOverride,
       'slidingFrameOverride': slidingFrameOverride,
       'slidingSashOverride': slidingSashOverride,
       // إذا كانت activeSeries محملة نستخدمها، وإلا نحتفظ بالقيم المحفوظة مسبقاً
@@ -549,6 +551,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       map['useVerrouCentral']?.toString().toLowerCase() == 'true';
   model.hasSideCovers = map['hasSideCovers'] ?? true;
   model.sideCoverUseSecondWidth = map['sideCoverUseSecondWidth'] ?? false;
+  model.hasInternalSlidingSideCover =
+      map['hasInternalSlidingSideCover'] == true ||
+      map['hasInternalSlidingSideCover']?.toString().toLowerCase() == 'true';
   model.useCustomSideCoverLayout =
       map['useCustomSideCoverLayout'] == true ||
       map['useCustomSideCoverLayout']?.toString().toLowerCase() == 'true';
@@ -611,6 +616,10 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
       : null;
   model.sideCoverOverride = map['sideCoverOverride'] != null
       ? Map<String, dynamic>.from(map['sideCoverOverride'])
+      : null;
+  model.internalSlidingSideCoverOverride =
+      map['internalSlidingSideCoverOverride'] != null
+      ? Map<String, dynamic>.from(map['internalSlidingSideCoverOverride'])
       : null;
   model.slidingFrameOverride = map['slidingFrameOverride'] != null
       ? Map<String, dynamic>.from(map['slidingFrameOverride'])

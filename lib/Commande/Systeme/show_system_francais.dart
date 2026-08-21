@@ -166,8 +166,12 @@ class _WindowViewState extends State<WindowView> {
   Timer? _catalogReloadDebounce;
 
   List<Map<String, dynamic>> _frameProfiles = [];
+  List<Map<String, dynamic>> _openingFrameProfiles = [];
+  List<Map<String, dynamic>> _slidingFrameProfiles = [];
   List<Map<String, dynamic>> _sashProfiles = [];
   int? _loadedSeriesId;
+  int? _loadedOpeningFrameSeriesId;
+  int? _loadedSlidingFrameSeriesId;
   bool _loadingAvailableProfiles = false;
 
   // Drawing actions can generate far more pointer events than the display can
@@ -201,13 +205,30 @@ class _WindowViewState extends State<WindowView> {
       if (mounted) {
         setState(() {
           _frameProfiles = [];
+          _openingFrameProfiles = [];
+          _slidingFrameProfiles = [];
           _sashProfiles = [];
           _loadedSeriesId = null;
+          _loadedOpeningFrameSeriesId = null;
+          _loadedSlidingFrameSeriesId = null;
         });
       }
       return;
     }
-    if (_loadedSeriesId == seriesId) return;
+    final openingSeriesId = widget.model.activeSeries?.id;
+    final slidingSeriesId = widget.model.activeSlidingSeries?.id;
+    final needsOpeningFrames =
+        widget.systemMode == 'mixed' && openingSeriesId != null;
+    final needsSlidingFrames =
+        (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
+            slidingSeriesId != null;
+    if (_loadedSeriesId == seriesId &&
+        (!needsOpeningFrames ||
+            _loadedOpeningFrameSeriesId == openingSeriesId) &&
+        (!needsSlidingFrames ||
+            _loadedSlidingFrameSeriesId == slidingSeriesId)) {
+      return;
+    }
     if (_loadingAvailableProfiles) return;
     _loadingAvailableProfiles = true;
     try {
@@ -215,61 +236,134 @@ class _WindowViewState extends State<WindowView> {
       final myDb = await db.db;
       if (myDb == null) return;
 
-      // Load Sections
-      final allSections = await myDb.query(
-        'Sections',
-        where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-        whereArgs: [seriesId],
-      );
-
-      final legacyFrames = allSections.where((s) {
-        final ty = s['type'].toString().toLowerCase().trim();
-        return ty.contains('frame') ||
-            ty.contains('cadre') ||
-            ty.contains('إطار') ||
-            ty.contains('فريم');
-      }).toList();
-
-      final legacySashes = allSections.where((s) {
-        final ty = s['type'].toString().toLowerCase().trim();
-        return ty.contains('sash') ||
-            ty.contains('ouvrant') ||
-            ty.contains('ضلفة') ||
-            ty.contains('ساش');
-      }).toList();
-
-      // New series definitions make the mapping explicit.  Until a manager
-      // configures a legacy series we retain the previous type-name fallback.
-      final configuredFrames = await db.getDesignSectionsForRoles(
-        seriesId,
-        const ['frame', 'frame_extension'],
-      );
-      final configuredSashes = await db.getDesignSectionsForRoles(
-        seriesId,
-        const ['sash', 'sash_extension'],
-      );
-      final frames = configuredFrames.isEmpty ? legacyFrames : configuredFrames;
-      final sashes = configuredSashes.isEmpty ? legacySashes : configuredSashes;
+      final frames = await _loadFrameProfilesForSeries(db, myDb, seriesId);
+      final sashes = await _loadSashProfilesForSeries(db, myDb, seriesId);
+      final openingFrames = needsOpeningFrames
+          ? (openingSeriesId == seriesId
+              ? frames
+              : await _loadFrameProfilesForSeries(db, myDb, openingSeriesId))
+          : <Map<String, dynamic>>[];
+      final slidingFrames = needsSlidingFrames
+          ? (slidingSeriesId == seriesId
+              ? frames
+              : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId))
+          : <Map<String, dynamic>>[];
 
       // Ignore an old result when the user has already switched series.
       if (!mounted || activeSeriesForSystem?.id != seriesId) return;
       setState(() {
         _frameProfiles = frames;
+        _openingFrameProfiles = openingFrames;
+        _slidingFrameProfiles = slidingFrames;
         _sashProfiles = sashes;
         _loadedSeriesId = seriesId;
+        _loadedOpeningFrameSeriesId = needsOpeningFrames
+            ? openingSeriesId
+            : null;
+        _loadedSlidingFrameSeriesId = needsSlidingFrames
+            ? slidingSeriesId
+            : null;
       });
     } finally {
       _loadingAvailableProfiles = false;
       // Only queue another load when the user changed the series while this
       // request was in flight. Retrying the same failed request in a tight
       // loop would make the drawing page appear to crash temporarily.
-      if (mounted &&
-          activeSeriesForSystem?.id != null &&
-          activeSeriesForSystem?.id != seriesId &&
-          activeSeriesForSystem?.id != _loadedSeriesId) {
-        unawaited(_loadAvailableProfiles());
+      if (mounted && activeSeriesForSystem?.id != null) {
+        final currentOpeningSeriesId = widget.model.activeSeries?.id;
+        final currentSlidingSeriesId = widget.model.activeSlidingSeries?.id;
+        final currentNeedsOpeningFrames =
+            widget.systemMode == 'mixed' && currentOpeningSeriesId != null;
+        final currentNeedsSlidingFrames =
+            (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
+                currentSlidingSeriesId != null;
+        final profilesChangedWhileLoading =
+            activeSeriesForSystem?.id != seriesId ||
+                (currentNeedsOpeningFrames &&
+                    currentOpeningSeriesId != openingSeriesId) ||
+                (currentNeedsSlidingFrames &&
+                    currentSlidingSeriesId != slidingSeriesId);
+        if (profilesChangedWhileLoading) {
+          unawaited(_loadAvailableProfiles());
+        }
       }
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadFrameProfilesForSeries(
+    SqlDatabase db,
+    dynamic myDb,
+    int seriesId,
+  ) async {
+    final allSections = await myDb.query(
+      'Sections',
+      where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+      whereArgs: [seriesId],
+    );
+    final legacyFrames = allSections
+        .where((s) {
+          final ty = s['type'].toString().toLowerCase().trim();
+          return ty.contains('frame') ||
+              ty.contains('cadre') ||
+              ty.contains('إطار') ||
+              ty.contains('فريم');
+        })
+        .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
+        .toList();
+    final configuredFrames = await db.getDesignSectionsForRoles(
+      seriesId,
+      const ['frame', 'frame_extension'],
+    );
+    return configuredFrames.isEmpty ? legacyFrames : configuredFrames;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
+    SqlDatabase db,
+    dynamic myDb,
+    int seriesId,
+  ) async {
+    final allSections = await myDb.query(
+      'Sections',
+      where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
+      whereArgs: [seriesId],
+    );
+    final legacySashes = allSections
+        .where((s) {
+          final ty = s['type'].toString().toLowerCase().trim();
+          return ty.contains('sash') ||
+              ty.contains('ouvrant') ||
+              ty.contains('ضلفة') ||
+              ty.contains('ساش');
+        })
+        .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
+        .toList();
+    final configuredSashes = await db.getDesignSectionsForRoles(
+      seriesId,
+      const ['sash', 'sash_extension'],
+    );
+    return configuredSashes.isEmpty ? legacySashes : configuredSashes;
+  }
+
+  List<Map<String, dynamic>> _frameProfilesFromSeries(
+    AluminumSeries? series,
+  ) {
+    if (series == null) return const <Map<String, dynamic>>[];
+    return series.sections
+        .where((section) {
+          final type = section.type.toLowerCase().trim();
+          final name = section.name.toLowerCase().trim();
+          return section.isFrame ||
+              type.contains('frame') ||
+              type.contains('cadre') ||
+              type.contains('إطار') ||
+              type.contains('فريم') ||
+              name.contains('cadre') ||
+              name.contains('frame') ||
+              name.contains('إطار') ||
+              name.contains('فريم');
+        })
+        .map((section) => section.toMap())
+        .toList();
   }
 
   DecorationImage? _getWoodTextureImage(Map<String, dynamic> dbColor) {
@@ -803,7 +897,18 @@ class _WindowViewState extends State<WindowView> {
 
   void _refreshModelDependentUi() {
     _syncDrawerGlassFromDrawing();
-    if (activeSeriesForSystem?.id != _loadedSeriesId) {
+    final openingSeriesId = widget.model.activeSeries?.id;
+    final slidingSeriesId = widget.model.activeSlidingSeries?.id;
+    final needsOpeningFrames =
+        widget.systemMode == 'mixed' && openingSeriesId != null;
+    final needsSlidingFrames =
+        (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
+            slidingSeriesId != null;
+    if (activeSeriesForSystem?.id != _loadedSeriesId ||
+        (needsOpeningFrames &&
+            _loadedOpeningFrameSeriesId != openingSeriesId) ||
+        (needsSlidingFrames &&
+            _loadedSlidingFrameSeriesId != slidingSeriesId)) {
       unawaited(_loadAvailableProfiles());
     }
   }
@@ -11986,12 +12091,88 @@ class _WindowViewState extends State<WindowView> {
         break;
 
       case 1: // إطار (Frame settings)
-        final bool isSliding =
+        final bool hasSlidingFrameInDrawing =
             widget.systemMode == 'sliding' ||
                 (widget.systemMode == 'mixed' &&
-                    zone != null &&
-                    zone.content == ZoneContent.slidingSash);
-        if (_frameProfiles.isEmpty) {
+                    widget.model.zones.any(
+                      (z) => z.content == ZoneContent.slidingSash,
+                    ));
+        final openingProfiles = widget.systemMode == 'mixed'
+            ? (_openingFrameProfiles.isNotEmpty
+                ? _openingFrameProfiles
+                : _frameProfilesFromSeries(widget.model.activeSeries))
+            : (widget.systemMode == 'sliding'
+                ? <Map<String, dynamic>>[]
+                : _frameProfiles);
+        final slidingProfiles = hasSlidingFrameInDrawing
+            ? (_slidingFrameProfiles.isNotEmpty
+                ? _slidingFrameProfiles
+                : _frameProfilesFromSeries(widget.model.activeSlidingSeries))
+            : <Map<String, dynamic>>[];
+
+        Future<void> selectFrameProfile(
+          Map<String, dynamic> item, {
+          required bool sliding,
+        }) async {
+          double price = 0.0;
+          if (widget.model.selectedDbColor != null) {
+            int colorId = widget.model.selectedDbColor!['id'];
+            final db = SqlDatabase();
+            price = await db.getSectionPrice(item['id'], colorId);
+          }
+          final mutableSelected = Map<String, dynamic>.from(item);
+          mutableSelected['calculated_price'] = price;
+          setState(() {
+            if (sliding) {
+              widget.model.slidingFrameOverride = mutableSelected;
+            } else {
+              widget.model.frameOverride = mutableSelected;
+              widget.model.selectedFrameCode =
+                  mutableSelected['code']?.toString();
+            }
+            widget.model.updateProfileThickness();
+            widget.model.refreshUI();
+          });
+          await widget.model.syncFrameReinforcement();
+          if (mounted) setState(() {});
+        }
+
+        void addFrameProfileButtons(
+          List<Map<String, dynamic>> profiles, {
+          required bool sliding,
+          required String prefix,
+        }) {
+          for (var item in profiles) {
+            final codeStr =
+                (item['code'] != null && item['code'].toString().isNotEmpty)
+                ? '${item['code']} - '
+                : '';
+            final nameStr = item['name'] ?? 'بدون اسم';
+            final label = prefix.isEmpty
+                ? '$codeStr$nameStr'
+                : '$prefix: $codeStr$nameStr';
+            final selectedMap = sliding
+                ? widget.model.slidingFrameOverride
+                : widget.model.frameOverride;
+            final isSelected =
+                selectedMap != null && selectedMap['id'] == item['id'];
+
+            children.add(
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _ProfileButton(
+                  label: label,
+                  code: item['code']?.toString(),
+                  imagePath: item['image_path']?.toString(),
+                  selected: isSelected,
+                  onPressed: () => selectFrameProfile(item, sliding: sliding),
+                ),
+              ),
+            );
+          }
+        }
+
+        if (openingProfiles.isEmpty && slidingProfiles.isEmpty) {
           children.add(
             Text(
               Localization.translate(
@@ -12002,75 +12183,72 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else {
-          for (var item in _frameProfiles) {
-            final codeStr =
-            (item['code'] != null && item['code']
-                .toString()
-                .isNotEmpty)
-                ? '${item['code']} - '
-                : '';
-            final nameStr = item['name'] ?? 'بدون اسم';
-            final label = '$codeStr$nameStr';
-            final isSelected = isSliding
-                ? (widget.model.slidingFrameOverride != null &&
-                widget.model.slidingFrameOverride!['id'] == item['id'])
-                : (widget.model.frameOverride != null &&
-                widget.model.frameOverride!['id'] == item['id']);
-
-            children.add(
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _ProfileButton(
-                  label: label,
-                  code: item['code']?.toString(),
-                  imagePath: item['image_path']?.toString(),
-                  selected: isSelected,
-                  onPressed: () async {
-                    double price = 0.0;
-                    if (widget.model.selectedDbColor != null) {
-                      int colorId = widget.model.selectedDbColor!['id'];
-                      final db = SqlDatabase();
-                      price = await db.getSectionPrice(item['id'], colorId);
-                    }
-                    final mutableSelected = Map<String, dynamic>.from(item);
-                    mutableSelected['calculated_price'] = price;
-                    setState(() {
-                      if (isSliding) {
-                        widget.model.slidingFrameOverride = mutableSelected;
-                      } else {
-                        widget.model.frameOverride = mutableSelected;
-                        widget.model.selectedFrameCode = mutableSelected['code']
-                            ?.toString();
-                      }
-                      widget.model.updateProfileThickness();
-                      widget.model.refreshUI();
-                    });
-                    await widget.model.syncFrameReinforcement();
-                    if (mounted) setState(() {});
-                  },
-                ),
-              ),
+          if (openingProfiles.isNotEmpty) {
+            addFrameProfileButtons(
+              openingProfiles,
+              sliding: false,
+              prefix: widget.systemMode == 'mixed' ? 'فتح' : '',
+            );
+          }
+          if (slidingProfiles.isNotEmpty) {
+            if (openingProfiles.isNotEmpty) {
+              children.add(const SizedBox(width: 8));
+            }
+            addFrameProfileButtons(
+              slidingProfiles,
+              sliding: true,
+              prefix: widget.systemMode == 'sliding' ? '' : 'منزلق',
             );
           }
         }
 
         // زر الغطاء الجانبي (Side Cover toggle)
         children.add(const SizedBox(width: 8));
-        children.add(
-          _ContentButton(
-            label: widget.model.hasSideCovers
-                ? Localization.translate('إزالة غطاء جانبي', lang)
-                : Localization.translate('إضافة غطاء جانبي', lang),
-            icon: widget.model.hasSideCovers
-                ? Icons.border_clear_rounded
-                : Icons.border_outer_rounded,
-            selected: widget.model.hasSideCovers,
-            onPressed: () async {
-              await widget.model.toggleSideCovers(!widget.model.hasSideCovers);
-              setState(() {});
-            },
-          ),
-        );
+        final bool isNestedSlidingFrame =
+            zone != null && widget.model.isSlidingZoneNestedInSingleFrame(zone);
+        if (isNestedSlidingFrame) {
+          children.add(
+            _ContentButton(
+              label: widget.model.hasInternalSlidingSideCover
+                  ? Localization.translate(
+                      'إزالة غطاء الإطار المنزلق',
+                      lang,
+                    )
+                  : Localization.translate(
+                      'إضافة غطاء الإطار المنزلق',
+                      lang,
+                    ),
+              icon: widget.model.hasInternalSlidingSideCover
+                  ? Icons.border_clear_rounded
+                  : Icons.border_outer_rounded,
+              selected: widget.model.hasInternalSlidingSideCover,
+              onPressed: () {
+                widget.model.toggleInternalSlidingSideCover(
+                  !widget.model.hasInternalSlidingSideCover,
+                );
+                setState(() {});
+              },
+            ),
+          );
+        } else {
+          children.add(
+            _ContentButton(
+              label: widget.model.hasSideCovers
+                  ? Localization.translate('إزالة غطاء جانبي', lang)
+                  : Localization.translate('إضافة غطاء جانبي', lang),
+              icon: widget.model.hasSideCovers
+                  ? Icons.border_clear_rounded
+                  : Icons.border_outer_rounded,
+              selected: widget.model.hasSideCovers,
+              onPressed: () async {
+                await widget.model.toggleSideCovers(
+                  !widget.model.hasSideCovers,
+                );
+                setState(() {});
+              },
+            ),
+          );
+        }
         break;
 
       case 2: // ورقة (Sash settings)
@@ -13484,6 +13662,7 @@ class _WindowViewState extends State<WindowView> {
                               );
                               return;
                             }
+                            widget.model.clearSelection();
                             // The frame picked in the drawing is the source
                             // of truth. Do not replace it merely because side
                             // covers are enabled: a standalone cover is valid
@@ -14071,13 +14250,17 @@ class AppWorkspacePainter extends CustomPainter {
     if (model.width > 0 &&
         model.height > 0 &&
         (model.zones.isNotEmpty || model.isShutterOnly)) {
-      final painter = WindowPainter(model: model, showDrawingDimensions: true);
+      final painter = WindowPainter(
+        model: model,
+        showDrawingDimensions: true,
+        showSelection: true,
+      );
       painter.paint(canvas, size);
-      // Keep the exterior dimensions: they are the main total dimensions of
-      // the frame. The labels below only add compact dimensions inside each
-      // visible profile.
+      // Keep the exterior dimensions outside the frame, then add compact
+      // editable region labels and profile cut labels inside the drawing.
       _paintDimensions(canvas, model, Offset.zero);
       if (!model.isShutterOnly) {
+        _paintZoneRegionDimensions(canvas, model);
         _paintDrawingProfileDimensions(canvas, model);
       }
 
@@ -14207,6 +14390,89 @@ class AppWorkspacePainter extends CustomPainter {
   /// Draws the technical dimensions inside the corresponding physical
   /// profile. These labels exist only in the interactive drawing editor; the
   /// normal painter is also used by customer previews and PDF documents.
+  void _paintZoneRegionDimensions(Canvas canvas, WindowModel model) {
+    final innerWidth = model.width - model.profileThickness * 2;
+    final innerHeight = model.height - model.profileThickness * 2;
+    for (final zone in model.zones) {
+      final r = zone.boundary;
+      if (r.width < 55 || r.height < 55) continue;
+
+      final editableWidth = r.width < innerWidth - 2;
+      final editableHeight = r.height < innerHeight - 2;
+      final bottomInset = math.min(28.0, math.max(16.0, r.height * 0.18));
+      final rightInset = math.min(28.0, math.max(16.0, r.width * 0.18));
+
+      _paintZoneRegionLabel(
+        canvas,
+        '${r.width.toInt()} mm',
+        Offset(r.center.dx, r.bottom - bottomInset),
+        math.max(36.0, r.width - 18.0),
+        editable: editableWidth,
+      );
+      _paintZoneRegionLabel(
+        canvas,
+        '${r.height.toInt()} mm',
+        Offset(r.right - rightInset, r.center.dy),
+        math.max(36.0, r.height - 18.0),
+        vertical: true,
+        editable: editableHeight,
+      );
+    }
+  }
+
+  void _paintZoneRegionLabel(Canvas canvas,
+      String text,
+      Offset center,
+      double maxMainAxis, {
+        bool vertical = false,
+        required bool editable,
+      }) {
+    double fontSize = math.min(24.0, math.max(11.0, maxMainAxis * 0.16));
+    late TextPainter painter;
+    while (true) {
+      painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            color: editable ? const Color(0xFF0D47A1) : Colors.grey.shade700,
+            fontSize: fontSize,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )
+        ..layout();
+      if (painter.width <= maxMainAxis || fontSize <= 8) break;
+      fontSize -= 1.0;
+    }
+    if (painter.width > maxMainAxis + 1) return;
+
+    final rect = Rect.fromCenter(
+      center: Offset.zero,
+      width: painter.width + 9,
+      height: painter.height + 5,
+    );
+    final bgPaint = Paint()
+      ..color = (editable ? Colors.white : Colors.grey.shade100)
+          .withValues(alpha: 0.82)
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = editable
+          ? const Color(0xFF0D47A1).withValues(alpha: 0.34)
+          : Colors.grey.shade500.withValues(alpha: 0.28)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    if (vertical) canvas.rotate(-math.pi / 2);
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    canvas.drawRRect(rrect, bgPaint);
+    canvas.drawRRect(rrect, borderPaint);
+    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+    canvas.restore();
+  }
+
   void _paintDrawingProfileDimensions(Canvas canvas, WindowModel model) {
     final frameThickness = model.profileThickness;
     if (frameThickness <= 0) return;

@@ -1287,6 +1287,8 @@ class WindowSnapshot {
   final bool useCustomSideCoverLayout;
   final List<SideCoverSegment> sideCoverSegments;
   final Set<String> hiddenSideCoverSegments;
+  final bool hasInternalSlidingSideCover;
+  final Map<String, dynamic>? internalSlidingSideCoverOverride;
 
   WindowSnapshot(
     this.width,
@@ -1321,6 +1323,8 @@ class WindowSnapshot {
     this.useCustomSideCoverLayout,
     this.sideCoverSegments,
     this.hiddenSideCoverSegments,
+    this.hasInternalSlidingSideCover,
+    this.internalSlidingSideCoverOverride,
   );
 }
 
@@ -3086,6 +3090,9 @@ class WindowModel extends ChangeNotifier {
   // complete surround with exactly the saved segments below.
   bool useCustomSideCoverLayout = false;
   List<SideCoverSegment> sideCoverSegments = [];
+  bool hasInternalSlidingSideCover = false;
+  AluminumSection? selectedInternalSlidingSideCover;
+  Map<String, dynamic>? internalSlidingSideCoverOverride;
 
   // A side hidden by the cover buttons is distinct from the shutter rails.
   // This also lets old, partial custom layouts keep their untouched sides.
@@ -3305,6 +3312,63 @@ class WindowModel extends ChangeNotifier {
     return value is num
         ? value.toDouble()
         : double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  List<AluminumSection> get availableInternalSlidingSideCovers {
+    final series = activeSlidingSeries ?? activeSeries;
+    if (series == null) return const <AluminumSection>[];
+    return series.sections.where((section) {
+      final type = section.type.toLowerCase();
+      final name = section.name.toLowerCase();
+      return type.contains('couvre') ||
+          type.contains('side_cover') ||
+          type.contains('cover') ||
+          type.contains('غطاء') ||
+          type.contains('جانبي') ||
+          name.contains('couvre') ||
+          name.contains('cover') ||
+          name.contains('غطاء') ||
+          name.contains('جانبي');
+    }).toList();
+  }
+
+  Map<String, dynamic>? get effectiveInternalSlidingSideCoverMap {
+    if (selectedInternalSlidingSideCover != null) {
+      return selectedInternalSlidingSideCover!.toMap();
+    }
+    return internalSlidingSideCoverOverride;
+  }
+
+  double get internalSlidingSideCoverWidth {
+    final selected = selectedInternalSlidingSideCover;
+    if (selected != null) {
+      if (selected.couvreJointWidth > 0) return selected.couvreJointWidth;
+      if (selected.visibleWidth > 0) return selected.visibleWidth;
+    }
+
+    final override = internalSlidingSideCoverOverride;
+    if (override == null) return 0.0;
+    for (final key in const ['couvre_joint_width', 'visible_width']) {
+      final value = override[key];
+      if (value is num && value > 0) return value.toDouble();
+      final parsed = double.tryParse(value?.toString() ?? '');
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return 0.0;
+  }
+
+  void _selectDefaultInternalSlidingSideCover() {
+    final covers = availableInternalSlidingSideCovers;
+    if (covers.isEmpty) return;
+    final currentId = internalSlidingSideCoverOverride?['id']?.toString();
+    final selected = currentId == null
+        ? covers.first
+        : covers.firstWhere(
+            (cover) => cover.id.toString() == currentId,
+            orElse: () => covers.first,
+          );
+    selectedInternalSlidingSideCover = selected;
+    internalSlidingSideCoverOverride = selected.toMap();
   }
 
   /// Integrated-cover width from the selected frame only.
@@ -6404,6 +6468,9 @@ class WindowModel extends ChangeNotifier {
       slidingSashOverride = null;
       sideCoverOverride = null;
       selectedSideCover = null;
+      hasInternalSlidingSideCover = false;
+      selectedInternalSlidingSideCover = null;
+      internalSlidingSideCoverOverride = null;
       _clearSlidingProfileOverrides();
       _clearAccessoryOverrides();
 
@@ -6490,14 +6557,14 @@ class WindowModel extends ChangeNotifier {
         }).toList();
 
       if (frames.isNotEmpty) {
-        // A shutter on an aluminium sliding window needs the standalone
-        // cover profile, not a frame that already contains one.
-        final shutterFrames = hasShutter && !_isPvcSeries(series)
+        // Aluminium sliding frames should start without an integrated cover;
+        // the cover is controlled as a separate profile when it is needed.
+        final plainFrames = !_isPvcSeries(series)
             ? frames
                   .where((frame) => !_sectionHasIntegratedSideCover(frame))
                   .toList()
             : frames;
-        final candidates = shutterFrames.isNotEmpty ? shutterFrames : frames;
+        final candidates = plainFrames.isNotEmpty ? plainFrames : frames;
         slidingFrameOverride = candidates.first.toMap();
       }
     }
@@ -7367,6 +7434,10 @@ class WindowModel extends ChangeNotifier {
         useCustomSideCoverLayout,
         sideCoverSegments.map((segment) => segment.copyWith()).toList(),
         Set<String>.from(hiddenSideCoverSegments),
+        hasInternalSlidingSideCover,
+        internalSlidingSideCoverOverride == null
+            ? null
+            : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -7817,6 +7888,10 @@ class WindowModel extends ChangeNotifier {
         useCustomSideCoverLayout,
         sideCoverSegments.map((segment) => segment.copyWith()).toList(),
         Set<String>.from(hiddenSideCoverSegments),
+        hasInternalSlidingSideCover,
+        internalSlidingSideCoverOverride == null
+            ? null
+            : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
       ),
     );
 
@@ -7861,6 +7936,12 @@ class WindowModel extends ChangeNotifier {
         .map((segment) => segment.copyWith())
         .toList();
     hiddenSideCoverSegments = Set<String>.from(snap.hiddenSideCoverSegments);
+    hasInternalSlidingSideCover = snap.hasInternalSlidingSideCover;
+    internalSlidingSideCoverOverride =
+        snap.internalSlidingSideCoverOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.internalSlidingSideCoverOverride!);
+    selectedInternalSlidingSideCover = null;
     enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
@@ -7908,6 +7989,10 @@ class WindowModel extends ChangeNotifier {
         useCustomSideCoverLayout,
         sideCoverSegments.map((segment) => segment.copyWith()).toList(),
         Set<String>.from(hiddenSideCoverSegments),
+        hasInternalSlidingSideCover,
+        internalSlidingSideCoverOverride == null
+            ? null
+            : Map<String, dynamic>.from(internalSlidingSideCoverOverride!),
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -7951,6 +8036,12 @@ class WindowModel extends ChangeNotifier {
         .map((segment) => segment.copyWith())
         .toList();
     hiddenSideCoverSegments = Set<String>.from(snap.hiddenSideCoverSegments);
+    hasInternalSlidingSideCover = snap.hasInternalSlidingSideCover;
+    internalSlidingSideCoverOverride =
+        snap.internalSlidingSideCoverOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.internalSlidingSideCoverOverride!);
+    selectedInternalSlidingSideCover = null;
     enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
@@ -9345,6 +9436,24 @@ class WindowModel extends ChangeNotifier {
       // 2. Standard clicks
       bool isFullWidth = (r.width >= width - profileThickness * 2 - 2);
       bool isFullHeight = (r.height >= height - profileThickness * 2 - 2);
+      final bottomInset = math.min(28.0, math.max(16.0, r.height * 0.18));
+      final rightInset = math.min(28.0, math.max(16.0, r.width * 0.18));
+      if (!isFullWidth &&
+          Rect.fromCenter(
+            center: Offset(r.center.dx, r.bottom - bottomInset),
+            width: math.min(190.0, math.max(120.0, r.width * 0.6)),
+            height: 70,
+          ).contains(pos)) {
+        return InnerDimensionHit(z.id, true);
+      }
+      if (!isFullHeight &&
+          Rect.fromCenter(
+            center: Offset(r.right - rightInset, r.center.dy),
+            width: 70,
+            height: math.min(190.0, math.max(120.0, r.height * 0.6)),
+          ).contains(pos)) {
+        return InnerDimensionHit(z.id, false);
+      }
       if (z.content == ZoneContent.doubleSash) {
         // Match the mirrored ratio used by WindowPainter when viewing the
         // exterior face. The touch target must sit on the visible label.
@@ -10872,6 +10981,17 @@ class WindowModel extends ChangeNotifier {
           updateProfileThickness();
         }
       }
+    }
+    notifyListeners();
+  }
+
+  void toggleInternalSlidingSideCover(bool value) {
+    final zone = selectedZone;
+    if (zone == null || !isSlidingZoneNestedInSingleFrame(zone)) return;
+    _saveSnapshot();
+    hasInternalSlidingSideCover = value;
+    if (value) {
+      _selectDefaultInternalSlidingSideCover();
     }
     notifyListeners();
   }
@@ -13512,7 +13632,7 @@ class WindowModel extends ChangeNotifier {
     double maxPath = horizontal
         ? math.max(start.dx, end.dx)
         : math.max(start.dy, end.dy);
-    double cutLine = horizontal ? start.dy : start.dx;
+    double cutLine = _snapCutLineToNearbyMullion(start, end, horizontal);
 
     for (var z in zones) {
       bool intersects = false;
@@ -13603,6 +13723,75 @@ class WindowModel extends ChangeNotifier {
     }
     zones = newZones;
     updatePrimaryMullionAxis();
+  }
+
+  double _snapCutLineToNearbyMullion(
+    Offset start,
+    Offset end,
+    bool horizontal,
+  ) {
+    const snapDistance = 100.0;
+    final rawCutLine = horizontal ? start.dy : start.dx;
+    final minPath = horizontal
+        ? math.min(start.dx, end.dx)
+        : math.min(start.dy, end.dy);
+    final maxPath = horizontal
+        ? math.max(start.dx, end.dx)
+        : math.max(start.dy, end.dy);
+    final candidates = <double>{};
+
+    for (var i = 0; i < zones.length; i++) {
+      for (var j = i + 1; j < zones.length; j++) {
+        final a = zones[i].boundary;
+        final b = zones[j].boundary;
+        if (horizontal) {
+          final aBelowB = (a.bottom - b.top).abs() <= mullionThickness + 4.0;
+          final bBelowA = (b.bottom - a.top).abs() <= mullionThickness + 4.0;
+          if (!aBelowB && !bBelowA) continue;
+          final overlap =
+              math.min(a.right, b.right) - math.max(a.left, b.left);
+          if (overlap <= 5.0) continue;
+          candidates.add(
+            aBelowB ? (a.bottom + b.top) / 2 : (b.bottom + a.top) / 2,
+          );
+        } else {
+          final aLeftOfB = (a.right - b.left).abs() <= mullionThickness + 4.0;
+          final bLeftOfA = (b.right - a.left).abs() <= mullionThickness + 4.0;
+          if (!aLeftOfB && !bLeftOfA) continue;
+          final overlap =
+              math.min(a.bottom, b.bottom) - math.max(a.top, b.top);
+          if (overlap <= 5.0) continue;
+          candidates.add(
+            aLeftOfB ? (a.right + b.left) / 2 : (b.right + a.left) / 2,
+          );
+        }
+      }
+    }
+
+    double? best;
+    double bestDistance = snapDistance + 0.001;
+    for (final candidate in candidates) {
+      final distance = (candidate - rawCutLine).abs();
+      if (distance > snapDistance || distance >= bestDistance) continue;
+      final cutsAtLeastOneDraggedZone = zones.any((zone) {
+        final r = zone.boundary;
+        if (horizontal) {
+          return candidate > r.top + 20 &&
+              candidate < r.bottom - 20 &&
+              maxPath > r.left &&
+              minPath < r.right;
+        }
+        return candidate > r.left + 20 &&
+            candidate < r.right - 20 &&
+            maxPath > r.top &&
+            minPath < r.bottom;
+      });
+      if (!cutsAtLeastOneDraggedZone) continue;
+      best = candidate;
+      bestDistance = distance;
+    }
+
+    return best ?? rawCutLine;
   }
 
   void moveSelectedMullion(double deltaPixels) {

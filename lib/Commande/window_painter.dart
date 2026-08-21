@@ -17,6 +17,10 @@ class WindowPainter extends CustomPainter {
   /// Previews, PDFs and customer-facing images stay clean.
   final bool showDrawingDimensions;
 
+  /// The green editor selection is never part of previews, generated images,
+  /// or PDFs. Only the interactive drawing page enables it.
+  final bool showSelection;
+
   // Optimized wood rendering states computed once per repaint to avoid lag
   late final bool _isWood;
   late final ui.Shader? _woodShader;
@@ -26,6 +30,7 @@ class WindowPainter extends CustomPainter {
     required this.model,
     this.overrideIsInternalView,
     this.showDrawingDimensions = false,
+    this.showSelection = false,
   }) : super(repaint: model) {
     _initWoodShader();
   }
@@ -510,73 +515,79 @@ class WindowPainter extends CustomPainter {
       _drawMotorControls(canvas, w, h, t, topOffset);
     }
 
-    for (final zone in model.zones) {
-      if (model.selectedZone != null && model.selectedZone!.id == zone.id) {
-        final r = zone.boundary;
-        bool highlightEntireZone =
-            model.activeSubZone == 'all' ||
-            zone.content != ZoneContent.doubleSash;
-        if (highlightEntireZone) {
-          final zonePath = _buildGlassLayerPath(
-            r,
-            t,
-            topOffset,
-            _isTopZone(zone),
-          );
-          canvas.drawPath(
-            zonePath,
-            Paint()
-              ..color = Colors.green.shade700.withValues(alpha: 0.35)
-              ..style = PaintingStyle.fill,
-          );
-        } else {
-          final sep = 4.0;
-          final isInternal = overrideIsInternalView ?? model.isInternalView;
-          final double effectiveRatio = isInternal
-              ? zone.doubleSashRatio
-              : (1.0 - zone.doubleSashRatio);
-          final midX = r.left + r.width * effectiveRatio;
-          Rect sashR;
-          if (model.activeSubZone != null &&
-              model.activeSubZone!.startsWith('left')) {
-            sashR = Rect.fromLTRB(r.left, r.top, midX - sep / 2, r.bottom);
-          } else {
-            sashR = Rect.fromLTRB(midX + sep / 2, r.top, r.right, r.bottom);
-          }
-          final sashT =
-              zone.sashThickness ??
-              model.getSectionThickness('sash', fallback: 45.0);
-          final glassR = _getSafeGlassRect(
-            sashR,
-            sashT,
-            hasSashPlintheBottom: zone.hasSashPlintheBottom,
-          );
-          final Path highlightPath = Path()
-            ..fillType = PathFillType.evenOdd
-            ..addPath(
-              _buildGlassLayerPath(sashR, t, topOffset, _isTopZone(zone)),
-              Offset.zero,
-            )
-            ..addPath(
-              _buildGlassLayerPath(glassR, t, topOffset, _isTopZone(zone)),
-              Offset.zero,
+    if (showSelection) {
+      for (final zone in model.zones) {
+        if (model.selectedZone != null && model.selectedZone!.id == zone.id) {
+          final r = zone.boundary;
+          bool highlightEntireZone =
+              model.activeSubZone == 'all' ||
+              zone.content != ZoneContent.doubleSash;
+          if (highlightEntireZone) {
+            final zonePath = _buildGlassLayerPath(
+              r,
+              t,
+              topOffset,
+              _isTopZone(zone),
             );
-          canvas.drawPath(
-            highlightPath,
-            Paint()
-              ..color = Colors.green.shade800.withValues(alpha: 0.35)
-              ..style = PaintingStyle.fill,
-          );
-          canvas.drawPath(
-            highlightPath,
-            Paint()
-              ..color = Colors.green.shade900
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.5,
-          );
+            canvas.drawPath(
+              zonePath,
+              Paint()
+                ..color = Colors.green.shade700.withValues(alpha: 0.35)
+                ..style = PaintingStyle.fill,
+            );
+          } else {
+            final sep = 4.0;
+            final isInternal = overrideIsInternalView ?? model.isInternalView;
+            final double effectiveRatio = isInternal
+                ? zone.doubleSashRatio
+                : (1.0 - zone.doubleSashRatio);
+            final midX = r.left + r.width * effectiveRatio;
+            Rect sashR;
+            if (model.activeSubZone != null &&
+                model.activeSubZone!.startsWith('left')) {
+              sashR = Rect.fromLTRB(r.left, r.top, midX - sep / 2, r.bottom);
+            } else {
+              sashR = Rect.fromLTRB(midX + sep / 2, r.top, r.right, r.bottom);
+            }
+            final sashT =
+                zone.sashThickness ??
+                model.getSectionThickness('sash', fallback: 45.0);
+            final glassR = _getSafeGlassRect(
+              sashR,
+              sashT,
+              hasSashPlintheBottom: zone.hasSashPlintheBottom,
+            );
+            final Path highlightPath = Path()
+              ..fillType = PathFillType.evenOdd
+              ..addPath(
+                _buildGlassLayerPath(sashR, t, topOffset, _isTopZone(zone)),
+                Offset.zero,
+              )
+              ..addPath(
+                _buildGlassLayerPath(glassR, t, topOffset, _isTopZone(zone)),
+                Offset.zero,
+              );
+            canvas.drawPath(
+              highlightPath,
+              Paint()
+                ..color = Colors.green.shade800.withValues(alpha: 0.35)
+                ..style = PaintingStyle.fill,
+            );
+            canvas.drawPath(
+              highlightPath,
+              Paint()
+                ..color = Colors.green.shade900
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 2.5,
+            );
+          }
         }
+        if (showDrawingDimensions) _drawInnerDimensions(canvas, zone);
       }
-      if (showDrawingDimensions) _drawInnerDimensions(canvas, zone);
+    } else if (showDrawingDimensions) {
+      for (final zone in model.zones) {
+        _drawInnerDimensions(canvas, zone);
+      }
     }
 
     // Adding an outer frame uses the same solid blue rectangle preview as
@@ -1558,9 +1569,96 @@ class WindowPainter extends CustomPainter {
         // instead: (0, 0) → (r.width, r.height).
         canvas.save();
         canvas.translate(r.left, r.top);
-        _drawOuterFrame(canvas, r.width, r.height, t, 0.0);
+        final localThickness = _frameRectIsSlidingOnly(r)
+            ? _slidingFrameWidth(t)
+            : t;
+        _drawOuterFrame(canvas, r.width, r.height, localThickness, 0.0);
         canvas.restore();
       }
+    }
+  }
+
+  bool _frameRectIsSlidingOnly(Rect frameRect) {
+    if (model.getFrameRects().length <= 1) return false;
+    final innerLeft = frameRect.left + model.profileThickness - 2.0;
+    final innerTop = frameRect.top + model.profileThickness - 2.0;
+    final innerRight = frameRect.right - model.profileThickness + 2.0;
+    final innerBottom = frameRect.bottom - model.profileThickness + 2.0;
+    final frameZones = model.zones.where((zone) {
+      final r = zone.boundary;
+      return r.left >= innerLeft &&
+          r.top >= innerTop &&
+          r.right <= innerRight &&
+          r.bottom <= innerBottom;
+    }).toList();
+    return frameZones.isNotEmpty &&
+        frameZones.every((zone) => zone.content == ZoneContent.slidingSash);
+  }
+
+  double _slidingFrameWidth(double fallback) {
+    final override = model.slidingFrameOverride;
+    if (override != null) {
+      final visible = override['visible_width'];
+      if (visible is num && visible > 0) return visible.toDouble();
+      final thickness = override['thickness'];
+      if (thickness is num && thickness > 0) return thickness.toDouble();
+    }
+    final section = model.getSlidingSectionByType('frame');
+    if (section != null) {
+      if (section.visibleWidth > 0) return section.visibleWidth;
+      if (section.thickness > 0) return section.thickness;
+    }
+    return fallback;
+  }
+
+  void _drawInternalSlidingSideCover(Canvas canvas, Rect frameRect) {
+    if (!model.hasInternalSlidingSideCover) return;
+    final coverWidth = model.internalSlidingSideCoverWidth;
+    if (coverWidth <= 0) return;
+
+    final paint = Paint();
+    if (_isWoodColor() && TextureCache.woodTexture != null) {
+      _applyWoodShader(
+        paint,
+        frameRect.inflate(coverWidth),
+      );
+    } else {
+      paint.color = _fc[1];
+    }
+    final border = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+
+    final rects = <Rect>[
+      Rect.fromLTRB(
+        frameRect.left - coverWidth,
+        frameRect.top - coverWidth,
+        frameRect.right + coverWidth,
+        frameRect.top,
+      ),
+      Rect.fromLTRB(
+        frameRect.left - coverWidth,
+        frameRect.bottom,
+        frameRect.right + coverWidth,
+        frameRect.bottom + coverWidth,
+      ),
+      Rect.fromLTRB(
+        frameRect.left - coverWidth,
+        frameRect.top,
+        frameRect.left,
+        frameRect.bottom,
+      ),
+      Rect.fromLTRB(
+        frameRect.right,
+        frameRect.top,
+        frameRect.right + coverWidth,
+        frameRect.bottom,
+      ),
+    ];
+    for (final rect in rects) {
+      canvas.drawRect(rect, paint);
+      canvas.drawRect(rect, border);
     }
   }
 
@@ -2667,6 +2765,9 @@ class WindowPainter extends CustomPainter {
     switch (zone.content) {
       case ZoneContent.empty:
       case ZoneContent.fixedGlass:
+        if (zone.content == ZoneContent.empty) {
+          break;
+        }
         final cellSpec = zone.getGlassForCell('main_cell_0_0');
 
         final bool isDecorPanel =
@@ -3338,47 +3439,50 @@ class WindowPainter extends CustomPainter {
     if (count < 2) count = 2;
     final bool isTopBound = _isTopZone(zone);
 
-    bool isNested = model.zones.length > 1;
+    bool isNested = model.isSlidingZoneNestedInSingleFrame(zone);
     if (isNested) {
-      double innerFrameT = 45.0;
-      final series = model.activeSlidingSeries ?? model.activeSeries;
-      if (series != null) {
-        var slidingFrames = series.sections.where((s) {
-          final name = s.name.toLowerCase();
-          final type = s.type.toLowerCase();
-          return (name.contains('coulissant') ||
-                  name.contains('منزلق') ||
-                  name.contains('sliding') ||
-                  type.contains('coulissant') ||
-                  type.contains('sliding')) &&
-              (type.contains('frame') ||
-                  type.contains('cadre') ||
-                  type.contains('إطار'));
-        }).toList();
-        if (slidingFrames.isNotEmpty) {
-          innerFrameT = slidingFrames.first.visibleWidth > 0
-              ? slidingFrames.first.visibleWidth
-              : (slidingFrames.first.thickness > 0
-                    ? slidingFrames.first.thickness
-                    : 45.0);
-        } else {
-          var anyFrames = series.sections.where((s) {
+      double innerFrameT = _slidingFrameWidth(45.0);
+      if (model.slidingFrameOverride == null) {
+        final series = model.activeSlidingSeries ?? model.activeSeries;
+        if (series != null) {
+          var slidingFrames = series.sections.where((s) {
+            final name = s.name.toLowerCase();
             final type = s.type.toLowerCase();
-            return type.contains('frame') ||
-                type.contains('cadre') ||
-                type.contains('إطار');
+            return (name.contains('coulissant') ||
+                    name.contains('منزلق') ||
+                    name.contains('sliding') ||
+                    type.contains('coulissant') ||
+                    type.contains('sliding')) &&
+                (type.contains('frame') ||
+                    type.contains('cadre') ||
+                    type.contains('إطار'));
           }).toList();
-          if (anyFrames.isNotEmpty) {
-            innerFrameT = anyFrames.first.visibleWidth > 0
-                ? anyFrames.first.visibleWidth
-                : (anyFrames.first.thickness > 0
-                      ? anyFrames.first.thickness
+          if (slidingFrames.isNotEmpty) {
+            innerFrameT = slidingFrames.first.visibleWidth > 0
+                ? slidingFrames.first.visibleWidth
+                : (slidingFrames.first.thickness > 0
+                      ? slidingFrames.first.thickness
                       : 45.0);
+          } else {
+            var anyFrames = series.sections.where((s) {
+              final type = s.type.toLowerCase();
+              return type.contains('frame') ||
+                  type.contains('cadre') ||
+                  type.contains('إطار');
+            }).toList();
+            if (anyFrames.isNotEmpty) {
+              innerFrameT = anyFrames.first.visibleWidth > 0
+                  ? anyFrames.first.visibleWidth
+                  : (anyFrames.first.thickness > 0
+                        ? anyFrames.first.thickness
+                        : 45.0);
+            }
           }
         }
       }
 
       // Draw the nested inner frame
+      _drawInternalSlidingSideCover(canvas, r);
       final innerFrameGlassRect = r.deflate(innerFrameT);
       _drawSashFrameRect(
         canvas,

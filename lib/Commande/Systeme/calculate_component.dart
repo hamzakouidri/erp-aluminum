@@ -660,8 +660,9 @@ class ComponentCalculator {
   }
 
   /// Cut length in millimetres for a customised standalone side-cover piece.
-  /// Its visible width is added once when the piece touches either outer end,
-  /// and not at all when both ends are in the middle.
+  /// A 45-degree miter adds the cover visible width at every outer corner it
+  /// reaches: full-side pieces add it twice, edge pieces once, middle pieces
+  /// not at all.
   static double standaloneSideCoverSegmentCutLength({
     required double sideLength,
     required double start,
@@ -672,11 +673,13 @@ class ComponentCalculator {
     final safeStart = start.clamp(0.0, sideLength).toDouble();
     final safeEnd = end.clamp(0.0, sideLength).toDouble();
     if (safeEnd <= safeStart) return 0.0;
-    final touchesOuterEdge =
-        safeStart <= 0.1 || (sideLength - safeEnd).abs() <= 0.1;
+    final touchesStartEdge = safeStart <= 0.1;
+    final touchesEndEdge = (sideLength - safeEnd).abs() <= 0.1;
+    final miterEnds =
+        (touchesStartEdge ? 1.0 : 0.0) + (touchesEndEdge ? 1.0 : 0.0);
     return safeEnd -
         safeStart +
-        (touchesOuterEdge ? visibleWidth : 0.0) +
+        (visibleWidth * miterEnds) +
         weldingAllowance;
   }
 
@@ -1441,6 +1444,7 @@ class ComponentCalculator {
 
     List<double> slidingChicanePieces = [];
     List<double> slidingRailPieces = [];
+    List<double> internalSlidingSideCoverPieces = [];
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
     int slidingTotalHandles = 0;
@@ -2125,9 +2129,9 @@ class ComponentCalculator {
 
       if (customSideCoverLayout) {
         // The input length is the covered span on the frame. For a standalone
-        // custom piece, add its visible width once when either end reaches an
-        // outer frame edge. A piece whose start and end are both in the
-        // middle gets no visible-width extension.
+        // custom piece, add its visible width for each outer edge it reaches
+        // because every outside corner is cut at 45 degrees. A piece whose
+        // start and end are both in the middle gets no visible-width extension.
         for (final segment in window.effectiveSideCoverSegments) {
           if (segment.side == 'bottom' && !window.hasBottomFrame) continue;
           final sideLength = window.sideCoverSideLength(segment.side);
@@ -2359,6 +2363,20 @@ class ComponentCalculator {
                 overrideMap: slidingFrame,
               ),
             );
+            if (window.hasInternalSlidingSideCover &&
+                window.effectiveInternalSlidingSideCoverMap != null) {
+              final coverWidth = window.internalSlidingSideCoverWidth;
+              if (coverWidth > 0) {
+                final coverW = (innerFrameW + (coverWidth * 2.0)) / 1000.0;
+                final coverH = (innerFrameH + (coverWidth * 2.0)) / 1000.0;
+                internalSlidingSideCoverPieces.addAll([
+                  coverW,
+                  coverW,
+                  coverH,
+                  coverH,
+                ]);
+              }
+            }
 
             wForCalc = innerFrameW - (frameT * 2.0);
             hForCalc = innerFrameH - (frameT * 2.0);
@@ -2698,6 +2716,19 @@ class ComponentCalculator {
             pieces: slidingRailPieces,
             unit: 'قطاع',
             overrideMap: railOverride,
+            preferOverrideMap: true,
+          ),
+        );
+      }
+
+      if (internalSlidingSideCoverPieces.isNotEmpty) {
+        items.add(
+          createProfile(
+            'غطاء إطار منزلق داخلي (Couvre-joint Coulissant)',
+            colorName,
+            pieces: internalSlidingSideCoverPieces,
+            unit: 'قطاع',
+            overrideMap: window.effectiveInternalSlidingSideCoverMap,
             preferOverrideMap: true,
           ),
         );
