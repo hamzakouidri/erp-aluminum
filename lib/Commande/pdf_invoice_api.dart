@@ -181,6 +181,10 @@ class PdfInvoiceApi {
               'Arrêtée la présente facture à la somme de: ${data.amountInWords}.',
               style: const pw.TextStyle(fontSize: 10),
             ),
+            if (data.invoiceNote.trim().isNotEmpty) ...[
+              pw.SizedBox(height: 5),
+              _buildInvoiceNote(data.invoiceNote.trim()),
+            ],
             pw.SizedBox(height: 10),
             _buildTotals(data),
           ] else ...[
@@ -1271,6 +1275,30 @@ class PdfInvoiceApi {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _buildInvoiceNote(String note) {
+    String label;
+    if (_currentLang == AppLanguage.french) {
+      label = 'Remarque';
+    } else if (_currentLang == AppLanguage.english) {
+      label = 'Note';
+    } else {
+      label = 'ملاحظة';
+    }
+    final text = '$label: $note';
+    return pw.Container(
+      width: double.infinity,
+      child: pw.Text(
+        _ar(text),
+        textDirection: _dir(text),
+        style: pw.TextStyle(
+          fontSize: 10,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.grey900,
         ),
       ),
     );

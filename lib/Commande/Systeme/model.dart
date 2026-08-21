@@ -12939,6 +12939,12 @@ class WindowModel extends ChangeNotifier {
     bottomSlantLeftY = 0.0;
     bottomSlantRightY = 0.0;
     archHeight = 0.0;
+    _frameColor = FrameColor.white;
+    final whiteColor = _defaultFrameColor();
+    _selectedDbColor = whiteColor == null
+        ? null
+        : Map<String, dynamic>.from(whiteColor);
+    _selectedAccessoryColor = null;
     mullionProfiles.clear();
     groovedMullionCavityOnPositiveSide.clear();
     mullionSectionOverrides.clear();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:database_data/Commande/Systeme/consumption_manager.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/cutting_calculator.dart';
+import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -252,24 +253,99 @@ class _GlobalConsumptionReportScreenState
               ],
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: ResizableColumnsTable(
+              headerColor: Colors.blueGrey.shade800,
+              borderColor: Colors.grey.shade300,
+              rowColor: Colors.white,
+              headerMinHeight: 38,
+              rowMinHeight: 42,
+              cellPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
               columns: const [
-                DataColumn(label: Text('الاسم', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('الطول (ملم)', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('العرض (ملم)', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('العدد', style: TextStyle(fontWeight: FontWeight.bold))),
+                ResizableTableColumn(
+                  id: 'name',
+                  label: Text(
+                    'الاسم',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  initialWidth: 320,
+                  minWidth: 180,
+                  maxWidth: 620,
+                ),
+                ResizableTableColumn(
+                  id: 'width',
+                  label: Text(
+                    'الطول (ملم)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  initialWidth: 130,
+                  minWidth: 95,
+                  maxWidth: 220,
+                ),
+                ResizableTableColumn(
+                  id: 'height',
+                  label: Text(
+                    'العرض (ملم)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  initialWidth: 130,
+                  minWidth: 95,
+                  maxWidth: 220,
+                ),
+                ResizableTableColumn(
+                  id: 'quantity',
+                  label: Text(
+                    'العدد',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  initialWidth: 100,
+                  minWidth: 80,
+                  maxWidth: 180,
+                ),
               ],
               rows: items.map((item) {
                 final textColor = item.isMissing ? Colors.red : Colors.black87;
                 final textStyle = TextStyle(color: textColor);
-                return DataRow(cells: [
-                  DataCell(Text(item.name, style: textStyle)),
-                  DataCell(Text(item.width > 0 ? item.width.toStringAsFixed(1) : '-', style: textStyle)),
-                  DataCell(Text(item.height > 0 ? item.height.toStringAsFixed(1) : '-', style: textStyle)),
-                  DataCell(Text(item.quantity.toString(), style: TextStyle(fontWeight: FontWeight.bold, color: textColor))),
-                ]);
+                return ResizableTableRow(
+                  cells: [
+                    Text(
+                      item.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: textStyle,
+                    ),
+                    Text(
+                      item.width > 0 ? item.width.toStringAsFixed(1) : '-',
+                      style: textStyle,
+                    ),
+                    Text(
+                      item.height > 0 ? item.height.toStringAsFixed(1) : '-',
+                      style: textStyle,
+                    ),
+                    Text(
+                      item.quantity.toString(),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                  ],
+                );
               }).toList(),
             ),
           ),

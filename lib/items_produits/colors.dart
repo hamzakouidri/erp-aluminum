@@ -582,9 +582,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
                   for (final profileId in profilesToSave) {
                     final expected =
                         workingProfileColors[profileId] ?? const <int>{};
-                    final saved = (await widget.db.getColorsForProfile(
+                    final saved = await widget.db.getColorIdsForProfile(
                       profileId,
-                    )).map((color) => color['id'] as int).toSet();
+                    );
                     if (saved.length != expected.length ||
                         !saved.containsAll(expected)) {
                       throw StateError(

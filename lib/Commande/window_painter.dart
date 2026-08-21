@@ -2514,8 +2514,9 @@ class WindowPainter extends CustomPainter {
     if (!isSash) return;
     final sashThickness =
         zone.sashThickness ?? model.getSectionThickness('sash', fallback: 45.0);
-    final sashOverride = model.usesSlidingPrimaryProfiles
-        ? model.slidingSashOverride
+    final isSlidingZone = zone.content == ZoneContent.slidingSash;
+    final sashOverride = isSlidingZone
+        ? (model.slidingSashOverride ?? model.sashOverride)
         : model.sashOverride;
     final overriddenSashCode = (sashOverride?['code'] ?? '').toString().trim();
     final sashCode = overriddenSashCode.isNotEmpty
@@ -2538,7 +2539,11 @@ class WindowPainter extends CustomPainter {
       return sashCode.isEmpty ? size : '$size ($sashCode)';
     }
 
-    void paintWidthInSashProfile(TextPainter text, Rect sashRect) {
+    void paintWidthInSashProfile(
+      TextPainter text,
+      Rect sashRect, {
+      bool avoidCenter = false,
+    }) {
       final profile = Rect.fromLTRB(
         sashRect.left + 4,
         sashRect.top + 2,
@@ -2548,10 +2553,17 @@ class WindowPainter extends CustomPainter {
       if (profile.width < text.width + 8 || profile.height < text.height + 4) {
         return;
       }
+      double x = profile.center.dx - text.width / 2;
+      if (avoidCenter) {
+        final sideWidth = (profile.width - text.width - 12) / 2;
+        if (sideWidth > 0) {
+          x = profile.left + math.max(6.0, sideWidth * 0.5);
+        }
+      }
       text.paint(
         canvas,
         Offset(
-          profile.center.dx - text.width / 2,
+          x,
           profile.center.dy - text.height / 2,
         ),
       );
@@ -2722,7 +2734,11 @@ class WindowPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      paintWidthInSashProfile(widthText, r);
+      paintWidthInSashProfile(
+        widthText,
+        r,
+        avoidCenter: zone.content == ZoneContent.slidingSash,
+      );
     }
     // The two leaves share their height, but each gets its own label inside
     // its outer vertical profile.  A single sash uses its left profile.

@@ -8,7 +8,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/login_screen.dart';
-import 'package:database_data/widgets/voice_assistant_overlay.dart';
 import 'package:database_data/widgets/desktop_window_frame.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
 import 'package:database_data/firebase_options.dart';
@@ -294,7 +293,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
-          child: VoiceAssistantOverlay(child: content),
+          child: content,
         );
       },
       home: widget.firebaseError != null

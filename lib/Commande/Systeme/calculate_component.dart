@@ -5873,6 +5873,9 @@ class ComponentCalculator {
       }
     }
 
+    if (window.isShutterOnly) {
+      return items.where((item) => item.category == 'shutter').toList();
+    }
     return items;
   }
 

@@ -8,7 +8,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
 
   # 🟢 الحزم الخاصة بقاعدة البيانات (تم إضافة دعم الكمبيوتر ffi)
   sqflite_sqlcipher: ^3.4.0
@@ -24,16 +23,13 @@ dependencies:
   provider: ^6.1.5+1
   shared_preferences: ^2.5.5
   google_fonts: ^8.1.0
-  video_player: ^2.9.2
 
   # حزم فايربيس (Firebase)
   firebase_core: ^4.9.0
   firebase_auth: ^6.5.1
   cloud_firestore: ^6.4.1
-  firebase_storage: ^13.4.1
 
   speech_to_text: ^7.4.0
-  permission_handler: ^11.3.1
   share_plus: ^12.0.2
   archive: ^3.6.1
   record: ^6.2.1
@@ -65,8 +61,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
-    - assets/images/water_ripples.mp4
-    - assets/images/water_ripples.png
     - assets/images/wood_texture.png
     - assets/images/wood_texture_d0.png
     - assets/images/wood_texture_antique.png
@@ -76,7 +70,6 @@ flutter:
     - assets/fonts/Amiri-Bold.ttf
     - assets/fonts/Cairo-Regular.ttf
     - assets/fonts/Cairo-Bold.ttf
-    - assets/fonts/Cairo.ttf
     - assets/fonts/Arial-Regular.ttf
     - assets/sections/
     # SQLite runtime used by the persistent web database. Keeping it as a

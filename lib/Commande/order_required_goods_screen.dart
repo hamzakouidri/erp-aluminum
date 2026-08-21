@@ -8,6 +8,7 @@ import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/widgets/section_image.dart';
+import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/Screen/achat_details_screen.dart';
@@ -291,11 +292,13 @@ OrderCuttingPlan optimizeRequiredGoodsCutting({
   final lowerBound = (totalRequiredMm / stockMm).ceil();
   var bestAssignments = bestFitAssignments;
 
-  // Exact branch-and-bound is useful for normal window orders, while the node
-  // cap keeps very large orders responsive. The best-fit plan remains valid
-  // if the exact proof reaches that cap.
-  if (cutPieces.length <= 40 && bestAssignments.length > lowerBound) {
-    const maxNodes = 300000;
+  // Exact branch-and-bound is useful for small normal orders, while the node
+  // and time caps keep large orders from delaying the required-goods page.
+  // The best-fit plan remains valid if the exact proof reaches a cap.
+  if (cutPieces.length <= 28 && bestAssignments.length > lowerBound) {
+    const maxNodes = 25000;
+    const maxElapsed = Duration(milliseconds: 45);
+    final stopwatch = Stopwatch()..start();
     var visitedNodes = 0;
     var stopped = false;
 
@@ -305,7 +308,9 @@ OrderCuttingPlan optimizeRequiredGoodsCutting({
 
       bool place(int index) {
         if (index == cutPieces.length) return true;
-        if (++visitedNodes > maxNodes) {
+        visitedNodes++;
+        if (visitedNodes > maxNodes ||
+            (visitedNodes & 0x3ff == 0 && stopwatch.elapsed > maxElapsed)) {
           stopped = true;
           return false;
         }
@@ -472,7 +477,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       context,
       listen: false,
     ).language;
-    _loadAndAggregate();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadAndAggregate();
+    });
   }
 
   @override
@@ -502,6 +509,46 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   int? _safeInt(dynamic value) {
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString().trim() ?? '');
+  }
+
+  Future<
+    ({
+      Map<String, List<Map<String, dynamic>>> data,
+      Map<String, bool> perLeaf,
+      Map<String, Map<String, dynamic>> metadata,
+    })
+  >
+  _loadKitBundleCache() async {
+    final kitBundleData = <String, List<Map<String, dynamic>>>{};
+    final kitPerLeafMap = <String, bool>{};
+    final kitBundleMetadata = <String, Map<String, dynamic>>{};
+
+    try {
+      final kits = await widget.db.readKitBundles();
+      for (final kit in kits) {
+        final kitName = kit['name']?.toString() ?? '';
+        if (kitName.isEmpty) continue;
+        final kitId = _safeInt(kit['id']);
+        if (kitId == null) continue;
+        final details = await widget.db.readKitBundleItemsWithDetails(
+          kitId,
+          topLevelOnly: true,
+        );
+        kitBundleData[kitName] = details
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
+        kitBundleMetadata[kitName] = Map<String, dynamic>.from(kit);
+      }
+    } catch (e) {
+      debugPrint('Required goods kit cache load warning: $e');
+    }
+
+    return (
+      data: kitBundleData,
+      perLeaf: kitPerLeafMap,
+      metadata: kitBundleMetadata,
+    );
   }
 
   void _applyInstanceSize(WindowModel model, double width, double height) {
@@ -1193,6 +1240,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         throw StateError('رقم الطلبية غير صالح');
       }
       final rawItems = await widget.db.readCommandeDetails(orderId);
+      final kitCache = await _loadKitBundleCache();
 
       // مخزن التجميع: مفتاح التجميع → السلعة المجمّعة
       // مفتاح التجميع = (originalName + unit + imagePath) لتمييز السلع الفريدة
@@ -1250,30 +1298,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             continue;
           }
 
-          // جلب kit bundle data من قاعدة البيانات بشكل كامل وتثبيت خيار per_leaf الصحيح
-          final kitBundleData = <String, List<Map<String, dynamic>>>{};
-          final kitPerLeafMap = <String, bool>{};
-          final kitBundleMetadata = <String, Map<String, dynamic>>{};
-          try {
-            final kits = await widget.db.readKitBundles();
-            for (final kit in kits) {
-              final kitName = kit['name']?.toString() ?? '';
-              if (kitName.isEmpty) continue;
-              final kitId = _safeInt(kit['id']);
-              if (kitId == null) continue;
-              final details = await widget.db.readKitBundleItemsWithDetails(
-                kitId,
-                topLevelOnly: true,
-              );
-              final mutableDetails = details
-                  .map((e) => Map<String, dynamic>.from(e))
-                  .toList();
-              kitBundleData[kitName] = mutableDetails;
-              kitPerLeafMap[kitName] = (kit['per_leaf'] ?? 0) == 1;
-              kitBundleMetadata[kitName] = Map<String, dynamic>.from(kit);
-            }
-          } catch (_) {}
-
           // Read instances if they exist
           final instances = parseRequiredGoodsInstances(item['instances_json']);
 
@@ -1309,9 +1333,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               // Generate BOM for this specific instance using the new resolver
               final instBom = await _resolveBomForModel(
                 model,
-                kitBundleData,
-                kitPerLeafMap,
-                kitBundleMetadata,
+                kitCache.data,
+                kitCache.perLeaf,
+                kitCache.metadata,
               );
               bomItems.addAll(instBom);
 
@@ -1350,9 +1374,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
             final instBom = await _resolveBomForModel(
               model,
-              kitBundleData,
-              kitPerLeafMap,
-              kitBundleMetadata,
+              kitCache.data,
+              kitCache.perLeaf,
+              kitCache.metadata,
             );
             bomItems.addAll(instBom);
 
@@ -1526,6 +1550,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         if (item.cuttingPieces.isEmpty) continue;
         final stockLength = item.stockLength ?? 0;
         if (stockLength <= 0) continue;
+        await Future<void>.delayed(Duration.zero);
         final plan = optimizeRequiredGoodsCutting(
           pieces: item.cuttingPieces,
           stockLength: stockLength,
@@ -1635,7 +1660,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       if (itemId == null || itemType == null || item.totalQuantity <= 0) {
         return;
       }
-      final key = '$itemType:$itemId:${item.colorId ?? ''}';
+      final key = item.category == 'glass'
+          ? '$itemType:$itemId:${item.length ?? ''}:${item.glassHeight ?? ''}:'
+                '${item.unitPrice}:${item.name}'
+          : '$itemType:$itemId:${item.colorId ?? ''}';
       final existing = itemsByKey[key];
       if (existing == null) {
         itemsByKey[key] = AggregatedGoodItem(
@@ -1709,6 +1737,60 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         return a.name.compareTo(b.name);
       });
     return result;
+  }
+
+  String _purchaseItemCode(AggregatedGoodItem item) {
+    final code = item.profileCode?.trim() ?? '';
+    if (code.isNotEmpty) return code;
+    if (item.category == 'glass' &&
+        (item.length ?? 0) > 0 &&
+        (item.glassHeight ?? 0) > 0) {
+      return 'GL-${item.length!.round()}x${item.glassHeight!.round()}';
+    }
+    return item.name.replaceAll('\n', ' ').trim();
+  }
+
+  String _purchaseItemName(AggregatedGoodItem item) {
+    final name = item.name.replaceAll('\n', ' • ').trim();
+    if (item.category != 'glass') return name;
+    final area = _roundQuantity(item.totalQuantity, 'm²');
+    return '$name • Total: $area m²';
+  }
+
+  Future<int> _createAchatDocumentFromItems({
+    required String number,
+    required Map<String, dynamic> request,
+    required List<AggregatedGoodItem> items,
+  }) async {
+    final achatId = await widget.db.insertAchat(
+      number,
+      request['supplier_name'] as String,
+      0,
+      supplierId: request['supplier_id'] as int,
+      locationId: request['location_id'] as int,
+    );
+
+    for (final item in items) {
+      await widget.db.insertAchatItem(
+        achatId: achatId,
+        itemCode: _purchaseItemCode(item),
+        itemName: _purchaseItemName(item),
+        itemType: item.inventoryItemType!,
+        itemId: item.catalogItemId!,
+        colorId: item.colorId,
+        quantity: item.totalQuantity,
+        price: item.unitPrice,
+        allowDuplicateLine: item.category == 'glass',
+      );
+    }
+    await widget.db.updateAchatTotal(
+      achatId,
+      _purchaseDocumentItemsTotal(items),
+    );
+    if (request['kind'] == _PurchaseDocumentKind.purchaseOrder) {
+      await widget.db.updateAchatStatus(achatId, 'Draft');
+    }
+    return achatId;
   }
 
   Future<void> _convertRequiredGoodsToPurchase() async {
@@ -1891,34 +1973,58 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     setState(() => _isCreatingPurchase = true);
     try {
-      final achatId = await widget.db.insertAchat(
-        request['number'] as String,
-        request['supplier_name'] as String,
-        0,
-        supplierId: request['supplier_id'] as int,
-        locationId: request['location_id'] as int,
-      );
+      final glassItems = purchaseItems
+          .where((item) => item.category == 'glass')
+          .toList();
+      final otherItems = purchaseItems
+          .where((item) => item.category != 'glass')
+          .toList();
+      final baseNumber = request['number'] as String;
 
-      for (final item in purchaseItems) {
-        await widget.db.insertAchatItem(
-          achatId: achatId,
-          itemCode: item.profileCode?.trim().isNotEmpty == true
-              ? item.profileCode!.trim()
-              : item.name.replaceAll('\n', ' ').trim(),
-          itemName: item.name.replaceAll('\n', ' • ').trim(),
-          itemType: item.inventoryItemType!,
-          itemId: item.catalogItemId!,
-          colorId: item.colorId,
-          quantity: item.totalQuantity,
-          price: item.unitPrice,
+      int? firstAchatId;
+      var firstInvoiceNumber = baseNumber;
+      final createdDescriptions = <String>[];
+
+      if (otherItems.isNotEmpty) {
+        final materialsNumber = glassItems.isEmpty
+            ? baseNumber
+            : '$baseNumber-M';
+        firstAchatId = await _createAchatDocumentFromItems(
+          number: materialsNumber,
+          request: request,
+          items: otherItems,
+        );
+        firstInvoiceNumber = materialsNumber;
+        createdDescriptions.add(
+          '${_t('المواد')}: ${otherItems.length} ${_t('سطر')}',
         );
       }
-      await widget.db.updateAchatTotal(
-        achatId,
-        _purchaseDocumentItemsTotal(purchaseItems),
-      );
-      if (request['kind'] == _PurchaseDocumentKind.purchaseOrder) {
-        await widget.db.updateAchatStatus(achatId, 'Draft');
+
+      if (glassItems.isNotEmpty) {
+        final glassNumber = otherItems.isEmpty ? baseNumber : '$baseNumber-G';
+        final glassAchatId = await _createAchatDocumentFromItems(
+          number: glassNumber,
+          request: request,
+          items: glassItems,
+        );
+        firstAchatId = glassAchatId;
+        firstInvoiceNumber = glassNumber;
+        createdDescriptions.add(
+          '${_t('الزجاج')}: ${glassItems.length} ${_t('سطر')} / '
+          '${_roundQuantity(_purchaseDocumentItemsTotalArea(glassItems), 'm²')} m²',
+        );
+      }
+      final achatId = firstAchatId;
+      if (achatId == null) return;
+
+      if (mounted && createdDescriptions.length > 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_t('تم إنشاء وثائق الشراء:')} ${createdDescriptions.join('، ')}',
+            ),
+          ),
+        );
       }
       if (!mounted) return;
       await Navigator.push(
@@ -1926,7 +2032,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         MaterialPageRoute(
           builder: (context) => AchatDetailsScreen(
             achatId: achatId,
-            invoiceNumber: request['number'] as String,
+            invoiceNumber: firstInvoiceNumber,
             supplierName: request['supplier_name'] as String,
           ),
         ),
@@ -1944,6 +2050,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
   double _purchaseDocumentItemsTotal(List<AggregatedGoodItem> items) =>
       items.fold(0.0, (sum, item) => sum + item.totalCost);
+
+  double _purchaseDocumentItemsTotalArea(List<AggregatedGoodItem> items) =>
+      items.fold(0.0, (sum, item) => sum + item.totalQuantity);
 
   // ─────────────────────────────────────────────────────────────────
   // ترجمة الفئة إلى نص عربي
@@ -3906,160 +4015,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Table(
-                        border: TableBorder.symmetric(
-                          inside: BorderSide(
-                            color: isDark
-                                ? Colors.grey.shade800
-                                : Colors.grey.shade300,
-                            width: 0.5,
-                          ),
-                        ),
-                        columnWidths: const {
-                          0: FlexColumnWidth(3),
-                          1: FlexColumnWidth(1),
-                          2: FlexColumnWidth(1),
-                          3: FlexColumnWidth(1.2),
-                        },
-                        children: [
-                          TableRow(
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? Colors.grey.shade900
-                                  : Colors.grey.shade200,
-                            ),
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(6.0),
-                                child: Text(
-                                  _t('اسم العنصر'),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.87)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(6.0),
-                                child: Text(
-                                  _t('الكمية'),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.87)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(6.0),
-                                child: Text(
-                                  _t('الوحدة'),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.87)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(6.0),
-                                child: Text(
-                                  _t('التكلفة'),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.87)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          ...pb.bomItems.map((bom) {
-                            final double qty = bom.purchaseQuantity;
-                            final double cost = bom.total;
-                            return TableRow(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(6.0),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      SectionImageWidget(
-                                        code: bom.profileCode,
-                                        imagePath: bom.imagePath,
-                                        size: 18.0,
-                                        fallbackIcon: _categoryIcon(
-                                          bom.category,
-                                        ),
-                                        fallbackColor: Colors.grey,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          bom.name,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isDark
-                                                ? Colors.white.withValues(
-                                                    alpha: 0.9,
-                                                  )
-                                                : Colors.black87,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.all(6.0),
-                                  child: Text(
-                                    _roundQuantity(qty, bom.unit),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.9)
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.all(6.0),
-                                  child: Text(
-                                    bom.unit,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.9)
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.all(6.0),
-                                  child: Text(
-                                    '${cost.toStringAsFixed(0)} د.ج',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }),
-                        ],
-                      ),
+                      _buildProductBomTable(pb, isDark),
                     ],
                   ),
                 ),
@@ -4090,6 +4046,180 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       default:
         return Icons.inventory_2;
     }
+  }
+
+  Widget _buildProductBomTable(ProductBreakdown pb, bool isDark) {
+    final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final headerStyle = TextStyle(
+      fontWeight: FontWeight.bold,
+      fontSize: 12,
+      color: isDesktop
+          ? Colors.white
+          : (isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87),
+    );
+    final bodyColor = isDark
+        ? Colors.white.withValues(alpha: 0.9)
+        : Colors.black87;
+
+    if (isDesktop) {
+      return ResizableColumnsTable(
+        key: ValueKey('product-bom-${pb.index}'),
+        headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+        borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+        rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+        headerMinHeight: 38,
+        rowMinHeight: 42,
+        cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        columns: [
+          ResizableTableColumn(
+            id: 'name',
+            label: Text(_t('اسم العنصر'), style: headerStyle),
+            initialWidth: 360,
+            minWidth: 220,
+            maxWidth: 620,
+          ),
+          ResizableTableColumn(
+            id: 'quantity',
+            label: Text(_t('الكمية'), style: headerStyle),
+            initialWidth: 120,
+            minWidth: 90,
+            maxWidth: 220,
+          ),
+          ResizableTableColumn(
+            id: 'unit',
+            label: Text(_t('الوحدة'), style: headerStyle),
+            initialWidth: 110,
+            minWidth: 80,
+            maxWidth: 200,
+          ),
+          ResizableTableColumn(
+            id: 'cost',
+            label: Text(_t('التكلفة'), style: headerStyle),
+            initialWidth: 140,
+            minWidth: 100,
+            maxWidth: 240,
+          ),
+        ],
+        rows: pb.bomItems.map((bom) {
+          final qty = bom.purchaseQuantity;
+          final cost = bom.total;
+          return ResizableTableRow(
+            cells: [
+              Row(
+                children: [
+                  SectionImageWidget(
+                    code: bom.profileCode,
+                    imagePath: bom.imagePath,
+                    size: 18,
+                    fallbackIcon: _categoryIcon(bom.category),
+                    fallbackColor: Colors.grey,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      bom.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: bodyColor),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                _roundQuantity(qty, bom.unit),
+                style: TextStyle(fontSize: 12, color: bodyColor),
+              ),
+              Text(
+                bom.unit,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: bodyColor),
+              ),
+              Text(
+                '${cost.toStringAsFixed(0)} د.ج',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      );
+    }
+
+    return Table(
+      border: TableBorder.symmetric(
+        inside: BorderSide(
+          color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+          width: 0.5,
+        ),
+      ),
+      columnWidths: const {
+        0: FlexColumnWidth(3),
+        1: FlexColumnWidth(1),
+        2: FlexColumnWidth(1),
+        3: FlexColumnWidth(1.2),
+      },
+      children: [
+        TableRow(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+          ),
+          children: [
+            _compactBomHeaderCell(_t('اسم العنصر'), headerStyle),
+            _compactBomHeaderCell(_t('الكمية'), headerStyle),
+            _compactBomHeaderCell(_t('الوحدة'), headerStyle),
+            _compactBomHeaderCell(_t('التكلفة'), headerStyle),
+          ],
+        ),
+        ...pb.bomItems.map((bom) {
+          final qty = bom.purchaseQuantity;
+          final cost = bom.total;
+          return TableRow(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SectionImageWidget(
+                      code: bom.profileCode,
+                      imagePath: bom.imagePath,
+                      size: 18,
+                      fallbackIcon: _categoryIcon(bom.category),
+                      fallbackColor: Colors.grey,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        bom.name,
+                        style: TextStyle(fontSize: 12, color: bodyColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _compactBomBodyCell(_roundQuantity(qty, bom.unit), bodyColor),
+              _compactBomBodyCell(bom.unit, bodyColor),
+              _compactBomBodyCell('${cost.toStringAsFixed(0)} د.ج', bodyColor),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _compactBomHeaderCell(String text, TextStyle style) {
+    return Padding(
+      padding: const EdgeInsets.all(6),
+      child: Text(text, style: style),
+    );
+  }
+
+  Widget _compactBomBodyCell(String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.all(6),
+      child: Text(text, style: TextStyle(fontSize: 12, color: color)),
+    );
   }
 }
 

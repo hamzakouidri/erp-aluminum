@@ -158,6 +158,9 @@ class _CommandePageState extends State<CommandePage> {
   List<WindowModel> addedProducts = [];
   bool _isSaving = false;
   bool _isReordering = false;
+  bool _isLoadingEditProducts = false;
+  int _editProductsLoaded = 0;
+  int _editProductsTotal = 0;
 
   WindowModel? _highlightedProduct;
   final Map<WindowModel, GlobalKey> _cardKeys = {};
@@ -514,6 +517,9 @@ class _CommandePageState extends State<CommandePage> {
       setState(() {
         addedProducts.clear();
         _persistedDetailIds.clear();
+        _isLoadingEditProducts = details.isNotEmpty;
+        _editProductsTotal = details.length;
+        _editProductsLoaded = 0;
       });
 
       double? readDouble(dynamic value) {
@@ -527,7 +533,6 @@ class _CommandePageState extends State<CommandePage> {
       }
 
       final allDbColors = await widget.db.readColors();
-      final loadedModels = <WindowModel>[];
       for (final row in details) {
         final model = WindowModel(db: widget.db);
         final savedWidth = readDouble(row['largeur']);
@@ -612,14 +617,19 @@ class _CommandePageState extends State<CommandePage> {
           model.description = desc;
         }
         final detailId = readInt(row['id']);
-        if (detailId != null) {
-          _persistedDetailIds[model] = detailId;
-        }
-        loadedModels.add(model);
+        if (!mounted) return;
+        setState(() {
+          if (detailId != null) {
+            _persistedDetailIds[model] = detailId;
+          }
+          addedProducts.add(model);
+          _editProductsLoaded = addedProducts.length;
+        });
+        await Future.delayed(Duration.zero);
       }
       if (!mounted) return;
       setState(() {
-        addedProducts = loadedModels;
+        _isLoadingEditProducts = false;
       });
 
       final storedTotal = readDouble(cmd['total']) ?? 0.0;
@@ -639,6 +649,59 @@ class _CommandePageState extends State<CommandePage> {
         });
       }
     }
+  }
+
+  Widget _buildEditItemsLoadingCard() {
+    final total = _editProductsTotal;
+    final loaded = _editProductsLoaded.clamp(0, total);
+    final progress = total <= 0 ? null : loaded / total;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  total > 0
+                      ? 'جاري تحميل عناصر الطلبية: $loaded / $total'
+                      : 'جاري تحميل عناصر الطلبية...',
+                  style: TextStyle(
+                    color: Colors.blue.shade900,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(value: progress),
+          const SizedBox(height: 6),
+          Text(
+            'يمكنك رؤية العناصر التي اكتملت فوراً، وسيتم تفعيل الحفظ والتعديل السريع عند اكتمال التحميل.',
+            style: TextStyle(
+              color: Colors.blueGrey.shade700,
+              fontSize: 12,
+              fontFamily: 'Cairo',
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> pickDate(TextEditingController controller) async {
@@ -1460,7 +1523,9 @@ class _CommandePageState extends State<CommandePage> {
             ),
           IconButton(
             icon: const Icon(Icons.check, size: 28, color: Colors.teal),
-            onPressed: _isSaving ? null : _saveCommande,
+            onPressed: (_isSaving || _isLoadingEditProducts)
+                ? null
+                : _saveCommande,
             tooltip: Localization.translate(
               "Save",
               Provider.of<AppSettingsProvider>(context).language,
@@ -1571,6 +1636,11 @@ class _CommandePageState extends State<CommandePage> {
               onTap: () => pickDate(validDateController),
             ),
             const SizedBox(height: 15),
+
+            if (_isLoadingEditProducts) ...[
+              _buildEditItemsLoadingCard(),
+              const SizedBox(height: 15),
+            ],
 
             if (addedProducts.isNotEmpty && !_isReordering) ...[
               Container(
@@ -1742,18 +1812,20 @@ class _CommandePageState extends State<CommandePage> {
                       color: Colors.white,
                     ),
                   ),
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            OrderTableEditScreen(products: addedProducts),
-                      ),
-                    );
-                    if (result == true) {
-                      if (mounted) setState(() {});
-                    }
-                  },
+                  onPressed: _isLoadingEditProducts
+                      ? null
+                      : () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  OrderTableEditScreen(products: addedProducts),
+                            ),
+                          );
+                          if (result == true) {
+                            if (mounted) setState(() {});
+                          }
+                        },
                 ),
               const SizedBox(height: 15),
               ...addedProducts.map((p) => _buildProductCard(p)),
@@ -2067,7 +2139,9 @@ class _CommandePageState extends State<CommandePage> {
             const SizedBox(height: 30),
             ElegantAnimatedButton(
               gradientColors: const [Colors.green, Colors.teal],
-              onPressed: _isSaving ? null : _saveCommande,
+              onPressed: (_isSaving || _isLoadingEditProducts)
+                  ? null
+                  : _saveCommande,
               icon: const Icon(Icons.save, color: Colors.white),
               label: Text(
                 Localization.translate(

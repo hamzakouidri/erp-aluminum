@@ -1726,6 +1726,8 @@ class _WindowViewState extends State<WindowView> {
       widget.model.prepareShutterOnlyDrawing();
       _isShutterSelected = true;
       _isBottomPanelExpanded = true;
+      _isDrawerOpen = false;
+      _isLeftDrawerOpen = false;
       _activeShutterTab = 0;
     });
 
@@ -2718,7 +2720,9 @@ class _WindowViewState extends State<WindowView> {
                                   isLongPress: false,
                                 );
 
-                                if (isDoubleTap && tappedZone) {
+                                if (!widget.model.isShutterOnly &&
+                                    isDoubleTap &&
+                                    tappedZone) {
                                   setState(() {
                                     _isLeftDrawerOpen = true;
                                   });
@@ -3942,7 +3946,7 @@ class _WindowViewState extends State<WindowView> {
               ),
 
               // 🟢 القائمة الجانبية اليسرى (Left Drawer) لخصائص الزجاج
-              AnimatedPositioned(
+              if (!widget.model.isShutterOnly) AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
                 left: _isLeftDrawerOpen ? 0 : -330,
@@ -10958,8 +10962,10 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
 
     // ── إذا تم تحديد الستار → اعرض لوحة الستار ──
-    if (_isShutterSelected &&
-        (widget.model.hasShutter || widget.model.drawNextShapeAsShutterOnly)) {
+    if (widget.model.isShutterOnly ||
+        (_isShutterSelected &&
+            (widget.model.hasShutter ||
+                widget.model.drawNextShapeAsShutterOnly))) {
       return _buildShutterBottomPanel(context);
     }
 
@@ -11207,9 +11213,11 @@ class _WindowViewState extends State<WindowView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Main Tab Bar showing "الستار (Volet)" selected ──
-            _buildTier1TabBar(isMullionSelected),
-            const Divider(height: 1, thickness: 0.5),
+            if (!widget.model.isShutterOnly) ...[
+              // ── Main Tab Bar showing "الستار (Volet)" selected ──
+              _buildTier1TabBar(isMullionSelected),
+              const Divider(height: 1, thickness: 0.5),
+            ],
             // ── تبويبات الستار (Tier 1 of Shutter) ──
             _buildShutterTier1TabBar(),
             const Divider(height: 1, thickness: 0.5),
@@ -14482,9 +14490,26 @@ class AppWorkspacePainter extends CustomPainter {
 
     final frameRects = model.getFrameRects();
     final frameSection = model.getSectionByType('frame');
+    final slidingFrameSection = model.getSlidingSectionByType('frame');
     String codeFrom(Map<String, dynamic>? override, AluminumSection? section) {
       final overridden = (override?['code'] ?? '').toString().trim();
       return overridden.isNotEmpty ? overridden : (section?.code ?? '').trim();
+    }
+
+    bool frameIsSlidingOnly(Rect frame) {
+      final innerLeft = frame.left + frameThickness - 2.0;
+      final innerTop = frame.top + frameThickness - 2.0;
+      final innerRight = frame.right - frameThickness + 2.0;
+      final innerBottom = frame.bottom - frameThickness + 2.0;
+      final frameZones = model.zones.where((zone) {
+        final center = zone.boundary.center;
+        return center.dx >= innerLeft &&
+            center.dx <= innerRight &&
+            center.dy >= innerTop &&
+            center.dy <= innerBottom;
+      }).toList();
+      return frameZones.isNotEmpty &&
+          frameZones.every((zone) => zone.content == ZoneContent.slidingSash);
     }
 
     String cutLabel(double value, String code) {
@@ -14527,6 +14552,10 @@ class AppWorkspacePainter extends CustomPainter {
         ? 0.0
         : frameRects.map((rect) => rect.bottom).reduce(math.max);
     final frameCode = codeFrom(activeFrame, frameSection);
+    final slidingFrameCode = codeFrom(
+      model.slidingFrameOverride,
+      slidingFrameSection,
+    );
     final separateCoverCode = codeFrom(model.sideCoverOverride, separateCover);
     final weldAllowance = model.isFramePVC ? 5.0 : 0.0;
 
@@ -14537,6 +14566,10 @@ class AppWorkspacePainter extends CustomPainter {
     // An integrated cover belongs to the frame profile itself.
     if (!hasIntegratedCover) {
       for (final frame in frameRects) {
+        final effectiveFrameCode =
+            frameIsSlidingOnly(frame) && slidingFrameCode.isNotEmpty
+                ? slidingFrameCode
+                : frameCode;
         final isOnlyFrame = frameRects.length == 1;
         final netHeight = model.hasShutter && !model.isCaissonTunnel
             ? model.height - model.shutterBoxHeight
@@ -14565,7 +14598,7 @@ class AppWorkspacePainter extends CustomPainter {
                     : 0.0);
         _paintProfileDimensionLabel(
           canvas,
-          cutLabel(frameWidth, frameCode),
+          cutLabel(frameWidth, effectiveFrameCode),
           Rect.fromLTWH(
             frame.left + 2,
             frame.top + 1,
@@ -14575,7 +14608,7 @@ class AppWorkspacePainter extends CustomPainter {
         );
         _paintProfileDimensionLabel(
           canvas,
-          cutLabel(frameHeight, frameCode),
+          cutLabel(frameHeight, effectiveFrameCode),
           Rect.fromLTWH(
             frame.left + 1,
             frame.top + 2,

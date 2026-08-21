@@ -563,17 +563,97 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // ------------------ ثوابت أبعاد أعمدة الجدول (بالبكسل) ------------------
   static const double _rowMinHeight =
       56; // ارتفاع أدنى فقط — الصف يتمدّد حسب محتواه
-  static const double _wImg = 50; // عرض عمود الصورة
-  static const double _wName = 220; // عرض عمود اسم المكوّن
-  static const double _wColor = 100; // عرض عمود اللون
-  static const double _wLen = 100; // عرض عمود الطول
-  static const double _wQty = 80; // عرض عمود الكمية
-  static const double _wPrice = 120; // عرض عمود سعر الوحدة
-  static const double _wTotal = 140; // سعر الوحدة × المطلوب الحقيقي
-  static const double _wCheck = 80; // عرض عمود مربع التفعيل (Checkbox)
-  static const double _minW = // العرض الكلي الأدنى للجدول = مجموع كل الأعمدة
+  static const String _colImg = 'image';
+  static const String _colName = 'name';
+  static const String _colQty = 'quantity';
+  static const String _colPrice = 'price';
+  static const String _colTotal = 'total';
+  static const String _colLen = 'length';
+  static const String _colColor = 'color';
+  static const String _colCheck = 'check';
+  static const double _defaultWImg = 50; // عرض عمود الصورة
+  static const double _defaultWName = 220; // عرض عمود اسم المكوّن
+  static const double _defaultWColor = 100; // عرض عمود اللون
+  static const double _defaultWLen = 100; // عرض عمود الطول
+  static const double _defaultWQty = 80; // عرض عمود الكمية
+  static const double _defaultWPrice = 120; // عرض عمود سعر الوحدة
+  static const double _defaultWTotal = 140; // سعر الوحدة × المطلوب الحقيقي
+  static const double _defaultWCheck = 80; // عرض عمود مربع التفعيل
+  final Map<String, double> _tableColumnWidths = {};
+
+  double _columnWidth(String key, double fallback) =>
+      _tableColumnWidths[key] ?? fallback;
+  double get _wImg => _columnWidth(_colImg, _defaultWImg);
+  double get _wName => _columnWidth(_colName, _defaultWName);
+  double get _wColor => _columnWidth(_colColor, _defaultWColor);
+  double get _wLen => _columnWidth(_colLen, _defaultWLen);
+  double get _wQty => _columnWidth(_colQty, _defaultWQty);
+  double get _wPrice => _columnWidth(_colPrice, _defaultWPrice);
+  double get _wTotal => _columnWidth(_colTotal, _defaultWTotal);
+  double get _wCheck => _columnWidth(_colCheck, _defaultWCheck);
+  double get _minW =>
       _wImg + _wName + _wColor + _wLen + _wQty + _wPrice + _wTotal + _wCheck;
-  static const double _frozenWidth = _wName;
+  double get _frozenWidth => _wName;
+
+  double _columnMinWidth(String key) {
+    switch (key) {
+      case _colImg:
+        return 46;
+      case _colName:
+        return 150;
+      case _colQty:
+      case _colCheck:
+        return 70;
+      case _colPrice:
+      case _colTotal:
+        return 105;
+      default:
+        return 85;
+    }
+  }
+
+  double _columnMaxWidth(String key) {
+    switch (key) {
+      case _colName:
+        return 520;
+      case _colColor:
+        return 260;
+      default:
+        return 320;
+    }
+  }
+
+  double _defaultColumnWidth(String key) {
+    switch (key) {
+      case _colImg:
+        return _defaultWImg;
+      case _colName:
+        return _defaultWName;
+      case _colQty:
+        return _defaultWQty;
+      case _colPrice:
+        return _defaultWPrice;
+      case _colTotal:
+        return _defaultWTotal;
+      case _colLen:
+        return _defaultWLen;
+      case _colColor:
+        return _defaultWColor;
+      case _colCheck:
+        return _defaultWCheck;
+      default:
+        return 100;
+    }
+  }
+
+  void _resizeColumn(String key, double delta) {
+    final current = _columnWidth(key, _defaultColumnWidth(key));
+    setState(() {
+      _tableColumnWidths[key] = (current + delta)
+          .clamp(_columnMinWidth(key), _columnMaxWidth(key))
+          .toDouble();
+    });
+  }
   // ==========================================================================
   // دالة: _fetchDefaults  ⭐ (الدالة الأهم في الملف)
   // الغرض: عند فتح الشاشة أو تغيير أي إعداد، تقوم "بالجلب الذكي" لكل المكونات
@@ -4016,13 +4096,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       jointSelling = jointCost * factor;
       // ---- طريقة 2: سعر المتر المربع الكلي للنافذة (يُطرح منه الزجاج ليبقى نصيب البروفيل) ----
     } else if (_costMethod == CostMethod.squareMeter) {
-      double windowSellingPrice =
-          _pricePerSqm * areaSqm * widget.model.quantity;
-      glassSelling = glassCost; // الزجاج يبقى بسعر التكلفة
-      profileSelling =
-          windowSellingPrice -
-          glassCost; // الباقي بعد طرح الزجاج يُنسب للبروفيل
-      if (profileSelling < 0.0) profileSelling = 0.0; // حماية من قيمة سالبة
+      if (_isShutterOnlyPricing) {
+        profileSelling = 0.0;
+        glassSelling = 0.0;
+      } else {
+        double windowSellingPrice =
+            _pricePerSqm * areaSqm * widget.model.quantity;
+        glassSelling = glassCost; // الزجاج يبقى بسعر التكلفة
+        profileSelling =
+            windowSellingPrice -
+            glassCost; // الباقي بعد طرح الزجاج يُنسب للبروفيل
+        if (profileSelling < 0.0) profileSelling = 0.0; // حماية من قيمة سالبة
+      }
       shutterSelling = shutterAreaPrice;
       accessorySelling =
           accessorySellingCost +
@@ -4165,7 +4250,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   _saveCostSetting('app_profit_margin', parsed);
                 },
               )
-            else if (_costMethod == CostMethod.squareMeter)
+            else if (_costMethod == CostMethod.squareMeter &&
+                !_isShutterOnlyPricing)
               TextField(
                 controller: _pricePerSqmController,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -5044,7 +5130,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: Transform.translate(
-                offset: const Offset(-_wImg, 0),
+                offset: Offset(-_wImg, 0),
                 child: SizedBox(width: _minW, child: fullRow),
               ),
             ),
@@ -5785,39 +5871,84 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _cell(
-              Text(Localization.translate('الصورة', lang), style: s),
+            _headerCell(
+              Localization.translate('الصورة', lang),
+              _colImg,
               _wImg,
             ),
-            _cell(
-              Text(Localization.translate('البيان', lang), style: s),
+            _headerCell(
+              Localization.translate('البيان', lang),
+              _colName,
               _wName,
             ),
-            _cell(
-              Text(Localization.translate('الكمية', lang), style: s),
-              _wQty,
-            ),
-            _cell(
-              Text(Localization.translate('سعر الوحدة', lang), style: s),
+            _headerCell(Localization.translate('الكمية', lang), _colQty, _wQty),
+            _headerCell(
+              Localization.translate('سعر الوحدة', lang),
+              _colPrice,
               _wPrice,
             ),
-            _cell(
-              Text(Localization.translate('التكلفة الفعلية', lang), style: s),
+            _headerCell(
+              Localization.translate('التكلفة الفعلية', lang),
+              _colTotal,
               _wTotal,
             ),
-            _cell(Text(Localization.translate('الطول', lang), style: s), _wLen),
-            _cell(
-              Text(Localization.translate('اللون', lang), style: s),
+            _headerCell(Localization.translate('الطول', lang), _colLen, _wLen),
+            _headerCell(
+              Localization.translate('اللون', lang),
+              _colColor,
               _wColor,
             ),
-            _cell(
-              Text(Localization.translate('تفعيل', lang), style: s),
+            _headerCell(
+              Localization.translate('تفعيل', lang),
+              _colCheck,
               _wCheck,
               isLast: true,
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _headerCell(
+    String title,
+    String columnKey,
+    double width, {
+    bool isLast = false,
+  }) {
+    const s = TextStyle(
+      fontWeight: FontWeight.bold,
+      fontSize: 13,
+      color: Colors.white,
+    );
+    return _cell(
+      Row(
+        children: [
+          Expanded(
+            child: Text(title, style: s, overflow: TextOverflow.ellipsis),
+          ),
+          if (!isLast)
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragUpdate: (details) =>
+                    _resizeColumn(columnKey, details.delta.dx),
+                child: Container(
+                  width: 14,
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 2,
+                    height: 24,
+                    color: Colors.white.withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      width,
+      isLast: isLast,
     );
   }
 

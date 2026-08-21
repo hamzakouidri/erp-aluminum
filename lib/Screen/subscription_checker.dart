@@ -607,6 +607,14 @@ class _SyncGatewayState extends State<SyncGateway> {
         _syncSameAccountInBackground(db);
         return;
       }
+      if (hasLocalBusinessData &&
+          currentUid.isNotEmpty &&
+          (activeUid.isEmpty || activeUid == currentUid) &&
+          activeWorkshop.isEmpty) {
+        _enterApp(startListening: false);
+        _syncSameAccountInBackground(db);
+        return;
+      }
 
       // Resolve the workshop from the signed-in Firebase account before
       // deciding whether local data belongs to this workshop.

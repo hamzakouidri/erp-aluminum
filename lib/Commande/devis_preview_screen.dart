@@ -42,6 +42,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   // prepared in the background and must not block opening the preview.
   bool _isLoading = false;
   Uint8List? _pdfBytes;
+  Future<Uint8List?>? _pdfBuildFuture;
 
   String t(String key) {
     try {
@@ -119,12 +120,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Future<void> _initPdfGeneration() async {
+    if (_pdfBuildFuture != null) return;
+    _pdfBuildFuture = _buildPdfBytes(showErrors: false);
     try {
-      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 15));
-      final bytes = await PdfInvoiceApi.buildPdfBytes(
-        _currentDevisData,
-        overrideLang: _invoiceLanguage,
-      ).timeout(const Duration(seconds: 45));
+      final bytes = await _pdfBuildFuture;
       if (mounted) {
         setState(() {
           _pdfBytes = bytes;
@@ -147,6 +146,53 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           ),
         );
       }
+    } finally {
+      _pdfBuildFuture = null;
+    }
+  }
+
+  Future<Uint8List?> _buildPdfBytes({bool showErrors = true}) async {
+    try {
+      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 15));
+      return await PdfInvoiceApi.buildPdfBytes(
+        _currentDevisData,
+        overrideLang: _invoiceLanguage,
+      ).timeout(const Duration(seconds: 45));
+    } catch (e) {
+      debugPrint('PDF generation error: $e');
+      if (showErrors && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'خطأ في توليد PDF: $e',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<Uint8List?> _ensurePdfBytes() async {
+    if (_pdfBytes != null) return _pdfBytes;
+
+    setState(() => _isLoading = true);
+    try {
+      _pdfBuildFuture ??= _buildPdfBytes();
+      var bytes = await _pdfBuildFuture;
+      if (bytes == null) {
+        _pdfBuildFuture = _buildPdfBytes();
+        bytes = await _pdfBuildFuture;
+      }
+      if (mounted && bytes != null) {
+        setState(() => _pdfBytes = bytes);
+      }
+      return bytes;
+    } finally {
+      _pdfBuildFuture = null;
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -1475,9 +1521,39 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildAmountInWords() {
-    return Text(
-      'Arrêtée la présente facture à la somme de: ${data.amountInWords}.',
-      style: const TextStyle(fontSize: 12, color: Colors.black87),
+    final note = data.invoiceNote.trim();
+    String noteLabel;
+    if (_invoiceLanguage == AppLanguage.french) {
+      noteLabel = 'Remarque';
+    } else if (_invoiceLanguage == AppLanguage.english) {
+      noteLabel = 'Note';
+    } else {
+      noteLabel = 'ملاحظة';
+    }
+    final noteText = '$noteLabel: $note';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Arrêtée la présente facture à la somme de: ${data.amountInWords}.',
+          style: const TextStyle(fontSize: 12, color: Colors.black87),
+        ),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            noteText,
+            textDirection: _containsArabic(noteText)
+                ? TextDirection.rtl
+                : TextDirection.ltr,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.black87,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Cairo',
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1596,8 +1672,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildBottomActions(BuildContext context) {
-    // Disable buttons while PDF is not yet ready OR an action is in progress
-    final bool ready = _pdfBytes != null && !_isLoading;
+    final bool ready = !_isLoading;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: BoxDecoration(
@@ -1689,9 +1764,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Future<void> _savePdf(BuildContext context) async {
-    final bytes = _pdfBytes;
-    if (bytes == null) return;
-
     // Ask filename
     final defaultFileName = data.clientName.trim().isNotEmpty
         ? data.clientName.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
@@ -1736,6 +1808,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
     if (confirmedName == null || confirmedName.isEmpty) return;
     if (!context.mounted) return;
+
+    final bytes = _pdfBytes ?? await _ensurePdfBytes();
+    if (bytes == null) return;
 
     setState(() => _isLoading = true);
     try {
@@ -1807,7 +1882,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Future<void> _printPdf(BuildContext context) async {
-    final bytes = _pdfBytes;
+    final bytes = _pdfBytes ?? await _ensurePdfBytes();
     if (bytes == null) return;
 
     setState(() => _isLoading = true);
@@ -1834,7 +1909,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Future<void> _sharePdf(BuildContext context) async {
-    final bytes = _pdfBytes;
+    final bytes = _pdfBytes ?? await _ensurePdfBytes();
     if (bytes == null) return;
 
     setState(() => _isLoading = true);

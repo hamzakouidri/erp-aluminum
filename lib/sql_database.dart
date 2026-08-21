@@ -290,7 +290,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 61,
+          version: 62,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -301,7 +301,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 61,
+      version: 62,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -334,6 +334,11 @@ class SqlDatabase {
       await db.execute(
         "ALTER TABLE Commandes_details ADD COLUMN updated_at TEXT;",
       );
+    } catch (_) {}
+    try {
+      // A purchase invoice can contain several glass rows with the same
+      // catalogue id when their measurements or glazing composition differ.
+      await db.execute('DROP INDEX IF EXISTS idx_achat_items_unique;');
     } catch (_) {}
 
     // Migrations for Employees table
@@ -595,6 +600,9 @@ class SqlDatabase {
               manufactured_at TEXT,
               is_glass_installed INTEGER DEFAULT 0,
               glass_installed_at TEXT,
+              installation_worker_uid TEXT,
+              installation_assigned_at TEXT,
+              updated_at TEXT,
               FOREIGN KEY (commande_detail_id) REFERENCES Commandes_details(id) ON DELETE CASCADE
             )
           ''');
@@ -650,6 +658,18 @@ class SqlDatabase {
 
     try {
       await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN installation_worker_uid TEXT;",
+      );
+    } catch (_) {}
+
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN installation_assigned_at TEXT;",
+      );
+    } catch (_) {}
+
+    try {
+      await db.execute(
         "ALTER TABLE WorkerAllocations ADD COLUMN is_completed INTEGER DEFAULT 0;",
       );
     } catch (_) {}
@@ -700,6 +720,29 @@ class SqlDatabase {
       await db.execute(
         "ALTER TABLE WorkerAllocations ADD COLUMN unit_height INTEGER;",
       );
+    } catch (_) {}
+
+    try {
+      await db.execute(
+        "ALTER TABLE WorkerAllocations ADD COLUMN updated_at TEXT;",
+      );
+    } catch (_) {}
+
+    try {
+      await db.execute('''
+        UPDATE WorkerAllocations
+        SET updated_at = COALESCE(
+          NULLIF(transferred_at, ''),
+          NULLIF(completed_at, ''),
+          NULLIF(installed_at, ''),
+          NULLIF(distributed_at, ''),
+          NULLIF(glass_installed_at, ''),
+          NULLIF(manufactured_at, ''),
+          NULLIF(assigned_at, ''),
+          datetime('now')
+        )
+        WHERE updated_at IS NULL OR TRIM(updated_at) = ''
+      ''');
     } catch (_) {}
 
     // Auto purge settled data older than 6 months
@@ -1967,16 +2010,6 @@ class SqlDatabase {
         )
       ''');
     }
-    if (oldVersion < 18) {
-      try {
-        await db.execute('''
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_achat_items_unique
-          ON Achat_items (achat_id, item_id, item_type, color_id)
-        ''');
-      } catch (e) {
-        Text('Could not create unique index on Achat_items: $e');
-      }
-    }
     if (oldVersion < 19) {
       try {
         await db.execute('ALTER TABLE Achats ADD COLUMN pdf_path TEXT;');
@@ -2680,6 +2713,11 @@ class SqlDatabase {
       await _ensureAdvancedKitCompatibilitySchema(db);
       await _ensureSyncTombstoneInfrastructure(db);
     }
+    if (oldVersion < 62) {
+      try {
+        await db.execute('DROP INDEX IF EXISTS idx_achat_items_unique;');
+      } catch (_) {}
+    }
   }
 
   void _onCreate(Database db, int version) async {
@@ -2898,11 +2936,6 @@ class SqlDatabase {
         FOREIGN KEY (achat_id) REFERENCES Achats(id) ON DELETE CASCADE
       )
     ''');
-    await db.execute('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_achat_items_unique
-      ON Achat_items (achat_id, item_id, item_type, color_id)
-    ''');
-
     await db.execute('''
     CREATE TABLE Employees (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4470,6 +4503,12 @@ class SqlDatabase {
         if (currentRows.isEmpty) continue;
         final current = currentRows.first;
         Map<String, dynamic> updates = {};
+        final alreadyTransferred =
+            (current['is_transferred_to_dist'] as num?)?.toInt() == 1;
+
+        if (alreadyTransferred && isPreMfg) {
+          continue;
+        }
 
         if (isPreMfg) {
           updates['is_manufactured'] = 0;
@@ -4512,6 +4551,7 @@ class SqlDatabase {
         }
 
         if (updates.isNotEmpty) {
+          updates['updated_at'] = nowStr;
           await myDb.update(
             'WorkerAllocations',
             updates,
@@ -4720,12 +4760,13 @@ class SqlDatabase {
     }
 
     // ðŸ›¡ï¸ 2. Clean slate initialization: reset all status flags for new allocation
+    final nowStr = DateTime.now().toIso8601String();
     final Map<String, dynamic> row = {
       'commande_detail_id': detailId,
       'worker_uid': workerUid,
       'quantity': quantity,
       'worker_price': workerPrice,
-      'assigned_at': DateTime.now().toIso8601String(),
+      'assigned_at': nowStr,
       'is_settled': 0,
       'is_manufactured': 0,
       'manufactured_at': null,
@@ -4735,6 +4776,7 @@ class SqlDatabase {
       'distributed_at': null,
       'is_transferred_to_dist': 0,
       'transferred_at': null,
+      'updated_at': nowStr,
     };
     if (unitIndex != null) row['unit_index'] = unitIndex;
     if (unitPosition != null && unitPosition.isNotEmpty)
@@ -4805,6 +4847,7 @@ class SqlDatabase {
         'worker_uid': workerUid,
         'quantity': quantity,
         'worker_price': workerPrice,
+        'updated_at': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -5570,6 +5613,14 @@ class SqlDatabase {
         ''',
           [currentUid, currentEmail],
         );
+        await myDb.rawUpdate(
+          '''
+          UPDATE WorkerAllocations
+          SET installation_worker_uid = ?
+          WHERE LOWER(installation_worker_uid) = ?
+        ''',
+          [currentUid, currentEmail],
+        );
       }
 
       debugPrint('relinkCurrentWorkerAllocations: done for uid=$currentUid');
@@ -5602,12 +5653,19 @@ class SqlDatabase {
     final results = await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
-             cl.firstname, cl.lastname, e.name as worker_name, c.status as order_status
+             cl.firstname, cl.lastname, e.name as worker_name,
+             COALESCE(NULLIF(iw.name, ''), NULLIF(wa.installation_worker_uid, ''), NULLIF(e.name, ''), wa.worker_uid) as installation_worker_name,
+             c.status as order_status
       FROM WorkerAllocations wa
       LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       LEFT JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      LEFT JOIN Employees iw ON (
+        wa.installation_worker_uid = iw.uid
+        OR CAST(iw.id AS TEXT) = wa.installation_worker_uid
+        OR (iw.email IS NOT NULL AND LOWER(iw.email) = LOWER(wa.installation_worker_uid))
+      )
       WHERE wa.is_transferred_to_dist = 1
         AND (wa.is_completed = 1 OR wa.is_installed = 1)
       ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
@@ -5630,7 +5688,10 @@ class SqlDatabase {
             if (allocId > 0) {
               await myDb.update(
                 'WorkerAllocations',
-                {'archive_locked': 1},
+                {
+                  'archive_locked': 1,
+                  'updated_at': DateTime.now().toIso8601String(),
+                },
                 where: 'id = ?',
                 whereArgs: [allocId],
               );
@@ -5684,12 +5745,16 @@ class SqlDatabase {
                 'transferred_at': alloc['transferred_at'],
                 'is_installed': alloc['is_installed'] ?? 0,
                 'installed_at': alloc['installed_at'],
+                'installation_worker_uid': alloc['installation_worker_uid'],
+                'installation_assigned_at': alloc['installation_assigned_at'],
                 'is_completed': alloc['is_completed'] ?? 0,
                 'completed_at': alloc['completed_at'],
                 'has_reserve': alloc['has_reserve'] ?? 0,
                 'reserve_notes': alloc['reserve_notes'],
                 'reserve_at': alloc['reserve_at'],
-                'updated_at': FieldValue.serverTimestamp(),
+                'updated_at':
+                    alloc['updated_at'] ?? DateTime.now().toIso8601String(),
+                'cloud_synced_at': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true))
               .timeout(const Duration(seconds: 10));
           debugPrint(
@@ -5722,6 +5787,8 @@ class SqlDatabase {
           final allocationId = int.tryParse(doc.id);
           if (allocationId == null) continue;
           final data = doc.data();
+          final cloudUpdatedAt =
+              _sanitizeImportValue(data['updated_at'])?.toString();
 
           final existing = await txn.query(
             'WorkerAllocations',
@@ -5730,6 +5797,25 @@ class SqlDatabase {
           );
           if (existing.isNotEmpty) {
             final old = existing.first;
+            final oldTransferred =
+                (old['is_transferred_to_dist'] as num?)?.toInt() == 1;
+            final incomingTransferredRaw = data['is_transferred_to_dist'];
+            final incomingTransferred = incomingTransferredRaw == true ||
+                (incomingTransferredRaw is num &&
+                    incomingTransferredRaw.toInt() == 1) ||
+                incomingTransferredRaw?.toString() == '1';
+            if (cloudUpdatedAt == null &&
+                oldTransferred &&
+                !incomingTransferred) {
+              continue;
+            }
+            if (cloudUpdatedAt != null &&
+                _localRowIsNewer(
+                  Map<String, dynamic>.from(old),
+                  {'updated_at': cloudUpdatedAt},
+                )) {
+              continue;
+            }
             await txn.update(
               'WorkerAllocations',
               {
@@ -5769,6 +5855,14 @@ class SqlDatabase {
                 'installed_at': data.containsKey('installed_at')
                     ? data['installed_at']
                     : old['installed_at'],
+                'installation_worker_uid':
+                    data.containsKey('installation_worker_uid')
+                        ? data['installation_worker_uid']
+                        : old['installation_worker_uid'],
+                'installation_assigned_at':
+                    data.containsKey('installation_assigned_at')
+                        ? data['installation_assigned_at']
+                        : old['installation_assigned_at'],
                 'is_completed':
                     data['is_completed'] ?? old['is_completed'] ?? 0,
                 'completed_at': data.containsKey('completed_at')
@@ -5781,6 +5875,8 @@ class SqlDatabase {
                 'reserve_at': data.containsKey('reserve_at')
                     ? data['reserve_at']
                     : old['reserve_at'],
+                'updated_at':
+                    cloudUpdatedAt ?? old['updated_at'] ?? old['assigned_at'],
               },
               where: 'id = ?',
               whereArgs: [allocationId],
@@ -5808,11 +5904,15 @@ class SqlDatabase {
               'transferred_at': data['transferred_at'],
               'is_installed': data['is_installed'] ?? 0,
               'installed_at': data['installed_at'],
+              'installation_worker_uid': data['installation_worker_uid'],
+              'installation_assigned_at': data['installation_assigned_at'],
               'is_completed': data['is_completed'] ?? 0,
               'completed_at': data['completed_at'],
               'has_reserve': data['has_reserve'] ?? 0,
               'reserve_notes': data['reserve_notes'],
               'reserve_at': data['reserve_at'],
+              'updated_at':
+                  cloudUpdatedAt ?? DateTime.now().toIso8601String(),
             });
           }
         }
@@ -5956,6 +6056,7 @@ class SqlDatabase {
       {
         'is_manufactured': isManufactured,
         'manufactured_at': isManufactured == 1 ? nowStr : null,
+        'updated_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6002,6 +6103,7 @@ class SqlDatabase {
       {
         'is_glass_installed': isGlassInstalled,
         'glass_installed_at': isGlassInstalled == 1 ? nowStr : null,
+        'updated_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6048,6 +6150,7 @@ class SqlDatabase {
       {
         'is_distributed': isDistributed,
         'distributed_at': isDistributed == 1 ? nowStr : null,
+        'updated_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6092,7 +6195,11 @@ class SqlDatabase {
     // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„ØªØ­ÙˆÙŠÙ„ Ø¥Ù„Ù‰ Ø§Ù„ØªÙˆØ²ÙŠØ¹: Ù†Ø¶Ø¨Ø· Ø­Ù‚Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„ ÙÙ‚Ø· â†’ Ø§Ù„Ø¹Ù†ØµØ± ÙŠÙ†ØªÙ‚Ù„ Ù„ØµÙØ­Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ©
     // âœ”ï¸ Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ù„ØºØ§Ø¡ (Ø¥Ø±Ø¬Ø§Ø¹ Ù…Ù† Ø§Ù„Ø£Ø±Ø´ÙŠÙ): Ù†ØµÙÙ‘Ø± Ø¬Ù…ÙŠØ¹ Ø­Ù‚ÙˆÙ„ Ø§Ù„ØªØ±ÙƒÙŠØ¨/Ø§Ù„Ø§ÙƒØªÙ…Ø§Ù„ Ø­ØªÙ‰ ÙŠÙ…Ø± Ø§Ù„Ø¹Ù†ØµØ± Ø¨Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØªØ±ÙƒÙŠØ¨Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰
     final Map<String, dynamic> updateFields = isTransferred == 1
-        ? {'is_transferred_to_dist': 1, 'transferred_at': nowStr}
+        ? {
+            'is_transferred_to_dist': 1,
+            'transferred_at': nowStr,
+            'updated_at': nowStr,
+          }
         : {
             'is_transferred_to_dist': 0,
             'transferred_at': null,
@@ -6102,6 +6209,7 @@ class SqlDatabase {
             'is_completed': 0,
             'completed_at': null,
             'archive_locked': 0,
+            'updated_at': nowStr,
           };
 
     await myDb.update(
@@ -6153,12 +6261,19 @@ class SqlDatabase {
     final results = await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
-             cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name, c.status as order_status
+             cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name,
+             COALESCE(NULLIF(iw.name, ''), NULLIF(wa.installation_worker_uid, ''), NULLIF(e.name, ''), wa.worker_uid) as installation_worker_name,
+             c.status as order_status
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      LEFT JOIN Employees iw ON (
+        wa.installation_worker_uid = iw.uid
+        OR CAST(iw.id AS TEXT) = wa.installation_worker_uid
+        OR (iw.email IS NOT NULL AND LOWER(iw.email) = LOWER(wa.installation_worker_uid))
+      )
       WHERE wa.is_transferred_to_dist = 1
         AND (wa.is_completed IS NULL OR wa.is_completed = 0)
       ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
@@ -6178,6 +6293,7 @@ class SqlDatabase {
       {
         'is_installed': isInstalled,
         'installed_at': isInstalled == 1 ? nowStr : null,
+        'updated_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6211,6 +6327,28 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
+  Future<void> updateWorkerAllocationInstallationWorker(
+    int allocationId,
+    String workerUid,
+  ) async {
+    Database? myDb = await db;
+    if (myDb == null) return;
+    final nowStr = DateTime.now().toIso8601String();
+    await myDb.update(
+      'WorkerAllocations',
+      {
+        'installation_worker_uid': workerUid,
+        'installation_assigned_at': nowStr,
+        'updated_at': nowStr,
+      },
+      where: 'id = ?',
+      whereArgs: [allocationId],
+    );
+
+    await _uploadAllocationStatusToCloud(allocationId);
+    CloudSyncService().notifyChange();
+  }
+
   Future<void> updateWorkerAllocationCompletion(
     int allocationId,
     int isCompleted,
@@ -6227,6 +6365,7 @@ class SqlDatabase {
         'transferred_at': nowStr,
         if (isCompleted == 1) 'has_reserve': 0,
         if (isCompleted == 1) 'reserve_notes': null,
+        'updated_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6274,6 +6413,7 @@ class SqlDatabase {
         'has_reserve': hasReserve,
         'reserve_notes': hasReserve == 1 ? reserveNotes : null,
         'reserve_at': hasReserve == 1 ? nowStr : null,
+        'updated_at': nowStr,
       },
       where: 'id = ?',
       whereArgs: [allocationId],
@@ -6322,12 +6462,19 @@ class SqlDatabase {
     final results = await myDb.rawQuery('''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
-             cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name, c.status as order_status
+             cl.firstname, cl.lastname, cl.id as client_id, e.name as worker_name,
+             COALESCE(NULLIF(iw.name, ''), NULLIF(wa.installation_worker_uid, ''), NULLIF(e.name, ''), wa.worker_uid) as installation_worker_name,
+             c.status as order_status
       FROM WorkerAllocations wa
       INNER JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       INNER JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Employees e ON wa.worker_uid = e.uid
+      LEFT JOIN Employees iw ON (
+        wa.installation_worker_uid = iw.uid
+        OR CAST(iw.id AS TEXT) = wa.installation_worker_uid
+        OR (iw.email IS NOT NULL AND LOWER(iw.email) = LOWER(wa.installation_worker_uid))
+      )
       WHERE wa.has_reserve = 1
         AND (wa.is_completed IS NULL OR wa.is_completed = 0)
       ORDER BY cl.lastname ASC, cl.firstname ASC, cd.id_commandes ASC, wa.id ASC
@@ -6369,20 +6516,30 @@ class SqlDatabase {
       '''
       SELECT wa.*, cd.window_type, cd.largeur, cd.hauteur, cd.color, cd.glass, cd.drawing_image_path, cd.drawing_image_base64, cd.partitions_json,
              cd.id_commandes, cd.accessories, cd.description, cd.quantity as detail_quantity,
-             cl.firstname, cl.lastname, e.name as worker_name, c.status as order_status
+             cl.firstname, cl.lastname, e.name as worker_name,
+             COALESCE(NULLIF(iw.name, ''), NULLIF(wa.installation_worker_uid, ''), NULLIF(e.name, ''), wa.worker_uid) as installation_worker_name,
+             c.status as order_status
       FROM WorkerAllocations wa
       LEFT JOIN Commandes_details cd ON wa.commande_detail_id = cd.id
       LEFT JOIN Commandes c ON cd.id_commandes = c.id
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Employees e ON (wa.worker_uid = e.uid OR (e.email IS NOT NULL AND LOWER(e.email) = ?))
+      LEFT JOIN Employees iw ON (
+        wa.installation_worker_uid = iw.uid
+        OR CAST(iw.id AS TEXT) = wa.installation_worker_uid
+        OR (iw.email IS NOT NULL AND LOWER(iw.email) = LOWER(wa.installation_worker_uid))
+      )
       WHERE (wa.worker_uid = ?
          OR LOWER(wa.worker_uid) = ?
-         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?))
+         OR (e.email IS NOT NULL AND e.email != '' AND LOWER(e.email) = ?)
+         OR wa.installation_worker_uid = ?
+         OR LOWER(wa.installation_worker_uid) = ?
+         OR (iw.email IS NOT NULL AND iw.email != '' AND LOWER(iw.email) = ?))
         AND wa.is_transferred_to_dist = 1
         AND (wa.is_completed = 1 OR wa.is_installed = 1)
       ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
     ''',
-      [cleanEmail, workerUid, cleanEmail, cleanEmail],
+      [cleanEmail, workerUid, cleanEmail, cleanEmail, workerUid, cleanEmail, cleanEmail],
     );
 
     final now = DateTime.now();
@@ -6402,7 +6559,10 @@ class SqlDatabase {
             if (allocId > 0) {
               await myDb.update(
                 'WorkerAllocations',
-                {'archive_locked': 1},
+                {
+                  'archive_locked': 1,
+                  'updated_at': DateTime.now().toIso8601String(),
+                },
                 where: 'id = ?',
                 whereArgs: [allocId],
               );
@@ -6424,7 +6584,10 @@ class SqlDatabase {
     if (myDb == null) return;
     await myDb.update(
       'WorkerAllocations',
-      {'worker_price': price},
+      {
+        'worker_price': price,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [allocationId],
     );
@@ -7651,15 +7814,17 @@ class SqlDatabase {
     int? colorId,
     required double quantity,
     required double price,
+    bool allowDuplicateLine = false,
   }) async {
     Database? myDb = await db;
 
-    if (await achatItemExists(
-      achatId: achatId,
-      itemId: itemId,
-      itemType: itemType,
-      colorId: colorId,
-    )) {
+    if (!allowDuplicateLine &&
+        await achatItemExists(
+          achatId: achatId,
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+        )) {
       return 0;
     }
 
@@ -8907,6 +9072,22 @@ class SqlDatabase {
     );
   }
 
+  Future<Set<int>> getColorIdsForProfile(int profileId) async {
+    final myDb = await db;
+    if (myDb == null) return <int>{};
+    await _ensureProfileColorsSyncIds(myDb);
+    final rows = await myDb.query(
+      'ProfileColors',
+      columns: const ['color_id'],
+      where: 'profile_id = ?',
+      whereArgs: [profileId],
+    );
+    return rows
+        .map((row) => (row['color_id'] as num?)?.toInt())
+        .whereType<int>()
+        .toSet();
+  }
+
   //////////////////////////////////// Accessories //////////////////////////////////////
   Future<List<Map<String, dynamic>>> readAccessories() async {
     Database? myDb = await db;
@@ -9530,6 +9711,12 @@ class SqlDatabase {
         'WorkerAllocations',
         {'worker_uid': newUid},
         where: 'worker_uid = ?',
+        whereArgs: [localUid],
+      );
+      await txn.update(
+        'WorkerAllocations',
+        {'installation_worker_uid': newUid},
+        where: 'installation_worker_uid = ?',
         whereArgs: [localUid],
       );
       await txn.update(
@@ -10882,12 +11069,59 @@ class SqlDatabase {
     Map<String, dynamic> imported,
     Map<String, Object?> local,
   ) {
-    if (table != 'Commandes_details') return;
-    for (final key in const ['drawing_image_base64', 'drawing_image_path']) {
-      final incoming = imported[key]?.toString() ?? '';
-      final existing = local[key]?.toString() ?? '';
-      if (incoming.isEmpty && existing.isNotEmpty) {
-        imported[key] = existing;
+    if (table == 'Commandes_details') {
+      for (final key in const ['drawing_image_base64', 'drawing_image_path']) {
+        final incoming = imported[key]?.toString() ?? '';
+        final existing = local[key]?.toString() ?? '';
+        if (incoming.isEmpty && existing.isNotEmpty) {
+          imported[key] = existing;
+        }
+      }
+      return;
+    }
+
+    if (table == 'WorkerAllocations') {
+      int asInt(Object? value) {
+        if (value is num) return value.toInt();
+        return int.tryParse(value?.toString() ?? '') ?? 0;
+      }
+
+      final localTransferred = asInt(local['is_transferred_to_dist']) == 1;
+      final incomingTransferred = asInt(imported['is_transferred_to_dist']) == 1;
+      if (!localTransferred || incomingTransferred) return;
+
+      final localMap = Map<String, dynamic>.from(local);
+      final localTime = _rowUpdateTime(localMap);
+      final incomingTime = _rowUpdateTime(imported);
+      final incomingIsNewer = localTime != null &&
+          incomingTime != null &&
+          incomingTime.isAfter(localTime);
+      if (incomingIsNewer) return;
+
+      for (final key in const [
+        'is_manufactured',
+        'manufactured_at',
+        'is_glass_installed',
+        'glass_installed_at',
+        'is_distributed',
+        'distributed_at',
+        'is_transferred_to_dist',
+        'transferred_at',
+        'is_installed',
+        'installed_at',
+        'installation_worker_uid',
+        'installation_assigned_at',
+        'is_completed',
+        'completed_at',
+        'has_reserve',
+        'reserve_notes',
+        'reserve_at',
+        'archive_locked',
+        'updated_at',
+      ]) {
+        if (local.containsKey(key)) {
+          imported[key] = local[key];
+        }
       }
     }
   }
@@ -11087,6 +11321,9 @@ class SqlDatabase {
       "ALTER TABLE WorkerAllocations ADD COLUMN is_transferred_to_dist INTEGER DEFAULT 0",
       "ALTER TABLE WorkerAllocations ADD COLUMN transferred_at TEXT",
       "ALTER TABLE WorkerAllocations ADD COLUMN archive_locked INTEGER DEFAULT 0",
+      "ALTER TABLE WorkerAllocations ADD COLUMN installation_worker_uid TEXT",
+      "ALTER TABLE WorkerAllocations ADD COLUMN installation_assigned_at TEXT",
+      "ALTER TABLE WorkerAllocations ADD COLUMN updated_at TEXT",
     ];
     for (final sql in alters) {
       try {

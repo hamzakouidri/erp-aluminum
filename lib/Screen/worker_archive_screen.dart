@@ -176,9 +176,15 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
       final q = _searchQuery.toLowerCase();
       final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
       final workerName = (t['worker_name'] ?? '').toString().toLowerCase();
+      final installationWorkerName =
+          (t['installation_worker_name'] ?? '').toString().toLowerCase();
       final wType = (t['window_type'] ?? '').toString().toLowerCase();
       final oId = (t['id_commandes'] ?? '').toString();
-      return clientName.contains(q) || workerName.contains(q) || wType.contains(q) || oId.contains(q);
+      return clientName.contains(q) ||
+          workerName.contains(q) ||
+          installationWorkerName.contains(q) ||
+          wType.contains(q) ||
+          oId.contains(q);
     }).toList();
 
     return Scaffold(
@@ -250,6 +256,8 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
   Widget _buildArchiveCard(Map<String, dynamic> t, bool isDark, AppLanguage lang) {
     final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.trim();
     final workerName = (t['worker_name'] ?? '').toString().trim();
+    final installationWorkerName =
+        (t['installation_worker_name'] ?? workerName).toString().trim();
     final windowType = t['window_type']?.toString() ?? 'Window';
     final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
     final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
@@ -333,6 +341,29 @@ class _WorkerArchiveScreenState extends State<WorkerArchiveScreen> {
                 Text(
                   workerName.isNotEmpty ? workerName : unassignedStr,
                   style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.construction_rounded, size: 16, color: Colors.teal),
+                const SizedBox(width: 6),
+                Text(
+                  _tr('عامل التركيب:', 'Poseur:', 'Installer:', lang),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  installationWorkerName.isNotEmpty
+                      ? installationWorkerName
+                      : unassignedStr,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
                 ),
               ],
             ),

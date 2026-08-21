@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import '../sql_database.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../Screen/client_ledger_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ShowClient extends StatefulWidget {
   final int clientId;
@@ -45,6 +48,115 @@ class _ShowClientState extends State<ShowClient> {
     } catch (_) {
       return date;
     }
+  }
+
+  bool get _canCallFromThisDevice =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  Future<void> _callPhoneNumber(String phone, AppLanguage lang) async {
+    final cleanPhone = phone.trim();
+    if (cleanPhone.isEmpty || !_canCallFromThisDevice) return;
+    final uri = Uri(scheme: 'tel', path: cleanPhone);
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localization.translate('تعذر فتح تطبيق الاتصال', lang),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate('تعذر فتح تطبيق الاتصال', lang),
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildPhoneNumbersRow(
+    List<String> phones,
+    AppLanguage lang,
+  ) {
+    if (!_canCallFromThisDevice) {
+      return _InfoRow(
+        icon: Icons.phone,
+        iconColor: Colors.green,
+        label: Localization.translate('Phone Numbers:', lang),
+        value: phones.join('  ·  '),
+      );
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.phone, color: Colors.green, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                Localization.translate('Phone Numbers:', lang),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: phones
+                    .map(
+                      (phone) => InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => _callPhoneNumber(phone, lang),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.green.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.call, size: 15, color: Colors.green),
+                              const SizedBox(width: 6),
+                              Text(
+                                phone,
+                                style: TextStyle(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   String _creationPlatformLabel(String source, AppLanguage lang) {
@@ -435,14 +547,12 @@ class _ShowClientState extends State<ShowClient> {
                   child: Column(
                     children: [
                       if (hasPhone1 || hasPhone2)
-                        _InfoRow(
-                          icon: Icons.phone,
-                          iconColor: Colors.green,
-                          label: Localization.translate('Phone Numbers:', lang),
-                          value: [
+                        _buildPhoneNumbersRow(
+                          [
                             if (hasPhone1) phone1,
                             if (hasPhone2) phone2,
-                          ].join('  ·  '),
+                          ],
+                          lang,
                         ),
                       if (hasEmail) ...[
                         const Divider(height: 16),

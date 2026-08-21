@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import 'glass_order_reception_screen.dart';
@@ -152,6 +153,195 @@ class _ExternalOperationsHubScreenState
       return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return isoStr;
+    }
+  }
+
+  String _workerAssignmentKey(Map<String, dynamic> worker) {
+    final uid = (worker['uid'] ?? '').toString().trim();
+    if (uid.isNotEmpty) return uid;
+    final id = (worker['id'] ?? '').toString().trim();
+    if (id.isNotEmpty) return id;
+    return (worker['email'] ?? '').toString().trim();
+  }
+
+  bool _isInstallationAssignedToCurrentUser(Map<String, dynamic> allocation) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    final uid = user.uid.trim().toLowerCase();
+    final email = (user.email ?? '').trim().toLowerCase();
+    final installUid = (allocation['installation_worker_uid'] ??
+            allocation['worker_uid'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (installUid.isEmpty) return false;
+    return (uid.isNotEmpty && installUid == uid) ||
+        (email.isNotEmpty && installUid == email);
+  }
+
+  void _showInstallationWorkerOnlyNotice(AppLanguage lang) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _tr(
+            '⚠️ التحكم في التركيب مخصص لعامل التركيب المسند له هذا العنصر',
+            '⚠️ Seul le poseur affecté peut modifier cette installation',
+            '⚠️ Only the assigned installer can update this installation',
+            lang,
+          ),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        backgroundColor: Colors.orange,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  Future<void> _showInstallationWorkerDialog(
+    Map<String, dynamic> allocation,
+    AppLanguage lang,
+  ) async {
+    final allocId = (allocation['id'] as num?)?.toInt() ?? 0;
+    if (allocId <= 0) return;
+
+    final workers = await widget.db.readEmployees();
+    if (!mounted) return;
+    if (workers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'لا يوجد عمال مسجلون لاختيار عامل التركيب',
+              'Aucun ouvrier enregistré pour la pose',
+              'No workers available for installation',
+              lang,
+            ),
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) {
+        final currentKey = (allocation['installation_worker_uid'] ??
+                allocation['worker_uid'] ??
+                '')
+            .toString()
+            .trim();
+        return AlertDialog(
+          title: Text(
+            _tr(
+              'تعديل إسناد التركيب',
+              'Modifier l\'ouvrier de pose',
+              'Edit installation worker',
+              lang,
+            ),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: 420,
+            height: 360,
+            child: ListView.separated(
+              itemCount: workers.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final worker = workers[index];
+                final key = _workerAssignmentKey(worker);
+                final name = (worker['name'] ?? key).toString();
+                final role = (worker['job_role'] ?? '').toString().trim();
+                final isSelected = key.isNotEmpty && key == currentKey;
+                return ListTile(
+                  leading: Icon(
+                    isSelected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    color: isSelected ? Colors.teal : null,
+                  ),
+                  title: Text(
+                    name,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: role.isEmpty
+                      ? null
+                      : Text(role, style: const TextStyle(fontFamily: 'Cairo')),
+                  onTap: key.isEmpty ? null : () => Navigator.pop(ctx, worker),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                _tr('إلغاء', 'Annuler', 'Cancel', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selected == null) return;
+    final workerKey = _workerAssignmentKey(selected);
+    if (workerKey.isEmpty) return;
+    final workerName = (selected['name'] ?? workerKey).toString();
+
+    _isLocalChangePending = true;
+    final nowIso = DateTime.now().toIso8601String();
+    setState(() {
+      for (final list in [_fieldInstallationAllocations, _reserveAllocations]) {
+        for (var i = 0; i < list.length; i++) {
+          if ((list[i]['id'] as num?)?.toInt() == allocId) {
+            final updated = Map<String, dynamic>.from(list[i]);
+            updated['installation_worker_uid'] = workerKey;
+            updated['installation_worker_name'] = workerName;
+            updated['installation_assigned_at'] = nowIso;
+            list[i] = updated;
+          }
+        }
+      }
+    });
+
+    try {
+      await widget.db.updateWorkerAllocationInstallationWorker(
+        allocId,
+        workerKey,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _tr(
+                'تم تغيير عامل التركيب بنجاح',
+                'Ouvrier de pose modifié avec succès',
+                'Installation worker updated successfully',
+                lang,
+              ),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.teal,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating installation worker: $e');
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 800));
+      _isLocalChangePending = false;
     }
   }
 
@@ -699,13 +889,21 @@ class _ExternalOperationsHubScreenState
   // TAB 3: التركيبات الميدانية (Site Installations - Window by Window)
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildInstallationsTab(AppLanguage lang, bool isDark) {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final canEditInstallationWorker = settings.isManager;
     final filtered = _fieldInstallationAllocations.where((t) {
       if (_searchQuery.isEmpty) return true;
       final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
       final workerName = (t['worker_name'] ?? '').toString().toLowerCase();
+      final installationWorkerName =
+          (t['installation_worker_name'] ?? '').toString().toLowerCase();
       final wType = (t['window_type'] ?? '').toString().toLowerCase();
       final oId = (t['id_commandes'] ?? '').toString();
-      return clientName.contains(_searchQuery) || workerName.contains(_searchQuery) || wType.contains(_searchQuery) || oId.contains(_searchQuery);
+      return clientName.contains(_searchQuery) ||
+          workerName.contains(_searchQuery) ||
+          installationWorkerName.contains(_searchQuery) ||
+          wType.contains(_searchQuery) ||
+          oId.contains(_searchQuery);
     }).toList();
 
     if (filtered.isEmpty) {
@@ -781,10 +979,16 @@ class _ExternalOperationsHubScreenState
                   final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
                   final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
                   final workerName = (t['worker_name'] ?? '').toString().trim();
+                  final installationWorkerName =
+                      (t['installation_worker_name'] ?? workerName)
+                          .toString()
+                          .trim();
 
                   final isDistributed = t['is_distributed'] == 1;
                   final isInstalled = t['is_installed'] == 1;
                   final isCompleted = t['is_completed'] == 1;
+                  final canControlInstallation =
+                      !settings.isManager && _isInstallationAssignedToCurrentUser(t);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -832,6 +1036,49 @@ class _ExternalOperationsHubScreenState
                                       style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blue),
                                     ),
                                   ],
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '🛠️ ${_tr("عامل التركيب:", "Poseur:", "Installer:", lang)} ${installationWorkerName.isNotEmpty ? installationWorkerName : _tr("غير محدد", "Non défini", "Not set", lang)}',
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                            fontSize: 11,
+                                            color: Colors.teal,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      if (canEditInstallationWorker)
+                                        Tooltip(
+                                          message: _tr(
+                                            'تعديل عامل التركيب',
+                                            'Modifier le poseur',
+                                            'Edit installer',
+                                            lang,
+                                          ),
+                                          child: IconButton(
+                                            visualDensity: VisualDensity.compact,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 32,
+                                              minHeight: 32,
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            icon: const Icon(
+                                              Icons.edit_location_alt_rounded,
+                                              color: Colors.teal,
+                                              size: 19,
+                                            ),
+                                            onPressed: () =>
+                                                _showInstallationWorkerDialog(
+                                              t,
+                                              lang,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                   
                                   // 🕒 إظهار تواريخ الإسناد والتوزيع والتركيب الميدانية
                                   Builder(builder: (ctx) {
@@ -874,17 +1121,8 @@ class _ExternalOperationsHubScreenState
                             // 1. زر تم التوزيع
                             ElevatedButton.icon(
                               onPressed: () async {
-                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
-                                if (isManager) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
-                                      backgroundColor: Colors.orange,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
+                                if (!canControlInstallation) {
+                                  _showInstallationWorkerOnlyNotice(lang);
                                   return;
                                 }
                                 _isLocalChangePending = true;
@@ -929,17 +1167,8 @@ class _ExternalOperationsHubScreenState
                             // 2. زر تم التركيب (يتطلب تم التوزيع أولاً)
                             ElevatedButton.icon(
                               onPressed: () async {
-                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
-                                if (isManager) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
-                                      backgroundColor: Colors.orange,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
+                                if (!canControlInstallation) {
+                                  _showInstallationWorkerOnlyNotice(lang);
                                   return;
                                 }
 
@@ -1006,17 +1235,8 @@ class _ExternalOperationsHubScreenState
                             // 3. زر تم الانتهاء (يتطلب تم التركيب أولاً ورصد خلو العناصر من أي تحفظ)
                             ElevatedButton.icon(
                               onPressed: () async {
-                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
-                                if (isManager) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
-                                      backgroundColor: Colors.orange,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
+                                if (!canControlInstallation) {
+                                  _showInstallationWorkerOnlyNotice(lang);
                                   return;
                                 }
 
@@ -1134,17 +1354,8 @@ class _ExternalOperationsHubScreenState
                             // 4. زر تحفظ (Réserve) - يتطلب تم التوزيع أولاً
                             ElevatedButton.icon(
                               onPressed: () async {
-                                final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
-                                if (isManager) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text('⚠️ هذه الأزرار للعرض والمتابعة فقط للمدير! التحكم والتأكيد مخصص للعامل الفعلي 👁️', style: TextStyle(fontFamily: 'Cairo')),
-                                      backgroundColor: Colors.orange,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
+                                if (!canControlInstallation) {
+                                  _showInstallationWorkerOnlyNotice(lang);
                                   return;
                                 }
 

@@ -91,6 +91,7 @@ class DevisData {
   final double totalTTC;
   final double amountPaid;
   final String amountInWords;
+  final String invoiceNote;
   final bool isPartial;
   final bool hidePrices;
   final bool isProForma;
@@ -128,6 +129,7 @@ class DevisData {
     required this.totalTTC,
     required this.amountPaid,
     required this.amountInWords,
+    this.invoiceNote = '',
     this.isPartial = false,
     this.hidePrices = false,
     this.isProForma = false,
@@ -282,6 +284,7 @@ class DevisBuilder {
     final tvaAmount = (totalBeforeTax * tvaPercent) / 100;
     final totalTTC = totalBeforeTax + tvaAmount;
     final amountPaid = _toDouble(order['advance_payment']);
+    final invoiceNote = _readInvoiceNote(order);
 
     var firstName = order['firstname']?.toString() ?? '';
     var lastName = order['lastname']?.toString() ?? '';
@@ -370,6 +373,7 @@ class DevisBuilder {
       totalTTC: totalTTC,
       amountPaid: amountPaid,
       amountInWords: amountToFrenchWords(totalTTC),
+      invoiceNote: invoiceNote,
       isPartial: isPartial,
       hidePrices: hidePrices,
       isProForma: isProForma,
@@ -386,6 +390,24 @@ class DevisBuilder {
       rawOrder: order,
       rawItems: items,
     );
+  }
+
+  static String _readInvoiceNote(Map<String, dynamic> order) {
+    const keys = [
+      'invoice_note',
+      'invoiceNote',
+      'note',
+      'notes',
+      'remark',
+      'remarks',
+      'observation',
+      'description',
+    ];
+    for (final key in keys) {
+      final value = order[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   static DevisLineItem buildLineItemFromDetail(

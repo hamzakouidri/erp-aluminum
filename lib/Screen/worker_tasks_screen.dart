@@ -23,6 +23,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   bool _isLoading = false;
   List<Map<String, dynamic>> _allTasks = [];
   List<Map<String, dynamic>> _visibleTasks = [];
+  String _selectedScopeFilter = 'all'; // 'all', 'mine'
   String _selectedFilter = 'all'; // 'all', 'pending', 'manufactured', 'glass'
   StreamSubscription? _syncSub;
   final TextEditingController _searchController = TextEditingController();
@@ -148,8 +149,59 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     }
   }
 
+  bool _isTaskAssignedToCurrentUser(Map<String, dynamic> task) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUid = (currentUser?.uid ?? '').trim().toLowerCase();
+    final currentEmail = (currentUser?.email ?? '').trim().toLowerCase();
+
+    final taskWorkerUid = (task['worker_uid'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final taskWorkerEmail = (task['worker_email'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final taskWorkerName = (task['worker_name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    if (currentUid.isNotEmpty &&
+        taskWorkerUid.isNotEmpty &&
+        taskWorkerUid == currentUid) {
+      return true;
+    }
+    if (currentEmail.isNotEmpty &&
+        ((taskWorkerUid.isNotEmpty && taskWorkerUid == currentEmail) ||
+            (taskWorkerEmail.isNotEmpty && taskWorkerEmail == currentEmail))) {
+      return true;
+    }
+
+    final emp = _currentEmpInfo;
+    if (emp == null) return false;
+    final empUid = (emp['uid'] ?? '').toString().trim().toLowerCase();
+    final empEmail = (emp['email'] ?? '').toString().trim().toLowerCase();
+    final empId = (emp['id'] ?? '').toString().trim().toLowerCase();
+    final empName = (emp['name'] ?? '').toString().trim().toLowerCase();
+
+    return (empUid.isNotEmpty && taskWorkerUid == empUid) ||
+        (empEmail.isNotEmpty &&
+            (taskWorkerUid == empEmail || taskWorkerEmail == empEmail)) ||
+        (empId.isNotEmpty && taskWorkerUid == empId) ||
+        (empName.isNotEmpty &&
+            taskWorkerName.isNotEmpty &&
+            taskWorkerName == empName);
+  }
+
   void _applyFilters() {
     List<Map<String, dynamic>> tasks = _allTasks;
+
+    // First, filter by ownership/scope. This lets a co-manager who is also
+    // a worker switch between the whole workshop view and only his own tasks.
+    if (_selectedScopeFilter == 'mine') {
+      tasks = tasks.where(_isTaskAssignedToCurrentUser).toList();
+    }
 
     // First, filter by status
     if (_selectedFilter == 'pending') {
@@ -506,6 +558,24 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  _scopeFilterButton(
+                    'mine',
+                    lang == AppLanguage.arabic ? 'مهامي فقط' : 'Mes tâches',
+                    Icons.person_pin_circle_rounded,
+                  ),
+                  const SizedBox(width: 8),
+                  _scopeFilterButton(
+                    'all',
+                    lang == AppLanguage.arabic ? 'كل الإسنادات' : 'Toutes',
+                    Icons.groups_2_rounded,
+                  ),
+                  const SizedBox(width: 14),
+                  Container(
+                    width: 1,
+                    height: 28,
+                    color: isDark ? Colors.white12 : Colors.black12,
+                  ),
+                  const SizedBox(width: 14),
                   _filterButton('all', lang == AppLanguage.arabic ? 'الكل' : 'Tout', Icons.list),
                   const SizedBox(width: 8),
                   _filterButton('pending', lang == AppLanguage.arabic ? 'قيد التصنيع' : 'En fabrication', Icons.hourglass_empty_rounded),
@@ -618,6 +688,51 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                       ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _scopeFilterButton(String scope, String label, IconData icon) {
+    final isSelected = _selectedScopeFilter == scope;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isSelected
+        ? const Color(0xFF0F766E)
+        : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9));
+    final fg = isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87);
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedScopeFilter = scope;
+          _applyFilters();
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF0F766E)
+                : (isDark ? Colors.grey[800]! : Colors.grey[300]!),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: fg,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -899,49 +1014,15 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
             // ── فحص صلاحية التحكم بهذه المهمة ────────────────────────────
             Builder(
               builder: (ctx) {
-                final currentUser = FirebaseAuth.instance.currentUser;
-                final currentUid = (currentUser?.uid ?? '').trim().toLowerCase();
-                final currentEmail = (currentUser?.email ?? '').trim().toLowerCase();
-
                 // هل هذا حساب مدير أصول أو نائب مدير بصلاحيات كاملة؟
                 final bool isRealManager = settings.isManager;
+                final bool isMyAssignedTask = _isTaskAssignedToCurrentUser(t);
 
-                final taskWorkerUid = (t['worker_uid'] ?? '').toString().trim().toLowerCase();
-                final taskWorkerEmail = (t['worker_email'] ?? '').toString().trim().toLowerCase();
-                final taskWorkerName = (t['worker_name'] ?? '').toString().trim().toLowerCase();
+                // أزرار التنفيذ تخص العامل المسند له. صلاحيات المدير لا تلغي
+                // كونه عاملًا إذا كانت هذه المهمة مسندة له شخصيًا.
+                final bool canClickManufactured = isMyAssignedTask;
 
-                // فحص مؤكد ومطلق: هل هذه النافذة مسندة لهذا العامل شخصياً؟
-                bool isMyAssignedTask = false;
-
-                if (currentUid.isNotEmpty && taskWorkerUid.isNotEmpty && taskWorkerUid == currentUid) {
-                  isMyAssignedTask = true;
-                } else if (currentEmail.isNotEmpty && (
-                  (taskWorkerUid.isNotEmpty && taskWorkerUid == currentEmail) ||
-                  (taskWorkerEmail.isNotEmpty && taskWorkerEmail == currentEmail)
-                )) {
-                  isMyAssignedTask = true;
-                } else if (_currentEmpInfo != null) {
-                  final empUid = (_currentEmpInfo!['uid'] ?? '').toString().trim().toLowerCase();
-                  final empEmail = (_currentEmpInfo!['email'] ?? '').toString().trim().toLowerCase();
-                  final empId = (_currentEmpInfo!['id'] ?? '').toString().trim().toLowerCase();
-                  final empName = (_currentEmpInfo!['name'] ?? '').toString().trim().toLowerCase();
-
-                  if (empUid.isNotEmpty && taskWorkerUid == empUid) {
-                    isMyAssignedTask = true;
-                  } else if (empEmail.isNotEmpty && (taskWorkerUid == empEmail || taskWorkerEmail == empEmail)) {
-                    isMyAssignedTask = true;
-                  } else if (empId.isNotEmpty && taskWorkerUid == empId) {
-                    isMyAssignedTask = true;
-                  } else if (empName.isNotEmpty && taskWorkerName.isNotEmpty && taskWorkerName == empName) {
-                    isMyAssignedTask = true;
-                  }
-                }
-
-                // 1️⃣ زر "تم الصنع" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
-                final bool canClickManufactured = !isRealManager && isMyAssignedTask;
-
-                // 2️⃣ زر "تم تركيب الزجاج" — للعامل المسند له فقط (المدير لا يمكنه الضغط عليه)
-                final bool canClickGlass = !isRealManager && isMyAssignedTask;
+                final bool canClickGlass = isMyAssignedTask;
 
                 // 3️⃣ زر "تحويل للتوزيع والأرشيف" — متاح إذا تم الانتهاء، سواء للعامل أو أي مدير/نائب
                 final bool isBothCompleted = isManufactured && isGlassInstalled;
@@ -970,7 +1051,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                   }
                                 : (!isRealManager && !isMyAssignedTask)
                                     ? () => _showOtherWorkerTaskNotice(context, lang)
-                                    : null, // 🚫 معطّل للمدير
+                                    : null,
                             icon: Icon(
                               isManufactured ? Icons.check_circle_rounded : Icons.build_circle_outlined,
                               size: 18,
@@ -1025,7 +1106,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                   }
                                 : (!isRealManager && !isMyAssignedTask)
                                     ? () => _showOtherWorkerTaskNotice(context, lang)
-                                    : null, // 🚫 معطّل للمدير
+                                    : null,
                             icon: Icon(
                               isGlassInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
                               size: 20,
@@ -1074,7 +1155,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                               }
                             : (!isRealManager && !isMyAssignedTask)
                                 ? () => _showOtherWorkerTaskNotice(context, lang)
-                                : (!settings.isManager && isMyAssignedTask && !isBothCompleted)
+                                : (isMyAssignedTask && !isBothCompleted)
                                     ? () {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
