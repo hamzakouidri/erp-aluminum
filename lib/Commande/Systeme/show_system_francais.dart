@@ -434,6 +434,82 @@ class _WindowViewState extends State<WindowView> {
     });
   }
 
+  Future<bool?> _askSlidingRebateCut(WindowZone zone) async {
+    if (!widget.model.shouldAskSlidingRebateCut(zone)) return null;
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) =>
+          AlertDialog(
+            title: const Text('ركوب الزجاج للمنزلق'),
+            content: const Text(
+              'هذا المنزلق داخل إطار واحد مقسم. هل سيتم قطع وحساب ركوب الزجاج حول منطقة المنزلق؟',
+              textDirection: TextDirection.rtl,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('لا'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('نعم'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showSlidingUnsupportedSnack() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'نظام المنزلق لا يدعم الشكل المائل والمقوس',
+          textDirection: TextDirection.rtl,
+        ),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _setSelectedZoneSlidingSashesFromUi(int count) async {
+    final zone = widget.model.selectedZone;
+    if (zone == null) return;
+    if (widget.model.hasArchOrSlant) {
+      _showSlidingUnsupportedSnack();
+      return;
+    }
+    final cutRebate = await _askSlidingRebateCut(zone);
+    if (!mounted) return;
+    setState(() {
+      widget.model.setSelectedZoneSlidingSashes(
+        count,
+        cutSlidingGlassRebate: cutRebate,
+      );
+    });
+  }
+
+  Future<bool> _paintZoneContentFromUi(WindowZone zone,
+      ZoneContent content, {
+        int? slidingSashesCount,
+      }) async {
+    bool? cutRebate;
+    if (content == ZoneContent.slidingSash) {
+      if (widget.model.hasArchOrSlant) {
+        _showSlidingUnsupportedSnack();
+        return false;
+      }
+      cutRebate = await _askSlidingRebateCut(zone);
+      if (!mounted) return false;
+    }
+    widget.model.paintZoneContent(
+      zone.id,
+      content,
+      slidingSashesCount: slidingSashesCount,
+      cutSlidingGlassRebate: cutRebate,
+    );
+    return true;
+  }
+
   double _catalogNumber(Map<String, dynamic> row, String key) {
     final value = row[key];
     return value is num
@@ -1534,6 +1610,34 @@ class _WindowViewState extends State<WindowView> {
     setState(() {});
   }
 
+  void _activateShutterFromDesign() {
+    final lang = Provider
+        .of<AppSettingsProvider>(
+      context,
+      listen: false,
+    )
+        .language;
+    setState(() {
+      widget.model.prepareShutterOnlyDrawing();
+      _isShutterSelected = true;
+      _isBottomPanelExpanded = true;
+      _activeShutterTab = 0;
+    });
+
+    if (_shutterLamesOptions.isEmpty && _shutterCoulisseOptions.isEmpty) {
+      _loadShutterOptions();
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          Localization.translate('ارسم مستطيل الستار على اللوحة', lang),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   List<Widget> _buildWindowsAppBarDrawingControls(BuildContext context) {
     final lang = Provider
         .of<AppSettingsProvider>(context)
@@ -1587,6 +1691,25 @@ class _WindowViewState extends State<WindowView> {
               ? Localization.translate('وضع الرسم', lang)
               : Localization.translate('وضع التحريك', lang),
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+      ),
+      TextButton.icon(
+        style: buttonStyle,
+        onPressed: _activateShutterFromDesign,
+        icon: Icon(
+          widget.model.hasShutter
+              ? Icons.layers_rounded
+              : Icons.add_box_rounded,
+          size: 18,
+          color: widget.model.hasShutter ? Colors.orange.shade700 : null,
+        ),
+        label: Text(
+          Localization.translate('ستار', lang),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: widget.model.hasShutter ? Colors.orange.shade700 : null,
+          ),
         ),
       ),
       iconButton(
@@ -1665,8 +1788,9 @@ class _WindowViewState extends State<WindowView> {
                                   final double scW =
                                       widget.model.sideCoverWidth;
                                   double offsetDistTop = 60.0;
-                                  if (widget.model.hasShutter)
+                                  if (widget.model.hasShutter) {
                                     offsetDistTop += 20.0;
+                                  }
                                   if (widget.model.hasSideCovers &&
                                       !widget.model.removedShutterSides
                                           .contains('top')) {
@@ -1833,16 +1957,19 @@ class _WindowViewState extends State<WindowView> {
                                       }
                                     }
                                     if (tappedZ != null) {
-                                      widget.model.paintZoneContent(
-                                        tappedZ.id,
+                                      final applied =
+                                      await _paintZoneContentFromUi(
+                                        tappedZ,
                                         _activePaintZoneContent!,
                                         slidingSashesCount:
                                         _activePaintSlidingSashesCount,
                                       );
-                                      setState(() {
-                                        _paintbrushSecondsLeft = 10;
-                                      });
-                                      return;
+                                      if (applied) {
+                                        setState(() {
+                                          _paintbrushSecondsLeft = 10;
+                                        });
+                                        return;
+                                      }
                                     }
                                   }
                                   final specToApply =
@@ -2202,13 +2329,14 @@ class _WindowViewState extends State<WindowView> {
                                       }
                                     }
                                     if (tappedZ != null) {
-                                      widget.model.paintZoneContent(
-                                        tappedZ.id,
+                                      final applied =
+                                      await _paintZoneContentFromUi(
+                                        tappedZ,
                                         _activePaintZoneContent!,
                                         slidingSashesCount:
                                         _activePaintSlidingSashesCount,
                                       );
-                                      return;
+                                      if (applied) return;
                                     }
                                   } else if (_activePaintCellSash) {
                                     WindowZone? tappedZ;
@@ -4987,10 +5115,12 @@ class _WindowViewState extends State<WindowView> {
                                                 spec.finishInner,
                                                 spec.colorInner,
                                               );
-                                      if (defaultThickOuter == 0.0)
+                                      if (defaultThickOuter == 0.0) {
                                         defaultThickOuter = 5.0;
-                                      if (defaultThickInner == 0.0)
+                                      }
+                                      if (defaultThickInner == 0.0) {
                                         defaultThickInner = 5.0;
+                                      }
                                     } else if (s == GlassStructure.simple) {
                                       defaultThickOuter =
                                           spec.thicknessOuter ??
@@ -4999,8 +5129,9 @@ class _WindowViewState extends State<WindowView> {
                                                 spec.finishOuter,
                                                 spec.colorOuter,
                                               );
-                                      if (defaultThickOuter == 0.0)
+                                      if (defaultThickOuter == 0.0) {
                                         defaultThickOuter = 5.0;
+                                      }
                                     }
 
                                     final newSpec = fitDoubleGlassToParclose(
@@ -5086,27 +5217,33 @@ class _WindowViewState extends State<WindowView> {
                       final s = sub.toLowerCase();
                       if (s.contains('resine') ||
                           s.contains('ارزين') ||
-                          s.contains('أرزين'))
+                          s.contains('أرزين')) {
                         return 'ارزين';
+                      }
                       if (s.contains('plexi')) return 'بليكسي';
-                      if (s.contains('decore') || s.contains('ديكور'))
+                      if (s.contains('decore') || s.contains('ديكور')) {
                         return 'بانو ديكور';
+                      }
                       if (s.contains('sandwitch') ||
                           s.contains('sandwich') ||
                           s == 'panneau' ||
-                          s == 'بانو')
+                          s == 'بانو') {
                         return 'بانو';
-                      if (s.contains('aluco') || s.contains('الوكو'))
+                      }
+                      if (s.contains('aluco') || s.contains('الوكو')) {
                         return 'الوكو';
-                      if (s.contains('bardage') || s.contains('بارداش'))
+                      }
+                      if (s.contains('bardage') || s.contains('بارداش')) {
                         return 'بارداش';
+                      }
                       return sub;
                     }
 
                     IconData getSubtypeIcon(String sub) {
                       final s = sub.toLowerCase();
-                      if (s.contains('bardage'))
+                      if (s.contains('bardage')) {
                         return Icons.view_stream_rounded;
+                      }
                       return Icons.blur_on_rounded;
                     }
 
@@ -6954,7 +7091,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                 ),
                 value: widget.model.showWall,
-                activeColor: Colors.blue,
+                activeThumbColor: Colors.blue,
                 onChanged: (value) => widget.model.toggleShowWall(value),
               ),
               if (widget.model.showWall) ...[
@@ -8204,6 +8341,159 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  List<Map<String, dynamic>> _availableMullionFrameSections() {
+    final frames = <Map<String, dynamic>>[];
+    final seenIds = <String>{};
+
+    double readDimension(Map<String, dynamic> raw, String key) {
+      final value = raw[key];
+      return value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    void addFrame(Map<String, dynamic> raw) {
+      final code = (raw['code'] ?? '').toString().trim();
+      final name = (raw['name'] ?? '').toString().trim();
+      final type = (raw['type'] ?? '').toString().toLowerCase();
+      final isFrameFlag =
+          raw['is_frame'] == 1 ||
+              raw['isFrame'] == true ||
+              raw['is_frame']?.toString() == '1';
+      final isFrame =
+          isFrameFlag ||
+              type == 'frame' ||
+              type == 'cadre' ||
+              type == 'dormant' ||
+              type == 'إطار';
+      if (!isFrame) return;
+      final coverWidth = readDimension(raw, 'couvre_joint_width');
+      final hasIntegratedCover =
+          coverWidth > 0.5 ||
+              name.toLowerCase().contains('مدمج') ||
+              name.toLowerCase().contains('intégré') ||
+              name.toLowerCase().contains('integre') ||
+              name.toLowerCase().contains('monobloc') ||
+              type.contains('monobloc');
+      if (hasIntegratedCover) return;
+      final idKey = (raw['id'] ?? '$code:$name').toString();
+      if (!seenIds.add(idKey)) return;
+      frames.add(Map<String, dynamic>.from(raw));
+    }
+
+    for (final frame in _frameProfiles) {
+      addFrame(frame);
+    }
+
+    final series = widget.model.activeFrameSeries;
+    if (series != null) {
+      for (final section in series.sections) {
+        addFrame(section.toMap());
+      }
+    }
+
+    frames.sort((a, b) {
+      final aCode = (a['code'] ?? '').toString();
+      final bCode = (b['code'] ?? '').toString();
+      return aCode.compareTo(bCode);
+    });
+    return frames;
+  }
+
+  bool _selectedMullionFrameMatches(Map<String, dynamic> frame,
+      MullionProfileType type,) {
+    final selection = widget.model.selection;
+    if (selection.type != SelectionType.mullion ||
+        selection.isHorizontalMullion == null ||
+        selection.mullionPosition == null) {
+      return false;
+    }
+    final key =
+        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection
+        .mullionPosition!.toStringAsFixed(1)}';
+    final currentType =
+        widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
+    final current = widget.model.mullionSectionOverrides[key];
+    if (currentType != type || current == null) return false;
+    return current['id']?.toString() == frame['id']?.toString();
+  }
+
+  Future<void> _applyMullionFrameSection(MullionProfileType type,
+      Map<String, dynamic> frame,) async {
+    final mutable = Map<String, dynamic>.from(frame);
+    var price = 0.0;
+    final colorId = widget.model.selectedDbColor?['id'];
+    final frameId = mutable['id'];
+    if (colorId != null && frameId != null) {
+      final db = SqlDatabase();
+      price = await db.getSectionPrice(frameId, colorId);
+    }
+    mutable['calculated_price'] = price;
+    if (!mounted) return;
+    setState(() {
+      widget.model.setMullionFrameSection(type, mutable);
+    });
+  }
+
+  Future<void> _showMullionFrameSelectorDialog(BuildContext context,
+      MullionProfileType type,) async {
+    final frames = _availableMullionFrameSections();
+    final title = type == MullionProfileType.flat
+        ? 'Cadre doublé - اختر إطار التقسيم'
+        : 'Cadre مفرد / 140 - اختر إطار التقسيم';
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) =>
+          SimpleDialog(
+            title: Text(title),
+            children: [
+              if (frames.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'لا توجد إطارات متوفرة لهذه السلسلة',
+                    textDirection: TextDirection.rtl,
+                  ),
+                )
+              else
+                ...frames.map((frame) {
+                  final code = (frame['code'] ?? '').toString();
+                  final name = (frame['name'] ?? 'بدون اسم').toString();
+                  final label = code.isEmpty ? name : '$code - $name';
+                  final selected = _selectedMullionFrameMatches(frame, type);
+                  return SimpleDialogOption(
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      await _applyMullionFrameSection(type, frame);
+                    },
+                    child: Row(
+                      children: [
+                        SectionImageWidget(
+                          code: code,
+                          imagePath: frame['image_path']?.toString(),
+                          size: 28,
+                          fallbackIcon: type == MullionProfileType.flat
+                              ? Icons.splitscreen_rounded
+                              : Icons.view_headline_rounded,
+                          fallbackColor: selected
+                              ? Colors.blue.shade700
+                              : Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(label)),
+                        if (selected)
+                          Icon(
+                              Icons.check_circle, color: Colors.green.shade700),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+    );
+  }
+
   Future<void> _showMullionTypeDialog(BuildContext context) async {
     final selection = widget.model.selection;
     if (selection.type != SelectionType.mullion ||
@@ -8223,8 +8513,12 @@ class _WindowViewState extends State<WindowView> {
         IconData icon,) {
       return SimpleDialogOption(
         onPressed: () {
-          widget.model.setMullionProfile(type);
           Navigator.pop(context);
+          if (type == MullionProfileType.standard) {
+            widget.model.setMullionProfile(type);
+          } else {
+            unawaited(_showMullionFrameSelectorDialog(context, type));
+          }
         },
         child: Row(
           children: [
@@ -8236,6 +8530,8 @@ class _WindowViewState extends State<WindowView> {
             ),
             const SizedBox(width: 12),
             Expanded(child: Text(label)),
+            if (type != MullionProfileType.standard)
+              const Icon(Icons.chevron_right_rounded, color: Colors.blueGrey),
             if (type == currentType)
               Icon(Icons.check_circle, color: Colors.green.shade700),
           ],
@@ -8292,6 +8588,40 @@ class _WindowViewState extends State<WindowView> {
         .model.selection.mullionPosition!.toStringAsFixed(1)}";
     MullionProfileType currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
+    Widget toolbarButton({
+      required String label,
+      required IconData icon,
+      required bool selected,
+      required VoidCallback onPressed,
+      bool showSubmenuIndicator = false,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: BorderSide(
+              color: selected ? Colors.white : Colors.white38,
+              width: selected ? 1.6 : 1.0,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          ),
+          icon: Icon(icon, size: 16),
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12)),
+              if (showSubmenuIndicator) ...[
+                const SizedBox(width: 3),
+                const Icon(Icons.chevron_right_rounded, size: 15),
+              ],
+            ],
+          ),
+          onPressed: onPressed,
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: Colors.blue.shade900.withValues(alpha: 0.8),
@@ -8303,39 +8633,77 @@ class _WindowViewState extends State<WindowView> {
             'العمود محدد',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          const Spacer(),
-          DropdownButton<MullionProfileType>(
-            dropdownColor: Colors.blue.shade800,
-            value: currentType,
-            style: const TextStyle(color: Colors.white, fontSize: 13),
-            underline: Container(height: 1, color: Colors.white38),
-            icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-            items: const [
-              DropdownMenuItem(
-                value: MullionProfileType.standard,
-                child: Text('Traverse'),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  toolbarButton(
+                    label: 'Traverse',
+                    icon: Icons.horizontal_rule_rounded,
+                    selected: currentType == MullionProfileType.standard,
+                    onPressed: () =>
+                        widget.model.setMullionProfile(
+                          MullionProfileType.standard,
+                        ),
+                  ),
+                  toolbarButton(
+                    label: 'Cadre doublé',
+                    icon: Icons.splitscreen_rounded,
+                    selected: currentType == MullionProfileType.flat,
+                    showSubmenuIndicator: true,
+                    onPressed: () =>
+                        _showMullionFrameSelectorDialog(
+                          context,
+                          MullionProfileType.flat,
+                        ),
+                  ),
+                  toolbarButton(
+                    label: 'Cadre 140',
+                    icon: Icons.view_headline_rounded,
+                    selected: currentType == MullionProfileType.grooved,
+                    showSubmenuIndicator: true,
+                    onPressed: () =>
+                        _showMullionFrameSelectorDialog(
+                          context,
+                          MullionProfileType.grooved,
+                        ),
+                  ),
+                  if (currentType == MullionProfileType.grooved)
+                    toolbarButton(
+                      label: 'قلب الجهة',
+                      icon: Icons.swap_horiz_rounded,
+                      selected: widget.model
+                          .isGroovedMullionCavityOnPositiveSide(
+                        widget.model.selection.isHorizontalMullion!,
+                        widget.model.selection.mullionPosition!,
+                      ),
+                      onPressed: () =>
+                          widget.model.toggleGroovedMullionCavity(
+                            widget.model.selection.isHorizontalMullion!,
+                            widget.model.selection.mullionPosition!,
+                          ),
+                    ),
+                  const SizedBox(width: 15),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                    ),
+                    icon: const Icon(
+                      Icons.delete_sweep,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    label: const Text(
+                      'حذف',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onPressed: () => widget.model.deleteSelectedMullion(),
+                  ),
+                ],
               ),
-              DropdownMenuItem(
-                value: MullionProfileType.flat,
-                child: Text('Cadre doublé'),
-              ),
-              DropdownMenuItem(
-                value: MullionProfileType.grooved,
-                child: Text('Cadre 140'),
-              ),
-            ],
-            onChanged: (val) {
-              if (val != null) widget.model.setMullionProfile(val);
-            },
-          ),
-          const SizedBox(width: 15),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
             ),
-            icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
-            label: const Text('حذف', style: TextStyle(color: Colors.white)),
-            onPressed: () => widget.model.deleteSelectedMullion(),
           ),
         ],
       ),
@@ -9079,6 +9447,43 @@ class _WindowViewState extends State<WindowView> {
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: _activateShutterFromDesign,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: widget.model.hasShutter
+                      ? Colors.orange.shade600
+                      : Colors.blueGrey,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.model.hasShutter
+                          ? Icons.layers_rounded
+                          : Icons.add_box_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      Localization.translate('ستار', lang),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -9872,7 +10277,7 @@ class _WindowViewState extends State<WindowView> {
                         selected:
                         zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 2,
-                        onPressed: () {
+                        onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -9884,7 +10289,7 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             );
                           } else {
-                            widget.model.setSelectedZoneSlidingSashes(2);
+                            await _setSelectedZoneSlidingSashesFromUi(2);
                           }
                         },
                       ),
@@ -9901,7 +10306,7 @@ class _WindowViewState extends State<WindowView> {
                           selected:
                           zone.content == ZoneContent.slidingSash &&
                               zone.slidingSashesCount == 3,
-                          onPressed: () {
+                          onPressed: () async {
                             if (widget.model.hasArchOrSlant) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -9913,7 +10318,7 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               );
                             } else {
-                              widget.model.setSelectedZoneSlidingSashes(3);
+                              await _setSelectedZoneSlidingSashesFromUi(3);
                             }
                           },
                         ),
@@ -9927,7 +10332,7 @@ class _WindowViewState extends State<WindowView> {
                           selected:
                           zone.content == ZoneContent.slidingSash &&
                               zone.slidingSashesCount == 4,
-                          onPressed: () {
+                          onPressed: () async {
                             if (widget.model.hasArchOrSlant) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -9939,7 +10344,7 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               );
                             } else {
-                              widget.model.setSelectedZoneSlidingSashes(4);
+                              await _setSelectedZoneSlidingSashesFromUi(4);
                             }
                           },
                         ),
@@ -9953,7 +10358,7 @@ class _WindowViewState extends State<WindowView> {
                       selected:
                       zone.content == ZoneContent.slidingSash &&
                           zone.slidingSashesCount == 2,
-                      onPressed: () {
+                      onPressed: () async {
                         if (widget.model.hasArchOrSlant) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -9965,7 +10370,7 @@ class _WindowViewState extends State<WindowView> {
                             ),
                           );
                         } else {
-                          widget.model.setSelectedZoneSlidingSashes(2);
+                          await _setSelectedZoneSlidingSashesFromUi(2);
                         }
                       },
                     ),
@@ -9982,7 +10387,7 @@ class _WindowViewState extends State<WindowView> {
                         selected:
                         zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 3,
-                        onPressed: () {
+                        onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -9994,7 +10399,7 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             );
                           } else {
-                            widget.model.setSelectedZoneSlidingSashes(3);
+                            await _setSelectedZoneSlidingSashesFromUi(3);
                           }
                         },
                       ),
@@ -10008,7 +10413,7 @@ class _WindowViewState extends State<WindowView> {
                         selected:
                         zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 4,
-                        onPressed: () {
+                        onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -10020,7 +10425,7 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             );
                           } else {
-                            widget.model.setSelectedZoneSlidingSashes(4);
+                            await _setSelectedZoneSlidingSashesFromUi(4);
                           }
                         },
                       ),
@@ -10448,7 +10853,8 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
 
     // ── إذا تم تحديد الستار → اعرض لوحة الستار ──
-    if (_isShutterSelected && widget.model.hasShutter) {
+    if (_isShutterSelected &&
+        (widget.model.hasShutter || widget.model.drawNextShapeAsShutterOnly)) {
       return _buildShutterBottomPanel(context);
     }
 
@@ -11380,7 +11786,7 @@ class _WindowViewState extends State<WindowView> {
                 selected:
                 zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 2,
-                onPressed: () {
+                onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -11395,7 +11801,7 @@ class _WindowViewState extends State<WindowView> {
                       ),
                     );
                   } else {
-                    widget.model.setSelectedZoneSlidingSashes(2);
+                    await _setSelectedZoneSlidingSashesFromUi(2);
                   }
                 },
               ),
@@ -11415,7 +11821,7 @@ class _WindowViewState extends State<WindowView> {
                   selected:
                   zone.content == ZoneContent.slidingSash &&
                       zone.slidingSashesCount == 3,
-                  onPressed: () {
+                  onPressed: () async {
                     if (widget.model.hasArchOrSlant) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -11430,7 +11836,7 @@ class _WindowViewState extends State<WindowView> {
                         ),
                       );
                     } else {
-                      widget.model.setSelectedZoneSlidingSashes(3);
+                      await _setSelectedZoneSlidingSashesFromUi(3);
                     }
                   },
                 ),
@@ -11447,7 +11853,7 @@ class _WindowViewState extends State<WindowView> {
                   selected:
                   zone.content == ZoneContent.slidingSash &&
                       zone.slidingSashesCount == 4,
-                  onPressed: () {
+                  onPressed: () async {
                     if (widget.model.hasArchOrSlant) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -11462,7 +11868,7 @@ class _WindowViewState extends State<WindowView> {
                         ),
                       );
                     } else {
-                      widget.model.setSelectedZoneSlidingSashes(4);
+                      await _setSelectedZoneSlidingSashesFromUi(4);
                     }
                   },
                 ),
@@ -11477,7 +11883,7 @@ class _WindowViewState extends State<WindowView> {
               selected:
               zone.content == ZoneContent.slidingSash &&
                   zone.slidingSashesCount == 2,
-              onPressed: () {
+              onPressed: () async {
                 if (widget.model.hasArchOrSlant) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -11489,7 +11895,7 @@ class _WindowViewState extends State<WindowView> {
                     ),
                   );
                 } else {
-                  widget.model.setSelectedZoneSlidingSashes(2);
+                  await _setSelectedZoneSlidingSashesFromUi(2);
                 }
               },
             ),
@@ -11509,7 +11915,7 @@ class _WindowViewState extends State<WindowView> {
                 selected:
                 zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 3,
-                onPressed: () {
+                onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -11521,7 +11927,7 @@ class _WindowViewState extends State<WindowView> {
                       ),
                     );
                   } else {
-                    widget.model.setSelectedZoneSlidingSashes(3);
+                    await _setSelectedZoneSlidingSashesFromUi(3);
                   }
                 },
               ),
@@ -11538,7 +11944,7 @@ class _WindowViewState extends State<WindowView> {
                 selected:
                 zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 4,
-                onPressed: () {
+                onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -11550,7 +11956,7 @@ class _WindowViewState extends State<WindowView> {
                       ),
                     );
                   } else {
-                    widget.model.setSelectedZoneSlidingSashes(4);
+                    await _setSelectedZoneSlidingSashesFromUi(4);
                   }
                 },
               ),
@@ -12266,6 +12672,10 @@ class _WindowViewState extends State<WindowView> {
               1)}";
           MullionProfileType currentType =
               widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
+          final canFlipGroove =
+              currentType == MullionProfileType.grooved &&
+                  widget.model.selection.isHorizontalMullion != null &&
+                  widget.model.selection.mullionPosition != null;
 
           children.add(
             _ContentButton(
@@ -12300,11 +12710,12 @@ class _WindowViewState extends State<WindowView> {
               label: 'Cadre doublé',
               icon: Icons.splitscreen_rounded,
               selected: currentType == MullionProfileType.flat,
-              onPressed: () {
-                setState(() {
-                  widget.model.setMullionProfile(MullionProfileType.flat);
-                });
-              },
+              showSubmenuIndicator: true,
+              onPressed: () =>
+                  _showMullionFrameSelectorDialog(
+                    context,
+                    MullionProfileType.flat,
+                  ),
             ),
           );
           children.add(const SizedBox(width: 8));
@@ -12314,13 +12725,35 @@ class _WindowViewState extends State<WindowView> {
               label: 'Cadre 140',
               icon: Icons.view_headline_rounded,
               selected: currentType == MullionProfileType.grooved,
-              onPressed: () {
-                setState(() {
-                  widget.model.setMullionProfile(MullionProfileType.grooved);
-                });
-              },
+              showSubmenuIndicator: true,
+              onPressed: () =>
+                  _showMullionFrameSelectorDialog(
+                    context,
+                    MullionProfileType.grooved,
+                  ),
             ),
           );
+          if (canFlipGroove) {
+            children.add(const SizedBox(width: 8));
+            children.add(
+              _ContentButton(
+                label: 'قلب جهة حامل الزجاج',
+                icon: Icons.swap_horiz_rounded,
+                selected: widget.model.isGroovedMullionCavityOnPositiveSide(
+                  widget.model.selection.isHorizontalMullion!,
+                  widget.model.selection.mullionPosition!,
+                ),
+                onPressed: () {
+                  setState(() {
+                    widget.model.toggleGroovedMullionCavity(
+                      widget.model.selection.isHorizontalMullion!,
+                      widget.model.selection.mullionPosition!,
+                    );
+                  });
+                },
+              ),
+            );
+          }
         } else {
           children.add(
             const Text(
@@ -13537,6 +13970,7 @@ class _ContentButton extends StatelessWidget {
   final bool selected;
   final VoidCallback onPressed;
   final bool showWarning;
+  final bool showSubmenuIndicator;
 
   const _ContentButton({
     required this.label,
@@ -13544,6 +13978,7 @@ class _ContentButton extends StatelessWidget {
     required this.selected,
     required this.onPressed,
     this.showWarning = false,
+    this.showSubmenuIndicator = false,
   });
 
   @override
@@ -13591,6 +14026,16 @@ class _ContentButton extends StatelessWidget {
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
+            if (showSubmenuIndicator) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 16,
+                color: isDark
+                    ? Colors.white70
+                    : (selected ? Colors.blue.shade900 : Colors.grey.shade600),
+              ),
+            ],
             if (showWarning) ...[
               const SizedBox(width: 5),
               const Icon(
@@ -13623,14 +14068,18 @@ class AppWorkspacePainter extends CustomPainter {
     canvas.translate(model.canvasDx + userPan.dx, model.canvasDy + userPan.dy);
     canvas.scale(model.canvasScale * userScale);
 
-    if (model.width > 0 && model.height > 0 && model.zones.isNotEmpty) {
+    if (model.width > 0 &&
+        model.height > 0 &&
+        (model.zones.isNotEmpty || model.isShutterOnly)) {
       final painter = WindowPainter(model: model, showDrawingDimensions: true);
       painter.paint(canvas, size);
       // Keep the exterior dimensions: they are the main total dimensions of
       // the frame. The labels below only add compact dimensions inside each
       // visible profile.
       _paintDimensions(canvas, model, Offset.zero);
-      _paintDrawingProfileDimensions(canvas, model);
+      if (!model.isShutterOnly) {
+        _paintDrawingProfileDimensions(canvas, model);
+      }
 
       final selectedFrameId = model.selection.type == SelectionType.frame
           ? model.selection.zoneId
@@ -13731,7 +14180,9 @@ class AppWorkspacePainter extends CustomPainter {
       }
     }
 
-    if ((model.zones.isEmpty || model.drawingMode == 'add_frame') &&
+    if ((model.zones.isEmpty ||
+        model.drawingMode == 'add_frame' ||
+        model.drawingMode == 'shutter_only') &&
         model.isDrawingMode &&
         model.drawingStart != null &&
         model.drawingCurrent != null) {

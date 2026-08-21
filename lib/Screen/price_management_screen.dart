@@ -207,6 +207,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     // current list and reset the user's visible position.
     final requestId = ++_loadRequestId;
     await db.ensureShutterComponentsUseGreyPrice();
+    await db.ensureProfileColorDefaults();
     final dbInstance = (await db.db)!;
 
     Future<List<Map<String, dynamic>>> safeQuery(String table) async {
@@ -2646,12 +2647,38 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       context,
       listen: false,
     ).language;
-    await db.setColorForProfile(
-      profileId: profileId,
-      colorId: colorId,
-      enabled: isSelected,
-    );
-    _loadAllData();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await db.setColorForProfile(
+        profileId: profileId,
+        colorId: colorId,
+        enabled: isSelected,
+      );
+      final savedColors = await db.getColorsForProfile(profileId);
+      final saved = savedColors.any(
+        (color) => color['id']?.toString() == colorId.toString(),
+      );
+      if (saved != isSelected) {
+        throw StateError('لم يتم تأكيد حفظ تخصيص اللون.');
+      }
+      await _loadAllData();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('تم حفظ تخصيص اللون.', lang)),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${Localization.translate('تعذر حفظ تخصيص اللون', lang)}: $error',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildProfileColorsTab(BuildContext context) {
@@ -2716,18 +2743,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
               final profileColors = allColorList.where((color) {
                 final cId = color['id'] as int;
-                String type = color['type'].toString();
-                String cName = color['name'].toString().toLowerCase();
-
-                // Only auto-include White as a global color for all profiles
-                if ((type == 'عام (Global)' || type == 'Global') &&
-                    (cName.contains('أبيض') ||
-                        cName.contains('ابيض') ||
-                        cName.contains('blanc') ||
-                        cName.contains('white'))) {
-                  return true;
-                }
-
                 if (profileColorsMap.containsKey(selectedProfileId)) {
                   return profileColorsMap[selectedProfileId]!.contains(cId);
                 }
@@ -4162,29 +4177,37 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                     onChanged: isGreyBaseColor
                                         ? null
                                         : (val) async {
-                                      if (val == true) {
-                                        final shut = shutterList.firstWhere(
-                                          (s) => s['id'] == selectedShutId,
-                                        );
-                                        final basePrice = _readStoredPrice(
-                                          shut['price'],
-                                        );
-                                        await db.setShutterColorForComponent(
-                                          shutterComponentId: selectedShutId!,
-                                          colorId: cId,
-                                          enabled: true,
-                                          price: basePrice,
-                                        );
-                                      } else {
-                                        await db.setShutterColorForComponent(
-                                          shutterComponentId: selectedShutId!,
-                                          colorId: cId,
-                                          enabled: false,
-                                        );
-                                      }
-                                      await _loadAllData();
-                                      setStateDialog(() {});
-                                    },
+                                            if (val == true) {
+                                              final shut = shutterList
+                                                  .firstWhere(
+                                                    (s) =>
+                                                        s['id'] ==
+                                                        selectedShutId,
+                                                  );
+                                              final basePrice =
+                                                  _readStoredPrice(
+                                                    shut['price'],
+                                                  );
+                                              await db
+                                                  .setShutterColorForComponent(
+                                                    shutterComponentId:
+                                                        selectedShutId!,
+                                                    colorId: cId,
+                                                    enabled: true,
+                                                    price: basePrice,
+                                                  );
+                                            } else {
+                                              await db
+                                                  .setShutterColorForComponent(
+                                                    shutterComponentId:
+                                                        selectedShutId!,
+                                                    colorId: cId,
+                                                    enabled: false,
+                                                  );
+                                            }
+                                            await _loadAllData();
+                                            setStateDialog(() {});
+                                          },
                                     controlAffinity:
                                         ListTileControlAffinity.leading,
                                   );

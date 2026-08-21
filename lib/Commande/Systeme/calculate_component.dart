@@ -1959,6 +1959,7 @@ class ComponentCalculator {
         ? 0.0
         : frameRects.map((rect) => rect.bottom).reduce(math.max);
     List<double> framePieces = [];
+    List<double> slidingOuterFramePieces = [];
     List<double> framePlinthePieces = [];
     List<double> renfortFramePieces = [];
 
@@ -1970,10 +1971,30 @@ class ComponentCalculator {
     }
 
     for (final r in frameRects) {
+      bool frameRectIsSlidingOnly() {
+        if (frameRects.length <= 1) return false;
+        final innerLeft = r.left + window.profileThickness - 2.0;
+        final innerTop = r.top + window.profileThickness - 2.0;
+        final innerRight = r.right - window.profileThickness + 2.0;
+        final innerBottom = r.bottom - window.profileThickness + 2.0;
+        final frameZones = window.zones
+            .where(
+              (zone) =>
+                  zone.boundary.left >= innerLeft &&
+                  zone.boundary.top >= innerTop &&
+                  zone.boundary.right <= innerRight &&
+                  zone.boundary.bottom <= innerBottom,
+            )
+            .toList();
+        return frameZones.isNotEmpty &&
+            frameZones.every((zone) => zone.content == ZoneContent.slidingSash);
+      }
+
       // A complete window is cut from the real drawing dimensions.  For a
       // multi-frame drawing, retain each group's own dimensions while using
       // the same cover formula.
       final isCompleteFrame = frameRects.length == 1;
+      final useSlidingOuterFrame = frameRectIsSlidingOnly();
       double fWidth = isCompleteFrame
           ? frameWidth
           : r.width +
@@ -2000,11 +2021,14 @@ class ComponentCalculator {
 
       double hPiece = fHeight / 1000.0;
       double wPiece = fWidth / 1000.0;
+      final targetFramePieces = useSlidingOuterFrame
+          ? slidingOuterFramePieces
+          : framePieces;
 
       if (window.hasBottomFrame && !window.hasFramePlintheBottom) {
-        framePieces.addAll([wPiece, wPiece, hPiece, hPiece]);
+        targetFramePieces.addAll([wPiece, wPiece, hPiece, hPiece]);
       } else {
-        framePieces.addAll([wPiece, hPiece, hPiece]);
+        targetFramePieces.addAll([wPiece, hPiece, hPiece]);
         if (window.hasFramePlintheBottom) {
           double fThickness = window.profileThickness;
           if (outerFrameOverride != null) {
@@ -2038,18 +2062,33 @@ class ComponentCalculator {
       }
     }
 
-    items.add(
-      createProfile(
-        'الإطار (Frame)',
-        colorName,
-        pieces: framePieces,
-        unit: 'قطاع',
-        overrideMap: outerFrameOverride,
-        // The frame selected in the drawing is authoritative. A stale table
-        // value from an earlier selection must not replace it.
-        preferOverrideMap: true,
-      ),
-    );
+    if (framePieces.isNotEmpty) {
+      items.add(
+        createProfile(
+          'الإطار (Frame)',
+          colorName,
+          pieces: framePieces,
+          unit: 'قطاع',
+          overrideMap: outerFrameOverride,
+          // The frame selected in the drawing is authoritative. A stale table
+          // value from an earlier selection must not replace it.
+          preferOverrideMap: true,
+        ),
+      );
+    }
+
+    if (slidingOuterFramePieces.isNotEmpty) {
+      items.add(
+        createProfile(
+          'إطار منزلق (Cadre Coulissant)',
+          colorName,
+          pieces: slidingOuterFramePieces,
+          unit: 'قطاع',
+          overrideMap: getSlidingFrameSection(),
+          preferOverrideMap: true,
+        ),
+      );
+    }
 
     if (framePlinthePieces.isNotEmpty) {
       items.add(
@@ -2282,7 +2321,9 @@ class ComponentCalculator {
           double slidingOverlap = slidingSashOverride != null
               ? (slidingSashOverride['sash_overlap'] ?? 8.0).toDouble()
               : 8.0;
-          final configuredSlidingOverlap = slidingRuleNumber('sash_overlap_val');
+          final configuredSlidingOverlap = slidingRuleNumber(
+            'sash_overlap_val',
+          );
           if (window.isSlidingPVC && configuredSlidingOverlap > 0) {
             slidingOverlap = configuredSlidingOverlap;
           }
@@ -2290,33 +2331,40 @@ class ComponentCalculator {
           double hForCalc = clearH;
 
           final slidingFrame = getSlidingFrameSection();
-          if (slidingFrame != null && window.zones.length > 1) {
+          final isNestedSliding = window.isSlidingZoneNestedInSingleFrame(zone);
+          if (slidingFrame != null && isNestedSliding) {
             double frameT =
                 (slidingFrame['visible_width'] as num?)?.toDouble() ?? 45.0;
 
-            if (window.zones.length > 1) {
-              double innerFrameW = clearW;
-              double innerFrameH = clearH;
-              List<double> innerFramePieces = [
-                innerFrameW / 1000.0,
-                innerFrameW / 1000.0,
-                innerFrameH / 1000.0,
-                innerFrameH / 1000.0,
-              ];
-              items.add(
-                createProfile(
-                  'إطار منزلق داخلي (Cadre Coulissant)',
-                  colorName,
-                  pieces: innerFramePieces,
-                  unit: 'قطاع',
-                  overrideMap: slidingFrame,
-                ),
-              );
+            double innerFrameW = math.max(
+              0.0,
+              clearW - window.slidingRebateDeduction(zone, horizontal: true),
+            );
+            double innerFrameH = math.max(
+              0.0,
+              clearH - window.slidingRebateDeduction(zone, horizontal: false),
+            );
+            List<double> innerFramePieces = [
+              innerFrameW / 1000.0,
+              innerFrameW / 1000.0,
+              innerFrameH / 1000.0,
+              innerFrameH / 1000.0,
+            ];
+            items.add(
+              createProfile(
+                'إطار منزلق داخلي (Cadre Coulissant)',
+                colorName,
+                pieces: innerFramePieces,
+                unit: 'قطاع',
+                overrideMap: slidingFrame,
+              ),
+            );
 
-              wForCalc = clearW - (frameT * 2.0);
-              hForCalc = clearH - (frameT * 2.0);
-            }
+            wForCalc = innerFrameW - (frameT * 2.0);
+            hForCalc = innerFrameH - (frameT * 2.0);
           }
+          wForCalc = math.max(0.0, wForCalc);
+          hForCalc = math.max(0.0, hForCalc);
 
           int sashes = zone.slidingSashesCount > 0
               ? zone.slidingSashesCount
@@ -2451,10 +2499,13 @@ class ComponentCalculator {
                   window.profileThickness;
             }
           }
+          final railClearWidth = isNestedSliding
+              ? wForCalc
+              : window.width - (frameT * 2);
           double railLen = window.isSlidingPVC
-              ? (window.width - (frameT * 2) - pvcRailClearance) / 1000.0
+              ? (railClearWidth - pvcRailClearance) / 1000.0
               : isTPRSeries
-              ? (window.width - (frameT * 2) - 1.0) / 1000.0
+              ? (railClearWidth - 1.0) / 1000.0
               : (wForCalc - 5.0) / 1000.0;
           if (railLen < 0) railLen = 0;
           slidingRailPieces.add(railLen);
@@ -4697,7 +4748,7 @@ class ComponentCalculator {
         int sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
         double wForCalc = clearW;
         double hForCalc = clearH;
-        if (window.zones.length > 1) {
+        if (window.isSlidingZoneNestedInSingleFrame(zone)) {
           final slidingFrame = getSlidingFrameSection();
           double frameT = slidingFrame != null
               ? ((slidingFrame['visible_width'] ?? slidingFrame['thickness'])
@@ -4705,9 +4756,17 @@ class ComponentCalculator {
                         ?.toDouble() ??
                     45.0
               : 45.0;
-          wForCalc = clearW - (frameT * 2.0);
-          hForCalc = clearH - (frameT * 2.0);
+          wForCalc =
+              clearW -
+              window.slidingRebateDeduction(zone, horizontal: true) -
+              (frameT * 2.0);
+          hForCalc =
+              clearH -
+              window.slidingRebateDeduction(zone, horizontal: false) -
+              (frameT * 2.0);
         }
+        wForCalc = math.max(0.0, wForCalc);
+        hForCalc = math.max(0.0, hForCalc);
         final slidingSashMap =
             window.slidingSashOverride ??
             window.getSlidingSectionByType('sash_sliding')?.toMap() ??

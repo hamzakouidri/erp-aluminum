@@ -67,6 +67,8 @@ extension GlassSpecificationSerialization on GlassSpecification {
       'processingOuter': processingOuter.name,
       'processingInner': processingInner.name,
       'colorP': colorP.name,
+      'hasGas': hasGas,
+      'intercallThickness': intercallThickness,
       'decorH': decorH,
       'decorV': decorV,
       'decorHPositions': decorHPositions,
@@ -127,6 +129,8 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
       (e) => e.name == map['colorP'],
       orElse: () => ClosedGlassColor.white,
     ),
+    hasGas: map['hasGas'] as bool? ?? false,
+    intercallThickness: (map['intercallThickness'] as num?)?.toInt() ?? 12,
     decorH: (map['decorH'] as num?)?.toInt() ?? 0,
     decorV: (map['decorV'] as num?)?.toInt() ?? 0,
     decorHPositions:
@@ -185,6 +189,7 @@ extension WindowZoneSerialization on WindowZone {
       'innerH': innerH,
       'innerV': innerV,
       'slidingSashesCount': slidingSashesCount,
+      'cutSlidingGlassRebate': cutSlidingGlassRebate,
       'rightInnerH': rightInnerH,
       'rightInnerV': rightInnerV,
       'innerHPositions': innerHPositions,
@@ -259,6 +264,7 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     innerH: map['innerH'] ?? 0,
     innerV: map['innerV'] ?? 0,
     slidingSashesCount: map['slidingSashesCount'] ?? 2,
+    cutSlidingGlassRebate: map['cutSlidingGlassRebate'] ?? true,
     rightInnerH: map['rightInnerH'] ?? 0,
     rightInnerV: map['rightInnerV'] ?? 0,
     innerHPositions:
@@ -401,6 +407,9 @@ extension WindowModelSerialization on WindowModel {
       'selectedShutterLameId': selectedShutterLameId,
       'selectedShutterKitId': selectedShutterKitId,
       'selectedShutterMotorId': selectedShutterMotorId,
+      'useSystemOB': useSystemOB,
+      'useDemiOB': useDemiOB,
+      'useVerrouCentral': useVerrouCentral,
       'hasSideCovers': hasSideCovers,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
       'useCustomSideCoverLayout': useCustomSideCoverLayout,
@@ -529,6 +538,15 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.selectedShutterKitId = (map['selectedShutterKitId'] as num?)?.toInt();
   model.selectedShutterMotorId = (map['selectedShutterMotorId'] as num?)
       ?.toInt();
+  model.useSystemOB =
+      map['useSystemOB'] == true ||
+      map['useSystemOB']?.toString().toLowerCase() == 'true';
+  model.useDemiOB =
+      map['useDemiOB'] == true ||
+      map['useDemiOB']?.toString().toLowerCase() == 'true';
+  model.useVerrouCentral =
+      map['useVerrouCentral'] == true ||
+      map['useVerrouCentral']?.toString().toLowerCase() == 'true';
   model.hasSideCovers = map['hasSideCovers'] ?? true;
   model.sideCoverUseSecondWidth = map['sideCoverUseSecondWidth'] ?? false;
   model.useCustomSideCoverLayout =

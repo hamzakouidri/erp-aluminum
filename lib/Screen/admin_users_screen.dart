@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../settings/app_settings.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -526,8 +527,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
                 // Filter out admin's own account
                 final allUsers = snapshot.data!.docs.where((doc) {
                   final d = doc.data() as Map<String, dynamic>;
-                  return d['email'] != 'kouidrihamza45@gmail.com' &&
-                         d['role'] != 'admin';
+                  return !isApplicationAdminEmail(d['email']?.toString()) &&
+                      d['role'] != 'admin';
                 }).toList();
 
                 // Apply search

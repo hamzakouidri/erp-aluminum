@@ -31,6 +31,15 @@ class CloudSyncFeedback {
   final String details;
 }
 
+class NoWorkshopBackupException implements Exception {
+  final String message;
+  const NoWorkshopBackupException([
+    this.message = 'لم يتم العثور على نسخة احتياطية سابقة',
+  ]);
+  @override
+  String toString() => message;
+}
+
 class _CloudChunkWrite {
   const _CloudChunkWrite({required this.docId, required this.payload});
 
@@ -45,6 +54,8 @@ class CloudSyncService {
   static const int _maxUploadBatchWrites = 25;
   static const int _maxUploadBatchBytes = 3000000;
   static const int _maxFirestoreDocumentBytes = 900000;
+  static const int _maxLiveEventDocumentBytes = 650000;
+  static const int _liveEventListenerLimit = 120;
   static const int _largeFieldInlineBytes = 180000;
   static const int _largeFieldPartCharacters = 180000;
   // Firestore sends a query result through Android's platform channel in one
@@ -54,6 +65,12 @@ class CloudSyncService {
   static const String _largeFieldMarkerKey = '__cloudLargeField';
   static const String _largeFieldPartKind = 'large_field_part';
   static const Duration _chunkUploadTimeout = Duration(seconds: 60);
+  static const List<String> _watchedTransactionalCountTables = <String>[
+    'Commandes',
+    'Commandes_details',
+    'Client',
+    'Treasury',
+  ];
 
   factory CloudSyncService() => _instance;
 
@@ -71,6 +88,7 @@ class CloudSyncService {
   Timer? _catalogRetryTimer;
   Timer? _realtimeRetryTimer;
   Timer? _realtimeHealthTimer;
+  Timer? _pendingCloudChangePollTimer;
   Timer? _pendingTransactionUploadTimer;
   StreamSubscription<DocumentSnapshot>? _listener;
   StreamSubscription<DocumentSnapshot>? _catalogListener;
@@ -80,6 +98,8 @@ class CloudSyncService {
   StreamSubscription<QuerySnapshot>? _measurementsListener;
   StreamSubscription<QuerySnapshot>?
   _deletionsListener; // ⚡ لحدف الإسنادات فورياً على جميع الأجهزة
+  StreamSubscription<QuerySnapshot>?
+  _orderDeletionsListener; // ⚡ لحذف الطلبيات فورياً على جميع الأجهزة
   int _restoreDepth = 0;
   bool _refreshQueuedAfterRestore = false;
   bool _catalogRefreshQueuedAfterRestore = false;
@@ -102,6 +122,11 @@ class CloudSyncService {
   final Set<String> _processingDeltaIds = <String>{};
   Future<void> _deltaApplyChain = Future<void>.value();
   String? _loadedDeltaWorkshopId;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _liveEventListener;
+  final Set<String> _handledLiveEventIds = <String>{};
+  final Set<String> _processingLiveEventIds = <String>{};
+  Future<void> _liveEventApplyChain = Future<void>.value();
+  String? _loadedLiveEventWorkshopId;
   DateTime? _latestFullSnapshotCompletedAt;
   final Set<String> _latestFullCompactedDeltaIds = <String>{};
   String? _lastAnnouncedListenerWorkshopId;
@@ -115,6 +140,8 @@ class CloudSyncService {
   int _catalogChangeGeneration = 0;
   bool _hasPendingTransactionalChanges = false;
   int _transactionChangeGeneration = 0;
+  bool _isReconcilingTransactionalCounts = false;
+  DateTime? _lastTransactionalCountReconcileAt;
 
   final StreamController<String> _dbUpdateController =
       StreamController<String>.broadcast();
@@ -227,6 +254,42 @@ class CloudSyncService {
     // Product definitions (colours, profiles and shutter components) are a
     // single shared catalogue. They must not be split between workshops.
     return _firestore.collection('global_catalog').doc('latest');
+  }
+
+  DocumentReference<Map<String, dynamic>> _transactionalSyncStateDocument() {
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) {
+      throw StateError('Cloud sync state requires a valid workshop.');
+    }
+    return _firestore
+        .collection('workshops')
+        .doc(workshopId)
+        .collection('sync_state')
+        .doc('transactional_counts');
+  }
+
+  Future<void> _publishTransactionalSyncState({
+    required Map<String, int> tableRowCounts,
+    required String uploadId,
+    required String sourceKind,
+  }) async {
+    if (_workshopId == null || _workshopId!.isEmpty) return;
+    final user = _auth.currentUser;
+    try {
+      await _transactionalSyncStateDocument()
+          .set({
+            'status': 'completed',
+            'updatedAt': FieldValue.serverTimestamp(),
+            'uploadId': uploadId,
+            'sourceKind': sourceKind,
+            'deviceId': _deviceId,
+            if (user != null) 'uploaderUid': user.uid,
+            'tableRowCounts': tableRowCounts,
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 10));
+    } catch (error) {
+      print('Could not publish live transactional sync state: $error');
+    }
   }
 
   bool _canPublishGlobalCatalog(String role) {
@@ -389,8 +452,7 @@ class CloudSyncService {
     final localShutterCount = await localDb.rawQuery(
       'SELECT COUNT(*) AS count FROM ShutterComponents',
     );
-    final localCount =
-        (localShutterCount.first['count'] as num?)?.toInt() ?? 0;
+    final localCount = (localShutterCount.first['count'] as num?)?.toInt() ?? 0;
     if (localCount > 0 && remoteShutterRows.length < localCount) {
       throw StateError(
         'رفضت كتالوج مركبات الستائر الناقص '
@@ -814,6 +876,13 @@ class CloudSyncService {
           await prefs.setString('user_role', 'manager');
         }
       }
+      if (_workshopId != null && _workshopId!.isNotEmpty) {
+        _lastHandledBackupFingerprint = prefs.getString(
+          _handledBackupPreferenceKey(_workshopId!),
+        );
+      } else {
+        _lastHandledBackupFingerprint = null;
+      }
     }
     print(
       "--- CloudSyncService: init() finished. workshopId = $_workshopId ---",
@@ -828,21 +897,28 @@ class CloudSyncService {
     _catalogRetryTimer?.cancel();
     _realtimeRetryTimer?.cancel();
     _realtimeHealthTimer?.cancel();
+    _pendingCloudChangePollTimer?.cancel();
     _pendingTransactionUploadTimer?.cancel();
     _listener?.cancel();
     _catalogListener?.cancel();
     _deltaListener?.cancel();
+    _liveEventListener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
+    _orderDeletionsListener?.cancel();
     _listener = null;
     _catalogListener = null;
     _deltaListener = null;
+    _liveEventListener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
     _deletionsListener = null;
+    _orderDeletionsListener = null;
+    _pendingCloudChangePollTimer = null;
+    _pendingTransactionUploadTimer = null;
     _lastHandledBackupFingerprint = null;
     _lastHandledCatalogFingerprint = null;
     _ownUploadIds.clear();
@@ -850,6 +926,10 @@ class CloudSyncService {
     _processingDeltaIds.clear();
     _deltaApplyChain = Future<void>.value();
     _loadedDeltaWorkshopId = null;
+    _handledLiveEventIds.clear();
+    _processingLiveEventIds.clear();
+    _liveEventApplyChain = Future<void>.value();
+    _loadedLiveEventWorkshopId = null;
     _latestFullSnapshotCompletedAt = null;
     _latestFullCompactedDeltaIds.clear();
     _lastAnnouncedListenerWorkshopId = null;
@@ -925,6 +1005,23 @@ class CloudSyncService {
         .snapshots()
         .listen(
           _queueDeltaSnapshot,
+          onError: _scheduleRealtimeListenerRetry,
+          onDone: _scheduleRealtimeListenerRetry,
+        );
+
+    // Fast path: tiny row-level events for changes users expect to see now
+    // (cash register, worker finance, customers, orders, allocations, etc.).
+    // The durable delta/full backup path still runs after this as reconciliation.
+    _liveEventListener?.cancel();
+    _liveEventListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('live_events')
+        .orderBy('createdAt', descending: true)
+        .limit(_liveEventListenerLimit)
+        .snapshots()
+        .listen(
+          _queueLiveEventSnapshot,
           onError: _scheduleRealtimeListenerRetry,
           onDone: _scheduleRealtimeListenerRetry,
         );
@@ -1033,7 +1130,40 @@ class CloudSyncService {
           _dbUpdateController.add('allocation_deleted');
         }, onError: _scheduleRealtimeListenerRetry);
 
+    // 6. ⚡ الاستماع اللحظي لحذف الطلبيات. هذا مسار صغير ومباشر مثل
+    // الصلاحيات، فلا ينتظر تنزيل backup/delta كامل حتى تختفي الطلبية.
+    _orderDeletionsListener?.cancel();
+    _orderDeletionsListener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('deleted_orders')
+        .snapshots()
+        .listen((snapshot) async {
+          if (_isRestoring) return;
+          var didDelete = false;
+          for (final change in snapshot.docChanges) {
+            if (change.type != DocumentChangeType.added) continue;
+            try {
+              final data = change.doc.data();
+              final id =
+                  (data?['id'] as num?)?.toInt() ??
+                  int.tryParse(change.doc.id) ??
+                  0;
+              if (id <= 0) continue;
+              final deleted = await _db.deleteCommandeLocalOnly(id);
+              didDelete = didDelete || deleted > 0;
+            } catch (e) {
+              print('Error applying order deletion tombstone real-time: $e');
+            }
+          }
+          if (didDelete) {
+            _dbUpdateController.add('order_deleted');
+            onDataRestored?.call();
+          }
+        }, onError: _scheduleRealtimeListenerRetry);
+
     _startRealtimeHealthCheck();
+    _startPendingCloudChangePoll();
     _resumePendingTransactionalUpload();
   }
 
@@ -1058,6 +1188,28 @@ class CloudSyncService {
 
   String _handledDeltasPreferenceKey(String workshopId) =>
       'handled_cloud_deltas_$workshopId';
+
+  String _handledLiveEventsPreferenceKey(String workshopId) =>
+      'handled_live_events_$workshopId';
+
+  String _handledBackupPreferenceKey(String workshopId) =>
+      'handled_cloud_backup_$workshopId';
+
+  Future<void> _rememberHandledBackupFingerprint(String fingerprint) async {
+    if (fingerprint.isEmpty) return;
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) return;
+    _lastHandledBackupFingerprint = fingerprint;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _handledBackupPreferenceKey(workshopId),
+        fingerprint,
+      );
+    } catch (error) {
+      print('Could not persist handled backup fingerprint: $error');
+    }
+  }
 
   DateTime? _firestoreDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
@@ -1112,6 +1264,38 @@ class CloudSyncService {
     );
   }
 
+  Future<void> _ensureHandledLiveEventsLoaded() async {
+    final workshopId = _workshopId;
+    if (workshopId == null ||
+        workshopId.isEmpty ||
+        _loadedLiveEventWorkshopId == workshopId) {
+      return;
+    }
+    _loadedLiveEventWorkshopId = workshopId;
+    _handledLiveEventIds.clear();
+    final prefs = await SharedPreferences.getInstance();
+    _handledLiveEventIds.addAll(
+      prefs.getStringList(_handledLiveEventsPreferenceKey(workshopId)) ??
+          const <String>[],
+    );
+  }
+
+  Future<void> _markLiveEventHandled(String eventId) async {
+    if (eventId.isEmpty) return;
+    await _ensureHandledLiveEventsLoaded();
+    _handledLiveEventIds.add(eventId);
+    while (_handledLiveEventIds.length > 600) {
+      _handledLiveEventIds.remove(_handledLiveEventIds.first);
+    }
+    final workshopId = _workshopId;
+    if (workshopId == null || workshopId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _handledLiveEventsPreferenceKey(workshopId),
+      _handledLiveEventIds.toList(),
+    );
+  }
+
   Future<DateTime?> _readLatestFullSnapshotWatermark() async {
     if (_latestFullSnapshotCompletedAt != null) {
       return _latestFullSnapshotCompletedAt;
@@ -1136,26 +1320,141 @@ class CloudSyncService {
     return _latestFullSnapshotCompletedAt;
   }
 
+  void _queueLiveEventSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    final completed =
+        snapshot.docChanges.map((change) => change.doc).where((doc) {
+          final data = doc.data();
+          return data != null && data['status']?.toString() == 'completed';
+        }).toList()..sort((left, right) {
+          final leftTime =
+              _firestoreDate(
+                left.data()!['completedAt'] ?? left.data()!['createdAt'],
+              )?.millisecondsSinceEpoch ??
+              0;
+          final rightTime =
+              _firestoreDate(
+                right.data()!['completedAt'] ?? right.data()!['createdAt'],
+              )?.millisecondsSinceEpoch ??
+              0;
+          final timeResult = leftTime.compareTo(rightTime);
+          return timeResult != 0 ? timeResult : left.id.compareTo(right.id);
+        });
+
+    for (final document in completed) {
+      final eventId = document.id;
+      if (_processingLiveEventIds.contains(eventId) ||
+          _handledLiveEventIds.contains(eventId)) {
+        continue;
+      }
+      _processingLiveEventIds.add(eventId);
+      _liveEventApplyChain = _liveEventApplyChain
+          .catchError((Object error, StackTrace stackTrace) {
+            print('Previous live event failed: $error');
+          })
+          .then((_) => _applyLiveEventDocument(document))
+          .whenComplete(() => _processingLiveEventIds.remove(eventId));
+    }
+  }
+
+  Future<void> _applyLiveEventDocument(
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) async {
+    final payload = document.data();
+    if (payload == null || payload['status']?.toString() != 'completed') {
+      return;
+    }
+    await _ensureHandledLiveEventsLoaded();
+    if (_handledLiveEventIds.contains(document.id)) return;
+
+    final uploadId = payload['uploadId']?.toString() ?? '';
+    if (uploadId.isNotEmpty && _ownUploadIds.contains(uploadId)) {
+      await _markLiveEventHandled(document.id);
+      return;
+    }
+
+    final latestFullSnapshotAt = await _readLatestFullSnapshotWatermark();
+    final eventCompletedAt = _firestoreDate(
+      payload['completedAt'] ?? payload['createdAt'],
+    );
+    if (latestFullSnapshotAt != null &&
+        eventCompletedAt != null &&
+        !eventCompletedAt.isAfter(latestFullSnapshotAt)) {
+      await _markLiveEventHandled(document.id);
+      return;
+    }
+
+    final rawData = payload['data'];
+    if (rawData is! Map) {
+      await _markLiveEventHandled(document.id);
+      return;
+    }
+    final data = <String, dynamic>{};
+    for (final entry in rawData.entries) {
+      final table = entry.key.toString();
+      final rows = entry.value;
+      if (table.isEmpty || rows is! List) continue;
+      data[table] = rows;
+    }
+    if (data.isEmpty) {
+      await _markLiveEventHandled(document.id);
+      return;
+    }
+
+    while (_isLocalWriteInProgress) {
+      await Future<void>.delayed(const Duration(milliseconds: 75));
+    }
+
+    _beginRestore();
+    try {
+      await _db.importAllData(data, mergeAllData: true);
+      await _markLiveEventHandled(document.id);
+      _dbUpdateController.add('live_event_applied');
+      onDataRestored?.call();
+      if (await _hasPendingTransactions()) {
+        _localSyncQueuedAfterRestore = true;
+      }
+    } catch (error) {
+      print('Could not apply live event ${document.id}: $error');
+      rethrow;
+    } finally {
+      _endRestore();
+    }
+  }
+
   void _queueDeltaSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
     final completed =
-        snapshot.docChanges
-            .map((change) => change.doc)
-            .where((doc) => doc.data()!['status']?.toString() == 'completed')
-            .toList()
-          ..sort((left, right) {
-            final leftTime =
-                _firestoreDate(
-                  left.data()!['completedAt'],
-                )?.millisecondsSinceEpoch ??
-                0;
-            final rightTime =
-                _firestoreDate(
-                  right.data()!['completedAt'],
-                )?.millisecondsSinceEpoch ??
-                0;
-            final timeResult = leftTime.compareTo(rightTime);
-            return timeResult != 0 ? timeResult : left.id.compareTo(right.id);
-          });
+        snapshot.docChanges.map((change) => change.doc).where((doc) {
+          final data = doc.data();
+          if (data == null || data['status']?.toString() != 'completed') {
+            return false;
+          }
+          if (_latestFullCompactedDeltaIds.contains(doc.id)) {
+            return false;
+          }
+          final latestSnapshotAt = _latestFullSnapshotCompletedAt;
+          final deltaCompletedAt = _firestoreDate(
+            data['completedAt'] ?? data['createdAt'],
+          );
+          if (latestSnapshotAt != null &&
+              deltaCompletedAt != null &&
+              !deltaCompletedAt.isAfter(latestSnapshotAt)) {
+            return false;
+          }
+          return true;
+        }).toList()..sort((left, right) {
+          final leftTime =
+              _firestoreDate(
+                left.data()!['completedAt'],
+              )?.millisecondsSinceEpoch ??
+              0;
+          final rightTime =
+              _firestoreDate(
+                right.data()!['completedAt'],
+              )?.millisecondsSinceEpoch ??
+              0;
+          final timeResult = leftTime.compareTo(rightTime);
+          return timeResult != 0 ? timeResult : left.id.compareTo(right.id);
+        });
 
     for (final document in completed) {
       final deltaId = document.id;
@@ -1189,9 +1488,21 @@ class CloudSyncService {
       return;
     }
 
-    await _readLatestFullSnapshotWatermark();
+    final latestFullSnapshotAt = await _readLatestFullSnapshotWatermark();
     if (_latestFullCompactedDeltaIds.contains(document.id)) {
       // This change is already contained in the newer full recovery snapshot.
+      await _markDeltaHandled(document.id);
+      return;
+    }
+    final deltaCompletedAt = _firestoreDate(
+      payload['completedAt'] ?? payload['createdAt'],
+    );
+    if (latestFullSnapshotAt != null &&
+        deltaCompletedAt != null &&
+        !deltaCompletedAt.isAfter(latestFullSnapshotAt)) {
+      // Old delta documents may remain in Firestore. A newer full snapshot has
+      // already folded them in, so replaying them on every app start only slows
+      // new devices and desktop clients down.
       await _markDeltaHandled(document.id);
       return;
     }
@@ -1279,7 +1590,7 @@ class CloudSyncService {
     // application preferences onto another phone.
     final isOwnUpload = uploadId.isNotEmpty && _ownUploadIds.contains(uploadId);
     if (isOwnUpload) {
-      _lastHandledBackupFingerprint = fingerprint;
+      await _rememberHandledBackupFingerprint(fingerprint);
       return;
     }
 
@@ -1350,7 +1661,7 @@ class CloudSyncService {
         keepPendingChanges: hasPendingLocalChanges,
         publishPendingChangesFirst: false,
       );
-      _lastHandledBackupFingerprint = fingerprint;
+      await _rememberHandledBackupFingerprint(fingerprint);
       _dbUpdateController.add('cloud_restored');
       _sendSyncFeedback(
         CloudSyncFeedbackType.downloadSucceeded,
@@ -1528,6 +1839,33 @@ class CloudSyncService {
     _runRealtimeHealthCheck();
   }
 
+  void _startPendingCloudChangePoll() {
+    _pendingCloudChangePollTimer?.cancel();
+    _pendingCloudChangePollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _publishPendingLocalRowsIfNeeded(),
+    );
+  }
+
+  Future<void> _publishPendingLocalRowsIfNeeded() async {
+    if (_isRestoring ||
+        _isLocalWriteInProgress ||
+        _isSilentBackupRunning ||
+        _auth.currentUser == null ||
+        _workshopId == null ||
+        _workshopId!.isEmpty) {
+      return;
+    }
+
+    try {
+      if (await _db.hasPendingCloudChanges()) {
+        _silentBackup();
+      }
+    } catch (error) {
+      print('Pending local cloud-change poll failed: $error');
+    }
+  }
+
   /// A database trigger records every local row change, but older screens do
   /// not all call [notifyChange] after writing their data.  Do not leave those
   /// worker-side changes on one phone forever: the periodic health check also
@@ -1540,29 +1878,129 @@ class CloudSyncService {
       final hasUnpublishedRows = await _db.hasPendingCloudChanges();
       if (hasUnpublishedRows || await _hasPendingTransactions()) {
         await _silentBackup();
+      } else {
+        await _reconcileTransactionalCountsWithCloud();
       }
     } catch (error) {
       print('Local cloud-change health check failed: $error');
     }
   }
 
+  Future<void> _reconcileTransactionalCountsWithCloud() async {
+    if (_isReconcilingTransactionalCounts ||
+        _isRestoring ||
+        _isLocalWriteInProgress ||
+        _isSilentBackupRunning ||
+        _auth.currentUser == null ||
+        _workshopId == null ||
+        _workshopId!.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final lastRun = _lastTransactionalCountReconcileAt;
+    if (lastRun != null &&
+        now.difference(lastRun) < const Duration(seconds: 45)) {
+      return;
+    }
+
+    _isReconcilingTransactionalCounts = true;
+    _lastTransactionalCountReconcileAt = now;
+    try {
+      Map<String, dynamic>? payload;
+      try {
+        final state = await _transactionalSyncStateDocument()
+            .get(GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 10));
+        payload = state.data();
+      } catch (error) {
+        print('Could not read live transactional sync state: $error');
+      }
+
+      if (payload == null || payload['status']?.toString() != 'completed') {
+        final latest = await _firestore
+            .collection('workshops')
+            .doc(_workshopId)
+            .collection('backups')
+            .doc('latest')
+            .get(GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 10));
+        payload = latest.data();
+        if (payload == null || payload['status']?.toString() != 'completed') {
+          return;
+        }
+      }
+
+      final rowCounts = payload['tableRowCounts'];
+      if (rowCounts is! Map) return;
+
+      final localCounts = await _db.readSyncTableCounts(
+        _watchedTransactionalCountTables,
+      );
+
+      var localHasRowsMissingFromCloud = false;
+      var cloudHasRowsMissingLocally = false;
+      final differences = <String>[];
+      for (final table in _watchedTransactionalCountTables) {
+        final local = localCounts[table] ?? 0;
+        final cloud = (rowCounts[table] as num?)?.toInt();
+        if (cloud == null) continue;
+        if (local > cloud) {
+          localHasRowsMissingFromCloud = true;
+          differences.add('$table: local $local > cloud $cloud');
+        } else if (cloud > local) {
+          cloudHasRowsMissingLocally = true;
+          differences.add('$table: cloud $cloud > local $local');
+        }
+      }
+
+      if (localHasRowsMissingFromCloud) {
+        _sendSyncFeedback(
+          CloudSyncFeedbackType.uploadStarted,
+          'تم اكتشاف فرق في عدد الطلبات، يجري تصحيح نسخة السحابة.',
+          details: differences.join(' • '),
+        );
+        await backupToCloud(isSilent: true, forceFullSnapshot: true);
+      } else if (cloudHasRowsMissingLocally) {
+        _sendSyncFeedback(
+          CloudSyncFeedbackType.downloadStarted,
+          'تم اكتشاف بيانات أحدث في السحابة، يجري تنزيلها.',
+          details: differences.join(' • '),
+        );
+        await refreshFromCloudIfChanged();
+      }
+    } catch (error) {
+      print('Transactional count reconciliation failed: $error');
+    } finally {
+      _isReconcilingTransactionalCounts = false;
+    }
+  }
+
   void stopListening() {
     _realtimeRetryTimer?.cancel();
     _realtimeHealthTimer?.cancel();
+    _pendingCloudChangePollTimer?.cancel();
+    _pendingTransactionUploadTimer?.cancel();
     _listener?.cancel();
     _catalogListener?.cancel();
     _deltaListener?.cancel();
+    _liveEventListener?.cancel();
     _statusListener?.cancel();
     _orderStatusListener?.cancel();
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
+    _orderDeletionsListener?.cancel();
     _listener = null;
     _catalogListener = null;
     _deltaListener = null;
+    _liveEventListener = null;
     _statusListener = null;
     _orderStatusListener = null;
     _measurementsListener = null;
     _deletionsListener = null;
+    _orderDeletionsListener = null;
+    _pendingCloudChangePollTimer = null;
+    _pendingTransactionUploadTimer = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
@@ -2041,6 +2479,70 @@ class CloudSyncService {
   /// A false result means the pending marker predates the change log (or the
   /// changed table has no stable `id`), so one full recovery snapshot is
   /// required to guarantee that no database table is omitted.
+  Future<void> _publishLiveEvent({
+    required PendingCloudChanges pending,
+    required String uploadId,
+    required SharedPreferences prefs,
+  }) async {
+    if (pending.isEmpty || _workshopId == null || _workshopId!.isEmpty) {
+      return;
+    }
+
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final eventId = 'live_$uploadId';
+    final data = <String, dynamic>{};
+    for (final entry in pending.data.entries) {
+      final table = entry.key;
+      final rows = entry.value;
+      if (rows is List && rows.isNotEmpty) {
+        data[table] = rows;
+      }
+    }
+    if (data.isEmpty) return;
+
+    final estimatedPayload = <String, dynamic>{
+      'kind': 'live_event',
+      'status': 'uploading',
+      'uploadId': uploadId,
+      'deviceId': _deviceId,
+      'uploaderUid': user.uid,
+      'uploaderRole': prefs.getString('user_role') ?? 'worker',
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'tables': data.keys.toList(),
+      'changedRows': pending.changedRows,
+      'deletedRows': pending.deletedRows,
+      'data': data,
+    };
+
+    final estimatedBytes = _estimateJsonBytes(estimatedPayload);
+    if (estimatedBytes > _maxLiveEventDocumentBytes) {
+      print(
+        'Skipping live event $eventId: ${_formatBytes(estimatedBytes)} '
+        'is too large for one Firestore document.',
+      );
+      return;
+    }
+
+    final eventRef = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('live_events')
+        .doc(eventId);
+
+    await eventRef
+        .set({...estimatedPayload, 'createdAt': FieldValue.serverTimestamp()})
+        .timeout(const Duration(seconds: 8));
+    await eventRef
+        .update({
+          'status': 'completed',
+          'completedAt': FieldValue.serverTimestamp(),
+        })
+        .timeout(const Duration(seconds: 8));
+    await _markLiveEventHandled(eventId);
+  }
+
   Future<bool> _performDeltaBackupToCloud() async {
     await init();
     final uploadedGeneration = _transactionChangeGeneration;
@@ -2089,6 +2591,16 @@ class CloudSyncService {
           })
           .timeout(const Duration(seconds: 10));
 
+      try {
+        await _publishLiveEvent(
+          pending: pending,
+          uploadId: uploadId,
+          prefs: prefs,
+        );
+      } catch (error) {
+        print('Live event publish failed; durable delta will continue: $error');
+      }
+
       uploadStage = 'uploading changed rows';
       final chunkCounts = await _uploadChunkedTables(
         data: pending.data,
@@ -2106,6 +2618,13 @@ class CloudSyncService {
             'tableRowCounts': expectedRowCounts,
           })
           .timeout(const Duration(seconds: 10));
+      await _publishTransactionalSyncState(
+        tableRowCounts: await _db.readSyncTableCounts(
+          _watchedTransactionalCountTables,
+        ),
+        uploadId: uploadId,
+        sourceKind: 'delta',
+      );
 
       await _db.acknowledgePendingCloudChanges(pending.acknowledgements);
       await _markDeltaHandled(deltaId);
@@ -2317,6 +2836,15 @@ class CloudSyncService {
             'compactedDeltaIds': compactedDeltaIds.toList(),
           }, SetOptions(merge: true))
           .timeout(const Duration(seconds: 10));
+      await _publishTransactionalSyncState(
+        tableRowCounts: Map<String, int>.fromEntries(
+          _watchedTransactionalCountTables.map(
+            (table) => MapEntry(table, verifiedCounts[table] ?? 0),
+          ),
+        ),
+        uploadId: uploadId,
+        sourceKind: 'snapshot',
+      );
 
       // A successful Firestore write already means that the server accepted
       // the automatic upload. Avoid a second server-only read here: on some
@@ -2460,6 +2988,7 @@ class CloudSyncService {
       bool restoreSuccess = false;
       Object? restoreError;
       StackTrace? restoreStackTrace;
+      bool isNoBackup = false;
       // 1. استرجاع النسخة الاحتياطية الخاصة بالورشة (تمسح الجداول وتعيدها)
       try {
         await restoreFromCloud(
@@ -2472,6 +3001,10 @@ class CloudSyncService {
         }
       } catch (e, stackTrace) {
         print('New chunk sync failed: $e');
+        if (e is NoWorkshopBackupException ||
+            e.toString().contains('لم يتم العثور على نسخة احتياطية سابقة')) {
+          isNoBackup = true;
+        }
         restoreError = e;
         restoreStackTrace = stackTrace;
       }
@@ -2497,7 +3030,12 @@ class CloudSyncService {
         final restoredFromLegacy = await _legacySync();
         if (restoredFromLegacy) {
           restoreSuccess = true;
-          lastRestoreSummary = 'تمت استعادة البيانات من النسخة السحابية السابقة.';
+          lastRestoreSummary =
+              'تمت استعادة البيانات من النسخة السحابية السابقة.';
+        } else if (isNoBackup) {
+          // حالة طبيعية لورشة جديدة فارغة لا تحتوي على نسخة سحابية بعد
+          restoreSuccess = true;
+          lastRestoreSummary = 'تمت تهيئة الورشة الجديدة بنجاح.';
         } else if (restoreError != null) {
           Error.throwWithStackTrace(restoreError, restoreStackTrace!);
         }
@@ -2520,7 +3058,8 @@ class CloudSyncService {
         final userDoc = _firestore.collection('users').doc(targetUid);
 
         var clientsSnapshot = await userDoc.collection('Client').get();
-        restoredBusinessData = restoredBusinessData || clientsSnapshot.docs.isNotEmpty;
+        restoredBusinessData =
+            restoredBusinessData || clientsSnapshot.docs.isNotEmpty;
         for (var doc in clientsSnapshot.docs) {
           try {
             final data = doc.data();
@@ -2531,7 +3070,8 @@ class CloudSyncService {
         }
 
         var cmdsSnapshot = await userDoc.collection('Commandes').get();
-        restoredBusinessData = restoredBusinessData || cmdsSnapshot.docs.isNotEmpty;
+        restoredBusinessData =
+            restoredBusinessData || cmdsSnapshot.docs.isNotEmpty;
         for (var doc in cmdsSnapshot.docs) {
           try {
             final data = doc.data();
@@ -2784,7 +3324,9 @@ class CloudSyncService {
     print("--- CloudSyncService: backups/latest fetched! ---");
 
     if (!doc.exists || doc.data() == null) {
-      throw Exception('لم يتم العثور على نسخة احتياطية سابقة');
+      throw const NoWorkshopBackupException(
+        'لم يتم العثور على نسخة احتياطية سابقة',
+      );
     }
 
     Map<String, dynamic> payload = doc.data() as Map<String, dynamic>;
@@ -2888,6 +3430,7 @@ class CloudSyncService {
             .toList();
         lastRestoreSummary = 'مسترجع:\n' + summaryList.join('\n');
       }
+      await _rememberHandledBackupFingerprint(_backupFingerprint(payload));
       _dbUpdateController.add('');
       onDataRestored?.call();
       if (!effectiveKeepPendingChanges) {

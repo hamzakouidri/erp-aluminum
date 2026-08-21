@@ -53,7 +53,6 @@ class PdfInvoiceApi {
     }
   }
 
-
   static Future<void> generateAndPrintInvoice({required DevisData data}) async {
     final bytes = await buildPdfBytes(data);
     await Printing.layoutPdf(
@@ -62,7 +61,10 @@ class PdfInvoiceApi {
     );
   }
 
-  static Future<Uint8List> buildPdfBytes(DevisData data, {AppLanguage? overrideLang}) async {
+  static Future<Uint8List> buildPdfBytes(
+    DevisData data, {
+    AppLanguage? overrideLang,
+  }) async {
     if (overrideLang != null) {
       _currentLang = overrideLang;
     } else {
@@ -81,30 +83,45 @@ class PdfInvoiceApi {
 
     final pdf = pw.Document();
 
-    final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+    final bool isOfficial =
+        data.isProForma ||
+        data.documentTitleKey == 'FACTURE_VENTE' ||
+        data.documentTitleKey == 'BON_ROUTE';
     final imageWidgets = <int, pw.MemoryImage>{};
     if (!isOfficial) {
       for (int i = 0; i < data.items.length; i++) {
         final item = data.items[i];
         final path = item.imagePath;
 
-        if (item.title.contains('Caisson Tunnel') || item.title.contains('Caisson Tunnel') || (path != null && path.contains('caisson_tunnel'))) {
+        if (item.title.contains('Caisson Tunnel') ||
+            item.title.contains('Caisson Tunnel') ||
+            (path != null && path.contains('caisson_tunnel'))) {
           try {
-            final bytes = (await rootBundle.load('Icon/caisson_tunnel.jpg')).buffer.asUint8List();
+            final bytes = (await rootBundle.load(
+              'Icon/caisson_tunnel.jpg',
+            )).buffer.asUint8List();
             imageWidgets[i] = pw.MemoryImage(bytes);
           } catch (_) {
             try {
-              final bytes = (await rootBundle.load('assets/Icon/caisson_tunnel.jpg')).buffer.asUint8List();
+              final bytes = (await rootBundle.load(
+                'assets/Icon/caisson_tunnel.jpg',
+              )).buffer.asUint8List();
               imageWidgets[i] = pw.MemoryImage(bytes);
             } catch (_) {}
           }
-        } else if (item.title.contains('Moustiquaire') || item.title.contains('موستيكير') || (path != null && path.contains('moustiquaire'))) {
+        } else if (item.title.contains('Moustiquaire') ||
+            item.title.contains('موستيكير') ||
+            (path != null && path.contains('moustiquaire'))) {
           try {
-            final bytes = (await rootBundle.load('Icon/media.webp')).buffer.asUint8List();
+            final bytes = (await rootBundle.load(
+              'Icon/media.webp',
+            )).buffer.asUint8List();
             imageWidgets[i] = pw.MemoryImage(bytes);
           } catch (_) {
             try {
-              final bytes = (await rootBundle.load('assets/Icon/media.webp')).buffer.asUint8List();
+              final bytes = (await rootBundle.load(
+                'assets/Icon/media.webp',
+              )).buffer.asUint8List();
               imageWidgets[i] = pw.MemoryImage(bytes);
             } catch (_) {}
           }
@@ -136,8 +153,16 @@ class PdfInvoiceApi {
             pw.Align(
               alignment: pw.Alignment.centerRight,
               child: pw.Text(
-                _ar(_currentLang == AppLanguage.french ? 'N° chèque: ${data.chequeNumber}' : 'رقم الشيك: ${data.chequeNumber}'),
-                textDirection: _dir(_currentLang == AppLanguage.french ? 'N° chèque: ${data.chequeNumber}' : 'رقم الشيك: ${data.chequeNumber}'),
+                _ar(
+                  _currentLang == AppLanguage.french
+                      ? 'N° chèque: ${data.chequeNumber}'
+                      : 'رقم الشيك: ${data.chequeNumber}',
+                ),
+                textDirection: _dir(
+                  _currentLang == AppLanguage.french
+                      ? 'N° chèque: ${data.chequeNumber}'
+                      : 'رقم الشيك: ${data.chequeNumber}',
+                ),
                 style: pw.TextStyle(
                   fontSize: 10,
                   fontWeight: pw.FontWeight.bold,
@@ -165,12 +190,20 @@ class PdfInvoiceApi {
           if (isOfficial && data.workshop.rib.isNotEmpty) ...[
             pw.SizedBox(height: 14),
             pw.Text(
-              _ar(_currentLang == AppLanguage.french ? 'RIB: ${data.workshop.rib}' :
-                  _currentLang == AppLanguage.english ? 'RIB: ${data.workshop.rib}' :
-                  'الحساب البنكي (RIB): ${data.workshop.rib}'),
-              textDirection: _dir(_currentLang == AppLanguage.french ? 'RIB: ${data.workshop.rib}' :
-                  _currentLang == AppLanguage.english ? 'RIB: ${data.workshop.rib}' :
-                  'الحساب البنكي (RIB): ${data.workshop.rib}'),
+              _ar(
+                _currentLang == AppLanguage.french
+                    ? 'RIB: ${data.workshop.rib}'
+                    : _currentLang == AppLanguage.english
+                    ? 'RIB: ${data.workshop.rib}'
+                    : 'الحساب البنكي (RIB): ${data.workshop.rib}',
+              ),
+              textDirection: _dir(
+                _currentLang == AppLanguage.french
+                    ? 'RIB: ${data.workshop.rib}'
+                    : _currentLang == AppLanguage.english
+                    ? 'RIB: ${data.workshop.rib}'
+                    : 'الحساب البنكي (RIB): ${data.workshop.rib}',
+              ),
               style: pw.TextStyle(
                 fontSize: 10,
                 fontWeight: pw.FontWeight.bold,
@@ -180,7 +213,10 @@ class PdfInvoiceApi {
           ],
         ],
         footer: (context) {
-          final isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+          final isOfficial =
+              data.isProForma ||
+              data.documentTitleKey == 'FACTURE_VENTE' ||
+              data.documentTitleKey == 'BON_ROUTE';
           if (!isOfficial) return pw.SizedBox();
 
           final parts = <String>[];
@@ -191,10 +227,13 @@ class PdfInvoiceApi {
             parts.add('Adresse: ${data.workshop.address}');
           }
           if (data.workshop.rc.isNotEmpty) parts.add('RC: ${data.workshop.rc}');
-          if (data.workshop.nif.isNotEmpty) parts.add('NIF: ${data.workshop.nif}');
-          if (data.workshop.nis.isNotEmpty) parts.add('NIS: ${data.workshop.nis}');
+          if (data.workshop.nif.isNotEmpty)
+            parts.add('NIF: ${data.workshop.nif}');
+          if (data.workshop.nis.isNotEmpty)
+            parts.add('NIS: ${data.workshop.nis}');
           if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
-          if (data.workshop.phone.isNotEmpty) parts.add('Tél: ${data.workshop.phone}');
+          if (data.workshop.phone.isNotEmpty)
+            parts.add('Tél: ${data.workshop.phone}');
 
           final footerText = parts.join(' | ');
 
@@ -202,7 +241,9 @@ class PdfInvoiceApi {
             alignment: pw.Alignment.center,
             padding: const pw.EdgeInsets.only(top: 8),
             decoration: const pw.BoxDecoration(
-              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+              border: pw.Border(
+                top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              ),
             ),
             child: pw.Text(
               _ar(footerText),
@@ -235,9 +276,11 @@ class PdfInvoiceApi {
       prefix = 'DVP';
     } else if (data.isProForma) {
       prefix = data.isPartial ? 'FPP' : 'FP';
-    } else if (key == 'doc_bon_livraison' || key == 'doc_bon_livraison_sans_prix') {
+    } else if (key == 'doc_bon_livraison' ||
+        key == 'doc_bon_livraison_sans_prix') {
       prefix = 'BL';
-    } else if (key == 'doc_bon_livraison_partiel' || key == 'doc_bon_livraison_partiel_sans_prix') {
+    } else if (key == 'doc_bon_livraison_partiel' ||
+        key == 'doc_bon_livraison_partiel_sans_prix') {
       prefix = 'BLP';
     } else {
       if (data.isProForma) {
@@ -264,8 +307,8 @@ class PdfInvoiceApi {
     final seq = data.sequenceNumber > 0
         ? data.sequenceNumber
         : (data.orderId > 0 && data.orderId < 100000
-            ? data.orderId
-            : (data.orderId % 1000).abs());
+              ? data.orderId
+              : (data.orderId % 1000).abs());
     final seqNum = seq.toString().padLeft(3, '0');
     return '$prefix$year2$seqNum';
   }
@@ -281,7 +324,8 @@ class PdfInvoiceApi {
         titleText = 'فاتورة تقديرية / أولية';
       }
     } else {
-      var titleKey = data.documentTitleKey ?? (data.isPartial ? 'DEVIS_PARTIAL' : 'DEVIS');
+      var titleKey =
+          data.documentTitleKey ?? (data.isPartial ? 'DEVIS_PARTIAL' : 'DEVIS');
       if (titleKey == 'BON_ROUTE') {
         titleKey = 'FACTURE_VENTE';
       }
@@ -299,12 +343,16 @@ class PdfInvoiceApi {
         titleText = t(titleKey);
       }
     }
-    
+
     pw.Widget? logoWidget;
     if (data.workshop.logoBase64.isNotEmpty) {
       try {
         final imageBytes = base64Decode(data.workshop.logoBase64);
-        logoWidget = pw.Image(pw.MemoryImage(imageBytes), width: 60, height: 60);
+        logoWidget = pw.Image(
+          pw.MemoryImage(imageBytes),
+          width: 60,
+          height: 60,
+        );
       } catch (_) {}
     }
 
@@ -314,10 +362,7 @@ class PdfInvoiceApi {
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
-            if (logoWidget != null) ...[
-              logoWidget,
-              pw.SizedBox(width: 10),
-            ],
+            if (logoWidget != null) ...[logoWidget, pw.SizedBox(width: 10)],
             pw.Text(
               _ar(data.workshop.name),
               textDirection: _dir(data.workshop.name),
@@ -350,20 +395,20 @@ class PdfInvoiceApi {
                 ),
               ],
             ),
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            _metaLine(t('N°:'), _formatDocumentNumber(data)),
-            _metaLine(t('Date:'), data.orderDate),
-            if (data.isProForma && data.validUntil.isNotEmpty)
-              _metaLine(t('Valide jusqu\'au:'), data.validUntil),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                _metaLine(t('N°:'), _formatDocumentNumber(data)),
+                _metaLine(t('Date:'), data.orderDate),
+                if (data.isProForma && data.validUntil.isNotEmpty)
+                  _metaLine(t('Valide jusqu\'au:'), data.validUntil),
+              ],
+            ),
           ],
         ),
       ],
-    ),
-  ],
-);
-}
+    );
+  }
 
   static pw.Widget _metaLine(String label, String value) {
     return pw.Padding(
@@ -387,12 +432,21 @@ class PdfInvoiceApi {
   }
 
   static pw.Widget _buildParties(DevisData data) {
-    final phonePrefix = _currentLang == AppLanguage.french ? 'Tél: ' :
-                        _currentLang == AppLanguage.english ? 'Phone: ' : 'الهاتف: ';
-    final clientIdPrefix = _currentLang == AppLanguage.french ? 'N° Client: ' :
-                           _currentLang == AppLanguage.english ? 'Client ID: ' : 'رقم الزبون: ';
-    final addressPrefix = _currentLang == AppLanguage.french ? 'Adresse: ' :
-                          _currentLang == AppLanguage.english ? 'Address: ' : 'العنوان: ';
+    final phonePrefix = _currentLang == AppLanguage.french
+        ? 'Tél: '
+        : _currentLang == AppLanguage.english
+        ? 'Phone: '
+        : 'الهاتف: ';
+    final clientIdPrefix = _currentLang == AppLanguage.french
+        ? 'N° Client: '
+        : _currentLang == AppLanguage.english
+        ? 'Client ID: '
+        : 'رقم الزبون: ';
+    final addressPrefix = _currentLang == AppLanguage.french
+        ? 'Adresse: '
+        : _currentLang == AppLanguage.english
+        ? 'Address: '
+        : 'العنوان: ';
 
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -400,9 +454,13 @@ class PdfInvoiceApi {
         pw.Expanded(
           child: _partyBlock(_ar(t('FOURNISSEUR')), [
             data.workshop.name,
-            if (data.workshop.phone.isNotEmpty) '$phonePrefix${data.workshop.phone}',
-            if (data.workshop.address.isNotEmpty) '$addressPrefix${data.workshop.address}',
-            if (data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE') ...[
+            if (data.workshop.phone.isNotEmpty)
+              '$phonePrefix${data.workshop.phone}',
+            if (data.workshop.address.isNotEmpty)
+              '$addressPrefix${data.workshop.address}',
+            if (data.isProForma ||
+                data.documentTitleKey == 'FACTURE_VENTE' ||
+                data.documentTitleKey == 'BON_ROUTE') ...[
               if (data.workshop.rc.isNotEmpty) 'RC: ${data.workshop.rc}',
               if (data.workshop.nif.isNotEmpty) 'NIF: ${data.workshop.nif}',
               if (data.workshop.nis.isNotEmpty) 'NIS: ${data.workshop.nis}',
@@ -532,14 +590,20 @@ class PdfInvoiceApi {
       alignment: alignment,
       decoration: pw.BoxDecoration(
         color: bg,
-        border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+        border: hasBorder
+            ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+            : null,
       ),
       child: child,
     );
   }
 
   /// صف رأس الجدول
-  static pw.Widget _tableHeader(bool hidePrices, bool isProForma, {bool hasBorder = true}) {
+  static pw.Widget _tableHeader(
+    bool hidePrices,
+    bool isProForma, {
+    bool hasBorder = true,
+  }) {
     pw.Widget hCell(
       double w,
       String text, {
@@ -550,7 +614,9 @@ class PdfInvoiceApi {
       alignment: align,
       decoration: pw.BoxDecoration(
         color: _blue,
-        border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+        border: hasBorder
+            ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+            : null,
       ),
       child: pw.Text(
         _ar(text),
@@ -565,14 +631,25 @@ class PdfInvoiceApi {
     return pw.Row(
       children: [
         if (!isProForma) hCell(_col0w, t('Image')),
-        hCell(isProForma
-            ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
-            : (hidePrices ? (_tableW - _col0w - _col3w) : _col1w), t('Désignation')),
+        hCell(
+          isProForma
+              ? (hidePrices ? _tableW : (_tableW - _col2w - _col3w - _col4w))
+              : (hidePrices ? (_tableW - _col0w - _col3w) : _col1w),
+          t('Désignation'),
+        ),
         if (!hidePrices)
-          hCell(_col2w, isProForma ? 'P.U. H.T.' : t('Prix Unit.'), align: pw.Alignment.centerRight),
+          hCell(
+            _col2w,
+            isProForma ? 'P.U. H.T.' : t('Prix Unit.'),
+            align: pw.Alignment.centerRight,
+          ),
         hCell(_col3w, t('Qté'), align: pw.Alignment.centerRight),
         if (!hidePrices)
-          hCell(_col4w, isProForma ? 'TOTAL H.T.' : t('Total'), align: pw.Alignment.centerRight),
+          hCell(
+            _col4w,
+            isProForma ? 'TOTAL H.T.' : t('Total'),
+            align: pw.Alignment.centerRight,
+          ),
       ],
     );
   }
@@ -592,11 +669,17 @@ class PdfInvoiceApi {
     final List<String> displayDetails;
     if (isProForma) {
       if (_currentLang == AppLanguage.french) {
-        displayDetails = ['Largeur: ${item.width} mm | Hauteur: ${item.height} mm'];
+        displayDetails = [
+          'Largeur: ${item.width} mm | Hauteur: ${item.height} mm',
+        ];
       } else if (_currentLang == AppLanguage.english) {
-        displayDetails = ['Width: ${item.width} mm | Height: ${item.height} mm'];
+        displayDetails = [
+          'Width: ${item.width} mm | Height: ${item.height} mm',
+        ];
       } else {
-        displayDetails = ['العرض: ${item.width} مم | الارتفاع: ${item.height} مم'];
+        displayDetails = [
+          'العرض: ${item.width} مم | الارتفاع: ${item.height} مم',
+        ];
       }
     } else {
       displayDetails = item.details;
@@ -639,14 +722,7 @@ class PdfInvoiceApi {
               ),
               pw.SizedBox(height: 2),
               ...displayDetails.map(
-                (d) => pw.Text(
-                  _ar(d),
-                  textDirection: _dir(d),
-                  style: const pw.TextStyle(
-                    fontSize: 8.5,
-                    color: PdfColors.grey800,
-                  ),
-                ),
+                (d) => _detailRichText(d, color: PdfColors.grey800),
               ),
             ],
           ),
@@ -723,11 +799,19 @@ class PdfInvoiceApi {
 
   static bool _isCaissonOnly(DevisData data) {
     return data.items.isNotEmpty &&
-        data.items.every((item) =>
-            item.title.contains('Caisson Tunnel') ||
-            item.title.contains('caisson') ||
-            (item.imagePath != null && item.imagePath!.contains('caisson_tunnel')) ||
-            item.details.any((d) => d.contains('Caisson') || d.contains('صندوق') || d.contains('Kit')));
+        data.items.every(
+          (item) =>
+              item.title.contains('Caisson Tunnel') ||
+              item.title.contains('caisson') ||
+              (item.imagePath != null &&
+                  item.imagePath!.contains('caisson_tunnel')) ||
+              item.details.any(
+                (d) =>
+                    d.contains('Caisson') ||
+                    d.contains('صندوق') ||
+                    d.contains('Kit'),
+              ),
+        );
   }
 
   static pw.Widget _buildTable(
@@ -735,28 +819,40 @@ class PdfInvoiceApi {
     Map<int, pw.MemoryImage> imageWidgets,
   ) {
     final bool hidePrices = data.hidePrices;
-    final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+    final bool isOfficial =
+        data.isProForma ||
+        data.documentTitleKey == 'FACTURE_VENTE' ||
+        data.documentTitleKey == 'BON_ROUTE';
     final bool hasBorder = data.documentTitleKey != 'BON_ROUTE';
     final bool isCaissonOnly = _isCaissonOnly(data);
 
     if (isCaissonOnly) {
-      return _buildCaissonTunnelTable(data, imageWidgets, hidePrices, hasBorder);
+      return _buildCaissonTunnelTable(
+        data,
+        imageWidgets,
+        hidePrices,
+        hasBorder,
+      );
     }
 
-    final List<pw.Widget> rows = [_tableHeader(hidePrices, isOfficial, hasBorder: hasBorder)];
+    final List<pw.Widget> rows = [
+      _tableHeader(hidePrices, isOfficial, hasBorder: hasBorder),
+    ];
 
     for (var entry in data.items.asMap().entries) {
       final index = entry.key;
       final item = entry.value;
 
-      rows.add(_dataRow(
-        item: item,
-        index: index,
-        image: imageWidgets[index],
-        hidePrices: hidePrices,
-        isProForma: isOfficial,
-        hasBorder: hasBorder,
-      ));
+      rows.add(
+        _dataRow(
+          item: item,
+          index: index,
+          image: imageWidgets[index],
+          hidePrices: hidePrices,
+          isProForma: isOfficial,
+          hasBorder: hasBorder,
+        ),
+      );
 
       // صف سبب التعديل (يظهر أسفل الصف المشطوب)
       if (item.isReplaced && item.replacementReason.isNotEmpty) {
@@ -768,18 +864,24 @@ class PdfInvoiceApi {
                 width: _col0w,
                 decoration: pw.BoxDecoration(
                   color: PdfColors.red50,
-                  border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+                  border: hasBorder
+                      ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+                      : null,
                 ),
               ),
               pw.Container(
-                width: hidePrices ? (_tableW - _col0w) : (_col1w + _col2w + _col3w + _col4w),
+                width: hidePrices
+                    ? (_tableW - _col0w)
+                    : (_col1w + _col2w + _col3w + _col4w),
                 padding: const pw.EdgeInsets.symmetric(
                   horizontal: 6,
                   vertical: 4,
                 ),
                 decoration: pw.BoxDecoration(
                   color: PdfColors.red50,
-                  border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+                  border: hasBorder
+                      ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+                      : null,
                 ),
                 child: pw.Text(
                   _ar(reasonText),
@@ -807,7 +909,9 @@ class PdfInvoiceApi {
             width: _col0w,
             decoration: pw.BoxDecoration(
               color: PdfColors.grey100,
-              border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+              border: hasBorder
+                  ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+                  : null,
             ),
           ),
           pw.Container(
@@ -816,7 +920,9 @@ class PdfInvoiceApi {
             alignment: pw.Alignment.centerLeft,
             decoration: pw.BoxDecoration(
               color: PdfColors.grey100,
-              border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+              border: hasBorder
+                  ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+                  : null,
             ),
             child: pw.Text(
               _ar(t('Quantité Totale / مجموع الكميات')),
@@ -834,7 +940,9 @@ class PdfInvoiceApi {
             alignment: pw.Alignment.centerRight,
             decoration: pw.BoxDecoration(
               color: PdfColors.grey100,
-              border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+              border: hasBorder
+                  ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+                  : null,
             ),
             child: pw.Text(
               '$totalQty',
@@ -850,7 +958,9 @@ class PdfInvoiceApi {
               width: _col4w,
               decoration: pw.BoxDecoration(
                 color: PdfColors.grey100,
-                border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
+                border: hasBorder
+                    ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+                    : null,
               ),
             ),
         ],
@@ -872,28 +982,34 @@ class PdfInvoiceApi {
     const double cSizeW = 100.0;
     const double cPriceW = 85.0;
     const double cQtyW = 45.0;
-    const double cTotalW = _tableW - cImgW - cDimW - cSizeW - cPriceW - cQtyW; // 124.28
+    const double cTotalW =
+        _tableW - cImgW - cDimW - cSizeW - cPriceW - cQtyW; // 124.28
 
-    pw.Widget hCell(double w, String text, {pw.Alignment align = pw.Alignment.center}) =>
-        pw.Container(
-          width: w,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          alignment: align,
-          decoration: pw.BoxDecoration(
-            color: _blue,
-            border: hasBorder ? pw.Border.all(color: PdfColors.grey300, width: 0.5) : null,
-          ),
-          child: pw.Text(
-            _ar(text),
-            textDirection: _dir(text),
-            textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(
-              color: PdfColors.white,
-              fontWeight: pw.FontWeight.bold,
-              fontSize: 9,
-            ),
-          ),
-        );
+    pw.Widget hCell(
+      double w,
+      String text, {
+      pw.Alignment align = pw.Alignment.center,
+    }) => pw.Container(
+      width: w,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      alignment: align,
+      decoration: pw.BoxDecoration(
+        color: _blue,
+        border: hasBorder
+            ? pw.Border.all(color: PdfColors.grey300, width: 0.5)
+            : null,
+      ),
+      child: pw.Text(
+        _ar(text),
+        textDirection: _dir(text),
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(
+          color: PdfColors.white,
+          fontWeight: pw.FontWeight.bold,
+          fontSize: 9,
+        ),
+      ),
+    );
 
     final List<pw.Widget> rows = [
       pw.Row(
@@ -917,7 +1033,12 @@ class PdfInvoiceApi {
       String dimText = item.width > 0 ? '${item.width} cm' : '';
       if (dimText.isEmpty && item.details.isNotEmpty) {
         dimText = item.details.firstWhere(
-          (d) => d.contains('cm') || d.contains('ملم') || d.contains('مم') || d.contains('طول') || d.contains('البعد'),
+          (d) =>
+              d.contains('cm') ||
+              d.contains('ملم') ||
+              d.contains('مم') ||
+              d.contains('طول') ||
+              d.contains('البعد'),
           orElse: () => item.details.first,
         );
       }
@@ -926,7 +1047,12 @@ class PdfInvoiceApi {
       String boxSizeText = item.height > 0 ? '${item.height} cm' : '';
       if (boxSizeText.isEmpty && item.details.length > 1) {
         boxSizeText = item.details.firstWhere(
-          (d) => d.contains('Kit') || d.contains('صندوق') || d.contains('25') || d.contains('30') || d.contains('40'),
+          (d) =>
+              d.contains('Kit') ||
+              d.contains('صندوق') ||
+              d.contains('25') ||
+              d.contains('30') ||
+              d.contains('40'),
           orElse: () => item.details.length > 1 ? item.details[1] : '—',
         );
       } else if (boxSizeText.isEmpty) {
@@ -941,7 +1067,10 @@ class PdfInvoiceApi {
               cImgW,
               imageWidgets[index] != null
                   ? pw.Image(imageWidgets[index]!, fit: pw.BoxFit.contain)
-                  : pw.Text('-', style: const pw.TextStyle(color: PdfColors.grey500)),
+                  : pw.Text(
+                      '-',
+                      style: const pw.TextStyle(color: PdfColors.grey500),
+                    ),
               alignment: pw.Alignment.center,
               bg: bg,
               padding: const pw.EdgeInsets.all(3),
@@ -953,7 +1082,10 @@ class PdfInvoiceApi {
               pw.Text(
                 _ar(dimText),
                 textDirection: _dir(dimText),
-                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
               alignment: pw.Alignment.center,
               bg: bg,
@@ -988,7 +1120,11 @@ class PdfInvoiceApi {
               cQtyW,
               pw.Text(
                 '${item.quantity}',
-                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _blue),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _blue,
+                ),
               ),
               alignment: pw.Alignment.center,
               bg: bg,
@@ -1000,7 +1136,10 @@ class PdfInvoiceApi {
                 cTotalW,
                 pw.Text(
                   '${(item.unitPrice * item.quantity).toStringAsFixed(2)} DA',
-                  style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
                 alignment: pw.Alignment.centerRight,
                 bg: bg,
@@ -1012,16 +1151,47 @@ class PdfInvoiceApi {
     }
 
     // مجموع الكميات ومجموع حسابات الكميات في الأسفل
-    final int totalQty = data.items.where((i) => !i.isReplaced).fold(0, (s, i) => s + i.quantity);
-    final double totalCalcAmount = data.items.where((i) => !i.isReplaced).fold(0.0, (s, i) => s + (i.unitPrice * i.quantity));
+    final int totalQty = data.items
+        .where((i) => !i.isReplaced)
+        .fold(0, (s, i) => s + i.quantity);
+    final double totalCalcAmount = data.items
+        .where((i) => !i.isReplaced)
+        .fold(0.0, (s, i) => s + (i.unitPrice * i.quantity));
 
     // 1. صف مجموع الكميات
     rows.add(
       pw.Row(
         children: [
-          _cell(cImgW + cDimW + cSizeW, pw.Text(_ar('مجموع الكميات (Total Quantités)'), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)), bg: PdfColors.grey100, hasBorder: hasBorder),
-          _cell(cQtyW, pw.Text('$totalQty', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _blue)), alignment: pw.Alignment.center, bg: PdfColors.grey100, hasBorder: hasBorder),
-          if (!hidePrices) _cell(cPriceW + cTotalW, pw.SizedBox(), bg: PdfColors.grey100, hasBorder: hasBorder),
+          _cell(
+            cImgW + cDimW + cSizeW,
+            pw.Text(
+              _ar('مجموع الكميات (Total Quantités)'),
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            ),
+            bg: PdfColors.grey100,
+            hasBorder: hasBorder,
+          ),
+          _cell(
+            cQtyW,
+            pw.Text(
+              '$totalQty',
+              style: pw.TextStyle(
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+                color: _blue,
+              ),
+            ),
+            alignment: pw.Alignment.center,
+            bg: PdfColors.grey100,
+            hasBorder: hasBorder,
+          ),
+          if (!hidePrices)
+            _cell(
+              cPriceW + cTotalW,
+              pw.SizedBox(),
+              bg: PdfColors.grey100,
+              hasBorder: hasBorder,
+            ),
         ],
       ),
     );
@@ -1031,8 +1201,33 @@ class PdfInvoiceApi {
       rows.add(
         pw.Row(
           children: [
-            _cell(cImgW + cDimW + cSizeW + cPriceW + cQtyW, pw.Text(_ar('مجموع حسابات الكميات (Total Général)'), style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)), alignment: pw.Alignment.centerRight, bg: PdfColors.grey200, hasBorder: hasBorder),
-            _cell(cTotalW, pw.Text('${totalCalcAmount.toStringAsFixed(2)} DA', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _blue)), alignment: pw.Alignment.centerRight, bg: PdfColors.grey200, hasBorder: hasBorder),
+            _cell(
+              cImgW + cDimW + cSizeW + cPriceW + cQtyW,
+              pw.Text(
+                _ar('مجموع حسابات الكميات (Total Général)'),
+                style: pw.TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              alignment: pw.Alignment.centerRight,
+              bg: PdfColors.grey200,
+              hasBorder: hasBorder,
+            ),
+            _cell(
+              cTotalW,
+              pw.Text(
+                '${totalCalcAmount.toStringAsFixed(2)} DA',
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _blue,
+                ),
+              ),
+              alignment: pw.Alignment.centerRight,
+              bg: PdfColors.grey200,
+              hasBorder: hasBorder,
+            ),
           ],
         ),
       );
@@ -1081,12 +1276,66 @@ class PdfInvoiceApi {
     );
   }
 
+  static pw.Widget _detailRichText(
+    String text, {
+    PdfColor color = PdfColors.grey800,
+    double fontSize = 8.5,
+  }) {
+    final normalStyle = pw.TextStyle(fontSize: fontSize, color: color);
+    final labelStyle = pw.TextStyle(
+      fontSize: fontSize,
+      color: color,
+      fontWeight: pw.FontWeight.bold,
+    );
+
+    return pw.RichText(
+      textDirection: _dir(text),
+      text: pw.TextSpan(children: _detailSpans(text, normalStyle, labelStyle)),
+    );
+  }
+
+  static List<pw.TextSpan> _detailSpans(
+    String text,
+    pw.TextStyle normalStyle,
+    pw.TextStyle labelStyle,
+  ) {
+    final spans = <pw.TextSpan>[];
+    final parts = text.split('|');
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        spans.add(pw.TextSpan(text: _ar(' | '), style: normalStyle));
+      }
+      final part = parts[i];
+      final colonIndex = part.indexOf(':');
+      if (colonIndex > 0) {
+        spans.add(
+          pw.TextSpan(
+            text: _ar(part.substring(0, colonIndex + 1)),
+            style: labelStyle,
+          ),
+        );
+        spans.add(
+          pw.TextSpan(
+            text: _ar(part.substring(colonIndex + 1)),
+            style: normalStyle,
+          ),
+        );
+      } else {
+        spans.add(pw.TextSpan(text: _ar(part), style: normalStyle));
+      }
+    }
+    return spans;
+  }
+
   static pw.Widget _buildTotals(DevisData data) {
-    final bool isOfficial = data.isProForma || data.documentTitleKey == 'FACTURE_VENTE';
+    final bool isOfficial =
+        data.isProForma || data.documentTitleKey == 'FACTURE_VENTE';
     final totalBrutLabel = isOfficial ? 'TOTAL HT' : t('Total Brut');
     final remiseLabel = isOfficial ? 'REMISE' : t('Remise');
     final netHtLabel = isOfficial ? 'NET HT' : t('Total après remise');
-    final tvaLabel = isOfficial ? 'TVA' : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
+    final tvaLabel = isOfficial
+        ? 'TVA'
+        : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
     final totalTtcLabel = isOfficial ? 'NET A PAYER' : t('TOTAL TTC');
 
     return pw.Align(
@@ -1164,7 +1413,11 @@ class PdfInvoiceApi {
     return value.toStringAsFixed(2);
   }
 
-  static Future<Uint8List> _buildBonDeChargePdf(DevisData data, pw.Font font, pw.Font fontBold) async {
+  static Future<Uint8List> _buildBonDeChargePdf(
+    DevisData data,
+    pw.Font font,
+    pw.Font fontBold,
+  ) async {
     final pdf = pw.Document();
 
     final List<Map<String, dynamic>> rows = [];
@@ -1172,7 +1425,8 @@ class PdfInvoiceApi {
     for (final item in data.items) {
       for (int i = 0; i < item.quantity; i++) {
         globalIndex++;
-        final barcodeVal = 'CMD-${data.orderId}-D${item.detailId}-W$globalIndex-F';
+        final barcodeVal =
+            'CMD-${data.orderId}-D${item.detailId}-W$globalIndex-F';
         final cumTicketNum = data.priorConfirmedWindowsCount + globalIndex;
         rows.add({
           'num': '$globalIndex\n(#$cumTicketNum)',
@@ -1200,10 +1454,16 @@ class PdfInvoiceApi {
                 children: [
                   pw.Text(
                     _ar(data.workshop.name),
-                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
                   if (data.workshop.phone.isNotEmpty)
-                    pw.Text('Tél: ${data.workshop.phone}', style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text(
+                      'Tél: ${data.workshop.phone}',
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
                 ],
               ),
               pw.Column(
@@ -1213,11 +1473,18 @@ class PdfInvoiceApi {
                     _currentLang == AppLanguage.french
                         ? 'Bon de charge / Livraison'
                         : _currentLang == AppLanguage.english
-                            ? 'Loading & Delivery Note'
-                            : _ar('وصل الشحن والتسليم (الفاتورة التقديرية)'),
-                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: _blue),
+                        ? 'Loading & Delivery Note'
+                        : _ar('وصل الشحن والتسليم (الفاتورة التقديرية)'),
+                    style: pw.TextStyle(
+                      fontSize: 18,
+                      fontWeight: pw.FontWeight.bold,
+                      color: _blue,
+                    ),
                   ),
-                  pw.Text('Date: ${data.orderDate}', style: const pw.TextStyle(fontSize: 10)),
+                  pw.Text(
+                    'Date: ${data.orderDate}',
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
                 ],
               ),
             ],
@@ -1225,7 +1492,7 @@ class PdfInvoiceApi {
           pw.SizedBox(height: 10),
           pw.Divider(color: PdfColors.grey400, thickness: 1),
           pw.SizedBox(height: 10),
-          
+
           pw.Container(
             padding: const pw.EdgeInsets.all(8),
             decoration: pw.BoxDecoration(
@@ -1238,9 +1505,12 @@ class PdfInvoiceApi {
                   _currentLang == AppLanguage.french
                       ? 'Client: '
                       : _currentLang == AppLanguage.english
-                          ? 'Client: '
-                          : _ar('الزبون: '),
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
+                      ? 'Client: '
+                      : _ar('الزبون: '),
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
                 pw.Text(
                   _ar(data.clientName),
@@ -1254,21 +1524,51 @@ class PdfInvoiceApi {
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             columnWidths: {
-              0: const pw.FixedColumnWidth(45),  // N° Ticket
+              0: const pw.FixedColumnWidth(45), // N° Ticket
               1: const pw.FlexColumnWidth(1.8), // Designation / Item Title
               2: const pw.FlexColumnWidth(1.2), // Dimensions
-              3: const pw.FlexColumnWidth(1),   // Couleur
+              3: const pw.FlexColumnWidth(1), // Couleur
               4: const pw.FlexColumnWidth(1.5), // Barcode
             },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                 children: [
-                  _headerCell(_currentLang == AppLanguage.french ? 'N°' : _currentLang == AppLanguage.english ? 'No' : 'رقم'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Désignation' : _currentLang == AppLanguage.english ? 'Item Designation' : 'البيان / النافذة'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Dimensions (mm)' : _currentLang == AppLanguage.english ? 'Dimensions (mm)' : 'المقاسات (ملم)'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Couleur' : _currentLang == AppLanguage.english ? 'Color' : 'اللون'),
-                  _headerCell(_currentLang == AppLanguage.french ? 'Code à barres' : _currentLang == AppLanguage.english ? 'Barcode' : 'الكود بار'),
+                  _headerCell(
+                    _currentLang == AppLanguage.french
+                        ? 'N°'
+                        : _currentLang == AppLanguage.english
+                        ? 'No'
+                        : 'رقم',
+                  ),
+                  _headerCell(
+                    _currentLang == AppLanguage.french
+                        ? 'Désignation'
+                        : _currentLang == AppLanguage.english
+                        ? 'Item Designation'
+                        : 'البيان / النافذة',
+                  ),
+                  _headerCell(
+                    _currentLang == AppLanguage.french
+                        ? 'Dimensions (mm)'
+                        : _currentLang == AppLanguage.english
+                        ? 'Dimensions (mm)'
+                        : 'المقاسات (ملم)',
+                  ),
+                  _headerCell(
+                    _currentLang == AppLanguage.french
+                        ? 'Couleur'
+                        : _currentLang == AppLanguage.english
+                        ? 'Color'
+                        : 'اللون',
+                  ),
+                  _headerCell(
+                    _currentLang == AppLanguage.french
+                        ? 'Code à barres'
+                        : _currentLang == AppLanguage.english
+                        ? 'Barcode'
+                        : 'الكود بار',
+                  ),
                 ],
               ),
               for (final row in rows)
@@ -1279,7 +1579,10 @@ class PdfInvoiceApi {
                     _dataCell(row['dims']!),
                     _dataCell(row['color']!),
                     pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      padding: const pw.EdgeInsets.symmetric(
+                        vertical: 4,
+                        horizontal: 8,
+                      ),
                       alignment: pw.Alignment.center,
                       child: pw.BarcodeWidget(
                         barcode: pw.Barcode.code128(),
@@ -1316,11 +1619,7 @@ class PdfInvoiceApi {
     return pw.Container(
       padding: const pw.EdgeInsets.all(6),
       alignment: pw.Alignment.center,
-      child: pw.Text(
-        _ar(text),
-        style: const pw.TextStyle(fontSize: 9),
-      ),
+      child: pw.Text(_ar(text), style: const pw.TextStyle(fontSize: 9)),
     );
   }
 }
-

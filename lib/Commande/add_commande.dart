@@ -17,8 +17,10 @@ import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/order_date_utils.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'order_table_edit_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
 import 'package:database_data/Screen/tempered_glass_work_screen.dart';
@@ -61,6 +63,89 @@ class _CommandePageState extends State<CommandePage> {
     }
   }
 
+  DevisLineItem _invoiceLineForProduct(WindowModel product) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final modelMap = Map<String, dynamic>.from(product.toMap());
+    final seriesName =
+        product.activeSeries?.name ??
+        product.loadedSeriesName ??
+        product.activeSlidingSeries?.name ??
+        product.loadedSlidingSeriesName ??
+        '';
+    final colorName =
+        product.selectedDbColor?['name']?.toString() ?? product.frameColor.name;
+
+    modelMap['description'] = product.description ?? '';
+    modelMap['quantity'] = product.quantity;
+
+    return DevisBuilder.buildLineItemFromDetail(
+      {
+        'id': 0,
+        'window_type': product.manualNameOverride ?? '',
+        'game': seriesName,
+        'color': colorName,
+        'glass':
+            product.zones.isNotEmpty &&
+                product.zones.first.glass.structure == GlassStructure.double
+            ? 'Double'
+            : 'Simple',
+        'largeur': product.width,
+        'hauteur': product.height,
+        'quantity': product.quantity,
+        'price': product.manualPriceOverride ?? product.totalCost,
+        'description': product.description ?? '',
+        'partitions_json': jsonEncode(modelMap),
+        'drawing_image_path': '',
+      },
+      overrideLang: lang,
+      forceGeneratedDetails: false,
+    );
+  }
+
+  Widget _detailRichText(String text, {required TextStyle style}) {
+    final labelStyle = style.copyWith(fontWeight: FontWeight.w700);
+    return RichText(
+      textDirection: _containsArabic(text)
+          ? ui.TextDirection.rtl
+          : ui.TextDirection.ltr,
+      text: TextSpan(children: _detailTextSpans(text, style, labelStyle)),
+    );
+  }
+
+  List<TextSpan> _detailTextSpans(
+    String text,
+    TextStyle normalStyle,
+    TextStyle labelStyle,
+  ) {
+    final spans = <TextSpan>[];
+    final parts = text.split('|');
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        spans.add(TextSpan(text: ' | ', style: normalStyle));
+      }
+      final part = parts[i];
+      final colonIndex = part.indexOf(':');
+      if (colonIndex > 0) {
+        spans.add(
+          TextSpan(text: part.substring(0, colonIndex + 1), style: labelStyle),
+        );
+        spans.add(
+          TextSpan(text: part.substring(colonIndex + 1), style: normalStyle),
+        );
+      } else {
+        spans.add(TextSpan(text: part, style: normalStyle));
+      }
+    }
+    return spans;
+  }
+
+  bool _containsArabic(String text) {
+    return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+  }
+
   Map<String, dynamic>? selectedClient;
 
   TextEditingController clientController = TextEditingController();
@@ -101,29 +186,29 @@ class _CommandePageState extends State<CommandePage> {
 
   /// تحديث حفظ الخصائص من نموذج نافذة
   void _saveLastSettings(WindowModel m) {
+    final glassSpec = m.zones.isNotEmpty ? m.zones.first.glass.toMap() : null;
     _lastUsedSettings = {
+      'activeSeries': m.activeSeries,
+      'activeSlidingSeries': m.activeSlidingSeries,
+      'loadedSeriesId': m.activeSeries?.id ?? m.loadedSeriesId,
+      'loadedSlidingSeriesId':
+          m.activeSlidingSeries?.id ?? m.loadedSlidingSeriesId,
+      'loadedSeriesName':
+          m.activeSeries?.name ?? m.loadedSeriesName ?? m.manualNameOverride,
+      'loadedSlidingSeriesName':
+          m.activeSlidingSeries?.name ?? m.loadedSlidingSeriesName,
+      'selectedDbColor': m.selectedDbColor != null
+          ? Map<String, dynamic>.from(m.selectedDbColor!)
+          : null,
       'selectedAccessoryColor': m.selectedAccessoryColor != null
           ? Map<String, dynamic>.from(m.selectedAccessoryColor!)
           : null,
+      'glassSpec': glassSpec,
       'hasShutter': m.hasShutter,
       'shutterLame': m.shutterLame,
       'shutterGlissiere': m.shutterGlissiere,
       'shutterMechanism': m.shutterMechanism,
     };
-  }
-
-  /// تطبيق آخر خصائص على نموذج جديد
-  void _applyLastSettings(WindowModel m) {
-    final s = _lastUsedSettings;
-    if (s == null) return;
-    if (s['selectedAccessoryColor'] != null)
-      m.selectedAccessoryColor = s['selectedAccessoryColor'];
-    if (s['hasShutter'] != null) m.hasShutter = s['hasShutter'];
-    if (s['shutterLame'] != null) m.shutterLame = s['shutterLame'];
-    if (s['shutterGlissiere'] != null)
-      m.shutterGlissiere = s['shutterGlissiere'];
-    if (s['shutterMechanism'] != null)
-      m.shutterMechanism = s['shutterMechanism'];
   }
 
   List<WindowModel> _modelsFromMoustiquairePayload(
@@ -488,9 +573,15 @@ class _CommandePageState extends State<CommandePage> {
                 rowColor.toLowerCase(),
             orElse: () => <String, dynamic>{},
           );
-          if (matched.isNotEmpty) {
-            model.selectedDbColor = matched;
-          } else {
+          final allowedMatch = matched.isEmpty
+              ? <String, dynamic>{}
+              : model.availableColors.firstWhere(
+                  (c) => c['id']?.toString() == matched['id']?.toString(),
+                  orElse: () => <String, dynamic>{},
+                );
+          if (allowedMatch.isNotEmpty) {
+            model.selectedDbColor = allowedMatch;
+          } else if (model.availableColors.isEmpty) {
             final enumMatch = FrameColor.values.firstWhere(
               (e) => e.name.toLowerCase() == rowColor.toLowerCase(),
               orElse: () => FrameColor.white,
@@ -1001,7 +1092,32 @@ class _CommandePageState extends State<CommandePage> {
 
   // 🟢 دالة تغيير لون كل عناصر الطلبية دفعة واحدة
   Future<void> _showApplyBulkColorDialog() async {
-    final colors = await widget.db.readColors();
+    final allColors = await widget.db.readColors();
+    Set<int>? allowedColorIds;
+    for (final product in addedProducts) {
+      if (product.isGlassWork || product.availableColors.isEmpty) continue;
+      final productColorIds = product.availableColors
+          .map((color) {
+            final rawId = color['id'];
+            return rawId is num
+                ? rawId.toInt()
+                : int.tryParse(rawId?.toString() ?? '');
+          })
+          .whereType<int>()
+          .toSet();
+      allowedColorIds = allowedColorIds == null
+          ? productColorIds
+          : allowedColorIds.intersection(productColorIds);
+    }
+    final colors = allowedColorIds == null
+        ? <Map<String, dynamic>>[]
+        : allColors.where((color) {
+            final rawId = color['id'];
+            final id = rawId is num
+                ? rawId.toInt()
+                : int.tryParse(rawId?.toString() ?? '');
+            return id != null && allowedColorIds!.contains(id);
+          }).toList();
     if (!mounted) return;
 
     showDialog(
@@ -1028,7 +1144,7 @@ class _CommandePageState extends State<CommandePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'اختر اللون المراد تطبيقه على جميع عناصر ونوافذ هذه الطلبية:',
+                  'اختر لوناً متاحاً لكل السلاسل الموجودة في هذه الطلبية:',
                   style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
                 const SizedBox(height: 12),
@@ -1037,35 +1153,14 @@ class _CommandePageState extends State<CommandePage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        ...FrameColor.values.map((color) {
-                          final colorName = _getBulkFrameColorName(color);
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: _getBulkFrameColorDisplay(color),
-                              radius: 14,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.grey.shade400,
-                                  ),
-                                ),
-                              ),
+                        if (colors.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'لا يوجد لون مشترك مسموح لكل عناصر الطلبية.',
+                              textAlign: TextAlign.center,
                             ),
-                            title: Text(
-                              colorName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              _applyColorToAllProducts(frameColor: color);
-                            },
-                          );
-                        }),
-                        const Divider(),
+                          ),
                         ...colors.map((dbColor) {
                           final name = dbColor['name']?.toString() ?? '';
                           final hex =
@@ -1120,21 +1215,16 @@ class _CommandePageState extends State<CommandePage> {
     );
   }
 
-  void _applyColorToAllProducts({
-    FrameColor? frameColor,
-    Map<String, dynamic>? dbColor,
-  }) {
-    final colorName = dbColor != null
-        ? (dbColor['name']?.toString() ?? '')
-        : (frameColor != null ? _getBulkFrameColorName(frameColor) : '');
+  void _applyColorToAllProducts({required Map<String, dynamic> dbColor}) {
+    final colorName = dbColor['name']?.toString() ?? '';
 
     setState(() {
       for (final p in addedProducts) {
-        if (dbColor != null) {
+        final allowed = p.availableColors.any(
+          (color) => color['id']?.toString() == dbColor['id']?.toString(),
+        );
+        if (allowed || p.availableColors.isEmpty) {
           p.selectedDbColor = dbColor;
-        } else if (frameColor != null) {
-          p.frameColor = frameColor;
-          p.selectedDbColor = null;
         }
         p.refreshUI();
       }
@@ -1146,48 +1236,6 @@ class _CommandePageState extends State<CommandePage> {
         content: Text('تم تغيير لون كل عناصر الطلبية إلى ($colorName) بنجاح!'),
       ),
     );
-  }
-
-  String _getBulkFrameColorName(FrameColor c) {
-    switch (c) {
-      case FrameColor.white:
-        return 'أبيض (Blanc)';
-      case FrameColor.brown:
-        return 'بني (Bronze)';
-      case FrameColor.gray:
-        return 'رمادي غامق (Gris 7024)';
-      case FrameColor.black:
-        return 'أسود (Noir)';
-      case FrameColor.beige:
-        return 'بيج (Beige)';
-      case FrameColor.gris:
-        return 'رمادي (Gris 9007)';
-      case FrameColor.antique:
-        return 'أنتيك (Antique)';
-      case FrameColor.lightWood:
-        return 'خشبي ديزرت أوك (Desert Oak)';
-    }
-  }
-
-  Color _getBulkFrameColorDisplay(FrameColor c) {
-    switch (c) {
-      case FrameColor.white:
-        return Colors.white;
-      case FrameColor.brown:
-        return const Color(0xFF5D4037);
-      case FrameColor.gray:
-        return const Color(0xFF565E70);
-      case FrameColor.black:
-        return const Color(0xFF212121);
-      case FrameColor.beige:
-        return const Color(0xFFDDC8A0);
-      case FrameColor.gris:
-        return const Color(0xFF8A939E);
-      case FrameColor.antique:
-        return const Color(0xFF6E5D4F);
-      case FrameColor.lightWood:
-        return const Color(0xFFA8803E);
-    }
   }
 
   // 🟢 حل مشكلة الأوفر فلو العمودي في النافذة المنبثقة
@@ -1745,6 +1793,7 @@ class _CommandePageState extends State<CommandePage> {
                     });
                     _scrollToHighlightedProduct();
                   } else if (result is List<WindowModel> && result.isNotEmpty) {
+                    _saveLastSettings(result.last);
                     setState(() {
                       addedProducts.addAll(result);
                       _highlightedProduct = result.last;
@@ -2375,19 +2424,6 @@ class _CommandePageState extends State<CommandePage> {
       );
     }
 
-    String colorStr = p.frameColor.toString().split('.').last;
-    if (colorStr == 'white') {
-      colorStr = t('أبيض');
-    } else if (colorStr == 'brown') {
-      colorStr = t('بني فاتح (Faux Bois)');
-    } else if (colorStr == 'gray') {
-      colorStr = t('رمادي');
-    } else if (colorStr == 'black') {
-      colorStr = t('أسود');
-    } else if (colorStr == 'beige') {
-      colorStr = t('بيج / FBM');
-    }
-
     final cardKey = _cardKeys.putIfAbsent(p, () => GlobalKey());
     bool isHighlighted = _highlightedProduct == p;
 
@@ -2419,6 +2455,9 @@ class _CommandePageState extends State<CommandePage> {
       p.isGlassWork = true;
       p.isReplaced = false;
     }
+
+    final invoiceLine = _invoiceLineForProduct(p);
+    final invoiceDetails = invoiceLine.details;
 
     return Card(
       key: cardKey,
@@ -2477,9 +2516,9 @@ class _CommandePageState extends State<CommandePage> {
                                           ' ($lenStr سم - صندوق $sizeCm سم)';
                                     }
                                   }
-                                  return '${p.manualNameOverride ?? "Caisson Tunnel"}$dimSummary';
+                                  return '${invoiceLine.title}$dimSummary';
                                 })()
-                              : '${p.manualNameOverride?.trim().isNotEmpty == true ? p.manualNameOverride!.trim() : (p.isShutterOnly ? 'Volet roulant' : (p.isDoor ? (p.zones.any((z) => z.content == ZoneContent.doubleSash) ? t('باب بضلفتين') : t('باب بضلفة واحدة')) : (p.zones.any((z) => z.content == ZoneContent.doubleSash) ? t('نافذة بضلفتين') : t('نافذة بضلفة واحدة'))))} - ${p.width.toInt()}x${p.height.toInt()} mm',
+                              : invoiceLine.title,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -2596,6 +2635,7 @@ class _CommandePageState extends State<CommandePage> {
                                         }
                                         _highlightedProduct = p;
                                       });
+                                      _saveLastSettings(p);
                                       _scrollToHighlightedProduct();
                                     }
                                   }
@@ -2627,6 +2667,9 @@ class _CommandePageState extends State<CommandePage> {
                                         models,
                                       );
                                     });
+                                    if (models.isNotEmpty) {
+                                      _saveLastSettings(models.last);
+                                    }
                                     _scrollToHighlightedProduct();
                                   }
                                   return;
@@ -2659,6 +2702,9 @@ class _CommandePageState extends State<CommandePage> {
                                         models,
                                       );
                                     });
+                                    if (models.isNotEmpty) {
+                                      _saveLastSettings(models.last);
+                                    }
                                     _scrollToHighlightedProduct();
                                   }
                                   return;
@@ -2684,6 +2730,7 @@ class _CommandePageState extends State<CommandePage> {
                                     ),
                                   );
                                 }
+                                _saveLastSettings(p);
                                 // بمجرد العودة (حتى لو لم يضغط إضافة للطلبية، فالمودل يعدل مباشرة في الذاكرة)
                                 // نعمل setState لتحديث الصورة والتكلفة ونحدد الإضاءة والتحريك
                                 setState(() {
@@ -2712,6 +2759,7 @@ class _CommandePageState extends State<CommandePage> {
                                   addedProducts.add(cloned);
                                   _highlightedProduct = cloned;
                                 });
+                                _saveLastSettings(cloned);
                                 _scrollToHighlightedProduct();
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -2772,13 +2820,23 @@ class _CommandePageState extends State<CommandePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${t('اللون:')} $colorStr',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: p.isReplaced ? Colors.grey : null,
+                            ...invoiceDetails.map(
+                              (detail) => Padding(
+                                padding: const EdgeInsets.only(bottom: 3),
+                                child: _detailRichText(
+                                  detail,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: p.isReplaced
+                                        ? Colors.grey
+                                        : (isDark
+                                              ? Colors.white70
+                                              : Colors.black87),
+                                  ),
+                                ),
                               ),
                             ),
+                            const SizedBox(height: 4),
                             if (p.isReplaced)
                               Text(
                                 '${t('الكمية:')} ${p.quantity}',
@@ -2822,25 +2880,6 @@ class _CommandePageState extends State<CommandePage> {
                                     : Colors.green,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${t('الزجاج:')} ${p.zones.isNotEmpty && p.zones.first.glass.structure == GlassStructure.double ? t("مزدوج") : t("مفرد")}',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: p.isReplaced ? Colors.grey : null,
-                              ),
-                            ),
-                            if (p.hasShutter) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                t('الستار: موجود (Volet)'),
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: p.isReplaced ? Colors.grey : null,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -3151,6 +3190,7 @@ class _CommandePageState extends State<CommandePage> {
                     ),
                   );
                 }
+                _saveLastSettings(cloned);
 
                 // 5. Trigger calculation and refresh UI
                 setState(() {

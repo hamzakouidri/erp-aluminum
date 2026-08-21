@@ -388,6 +388,51 @@ class DevisBuilder {
     );
   }
 
+  static DevisLineItem buildLineItemFromDetail(
+    Map<String, dynamic> item, {
+    AppLanguage? overrideLang,
+    bool isOfficialInvoice = false,
+    bool forceGeneratedDetails = false,
+  }) {
+    final previousLang = _currentLang;
+    if (overrideLang != null) {
+      _currentLang = overrideLang;
+    }
+    final prepared = forceGeneratedDetails
+        ? _withoutInvoiceTableEdited(item)
+        : item;
+    final line = _buildLineItem(prepared, isOfficialInvoice: isOfficialInvoice);
+    _currentLang = previousLang;
+    return line;
+  }
+
+  static Map<String, dynamic> _withoutInvoiceTableEdited(
+    Map<String, dynamic> item,
+  ) {
+    final copy = Map<String, dynamic>.from(item);
+    final rawJson = copy['partitions_json'];
+    Map<String, dynamic>? parsed;
+
+    if (rawJson is Map<String, dynamic>) {
+      parsed = Map<String, dynamic>.from(rawJson);
+    } else if (rawJson is Map) {
+      parsed = Map<String, dynamic>.from(rawJson);
+    } else if (rawJson != null) {
+      final text = rawJson.toString().trim();
+      if (text.length >= 5) {
+        try {
+          parsed = jsonDecode(text) as Map<String, dynamic>;
+        } catch (_) {}
+      }
+    }
+
+    if (parsed != null) {
+      parsed['invoiceTableEdited'] = false;
+      copy['partitions_json'] = jsonEncode(parsed);
+    }
+    return copy;
+  }
+
   static String _formatDisplayDate(Map<String, dynamic> order) {
     return formatOrderDate(
       order['created_at'],
@@ -586,26 +631,49 @@ class DevisBuilder {
       'الارتفاع',
       'الطول',
       'vitrage',
+      'remplacement',
       'glass',
       'الزجاج',
+      'intérieur',
+      'interieur',
+      'extérieur',
+      'exterieur',
+      'interior',
+      'exterior',
+      'الوجه الداخلي',
+      'الوجه الخارجي',
       'cache latéral',
       'cache lateral',
       'side cover',
       'غطاء جانبي',
       'couvre-joint',
+      'cover joint',
+      'القطعة الجانبية',
       'كوفرو جوان',
+      'de base',
+      'base frame',
+      'الإطار السفلي',
       'volet',
       'shutter',
       'الستار',
       'ستار',
       'lame',
+      'lame volet',
+      'shutter blade',
+      'لام الستار',
       'اللام',
       'الشرائح',
       'coulisse',
       'كوليس',
       'fermeture',
       'fermuteure',
+      'closure',
       'الإغلاق',
+      'نوعية الغلق',
+      'mécanisme volet',
+      'mecanisme volet',
+      'shutter mechanism',
+      'ميكانيزم الستار',
       'hauteur poignée',
       'hauteur poignee',
       'handle height',
@@ -828,11 +896,16 @@ class DevisBuilder {
     // another document language, rebuild the technical details from the saved
     // window structure so labels are localized instead of remaining Arabic.
     if (invoiceTableEdited && _currentLang == AppLanguage.arabic) {
-      final exactDetails = (manualDesc ?? '')
+      var exactDetails = (manualDesc ?? '')
           .split('\n')
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
           .toList(growable: false);
+      if (_isFixedOnlyWindow(_zonesFromMap(map))) {
+        exactDetails = exactDetails
+            .where((line) => !_isOpeningDetailForFixedOnly(line))
+            .toList(growable: false);
+      }
       return DevisLineItem(
         imagePath: item['drawing_image_path']?.toString(),
         title: title,
@@ -1041,6 +1114,7 @@ class DevisBuilder {
             lower.startsWith('couleur profil:') ||
             lower.startsWith('profile color:') ||
             lower.startsWith('لون المقطع:') ||
+            lower.startsWith('لون البروفيل:') ||
             lower.startsWith('couleur accessoire:') ||
             lower.startsWith('accessory color:') ||
             lower.startsWith('لون الإكسسوار:') ||
@@ -1050,15 +1124,48 @@ class DevisBuilder {
             lower.startsWith('largeur:') ||
             lower.startsWith('width:') ||
             lower.startsWith('العرض:') ||
+            lower.startsWith('hauteur:') ||
+            lower.startsWith('height:') ||
+            lower.startsWith('الارتفاع:') ||
             lower.startsWith('hauteur poignée:') ||
             lower.startsWith('handle height:') ||
             lower.startsWith('ارتفاع المقبض:') ||
             lower.startsWith('vitrage:') ||
+            lower.startsWith('remplacement:') ||
             lower.startsWith('glass:') ||
             lower.startsWith('الزجاج:') ||
+            lower.startsWith('intérieur:') ||
+            lower.startsWith('interieur:') ||
+            lower.startsWith('extérieur:') ||
+            lower.startsWith('exterieur:') ||
+            lower.startsWith('interior:') ||
+            lower.startsWith('exterior:') ||
             lower.startsWith('décor vitrage:') ||
             lower.startsWith('glass decor:') ||
             lower.startsWith('ديكور الزجاج:') ||
+            lower.startsWith('couvre-joint:') ||
+            lower.startsWith('cover joint:') ||
+            lower.startsWith('القطعة الجانبية:') ||
+            lower.startsWith('de base:') ||
+            lower.startsWith('base frame:') ||
+            lower.startsWith('الإطار السفلي:') ||
+            lower.startsWith('fermeture:') ||
+            lower.startsWith('closure:') ||
+            lower.startsWith('نوعية الغلق:') ||
+            lower.startsWith('mécanisme volet:') ||
+            lower.startsWith('mecanisme volet:') ||
+            lower.startsWith('shutter mechanism:') ||
+            lower.startsWith('ميكانيزم الستار:') ||
+            lower.startsWith('lame volet:') ||
+            lower.startsWith('shutter blade:') ||
+            lower.startsWith('لام الستار:') ||
+            lower.startsWith('coulisse:') ||
+            lower.startsWith('كوليس:') ||
+            lower.startsWith('montant:') ||
+            lower.startsWith('montant central:') ||
+            lower.startsWith('central montant:') ||
+            lower.startsWith('مونتو مركزي:') ||
+            lower.startsWith('المونتو:') ||
             lower.startsWith('moustiquaire:') ||
             lower.startsWith('mosquito net:') ||
             lower.startsWith('ناموسية:') ||
@@ -1198,9 +1305,9 @@ class DevisBuilder {
     for (final g in allGlassSpecs) {
       final structure =
           g['structure']?.toString().toLowerCase().trim() ?? 'single';
-      final double tOutVal = (g['thicknessOuter'] as num?)?.toDouble() ?? 6.0;
-      final double tInVal = (g['thicknessInner'] as num?)?.toDouble() ?? 4.0;
-      final int tInterVal = (g['intercallThickness'] as num?)?.toInt() ?? 16;
+      final double tOutVal = _glassOuterThickness(g, structure);
+      final double tInVal = _glassInnerThickness(g);
+      final int tInterVal = _glassIntercallThickness(g);
       final String fOutVal =
           g['finishOuter']?.toString().toLowerCase().trim() ?? '';
       final String cOutVal =
@@ -1220,7 +1327,7 @@ class DevisBuilder {
         final tInter = tInterVal;
         final totalT = (tOut + tIn + tInter).toStringAsFixed(0);
         final tStr =
-            '${tOut.toStringAsFixed(0)}+${tInter}+${tIn.toStringAsFixed(0)}';
+            '${tOut.toStringAsFixed(0)}+$tInter+${tIn.toStringAsFixed(0)}';
 
         final outF = _formatFace(
           g['finishOuter']?.toString() ?? '',
@@ -1673,6 +1780,30 @@ class DevisBuilder {
       }
     }
 
+    final unifiedDetails = _buildUnifiedWindowDetails(
+      item: item,
+      map: map,
+      existingDetails: details,
+      systemType: systemType,
+      displaySeries: displaySeries,
+      width: width,
+      height: height,
+      isShutterOnly: isShutterOnly,
+      itemProfColor: itemProfColor,
+      seriesName: seriesName?.toString(),
+      gameName: gameName,
+    );
+    if (unifiedDetails.isNotEmpty) {
+      details
+        ..clear()
+        ..addAll(unifiedDetails);
+      title = _compactInvoiceTitle(
+        map: map,
+        systemType: systemType,
+        isShutterOnly: isShutterOnly,
+      );
+    }
+
     if (customLines.isNotEmpty) {
       details.addAll(customLines);
     }
@@ -1690,6 +1821,815 @@ class DevisBuilder {
       color: itemProfColor,
       detailId: detailId,
     );
+  }
+
+  static List<String> _buildUnifiedWindowDetails({
+    required Map<String, dynamic> item,
+    required Map<String, dynamic> map,
+    required List<String> existingDetails,
+    required String systemType,
+    required String displaySeries,
+    required int width,
+    required int height,
+    required bool isShutterOnly,
+    required String itemProfColor,
+    String? seriesName,
+    String? gameName,
+  }) {
+    final details = <String>[];
+    final zones = _zonesFromMap(map);
+    final hasWindowStructure = zones.isNotEmpty || map.isNotEmpty;
+    if (!isShutterOnly && !hasWindowStructure) return details;
+    final fixedOnlyWindow = !isShutterOnly && _isFixedOnlyWindow(zones);
+
+    final translatedSystem = Localization.translate(systemType, _currentLang);
+    final translatedSeries = Localization.translate(
+      displaySeries,
+      _currentLang,
+    );
+    final gammeParts = <String>[
+      if (translatedSystem.trim().isNotEmpty) translatedSystem.trim(),
+      if (translatedSeries.trim().isNotEmpty &&
+          translatedSeries.trim().toLowerCase() !=
+              translatedSystem.trim().toLowerCase())
+        translatedSeries.trim(),
+    ];
+    if (gammeParts.isNotEmpty) {
+      final value = gammeParts.join(' - ');
+      details.add(switch (_currentLang) {
+        AppLanguage.french => 'Gamme: $value',
+        AppLanguage.english => 'Series: $value',
+        AppLanguage.arabic => 'السلسلة: $value',
+      });
+    }
+
+    if (width > 0) {
+      details.add(switch (_currentLang) {
+        AppLanguage.french => 'Largeur: $width mm',
+        AppLanguage.english => 'Width: $width mm',
+        AppLanguage.arabic => 'العرض: $width مم',
+      });
+    }
+    if (height > 0) {
+      details.add(switch (_currentLang) {
+        AppLanguage.french => 'Hauteur: $height mm',
+        AppLanguage.english => 'Height: $height mm',
+        AppLanguage.arabic => 'الارتفاع: $height مم',
+      });
+    }
+
+    if (!fixedOnlyWindow) {
+      final handleLine = _handleHeightDetail(zones, height);
+      if (handleLine != null) details.add(handleLine);
+    }
+
+    final rawProfColor =
+        map['selectedDbColor']?['name']?.toString() ?? itemProfColor;
+    final rawAccColor =
+        map['selectedAccessoryColor']?['name']?.toString() ?? rawProfColor;
+    final profColor = _localizedColorLabel(rawProfColor);
+    final accColor = _localizedColorLabel(rawAccColor);
+    details.add(switch (_currentLang) {
+      AppLanguage.french => 'Couleur profil: $profColor',
+      AppLanguage.english => 'Profile color: $profColor',
+      AppLanguage.arabic => 'لون البروفيل: $profColor',
+    });
+    if (!fixedOnlyWindow) {
+      details.add(switch (_currentLang) {
+        AppLanguage.french => 'Couleur accessoire: $accColor',
+        AppLanguage.english => 'Accessory color: $accColor',
+        AppLanguage.arabic => 'لون الإكسسوار: $accColor',
+      });
+    }
+    if (isShutterOnly || map['hasShutter'] == true) {
+      details.add(switch (_currentLang) {
+        AppLanguage.french => 'Couleur volet: $profColor',
+        AppLanguage.english => 'Shutter color: $profColor',
+        AppLanguage.arabic => 'لون الستار: $profColor',
+      });
+    }
+
+    if (!isShutterOnly) {
+      details.addAll(
+        _unifiedGlassDetails(item, map, useFillingLabel: fixedOnlyWindow),
+      );
+      details.addAll(
+        _matchingDetails(existingDetails, const [
+          'décor vitrage:',
+          'decor vitrage:',
+          'glass decor:',
+          'ديكور الزجاج:',
+        ]),
+      );
+      if (!fixedOnlyWindow) {
+        details.addAll(_coverJointDetails(map));
+        details.add(switch (_currentLang) {
+          AppLanguage.french =>
+            'De base: ${map['hasBottomFrame'] == false ? "absent" : "présent"}',
+          AppLanguage.english =>
+            'Base frame: ${map['hasBottomFrame'] == false ? "absent" : "present"}',
+          AppLanguage.arabic =>
+            'الإطار السفلي: ${map['hasBottomFrame'] == false ? "غير موجود" : "موجود"}',
+        });
+        details.add(
+          _closureDetail(
+            zones,
+            map: map,
+            seriesName: seriesName,
+            gameName: gameName,
+          ),
+        );
+        details.addAll(
+          _slidingMontantDetails(
+            zones,
+            seriesName: seriesName,
+            gameName: gameName,
+            displaySeries: displaySeries,
+          ),
+        );
+      }
+    }
+
+    if (map['hasShutter'] == true || isShutterOnly) {
+      details.addAll(_shutterDetails(map));
+    } else if (item['volet']?.toString() == 'Yes') {
+      details.add(switch (_currentLang) {
+        AppLanguage.french => 'Mécanisme volet: Oui',
+        AppLanguage.english => 'Shutter mechanism: Yes',
+        AppLanguage.arabic => 'ميكانيزم الستار: موجود',
+      });
+    }
+
+    return _dedupeDetails(details);
+  }
+
+  static List<Map<String, dynamic>> _zonesFromMap(Map<String, dynamic> map) {
+    final rawZones = map['zones'];
+    if (rawZones is! List) return const [];
+    return rawZones
+        .whereType<Map>()
+        .map((zone) => Map<String, dynamic>.from(zone))
+        .toList(growable: false);
+  }
+
+  static String _compactInvoiceTitle({
+    required Map<String, dynamic> map,
+    required String systemType,
+    required bool isShutterOnly,
+  }) {
+    if (isShutterOnly) {
+      return switch (_currentLang) {
+        AppLanguage.french => 'Volet roulant',
+        AppLanguage.english => 'Rolling shutter',
+        AppLanguage.arabic => 'ستار رولان',
+      };
+    }
+
+    final zones = _zonesFromMap(map);
+    final fixedOnlyWindow = _isFixedOnlyWindow(zones);
+    final systemLower = systemType.toLowerCase();
+    final isDoor =
+        systemLower.contains('porte') ||
+        systemLower.contains('door') ||
+        systemType.contains('باب');
+    final isSliding =
+        systemLower.contains('coulissant') ||
+        systemLower.contains('sliding') ||
+        systemType.contains('منزلق');
+    final isDouble = _hasDoubleGlass(map);
+    if (fixedOnlyWindow) {
+      return switch (_currentLang) {
+        AppLanguage.french =>
+          'Fixe ${isDouble ? "double vitrage" : "simple vitrage"}',
+        AppLanguage.english =>
+          'Fixed frame ${isDouble ? "double glazing" : "single glazing"}',
+        AppLanguage.arabic =>
+          'إطار ثابت ${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}',
+      };
+    }
+    final fixedCount = zones
+        .where((zone) => zone['content']?.toString() == 'fixedGlass')
+        .length;
+
+    return switch (_currentLang) {
+      AppLanguage.french =>
+        '${isDoor ? "Porte" : (isSliding ? "Fenêtre coulissante" : "Fenêtre")} '
+            '${isDouble ? "double vitrage" : "simple vitrage"}'
+            '${_fixedSuffix(fixedCount)}',
+      AppLanguage.english =>
+        '${isDoor ? "Door" : (isSliding ? "Sliding window" : "Window")} '
+            '${isDouble ? "double glazing" : "single glazing"}'
+            '${_fixedSuffix(fixedCount)}',
+      AppLanguage.arabic =>
+        '${isDoor ? "باب" : (isSliding ? "نافذة منزلقة" : "نافذة")} '
+            '${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}'
+            '${_fixedSuffix(fixedCount)}',
+    };
+  }
+
+  static String _fixedSuffix(int count) {
+    if (count <= 0) return '';
+    return switch (_currentLang) {
+      AppLanguage.french =>
+        count == 1
+            ? ' avec fixe'
+            : count == 2
+            ? ' avec deux fixes'
+            : ' avec $count fixes',
+      AppLanguage.english =>
+        count == 1
+            ? ' with fixed'
+            : count == 2
+            ? ' with two fixed'
+            : ' with $count fixed',
+      AppLanguage.arabic =>
+        count == 1
+            ? ' مع ثابت'
+            : count == 2
+            ? ' مع ثابتين'
+            : ' مع $count ثوابت',
+    };
+  }
+
+  static String _gasSuffix() {
+    return switch (_currentLang) {
+      AppLanguage.french => ' avec gaz',
+      AppLanguage.english => ' with gas',
+      AppLanguage.arabic => ' مع غاز',
+    };
+  }
+
+  static bool _isFixedOnlyWindow(List<Map<String, dynamic>> zones) {
+    if (zones.isEmpty) return false;
+    var hasFixedFilling = false;
+    for (final z in zones) {
+      final content = z['content']?.toString().toLowerCase() ?? '';
+      if (content.contains('sash')) return false;
+      if (_hasTruthyMapValue(z['cellIsSash']) ||
+          _hasTruthyMapValue(z['cellIsDoubleSash'])) {
+        return false;
+      }
+      if (content == 'fixedglass' || z['glass'] is Map) {
+        hasFixedFilling = true;
+      }
+    }
+    return hasFixedFilling;
+  }
+
+  static bool _hasTruthyMapValue(dynamic value) {
+    if (value is! Map) return false;
+    return value.values.any(
+      (entry) =>
+          entry == true ||
+          entry == 1 ||
+          entry?.toString().toLowerCase() == 'true',
+    );
+  }
+
+  static bool _isOpeningDetailForFixedOnly(String line) {
+    final lower = line.trim().toLowerCase();
+    return lower.startsWith('hauteur poignée:') ||
+        lower.startsWith('hauteur poignee:') ||
+        lower.startsWith('handle height:') ||
+        lower.startsWith('ارتفاع المقبض:') ||
+        lower.startsWith('couleur accessoire:') ||
+        lower.startsWith('accessory color:') ||
+        lower.startsWith('لون الإكسسوار:') ||
+        lower.startsWith('couvre-joint:') ||
+        lower.startsWith('cover joint:') ||
+        lower.startsWith('القطعة الجانبية:') ||
+        lower.startsWith('كوفرو جوان:') ||
+        lower.startsWith('de base:') ||
+        lower.startsWith('base frame:') ||
+        lower.startsWith('الإطار السفلي:') ||
+        lower.startsWith('fermeture:') ||
+        lower.startsWith('closure:') ||
+        lower.startsWith('الإغلاق') ||
+        lower.startsWith('نوعية الغلق:') ||
+        lower.startsWith('montant') ||
+        lower.startsWith('central montant:') ||
+        lower.startsWith('lateral montant:') ||
+        lower.startsWith('مونتو') ||
+        lower.startsWith('المونتو') ||
+        lower.startsWith('مقطع وسطي') ||
+        lower.startsWith('مقطع جانبي');
+  }
+
+  static String? _handleHeightDetail(
+    List<Map<String, dynamic>> zones,
+    int height,
+  ) {
+    if (height <= 0) return null;
+    final sashZones = zones.where((z) {
+      final content = z['content']?.toString().toLowerCase() ?? '';
+      return content.contains('sash');
+    }).toList();
+    if (sashZones.isEmpty) return null;
+
+    final z = sashZones.first;
+    final useOcto = z['useOctoHandle'] == true;
+    final openDir = (z['openDirection']?.toString() ?? '').toLowerCase();
+    if (useOcto || (openDir != 'left' && openDir != 'right')) return null;
+
+    final ratio =
+        double.tryParse(z['handlePositionRatio']?.toString() ?? '0.5') ?? 0.5;
+    final boundaryMap = z['boundary'];
+    var boundaryTop = 0.0;
+    var boundaryHeight = height.toDouble();
+    if (boundaryMap is Map) {
+      boundaryTop =
+          double.tryParse(boundaryMap['top']?.toString() ?? '0.0') ?? 0.0;
+      boundaryHeight =
+          double.tryParse(boundaryMap['height']?.toString() ?? '$height') ??
+          height.toDouble();
+    }
+    final handleY = boundaryTop + boundaryHeight * (1.0 - ratio);
+    final handleH = (height - handleY).toInt();
+    return switch (_currentLang) {
+      AppLanguage.french => 'Hauteur poignée: $handleH mm',
+      AppLanguage.english => 'Handle height: $handleH mm',
+      AppLanguage.arabic => 'ارتفاع المقبض: $handleH مم',
+    };
+  }
+
+  static double _glassOuterThickness(Map<String, dynamic> glass, String type) {
+    final value = (glass['thicknessOuter'] as num?)?.toDouble();
+    if (value != null && value > 0) return value;
+    return type == 'double' ? 4.0 : 5.0;
+  }
+
+  static double _glassInnerThickness(Map<String, dynamic> glass) {
+    final value = (glass['thicknessInner'] as num?)?.toDouble();
+    return value != null && value > 0 ? value : 4.0;
+  }
+
+  static int _glassIntercallThickness(Map<String, dynamic> glass) {
+    final value = (glass['intercallThickness'] as num?)?.toInt();
+    return value != null && value > 0 ? value : 12;
+  }
+
+  static List<String> _unifiedGlassDetails(
+    Map<String, dynamic> item,
+    Map<String, dynamic> map, {
+    bool useFillingLabel = false,
+  }) {
+    final specs = <Map<String, dynamic>>[];
+    for (final z in _zonesFromMap(map)) {
+      final glass = z['glass'];
+      if (glass is Map) specs.add(Map<String, dynamic>.from(glass));
+      final cellGlass = z['cellGlassSpec'];
+      if (cellGlass is Map) {
+        for (final value in cellGlass.values) {
+          if (value is Map) specs.add(Map<String, dynamic>.from(value));
+        }
+      }
+    }
+
+    final lines = <String>[];
+    final seen = <String>{};
+    for (final g in specs) {
+      final key = _glassDetailKey(g);
+      if (!seen.add(key)) continue;
+      final structure =
+          g['structure']?.toString().toLowerCase().trim() ?? 'simple';
+      final tOut = _glassOuterThickness(g, structure);
+      final tIn = _glassInnerThickness(g);
+      final tInter = _glassIntercallThickness(g);
+      final outF = _formatFace(
+        g['finishOuter']?.toString() ?? '',
+        g['colorOuter']?.toString() ?? '',
+        g['processingOuter']?.toString() ?? '',
+        isTempered: g['temperedOuter'] as bool? ?? false,
+      );
+      final inF = _formatFace(
+        g['finishInner']?.toString() ?? '',
+        g['colorInner']?.toString() ?? '',
+        g['processingInner']?.toString() ?? '',
+        isTempered: g['temperedInner'] as bool? ?? false,
+      );
+
+      if (structure == 'double') {
+        final tStr =
+            '${tOut.toStringAsFixed(0)}+$tInter+${tIn.toStringAsFixed(0)}';
+        final gas = g['hasGas'] == true ? _gasSuffix() : '';
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            '${useFillingLabel ? "Remplissage" : "Remplacement"}: Vitrage double ($tStr)$gas',
+          AppLanguage.english => 'Glass: Double glazing ($tStr)$gas',
+          AppLanguage.arabic =>
+            '${useFillingLabel ? "التعبئة" : "الزجاج"}: زجاج مزدوج ($tStr)$gas',
+        });
+        lines.add(switch (_currentLang) {
+          AppLanguage.french => 'Intérieur: $inF',
+          AppLanguage.english => 'Interior: $inF',
+          AppLanguage.arabic => 'الوجه الداخلي: $inF',
+        });
+        lines.add(switch (_currentLang) {
+          AppLanguage.french => 'Extérieur: $outF',
+          AppLanguage.english => 'Exterior: $outF',
+          AppLanguage.arabic => 'الوجه الخارجي: $outF',
+        });
+      } else if (structure == 'closed') {
+        lines.add(
+          _panelReplacementLine(
+            g,
+            tOut,
+            outF,
+            useFillingLabel: useFillingLabel,
+          ),
+        );
+      } else {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            '${useFillingLabel ? "Remplissage" : "Remplacement"}: Vitrage simple ${tOut.toStringAsFixed(0)} mm - $outF',
+          AppLanguage.english =>
+            'Glass: Simple glazing ${tOut.toStringAsFixed(0)} mm - $outF',
+          AppLanguage.arabic =>
+            '${useFillingLabel ? "التعبئة" : "الزجاج"}: زجاج مفرد ${tOut.toStringAsFixed(0)} مم - $outF',
+        });
+      }
+    }
+
+    if (lines.isEmpty) {
+      final glass = item['glass']?.toString();
+      if (glass != null && glass.trim().isNotEmpty) {
+        lines.add(switch (_currentLang) {
+          AppLanguage.french =>
+            '${useFillingLabel ? "Remplissage" : "Remplacement"}: ${_glassLabel(glass)}',
+          AppLanguage.english => 'Glass: ${_glassLabel(glass)}',
+          AppLanguage.arabic =>
+            '${useFillingLabel ? "التعبئة" : "الزجاج"}: ${_glassLabel(glass)}',
+        });
+      }
+    }
+    return lines;
+  }
+
+  static String _glassDetailKey(Map<String, dynamic> g) {
+    final structure = g['structure']?.toString().toLowerCase().trim() ?? '';
+    if (structure == 'closed') {
+      return [
+        structure,
+        g['finishOuter']?.toString().toLowerCase().trim() ?? '',
+        g['colorP']?.toString().toLowerCase().trim() ?? '',
+        g['panneauSubtype']?.toString().toLowerCase().trim() ?? '',
+        g['panneauColor']?.toString().toLowerCase().trim() ?? '',
+        (g['thicknessOuter'] as num?)?.toString() ?? '',
+      ].join('|');
+    }
+    return [
+      structure,
+      g['finishOuter']?.toString().toLowerCase().trim() ?? '',
+      g['finishInner']?.toString().toLowerCase().trim() ?? '',
+      g['colorOuter']?.toString().toLowerCase().trim() ?? '',
+      g['colorInner']?.toString().toLowerCase().trim() ?? '',
+      g['processingOuter']?.toString().toLowerCase().trim() ?? '',
+      g['processingInner']?.toString().toLowerCase().trim() ?? '',
+      g['temperedOuter'] == true,
+      g['temperedInner'] == true,
+      g['hasGas'] == true,
+      (g['thicknessOuter'] as num?)?.toString() ?? '',
+      (g['thicknessInner'] as num?)?.toString() ?? '',
+      (g['intercallThickness'] as num?)?.toString() ?? '',
+    ].join('|');
+  }
+
+  static String _panelReplacementLine(
+    Map<String, dynamic> g,
+    double thickness,
+    String fallbackFace, {
+    bool useFillingLabel = false,
+  }) {
+    final panelName = _panelLabel(g);
+    final panelColor = _panelColorLabel(g, fallbackFace);
+    final thicknessText = '${thickness.toStringAsFixed(0)} mm';
+    return switch (_currentLang) {
+      AppLanguage.french =>
+        '${useFillingLabel ? "Remplissage panneau" : "Remplacement panneau"}: $panelName - $panelColor - $thicknessText',
+      AppLanguage.english =>
+        'Panel replacement: $panelName - $panelColor - $thicknessText',
+      AppLanguage.arabic =>
+        '${useFillingLabel ? "التعبئة" : "الزجاج"}: بانو $panelName - $panelColor - ${thickness.toStringAsFixed(0)} مم',
+    };
+  }
+
+  static String _panelLabel(Map<String, dynamic> g) {
+    final subtype = g['panneauSubtype']?.toString().trim() ?? '';
+    if (subtype.isNotEmpty && subtype.toLowerCase() != 'null') {
+      return subtype;
+    }
+
+    final finish = g['finishOuter']?.toString().trim() ?? '';
+    final isFr = _currentLang == AppLanguage.french;
+    final isEn = _currentLang == AppLanguage.english;
+    switch (finish) {
+      case 'resine':
+        return isEn
+            ? 'Resin'
+            : isFr
+            ? 'Résine'
+            : 'ريزين';
+      case 'paneauSandwitch':
+        return isEn
+            ? 'Sandwich panel'
+            : isFr
+            ? 'Panneau sandwich'
+            : 'بانو ساندويتش';
+      case 'paneauSandwitchDecore':
+        return isEn
+            ? 'Decor panel'
+            : isFr
+            ? 'Panneau décor'
+            : 'بانو ديكور';
+      case 'plexyGlass':
+        return isEn
+            ? 'Plexiglass'
+            : isFr
+            ? 'Plexiglass'
+            : 'بليكسي غلاس';
+      case 'bardage':
+        return isEn
+            ? 'Cladding'
+            : isFr
+            ? 'Bardage'
+            : 'بارداج';
+      default:
+        return isEn
+            ? 'Panel'
+            : isFr
+            ? 'Panneau'
+            : 'بانو';
+    }
+  }
+
+  static String _panelColorLabel(Map<String, dynamic> g, String fallbackFace) {
+    final raw = g['panneauColor']?.toString().trim().isNotEmpty == true
+        ? g['panneauColor'].toString().trim()
+        : g['colorP']?.toString().trim() ?? '';
+    if (raw.isEmpty || raw.toLowerCase() == 'null') return fallbackFace;
+    return _localizedColorLabel(raw);
+  }
+
+  static bool _hasDoubleGlass(Map<String, dynamic> map) {
+    for (final z in _zonesFromMap(map)) {
+      final glass = z['glass'];
+      if (glass is Map &&
+          glass['structure']?.toString().toLowerCase() == 'double') {
+        return true;
+      }
+      final cellGlass = z['cellGlassSpec'];
+      if (cellGlass is Map) {
+        for (final value in cellGlass.values) {
+          if (value is Map &&
+              value['structure']?.toString().toLowerCase() == 'double') {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  static List<String> _coverJointDetails(Map<String, dynamic> map) {
+    final isIntegrated =
+        map['isIntegratedFrame'] == true ||
+        (map['frameOverride'] is Map &&
+            (map['frameOverride'] as Map)['code']?.toString() == '103');
+    if (isIntegrated && map['hasSideCovers'] != true) return const [];
+
+    final removedSides =
+        (map['removedShutterSides'] as List?)
+            ?.map((side) => side.toString().toLowerCase())
+            .toSet() ??
+        <String>{};
+    final hasTop = !removedSides.contains('top');
+    final hasBottom =
+        !removedSides.contains('bottom') && map['hasBottomFrame'] != false;
+    final hasRight = !removedSides.contains('right');
+    final hasLeft = !removedSides.contains('left');
+    final activeSides = <String>[];
+
+    if (_currentLang == AppLanguage.french) {
+      if (hasTop) activeSides.add('Haut');
+      if (hasBottom) activeSides.add('Bas');
+      if (hasRight) activeSides.add('Droite');
+      if (hasLeft) activeSides.add('Gauche');
+      return [
+        'Couvre-joint: ${activeSides.isEmpty ? "Aucun" : activeSides.join(", ")}',
+      ];
+    }
+    if (_currentLang == AppLanguage.english) {
+      if (hasTop) activeSides.add('Top');
+      if (hasBottom) activeSides.add('Bottom');
+      if (hasRight) activeSides.add('Right');
+      if (hasLeft) activeSides.add('Left');
+      return [
+        'Cover joint: ${activeSides.isEmpty ? "None" : activeSides.join(", ")}',
+      ];
+    }
+    if (hasTop) activeSides.add('أعلى');
+    if (hasBottom) activeSides.add('أسفل');
+    if (hasRight) activeSides.add('يمين');
+    if (hasLeft) activeSides.add('يسار');
+    return [
+      'القطعة الجانبية: ${activeSides.isEmpty ? "غير موجودة" : activeSides.join("، ")}',
+    ];
+  }
+
+  static String _closureDetail(
+    List<Map<String, dynamic>> zones, {
+    required Map<String, dynamic> map,
+    String? seriesName,
+    String? gameName,
+  }) {
+    final isPVC =
+        (seriesName?.toLowerCase().contains('pvc') ?? false) ||
+        (gameName?.toLowerCase().contains('pvc') ?? false);
+    var value = 'poignée espagnole';
+    for (final z in zones) {
+      final lockType = z['lockType']?.toString();
+      if (lockType == 'clef' || lockType == 'LockType.clef') {
+        value = 'poignée avec clé';
+        break;
+      }
+      if (lockType == 'condamnation' || lockType == 'LockType.condamnation') {
+        value = 'condamnation';
+        break;
+      }
+      if (lockType == 'point' || lockType == 'LockType.point') {
+        value = 'point';
+      } else if (lockType == 'rouleau' || lockType == 'LockType.rouleau') {
+        value = 'maréchal';
+      } else if (lockType == 'rouleau2000' ||
+          lockType == 'LockType.rouleau2000') {
+        value = 'rouleau 2000';
+      }
+      final content = z['content']?.toString() ?? '';
+      if (content.contains('slidingSash') && z['useClassicHandle'] != true) {
+        value = isPVC ? 'poignée espagnole' : 'entrematique';
+      }
+    }
+    final kits = _closureKitLabels(map);
+    if (kits.isNotEmpty) {
+      value = '$value - ${kits.join(' - ')}';
+    }
+    return switch (_currentLang) {
+      AppLanguage.french => 'Fermeture: $value',
+      AppLanguage.english => 'Closure: $value',
+      AppLanguage.arabic => 'نوعية الغلق: $value',
+    };
+  }
+
+  static List<String> _closureKitLabels(Map<String, dynamic> map) {
+    final labels = <String>[];
+    if (_truthy(map['useSystemOB'])) {
+      labels.add('système OB');
+    }
+    if (_truthy(map['useDemiOB'])) {
+      labels.add('système demi-OB');
+    }
+    if (_truthy(map['useVerrouCentral'])) {
+      labels.add('verrou central');
+    }
+    return labels;
+  }
+
+  static bool _truthy(dynamic value) {
+    return value == true || value?.toString().toLowerCase() == 'true';
+  }
+
+  static List<String> _slidingMontantDetails(
+    List<Map<String, dynamic>> zones, {
+    String? seriesName,
+    String? gameName,
+    required String displaySeries,
+  }) {
+    final haystack = '${seriesName ?? ''} ${gameName ?? ''} $displaySeries'
+        .toLowerCase();
+    final isTpr = haystack.contains('tpr') || haystack.contains('67000');
+    final isHps = haystack.contains('hps');
+    if (!isTpr && !isHps) return const [];
+
+    final slidingZones = zones
+        .where((z) => z['content']?.toString().contains('slidingSash') == true)
+        .toList();
+    if (slidingZones.isEmpty) return const [];
+
+    final first = slidingZones.first;
+    final sashes = (first['slidingSashesCount'] as num?)?.toInt() ?? 2;
+    final centralCount = sashes > 1 ? (sashes - 1) * 2 : 0;
+    var centralReinforced = false;
+    var lateralReinforced = false;
+    final reinforcedMap = first['slidingMontantReinforced'];
+    if (reinforcedMap is Map) {
+      for (final entry in reinforcedMap.entries) {
+        final key = entry.key.toString();
+        if (key.startsWith('central_') && entry.value == true) {
+          centralReinforced = true;
+        }
+        if (key.startsWith('lateral_') && entry.value == true) {
+          lateralReinforced = true;
+        }
+      }
+    }
+
+    final centralType = switch (_currentLang) {
+      AppLanguage.french => centralReinforced ? 'renforcé' : 'simple',
+      AppLanguage.english => centralReinforced ? 'reinforced' : 'simple',
+      AppLanguage.arabic => centralReinforced ? 'مدعم' : 'عادي',
+    };
+    final lateralType = switch (_currentLang) {
+      AppLanguage.french => lateralReinforced ? 'renforcé' : 'simple',
+      AppLanguage.english => lateralReinforced ? 'reinforced' : 'simple',
+      AppLanguage.arabic => lateralReinforced ? 'مدعم' : 'عادي',
+    };
+
+    final lines = <String>[
+      switch (_currentLang) {
+        AppLanguage.french => 'Montant central: $centralCount - $centralType',
+        AppLanguage.english => 'Central montant: $centralCount - $centralType',
+        AppLanguage.arabic => 'مونتو مركزي: $centralCount - $centralType',
+      },
+    ];
+    if (isTpr) {
+      lines.add(switch (_currentLang) {
+        AppLanguage.french => 'Montant: $lateralType',
+        AppLanguage.english => 'Montant: $lateralType',
+        AppLanguage.arabic => 'المونتو: $lateralType',
+      });
+    }
+    return lines;
+  }
+
+  static List<String> _shutterDetails(Map<String, dynamic> map) {
+    final lines = <String>[];
+    final mech = map['shutterMechanism']?.toString().toLowerCase() ?? '';
+    var mechLabel = mech;
+    if (mech.contains('sangle') || mech.contains('حزام')) {
+      mechLabel = 'manuel (sangle)';
+    } else if (mech.contains('moteur') || mech.contains('محرك')) {
+      mechLabel = 'électrique';
+    } else if (mech.contains('manivelle') ||
+        mech.contains('منايفال') ||
+        mech.contains('مانيفال')) {
+      mechLabel = 'manuel (manivelle)';
+    }
+    if (mechLabel.trim().isNotEmpty) {
+      lines.add(switch (_currentLang) {
+        AppLanguage.french => 'Mécanisme volet: $mechLabel',
+        AppLanguage.english => 'Shutter mechanism: $mechLabel',
+        AppLanguage.arabic => 'ميكانيزم الستار: $mechLabel',
+      });
+    }
+
+    final lame = map['shutterLame']?.toString().trim() ?? '';
+    if (lame.isNotEmpty) {
+      lines.add(switch (_currentLang) {
+        AppLanguage.french => 'Lame volet: $lame',
+        AppLanguage.english => 'Shutter blade: $lame',
+        AppLanguage.arabic => 'لام الستار: $lame',
+      });
+    }
+
+    final glissiere = map['shutterGlissiere']?.toString().trim() ?? '';
+    if (glissiere.isNotEmpty) {
+      final cleaned = glissiere
+          .replaceAll('Glissière', '')
+          .replaceAll('Glissiere', '')
+          .replaceAll('كوليس', '')
+          .replaceAll(':', '')
+          .trim();
+      final value = cleaned.isEmpty ? glissiere : cleaned;
+      lines.add(switch (_currentLang) {
+        AppLanguage.french => 'Coulisse: $value',
+        AppLanguage.english => 'Coulisse: $value',
+        AppLanguage.arabic => 'كوليس: $value',
+      });
+    }
+    return lines;
+  }
+
+  static List<String> _matchingDetails(
+    List<String> details,
+    List<String> prefixes,
+  ) {
+    return details
+        .where((line) {
+          final lower = line.trim().toLowerCase();
+          return prefixes.any(lower.startsWith);
+        })
+        .toList(growable: false);
+  }
+
+  static List<String> _dedupeDetails(List<String> details) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final line in details) {
+      final clean = line.trim();
+      if (clean.isEmpty) continue;
+      if (seen.add(clean.toLowerCase())) result.add(clean);
+    }
+    return result;
   }
 
   static String _windowTitle(String? type) {
@@ -1844,14 +2784,29 @@ class DevisBuilder {
     final raw = rawColor.trim();
     final normalized = raw.toLowerCase();
     String? colorKey;
-    if (const <String>{'white', 'blanc', 'أبيض', 'الأبيض', 'الابيض'}
-        .contains(normalized)) {
+    if (const <String>{
+      'white',
+      'blanc',
+      'أبيض',
+      'الأبيض',
+      'الابيض',
+    }.contains(normalized)) {
       colorKey = 'white';
-    } else if (const <String>{'gray', 'grey', 'gris', 'رمادي', 'الرمادي'}
-        .contains(normalized)) {
+    } else if (const <String>{
+      'gray',
+      'grey',
+      'gris',
+      'رمادي',
+      'الرمادي',
+    }.contains(normalized)) {
       colorKey = 'grey';
-    } else if (const <String>{'black', 'noir', 'أسود', 'الأسود', 'الاسود'}
-        .contains(normalized)) {
+    } else if (const <String>{
+      'black',
+      'noir',
+      'أسود',
+      'الأسود',
+      'الاسود',
+    }.contains(normalized)) {
       colorKey = 'black';
     } else if (const <String>{
       'brown',

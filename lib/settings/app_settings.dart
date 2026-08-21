@@ -7,7 +7,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 bool get isAdmin {
   final user = FirebaseAuth.instance.currentUser;
-  return user?.email == 'kouidrihamza45@gmail.com';
+  return isApplicationAdminEmail(user?.email);
+}
+
+bool isApplicationAdminEmail(String? email) {
+  return (email ?? '').trim().toLowerCase() == 'kouidrihamza45@gmail.com';
 }
 
 enum AppLanguage { arabic, french, english }
@@ -94,7 +98,7 @@ class AppSettingsProvider extends ChangeNotifier {
       _userRole = prefs.getString('user_role') ?? 'worker';
       _workerPermissions = {};
     } else {
-      if (user.email == 'kouidrihamza45@gmail.com') {
+      if (isApplicationAdminEmail(user.email)) {
         // Keep the application administrator distinct from workshop managers.
         _userRole = 'admin';
         await prefs.setString('user_role', 'admin');
@@ -123,7 +127,7 @@ class AppSettingsProvider extends ChangeNotifier {
               }
 
               final data = docSnap.data()!;
-              if (user?.email != 'kouidrihamza45@gmail.com') {
+              if (!isApplicationAdminEmail(user?.email)) {
                 final remoteRole = data['role']?.toString() ?? '';
                 final isWorkshopOwner =
                     data['workshopId']?.toString() == user?.uid;

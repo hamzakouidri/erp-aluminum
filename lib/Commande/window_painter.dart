@@ -2282,17 +2282,6 @@ class WindowPainter extends CustomPainter {
               );
         canvas.drawRect(frame, paint);
         canvas.drawRect(frame, border);
-        _drawGroovedFrameCavity(
-          canvas,
-          frame,
-          mullion.isHorizontal,
-          model.isGroovedMullionCavityOnPositiveSide(
-            mullion.isHorizontal,
-            mullion.position,
-          ),
-          border.color,
-          frameWidth,
-        );
         continue;
       }
 
@@ -2342,18 +2331,26 @@ class WindowPainter extends CustomPainter {
               mullion.rect.bottom,
             );
 
-      for (final frame in [first, second]) {
-        canvas.drawRect(frame, paint);
-        canvas.drawRect(frame, border);
+      final combined = first.expandToInclude(second);
+      canvas.drawRect(combined, paint);
+      canvas.drawRect(combined, border);
+      final separatorPaint = Paint()
+        ..color = Colors.black.withValues(alpha: 0.75)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.1, frameWidth * 0.025);
+      if (mullion.isHorizontal) {
+        canvas.drawLine(
+          Offset(combined.left, center),
+          Offset(combined.right, center),
+          separatorPaint,
+        );
+      } else {
+        canvas.drawLine(
+          Offset(center, combined.top),
+          Offset(center, combined.bottom),
+          separatorPaint,
+        );
       }
-      _drawDoubleFrameOuterCavities(
-        canvas,
-        first,
-        second,
-        mullion.isHorizontal,
-        border.color,
-        frameWidth,
-      );
     }
 
     if (model.selection.type == SelectionType.mullion) {
@@ -2403,80 +2400,6 @@ class WindowPainter extends CustomPainter {
       if (width != null && width > 0) return width;
     }
     return model.profileThickness;
-  }
-
-  void _drawGroovedFrameCavity(
-    Canvas canvas,
-    Rect frame,
-    bool isHorizontal,
-    bool onPositiveSide,
-    Color borderColor,
-    double frameWidth,
-  ) {
-    final cavityPaint = Paint()
-      ..color = borderColor.withValues(alpha: 0.72)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.2, frameWidth * 0.045);
-    final inset = math.max(2.0, frameWidth * 0.16);
-    final endInset = math.max(1.0, frameWidth * 0.06);
-
-    if (isHorizontal) {
-      final y = onPositiveSide ? frame.bottom - inset : frame.top + inset;
-      canvas.drawLine(
-        Offset(frame.left + endInset, y),
-        Offset(frame.right - endInset, y),
-        cavityPaint,
-      );
-    } else {
-      final x = onPositiveSide ? frame.right - inset : frame.left + inset;
-      canvas.drawLine(
-        Offset(x, frame.top + endInset),
-        Offset(x, frame.bottom - endInset),
-        cavityPaint,
-      );
-    }
-  }
-
-  void _drawDoubleFrameOuterCavities(
-    Canvas canvas,
-    Rect first,
-    Rect second,
-    bool isHorizontal,
-    Color borderColor,
-    double frameWidth,
-  ) {
-    final cavityPaint = Paint()
-      ..color = borderColor.withValues(alpha: 0.72)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.2, frameWidth * 0.045);
-    final inset = math.max(2.0, frameWidth * 0.16);
-    final endInset = math.max(1.0, frameWidth * 0.06);
-
-    if (isHorizontal) {
-      // The top profile opens upward and the bottom profile opens downward.
-      canvas.drawLine(
-        Offset(first.left + endInset, first.top + inset),
-        Offset(first.right - endInset, first.top + inset),
-        cavityPaint,
-      );
-      canvas.drawLine(
-        Offset(second.left + endInset, second.bottom - inset),
-        Offset(second.right - endInset, second.bottom - inset),
-        cavityPaint,
-      );
-    } else {
-      // The left profile opens leftward and the right profile opens rightward.
-      canvas.drawLine(
-        Offset(first.left + inset, first.top + endInset),
-        Offset(first.left + inset, first.bottom - endInset),
-        cavityPaint,
-      );
-      canvas.drawLine(
-        Offset(second.right - inset, second.top + endInset),
-        Offset(second.right - inset, second.bottom - endInset),
-        cavityPaint,
-      );
-    }
   }
 
   void _drawInnerDimensions(Canvas canvas, WindowZone zone) {
@@ -2594,34 +2517,51 @@ class WindowPainter extends CustomPainter {
       double wForCalc = r.width;
       double hForCalc = r.height;
 
-      bool isNested = model.zones.length > 1;
+      bool isNested = model.isSlidingZoneNestedInSingleFrame(zone);
       if (isNested) {
         double innerFrameT = 45.0;
-        final series = model.activeSlidingSeries ?? model.activeSeries;
-        if (series != null) {
-          var slidingFrames = series.sections.where((s) {
-            final name = s.name.toLowerCase();
-            final type = s.type.toLowerCase();
-            return (name.contains('coulissant') ||
-                    name.contains('منزلق') ||
-                    name.contains('sliding') ||
-                    type.contains('coulissant') ||
-                    type.contains('sliding')) &&
-                (type.contains('frame') ||
-                    type.contains('cadre') ||
-                    type.contains('إطار'));
-          }).toList();
-          if (slidingFrames.isNotEmpty) {
-            innerFrameT = slidingFrames.first.visibleWidth > 0
-                ? slidingFrames.first.visibleWidth
-                : (slidingFrames.first.thickness > 0
-                      ? slidingFrames.first.thickness
-                      : 45.0);
+        if (model.slidingFrameOverride != null) {
+          innerFrameT =
+              ((model.slidingFrameOverride!['visible_width'] ??
+                          model.slidingFrameOverride!['thickness'])
+                      as num?)
+                  ?.toDouble() ??
+              innerFrameT;
+        } else {
+          final series = model.activeSlidingSeries ?? model.activeSeries;
+          if (series != null) {
+            var slidingFrames = series.sections.where((s) {
+              final name = s.name.toLowerCase();
+              final type = s.type.toLowerCase();
+              return (name.contains('coulissant') ||
+                      name.contains('منزلق') ||
+                      name.contains('sliding') ||
+                      type.contains('coulissant') ||
+                      type.contains('sliding')) &&
+                  (type.contains('frame') ||
+                      type.contains('cadre') ||
+                      type.contains('إطار'));
+            }).toList();
+            if (slidingFrames.isNotEmpty) {
+              innerFrameT = slidingFrames.first.visibleWidth > 0
+                  ? slidingFrames.first.visibleWidth
+                  : (slidingFrames.first.thickness > 0
+                        ? slidingFrames.first.thickness
+                        : 45.0);
+            }
           }
         }
-        wForCalc = r.width - (innerFrameT * 2.0);
-        hForCalc = r.height - (innerFrameT * 2.0);
+        wForCalc =
+            r.width -
+            model.slidingRebateDeduction(zone, horizontal: true) -
+            (innerFrameT * 2.0);
+        hForCalc =
+            r.height -
+            model.slidingRebateDeduction(zone, horizontal: false) -
+            (innerFrameT * 2.0);
       }
+      wForCalc = math.max(0.0, wForCalc);
+      hForCalc = math.max(0.0, hForCalc);
 
       int sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
       double cuttingW = (wForCalc + ((sashes - 1) * 26.0)) / sashes;

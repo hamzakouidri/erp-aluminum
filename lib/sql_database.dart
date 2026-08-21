@@ -124,28 +124,6 @@ class SqlDatabase {
     return fallback;
   }
 
-  static bool _isDesertOakColor(String name) {
-    final normalized = name.toLowerCase().trim();
-    return normalized.contains('desert') ||
-        normalized.contains('oak') ||
-        normalized.contains('ديزر');
-  }
-
-  static Future<void> _linkColorToAllProfiles(
-    Database database,
-    int colorId,
-  ) async {
-    final profiles = await database.query('Profile', columns: ['id']);
-    for (final profile in profiles) {
-      final profileId = profile['id'];
-      if (profileId == null) continue;
-      await database.insert('ProfileColors', {
-        'profile_id': profileId,
-        'color_id': colorId,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-  }
-
   static String _canonicalLegacyColorName(String value) {
     const exactFixes = <String, String>{
       'â•ªÃºâ•ªÂ¿â”˜Ã¨â•ªâ•¢': 'أبيض',
@@ -159,6 +137,14 @@ class SqlDatabase {
     if (exact != null) return exact;
     return _repairLegacyTextEncoding(value);
   }
+
+  static const String _whiteColorSql =
+      "(LOWER(name) LIKE '%white%' OR LOWER(name) LIKE '%blanc%' "
+      "OR name LIKE '%أبيض%' OR name LIKE '%ابيض%' "
+      "OR REPLACE(LOWER(hex_code), '#', '') IN ('ffffff', 'fff'))";
+
+  static String _profileColorSyncId(int profileId, int colorId) =>
+      '$profileId:$colorId';
 
   static Map<String, dynamic> _withDistributedId(Map<String, dynamic> values) {
     return <String, dynamic>{
@@ -227,6 +213,7 @@ class SqlDatabase {
     'SectionColorPrices',
     'AccessoryColorPrices',
     'ProfileColors',
+    'ProfileColorConfig',
     'KitBundles',
     'KitBundleItems',
     'KitItemRanges',
@@ -252,11 +239,8 @@ class SqlDatabase {
       final dbName = 'test.db';
       final dataPath = await _getWritableDatabasesPath();
       final path = join(dataPath, dbName);
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-        debugPrint('Database file test.db deleted successfully.');
-      }
+      await _dbFactory.deleteDatabase(path);
+      debugPrint('Database file test.db deleted successfully.');
     } catch (e) {
       debugPrint('Error deleting database file: $e');
     }
@@ -2180,6 +2164,7 @@ class SqlDatabase {
     if (oldVersion < 8) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS ProfileColors (
+          id TEXT UNIQUE,
           profile_id INTEGER NOT NULL,
           color_id INTEGER NOT NULL,
           PRIMARY KEY (profile_id, color_id),
@@ -2720,6 +2705,7 @@ class SqlDatabase {
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ProfileColors (
+        id TEXT UNIQUE,
         profile_id INTEGER NOT NULL,
         color_id INTEGER NOT NULL,
         PRIMARY KEY (profile_id, color_id),
@@ -7109,9 +7095,86 @@ class SqlDatabase {
       return txn.delete('Commandes', where: 'id = ?', whereArgs: [id]);
     });
     if (res > 0) {
+      await _writeDeletedOrderTombstoneToCloud(id);
       CloudSyncService().notifyChangeImmediate();
     }
     return res;
+  }
+
+  Future<void> _writeDeletedOrderTombstoneToCloud(int orderId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code') ?? '';
+      if (workshopId.isEmpty) return;
+      await FirebaseFirestore.instance
+          .collection('workshops')
+          .doc(workshopId)
+          .collection('deleted_orders')
+          .doc(orderId.toString())
+          .set({
+            'id': orderId,
+            'deleted_at': FieldValue.serverTimestamp(),
+            'device_at': DateTime.now().toUtc().toIso8601String(),
+            'deleted_by': FirebaseAuth.instance.currentUser?.uid,
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('Failed to write deleted_orders tombstone: $e');
+    }
+  }
+
+  Future<int> deleteCommandeLocalOnly(int id) {
+    return _retryAfterDatabaseMove(() => _deleteCommandeLocalOnlyOnce(id));
+  }
+
+  Future<int> _deleteCommandeLocalOnlyOnce(int id) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureSyncTombstoneInfrastructure(myDb);
+
+    return myDb.transaction((txn) async {
+      await txn.update('_sync_runtime_flags', {
+        'suppress_tombstones': 1,
+      }, where: 'id = 1');
+      try {
+        final details = await txn.query(
+          'Commandes_details',
+          columns: ['id'],
+          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          whereArgs: [id, id.toString()],
+        );
+        for (final detail in details) {
+          final detailId = detail['id'];
+          if (detailId == null) continue;
+          await txn.delete(
+            'WorkerAllocations',
+            where:
+                'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
+            whereArgs: [detailId, detailId.toString()],
+          );
+        }
+        await txn.delete(
+          'Commandes_deliveries',
+          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          whereArgs: [id, id.toString()],
+        );
+        await txn.delete(
+          'Commandes_details',
+          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          whereArgs: [id, id.toString()],
+        );
+        await txn.delete(
+          'Treasury',
+          where: "reference_id = ? AND entity_type = 'Client'",
+          whereArgs: [id],
+        );
+        return await txn.delete('Commandes', where: 'id = ?', whereArgs: [id]);
+      } finally {
+        await txn.update('_sync_runtime_flags', {
+          'suppress_tombstones': 0,
+        }, where: 'id = 1');
+      }
+    });
   }
 
   Future<int> deleteCommandeDetails(int commandeId) async {
@@ -8304,9 +8367,6 @@ class SqlDatabase {
         final repairedName = _canonicalLegacyColorName(rawName);
         final rawHex = row['hex_code']?.toString() ?? '';
         final repairedHex = _canonicalKnownColorHex(repairedName, rawHex);
-        if (_isDesertOakColor(repairedName)) {
-          await _linkColorToAllProfiles(myDb, (id as num).toInt());
-        }
         if (repairedName == rawName && repairedHex == rawHex) continue;
         await myDb.update(
           'Colors',
@@ -8419,98 +8479,7 @@ class SqlDatabase {
       }
     }
 
-    // --- Ensure Antique, Desert Oak, and Gris 9007 exist and are linked to profiles ---
-    try {
-      var checkAntique = await myDb.query(
-        'Colors',
-        where:
-            "LOWER(name) LIKE '%antique%' OR name LIKE '%أنتيك%' OR name LIKE '%انتيك%'",
-      );
-      int antiqueId;
-      if (checkAntique.isEmpty) {
-        antiqueId = await myDb.insert('Colors', {
-          'name': 'Antique / أنتيك',
-          'hex_code': '#6E5D4F',
-          'type': 'Global',
-          'is_active': 1,
-        });
-      } else {
-        antiqueId = checkAntique.first['id'] as int;
-      }
-
-      var checkDesert = await myDb.query(
-        'Colors',
-        where:
-            "LOWER(name) LIKE '%desert%' OR LOWER(name) LIKE '%oak%' OR name LIKE '%ديزرت%' OR name LIKE '%ديزيرت%'",
-      );
-      int desertId;
-      if (checkDesert.isEmpty) {
-        desertId = await myDb.insert('Colors', {
-          'name': 'Desert Oak / ديزرت أوك',
-          'hex_code': '#B68B55',
-          'type': 'Global',
-          'is_active': 1,
-        });
-      } else {
-        desertId = checkDesert.first['id'] as int;
-      }
-
-      var checkGris9007 = await myDb.query(
-        'Colors',
-        where: "name LIKE '%9007%' OR name LIKE '%رمادي 9007%'",
-      );
-      int gris9007Id;
-      if (checkGris9007.isEmpty) {
-        gris9007Id = await myDb.insert('Colors', {
-          'name': 'Gris 9007 / رمادي 9007',
-          'hex_code': '#8A939E',
-          'type': 'Global',
-          'is_active': 1,
-        });
-      } else {
-        gris9007Id = checkGris9007.first['id'] as int;
-      }
-
-      var profiles = await myDb.query('Profile');
-      for (var p in profiles) {
-        final pId = p['id'] as int;
-        var linkAntique = await myDb.query(
-          'ProfileColors',
-          where: 'profile_id = ? AND color_id = ?',
-          whereArgs: [pId, antiqueId],
-        );
-        if (linkAntique.isEmpty) {
-          await myDb.insert('ProfileColors', {
-            'profile_id': pId,
-            'color_id': antiqueId,
-          });
-        }
-        var linkDesert = await myDb.query(
-          'ProfileColors',
-          where: 'profile_id = ? AND color_id = ?',
-          whereArgs: [pId, desertId],
-        );
-        if (linkDesert.isEmpty) {
-          await myDb.insert('ProfileColors', {
-            'profile_id': pId,
-            'color_id': desertId,
-          });
-        }
-        var linkGris = await myDb.query(
-          'ProfileColors',
-          where: 'profile_id = ? AND color_id = ?',
-          whereArgs: [pId, gris9007Id],
-        );
-        if (linkGris.isEmpty) {
-          await myDb.insert('ProfileColors', {
-            'profile_id': pId,
-            'color_id': gris9007Id,
-          });
-        }
-      }
-    } catch (e) {
-      print("Error inserting default profile colors: $e");
-    }
+    if (duplicates.isNotEmpty) CloudSyncService().notifyCatalogChange();
   }
 
   Future<int> insertColor(
@@ -8528,9 +8497,6 @@ class SqlDatabase {
       'type': type,
       'price': price,
     });
-    if (_isDesertOakColor(repairedName)) {
-      await _linkColorToAllProfiles(myDb, res);
-    }
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -8556,9 +8522,6 @@ class SqlDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-    if (_isDesertOakColor(repairedName)) {
-      await _linkColorToAllProfiles(myDb, id);
-    }
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -8589,6 +8552,8 @@ class SqlDatabase {
 
   Future<List<int>> getProfilesForColor(int colorId) async {
     Database? myDb = await db;
+    if (myDb == null) return <int>[];
+    await _ensureProfileColorsSyncIds(myDb);
     var res = await myDb!.query(
       'ProfileColors',
       where: 'color_id = ?',
@@ -8599,18 +8564,94 @@ class SqlDatabase {
 
   Future<void> setProfilesForColor(int colorId, List<int> profileIds) async {
     Database? myDb = await db;
-    await myDb!.transaction((txn) async {
-      await txn.delete(
-        'ProfileColors',
-        where: 'color_id = ?',
-        whereArgs: [colorId],
-      );
-      for (int profileId in profileIds) {
+    if (myDb == null) return;
+    await _ensureProfileColorsSyncIds(myDb);
+    final targetProfileIds = profileIds.toSet();
+    final existingRows = await myDb.query(
+      'ProfileColors',
+      columns: ['profile_id'],
+      where: 'color_id = ?',
+      whereArgs: [colorId],
+    );
+    final existingProfileIds = existingRows
+        .map((row) => (row['profile_id'] as num).toInt())
+        .toSet();
+    await myDb.transaction((txn) async {
+      for (final profileId in existingProfileIds.difference(targetProfileIds)) {
+        await txn.delete(
+          'ProfileColors',
+          where: 'profile_id = ? AND color_id = ?',
+          whereArgs: [profileId, colorId],
+        );
+        await txn.insert('ProfileColorConfig', {
+          'id': profileId,
+          'profile_id': profileId,
+          'configured_at': DateTime.now().toUtc().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final profileId in targetProfileIds.difference(existingProfileIds)) {
         await txn.insert('ProfileColors', {
+          'id': _profileColorSyncId(profileId, colorId),
           'profile_id': profileId,
           'color_id': colorId,
-        });
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.insert('ProfileColorConfig', {
+          'id': profileId,
+          'profile_id': profileId,
+          'configured_at': DateTime.now().toUtc().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
+      for (final profileId in targetProfileIds.intersection(
+        existingProfileIds,
+      )) {
+        await txn.insert('ProfileColorConfig', {
+          'id': profileId,
+          'profile_id': profileId,
+          'configured_at': DateTime.now().toUtc().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<void> setColorsForProfile(
+    int profileId,
+    Iterable<int> colorIds,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureProfileColorsSyncIds(myDb);
+    final uniqueColorIds = colorIds.toSet().toList()..sort();
+    final existingRows = await myDb.query(
+      'ProfileColors',
+      columns: ['color_id'],
+      where: 'profile_id = ?',
+      whereArgs: [profileId],
+    );
+    final existingColorIds = existingRows
+        .map((row) => (row['color_id'] as num).toInt())
+        .toSet();
+    final targetColorIds = uniqueColorIds.toSet();
+    await myDb.transaction((txn) async {
+      for (final colorId in existingColorIds.difference(targetColorIds)) {
+        await txn.delete(
+          'ProfileColors',
+          where: 'profile_id = ? AND color_id = ?',
+          whereArgs: [profileId, colorId],
+        );
+      }
+      for (final colorId in targetColorIds.difference(existingColorIds)) {
+        await txn.insert('ProfileColors', {
+          'id': _profileColorSyncId(profileId, colorId),
+          'profile_id': profileId,
+          'color_id': colorId,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await txn.insert('ProfileColorConfig', {
+        'id': profileId,
+        'profile_id': profileId,
+        'configured_at': DateTime.now().toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     CloudSyncService().notifyCatalogChange();
   }
@@ -8621,18 +8662,28 @@ class SqlDatabase {
     required bool enabled,
   }) async {
     final myDb = await db;
-    if (enabled) {
-      await myDb!.insert('ProfileColors', {
+    if (myDb == null) return;
+    await _ensureProfileColorsSyncIds(myDb);
+    await myDb.transaction((txn) async {
+      if (enabled) {
+        await txn.insert('ProfileColors', {
+          'id': _profileColorSyncId(profileId, colorId),
+          'profile_id': profileId,
+          'color_id': colorId,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      } else {
+        await txn.delete(
+          'ProfileColors',
+          where: 'profile_id = ? AND color_id = ?',
+          whereArgs: [profileId, colorId],
+        );
+      }
+      await txn.insert('ProfileColorConfig', {
+        'id': profileId,
         'profile_id': profileId,
-        'color_id': colorId,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    } else {
-      await myDb!.delete(
-        'ProfileColors',
-        where: 'profile_id = ? AND color_id = ?',
-        whereArgs: [profileId, colorId],
-      );
-    }
+        'configured_at': DateTime.now().toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
     CloudSyncService().notifyCatalogChange();
   }
 
@@ -8839,26 +8890,17 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> getColorsForProfile(int profileId) async {
     Database? myDb = await db;
     await _repairKnownColorRows(myDb!);
-    final desertColors = await myDb.query(
-      'Colors',
-      columns: ['id'],
-      where:
-          "LOWER(name) LIKE '%desert%' OR LOWER(name) LIKE '%oak%' OR name LIKE '%ديزر%'",
+    final initialized = await _ensureProfileColorDefaults(
+      myDb,
+      profileId: profileId,
     );
-    for (final color in desertColors) {
-      final colorId = color['id'];
-      if (colorId == null) continue;
-      await myDb.insert('ProfileColors', {
-        'profile_id': profileId,
-        'color_id': colorId,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
+    if (initialized) CloudSyncService().notifyCatalogChange();
     return myDb!.rawQuery(
       '''
       SELECT DISTINCT c.* FROM Colors c
-      INNER JOIN ProfileColors pc ON c.id = pc.color_id
-      WHERE pc.profile_id = ?
-        AND (c.is_active = 1 OR c.is_active IS NULL)
+      INNER JOIN ProfileColors pc
+        ON c.id = pc.color_id AND pc.profile_id = ?
+      WHERE (c.is_active = 1 OR c.is_active IS NULL)
       ORDER BY c.name COLLATE NOCASE ASC
     ''',
       [profileId],
@@ -10360,6 +10402,7 @@ class SqlDatabase {
         PRIMARY KEY (table_name, row_id)
       )
     ''');
+    await _ensureProfileColorsSyncIds(db);
 
     final schemaRows = await db.rawQuery('''
       SELECT name
@@ -10533,8 +10576,63 @@ class SqlDatabase {
     final data = <String, dynamic>{};
     final acknowledgements = <CloudChangeAcknowledgement>[];
     final tombstones = <Map<String, dynamic>>[];
+    final orderIdsToBundle = <String>{};
     var changedRows = 0;
     var deletedRows = 0;
+
+    void upsertExportRow(String table, Map<String, dynamic> row) {
+      final sanitized = _sanitizeCloudExportRow(
+        table,
+        Map<String, dynamic>.from(row),
+      );
+      final rowId = sanitized['id']?.toString();
+      final list =
+          data.putIfAbsent(table, () => <Map<String, dynamic>>[])
+              as List<Map<String, dynamic>>;
+      if (rowId != null && rowId.isNotEmpty) {
+        final existingIndex = list.indexWhere(
+          (existing) => existing['id']?.toString() == rowId,
+        );
+        if (existingIndex >= 0) {
+          list[existingIndex] = sanitized;
+          return;
+        }
+      }
+      list.add(sanitized);
+    }
+
+    void rememberOrderId(dynamic value) {
+      final text = value?.toString() ?? '';
+      if (text.isNotEmpty) orderIdsToBundle.add(text);
+    }
+
+    Future<void> rememberOrderBundleForRow(
+      String table,
+      String rowId, [
+      Map<String, dynamic>? row,
+    ]) async {
+      if (table == 'Commandes') {
+        rememberOrderId(rowId);
+        return;
+      }
+      if (table == 'Commandes_details' || table == 'Commandes_deliveries') {
+        Map<String, dynamic>? currentRow = row;
+        if (currentRow == null) {
+          final currentRows = await myDb.query(
+            table,
+            where: 'id = ? OR CAST(id AS TEXT) = ?',
+            whereArgs: [rowId, rowId],
+            limit: 1,
+          );
+          if (currentRows.isNotEmpty) {
+            currentRow = Map<String, dynamic>.from(currentRows.first);
+          }
+        }
+        if (currentRow != null) {
+          rememberOrderId(currentRow['id_commandes']);
+        }
+      }
+    }
 
     for (final logRow in logRows) {
       final table = logRow['table_name']?.toString() ?? '';
@@ -10558,6 +10656,7 @@ class SqlDatabase {
       );
 
       if (operation == 'delete') {
+        await rememberOrderBundleForRow(table, rowId);
         final matching = await myDb.query(
           'SyncTombstones',
           where: 'table_name = ? AND row_id = ?',
@@ -10607,10 +10706,49 @@ class SqlDatabase {
         continue;
       }
 
-      (data.putIfAbsent(table, () => <Map<String, dynamic>>[])
-              as List<Map<String, dynamic>>)
-          .add(Map<String, dynamic>.from(rows.first));
+      final currentRow = Map<String, dynamic>.from(rows.first);
+      await rememberOrderBundleForRow(table, rowId, currentRow);
+      upsertExportRow(table, currentRow);
       changedRows++;
+    }
+
+    for (final orderId in orderIdsToBundle) {
+      final orderRows = await myDb.query(
+        'Commandes',
+        where: 'id = ? OR CAST(id AS TEXT) = ?',
+        whereArgs: [orderId, orderId],
+        limit: 1,
+      );
+      if (orderRows.isEmpty) continue;
+      upsertExportRow('Commandes', Map<String, dynamic>.from(orderRows.first));
+
+      final detailRows = await myDb.query(
+        'Commandes_details',
+        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+        whereArgs: [orderId, orderId],
+      );
+      for (final detailRow in detailRows) {
+        upsertExportRow(
+          'Commandes_details',
+          Map<String, dynamic>.from(detailRow),
+        );
+      }
+
+      try {
+        final deliveryRows = await myDb.query(
+          'Commandes_deliveries',
+          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          whereArgs: [orderId, orderId],
+        );
+        for (final deliveryRow in deliveryRows) {
+          upsertExportRow(
+            'Commandes_deliveries',
+            Map<String, dynamic>.from(deliveryRow),
+          );
+        }
+      } catch (_) {
+        // Older databases may not have delivery rows yet.
+      }
     }
 
     if (tombstones.isNotEmpty) {
@@ -10653,6 +10791,27 @@ class SqlDatabase {
     return rows.isNotEmpty;
   }
 
+  Future<Map<String, int>> readSyncTableCounts(
+    Iterable<String> tableNames,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return const <String, int>{};
+    final counts = <String, int>{};
+    for (final table in tableNames) {
+      if (!_isSafeSqlIdentifier(table)) continue;
+      final exists = await myDb.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        [table],
+      );
+      if (exists.isEmpty) continue;
+      final result = await myDb.rawQuery(
+        'SELECT COUNT(*) AS count FROM $table',
+      );
+      counts[table] = (result.first['count'] as num?)?.toInt() ?? 0;
+    }
+    return counts;
+  }
+
   Future<Map<String, dynamic>> exportAllData() async {
     Database? myDb = await db;
     final Map<String, dynamic> allData = {};
@@ -10686,7 +10845,14 @@ class SqlDatabase {
     for (final table in tables) {
       try {
         final rows = await myDb.query(table);
-        allData[table] = rows;
+        allData[table] = rows
+            .map(
+              (row) => _sanitizeCloudExportRow(
+                table,
+                Map<String, dynamic>.from(row),
+              ),
+            )
+            .toList(growable: false);
       } catch (_) {
         failedTables.add(table);
       }
@@ -10698,6 +10864,32 @@ class SqlDatabase {
       );
     }
     return allData;
+  }
+
+  Map<String, dynamic> _sanitizeCloudExportRow(
+    String table,
+    Map<String, dynamic> row,
+  ) {
+    if (table == 'Commandes_details') {
+      row.remove('drawing_image_base64');
+      row.remove('drawing_image_path');
+    }
+    return row;
+  }
+
+  void _preserveLocalOnlyImportColumns(
+    String table,
+    Map<String, dynamic> imported,
+    Map<String, Object?> local,
+  ) {
+    if (table != 'Commandes_details') return;
+    for (final key in const ['drawing_image_base64', 'drawing_image_path']) {
+      final incoming = imported[key]?.toString() ?? '';
+      final existing = local[key]?.toString() ?? '';
+      if (incoming.isEmpty && existing.isNotEmpty) {
+        imported[key] = existing;
+      }
+    }
   }
 
   Future<void> _ensureSyncSchema(DatabaseExecutor db) async {
@@ -10916,6 +11108,113 @@ class SqlDatabase {
     return RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value);
   }
 
+  Future<void> _ensureProfileColorsSyncIds(DatabaseExecutor executor) async {
+    final exists = await executor.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ProfileColors' LIMIT 1",
+    );
+    if (exists.isEmpty) return;
+
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS ProfileColorConfig (
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL UNIQUE,
+        configured_at TEXT NOT NULL
+      )
+    ''');
+
+    final columns = await _tableColumns(executor, 'ProfileColors');
+    if (!columns.contains('id')) {
+      try {
+        await executor.execute('ALTER TABLE ProfileColors ADD COLUMN id TEXT');
+      } catch (_) {}
+    }
+    await executor.rawUpdate('''
+      UPDATE ProfileColors
+      SET id = CAST(profile_id AS TEXT) || ':' || CAST(color_id AS TEXT)
+      WHERE id IS NULL OR TRIM(CAST(id AS TEXT)) = ''
+    ''');
+    await executor.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_colors_sync_id ON ProfileColors(id)',
+    );
+  }
+
+  Future<int?> _defaultWhiteProfileColorId(DatabaseExecutor executor) async {
+    final rows = await executor.rawQuery('''
+      SELECT id FROM Colors
+      WHERE ($_whiteColorSql)
+        AND (is_active = 1 OR is_active IS NULL)
+      ORDER BY id ASC
+      LIMIT 1
+    ''');
+    if (rows.isEmpty) return null;
+    final rawId = rows.first['id'];
+    return rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
+  }
+
+  Future<bool> _ensureProfileColorDefaults(
+    DatabaseExecutor executor, {
+    int? profileId,
+  }) async {
+    await _ensureProfileColorsSyncIds(executor);
+    final profiles = await executor.query(
+      'Profile',
+      columns: const ['id'],
+      where: profileId == null ? null : 'id = ?',
+      whereArgs: profileId == null ? null : [profileId],
+    );
+    if (profiles.isEmpty) return false;
+
+    final whiteColorId = await _defaultWhiteProfileColorId(executor);
+    var changed = false;
+    for (final profile in profiles) {
+      final rawProfileId = profile['id'];
+      final pId = rawProfileId is num
+          ? rawProfileId.toInt()
+          : int.tryParse(rawProfileId?.toString() ?? '');
+      if (pId == null) continue;
+
+      final config = await executor.query(
+        'ProfileColorConfig',
+        columns: const ['id'],
+        where: 'profile_id = ?',
+        whereArgs: [pId],
+        limit: 1,
+      );
+      if (config.isNotEmpty) continue;
+
+      final existingColors = await executor.query(
+        'ProfileColors',
+        columns: const ['color_id'],
+        where: 'profile_id = ?',
+        whereArgs: [pId],
+        limit: 1,
+      );
+      if (existingColors.isEmpty && whiteColorId != null) {
+        await executor.insert('ProfileColors', {
+          'id': _profileColorSyncId(pId, whiteColorId),
+          'profile_id': pId,
+          'color_id': whiteColorId,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await executor.insert('ProfileColorConfig', {
+        'id': pId,
+        'profile_id': pId,
+        'configured_at': DateTime.now().toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      changed = true;
+    }
+    return changed;
+  }
+
+  Future<void> ensureProfileColorDefaults({int? profileId}) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    final changed = await myDb.transaction<bool>(
+      (txn) => _ensureProfileColorDefaults(txn, profileId: profileId),
+    );
+    if (changed) CloudSyncService().notifyCatalogChange();
+  }
+
   dynamic _sanitizeImportValue(dynamic value) {
     if (value == null) return null;
     if (value is Timestamp) return value.toDate().toIso8601String();
@@ -11114,6 +11413,7 @@ class SqlDatabase {
       'SectionColorPrices',
       'AccessoryColorPrices',
       'ProfileColors',
+      'ProfileColorConfig',
       'KitBundles',
       'KitBundleItems',
       'KitItemRanges',
@@ -11217,6 +11517,13 @@ class SqlDatabase {
           try {
             final sanitized = _sanitizeImportRow(Map<String, dynamic>.from(row))
               ..removeWhere((key, value) => !columns.contains(key));
+            if (table == 'ProfileColors') {
+              final profileId = (sanitized['profile_id'] as num?)?.toInt();
+              final colorId = (sanitized['color_id'] as num?)?.toInt();
+              if (profileId != null && colorId != null) {
+                sanitized['id'] = _profileColorSyncId(profileId, colorId);
+              }
+            }
             if (sanitized.isEmpty) continue;
             final rowId = sanitized['id'];
             if (rowId != null &&
@@ -11230,9 +11537,15 @@ class SqlDatabase {
                 whereArgs: [rowId, rowId.toString()],
                 limit: 1,
               );
-              if (localRows.isNotEmpty &&
-                  _localRowIsNewer(localRows.first, sanitized)) {
-                continue;
+              if (localRows.isNotEmpty) {
+                if (_localRowIsNewer(localRows.first, sanitized)) {
+                  continue;
+                }
+                _preserveLocalOnlyImportColumns(
+                  table,
+                  sanitized,
+                  localRows.first,
+                );
               }
             }
             await txn.insert(

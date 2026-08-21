@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/Systeme/volet.dart';
 import 'package:database_data/Commande/Systeme/show_system_francais.dart';
 import 'package:database_data/settings/localization.dart';
@@ -66,6 +67,26 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     );
     final s = widget.initialSettings;
     if (s != null) {
+      int? readInt(dynamic value) {
+        if (value is num) return value.toInt();
+        return int.tryParse(value?.toString() ?? '');
+      }
+
+      final activeSeries = s['activeSeries'];
+      final activeSlidingSeries = s['activeSlidingSeries'];
+      if (activeSeries is AluminumSeries) m.activeSeries = activeSeries;
+      if (activeSlidingSeries is AluminumSeries) {
+        m.activeSlidingSeries = activeSlidingSeries;
+      }
+      m.loadedSeriesId = readInt(s['loadedSeriesId']);
+      m.loadedSlidingSeriesId = readInt(s['loadedSlidingSeriesId']);
+      m.loadedSeriesName = s['loadedSeriesName']?.toString();
+      m.loadedSlidingSeriesName = s['loadedSlidingSeriesName']?.toString();
+      if (s['selectedDbColor'] is Map) {
+        m.selectedDbColor = Map<String, dynamic>.from(
+          s['selectedDbColor'] as Map,
+        );
+      }
       if (s['selectedAccessoryColor'] != null)
         m.selectedAccessoryColor = s['selectedAccessoryColor'];
       if (s['hasShutter'] == true) m.hasShutter = true;
@@ -74,12 +95,20 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         m.shutterGlissiere = s['shutterGlissiere'];
       if (s['shutterMechanism'] != null)
         m.shutterMechanism = s['shutterMechanism'];
+
+      final glassSpec = s['glassSpec'];
+      if (glassSpec is Map) {
+        WindowZone.globalDefaultGlass = glassSpecificationFromMap(
+          Map<String, dynamic>.from(glassSpec),
+        );
+      } else {
+        WindowZone.globalDefaultGlass = const GlassSpecification();
+      }
+    } else {
+      WindowZone.globalDefaultGlass = const GlassSpecification();
     }
 
-    // A product opened from the system chooser is always a new drawing.
-    // Never inherit the colour of the previous product in the order.
     m.frameColor = FrameColor.white;
-    m.selectedDbColor = null;
     return m;
   }
 
@@ -335,19 +364,19 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         foregroundColor: Colors.white,
         actions: [
           if (false)
-          IconButton(
-            tooltip: Localization.translate('تعديل الأنظمة المفعلة', lang),
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SelectedSystemsScreen(),
-                ),
-              );
-              _loadActiveModes();
-            },
-          ),
+            IconButton(
+              tooltip: Localization.translate('تعديل الأنظمة المفعلة', lang),
+              icon: const Icon(Icons.tune_rounded),
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SelectedSystemsScreen(),
+                  ),
+                );
+                _loadActiveModes();
+              },
+            ),
         ],
       ),
       body: SingleChildScrollView(

@@ -44,6 +44,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
   }
 
   Future<void> _loadItems() async {
+    await widget.db.ensureProfileColorDefaults();
     final items = await widget.db.readColors();
     final profiles = await widget.db.readProfile();
     final dbInstance = await widget.db.db;
@@ -433,6 +434,11 @@ class _ColorsScreenState extends State<ColorsScreen> {
     int? selectedProfileId = _profiles.isNotEmpty
         ? _profiles.first['id'] as int
         : null;
+    final workingProfileColors = <int, Set<int>>{
+      for (final entry in _profileColorsMap.entries)
+        entry.key: entry.value.toSet(),
+    };
+    final changedProfileIds = <int>{};
 
     showDialog(
       context: context,
@@ -445,11 +451,24 @@ class _ColorsScreenState extends State<ColorsScreen> {
             ),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
+          titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    'اختر الألوان الخاصة بكل بروفيل ثم اضغط حفظ وإغلاق.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                    textDirection: TextDirection.rtl,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 if (_profiles.isNotEmpty)
                   DropdownButtonFormField<int>(
                     decoration: InputDecoration(
@@ -484,8 +503,8 @@ class _ColorsScreenState extends State<ColorsScreen> {
                       itemBuilder: (context, index) {
                         final color = _items[index];
                         final cId = color['id'] as int;
-                        bool isChecked =
-                            _profileColorsMap[selectedProfileId]?.contains(
+                        final isChecked =
+                            workingProfileColors[selectedProfileId]?.contains(
                               cId,
                             ) ??
                             false;
@@ -511,26 +530,19 @@ class _ColorsScreenState extends State<ColorsScreen> {
                             ),
                           ),
                           value: isChecked,
-                          onChanged: (bool? val) async {
+                          onChanged: (bool? val) {
                             final profileId = selectedProfileId;
                             if (profileId == null) return;
-                            await widget.db.setColorForProfile(
-                              profileId: profileId,
-                              colorId: cId,
-                              enabled: val == true,
-                            );
-
                             setStateDialog(() {
+                              final selectedColors = workingProfileColors
+                                  .putIfAbsent(profileId, () => <int>{});
                               if (val == true) {
-                                if (!_profileColorsMap.containsKey(profileId)) {
-                                  _profileColorsMap[profileId] = [];
-                                }
-                                _profileColorsMap[profileId]!.add(cId);
+                                selectedColors.add(cId);
                               } else {
-                                _profileColorsMap[profileId]?.remove(cId);
+                                selectedColors.remove(cId);
                               }
+                              changedProfileIds.add(profileId);
                             });
-                            _loadItems();
                           },
                         );
                       },
@@ -544,10 +556,60 @@ class _ColorsScreenState extends State<ColorsScreen> {
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
                 Localization.translate(
-                  'إغلاق',
+                  'إلغاء',
                   Provider.of<AppSettingsProvider>(context).language,
                 ),
               ),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.save_rounded, size: 18),
+              label: const Text('حفظ وإغلاق'),
+              onPressed: () async {
+                final navigator = Navigator.of(dialogContext);
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final profilesToSave = <int>{...changedProfileIds};
+                  final currentProfileId = selectedProfileId;
+                  if (currentProfileId != null) {
+                    profilesToSave.add(currentProfileId);
+                  }
+                  for (final profileId in profilesToSave) {
+                    await widget.db.setColorsForProfile(
+                      profileId,
+                      workingProfileColors[profileId] ?? const <int>{},
+                    );
+                  }
+                  for (final profileId in profilesToSave) {
+                    final expected =
+                        workingProfileColors[profileId] ?? const <int>{};
+                    final saved = (await widget.db.getColorsForProfile(
+                      profileId,
+                    )).map((color) => color['id'] as int).toSet();
+                    if (saved.length != expected.length ||
+                        !saved.containsAll(expected)) {
+                      throw StateError(
+                        'لم تتطابق ألوان البروفيل المحفوظة مع الاختيار.',
+                      );
+                    }
+                  }
+                  await _loadItems();
+                  if (!mounted) return;
+                  navigator.pop();
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('تم حفظ تخصيص ألوان البروفيلات بنجاح.'),
+                    ),
+                  );
+                } catch (error) {
+                  if (!mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('تعذر حفظ تخصيص الألوان: $error'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
             ),
           ],
         ),
@@ -1105,44 +1167,48 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                     onChanged: isGreyBaseColor
                                         ? null
                                         : (val) async {
-                                      if (val == true) {
-                                        final sh = shutterComponents.firstWhere(
-                                          (s) => s['id'] == selectedShutId,
-                                        );
-                                        final basePrice = (sh['price'] is num)
-                                            ? (sh['price'] as num).toDouble()
-                                            : 0.0;
-                                        await widget.db
-                                            .setShutterColorForComponent(
-                                              shutterComponentId:
-                                                  selectedShutId!,
-                                              colorId: cId,
-                                              enabled: true,
-                                              price: basePrice,
-                                            );
-                                        setStateDialog(() {
-                                          shutColorMap
-                                              .putIfAbsent(
-                                                selectedShutId!,
-                                                () => {},
-                                              )
-                                              .add(cId);
-                                        });
-                                      } else {
-                                        await widget.db
-                                            .setShutterColorForComponent(
-                                              shutterComponentId:
-                                                  selectedShutId!,
-                                              colorId: cId,
-                                              enabled: false,
-                                            );
-                                        setStateDialog(() {
-                                          shutColorMap[selectedShutId]?.remove(
-                                            cId,
-                                          );
-                                        });
-                                      }
-                                    },
+                                            if (val == true) {
+                                              final sh = shutterComponents
+                                                  .firstWhere(
+                                                    (s) =>
+                                                        s['id'] ==
+                                                        selectedShutId,
+                                                  );
+                                              final basePrice =
+                                                  (sh['price'] is num)
+                                                  ? (sh['price'] as num)
+                                                        .toDouble()
+                                                  : 0.0;
+                                              await widget.db
+                                                  .setShutterColorForComponent(
+                                                    shutterComponentId:
+                                                        selectedShutId!,
+                                                    colorId: cId,
+                                                    enabled: true,
+                                                    price: basePrice,
+                                                  );
+                                              setStateDialog(() {
+                                                shutColorMap
+                                                    .putIfAbsent(
+                                                      selectedShutId!,
+                                                      () => {},
+                                                    )
+                                                    .add(cId);
+                                              });
+                                            } else {
+                                              await widget.db
+                                                  .setShutterColorForComponent(
+                                                    shutterComponentId:
+                                                        selectedShutId!,
+                                                    colorId: cId,
+                                                    enabled: false,
+                                                  );
+                                              setStateDialog(() {
+                                                shutColorMap[selectedShutId]
+                                                    ?.remove(cId);
+                                              });
+                                            }
+                                          },
                                     controlAffinity:
                                         ListTileControlAffinity.leading,
                                   );

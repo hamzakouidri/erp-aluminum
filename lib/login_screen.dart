@@ -184,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen>
           .doc(userCredential.user!.uid)
           .get();
 
-      if (userCredential.user!.email == 'kouidrihamza45@gmail.com') {
+      if (isApplicationAdminEmail(userCredential.user!.email)) {
         // Ensure Admin doc exists and is active
         await FirebaseFirestore.instance
             .collection('users')
@@ -655,7 +655,7 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (_isLoginMode) {
         // --- LOGIN MODE ---
-        if (email == 'kouidrihamza45@gmail.com') {
+        if (isApplicationAdminEmail(email)) {
           // Admin account check/auto-create
           await FirebaseFirestore.instance.collection('users').doc(uid).set({
             'email': email,

@@ -340,32 +340,28 @@ class _CloudDataRefreshBoundary extends StatefulWidget {
 
 class _CloudDataRefreshBoundaryState extends State<_CloudDataRefreshBoundary> {
   StreamSubscription<String>? _subscription;
-  Timer? _debounce;
-  int _revision = 0;
 
   @override
   void initState() {
     super.initState();
     _subscription = CloudSyncService().dbUpdateStream.listen((event) {
-      if (event != 'cloud_restored') return;
-      _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 80), () {
-        if (!mounted) return;
-        setState(() => _revision++);
-      });
+      if (event == 'cloud_restored' && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _subscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return KeyedSubtree(key: ValueKey<int>(_revision), child: widget.child);
+    return widget.child;
   }
 }
 

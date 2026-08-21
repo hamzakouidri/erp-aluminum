@@ -888,6 +888,7 @@ class WindowZone {
   int innerH;
   int innerV;
   int slidingSashesCount;
+  bool cutSlidingGlassRebate;
   int rightInnerH;
   int rightInnerV;
   List<double> innerHPositions;
@@ -956,6 +957,7 @@ class WindowZone {
     this.innerH = 0,
     this.innerV = 0,
     this.slidingSashesCount = 2,
+    this.cutSlidingGlassRebate = true,
     this.rightInnerH = 0,
     this.rightInnerV = 0,
     this.innerHPositions = const [],
@@ -1013,6 +1015,7 @@ class WindowZone {
     innerH: innerH,
     innerV: innerV,
     slidingSashesCount: slidingSashesCount,
+    cutSlidingGlassRebate: cutSlidingGlassRebate,
     rightInnerH: rightInnerH,
     rightInnerV: rightInnerV,
     innerHPositions: List.from(innerHPositions),
@@ -1061,6 +1064,7 @@ class WindowZone {
     int? innerH,
     int? innerV,
     int? slidingSashesCount,
+    bool? cutSlidingGlassRebate,
     int? rightInnerH,
     int? rightInnerV,
     List<double>? innerHPositions,
@@ -1102,6 +1106,7 @@ class WindowZone {
     innerH: innerH ?? this.innerH,
     innerV: innerV ?? this.innerV,
     slidingSashesCount: slidingSashesCount ?? this.slidingSashesCount,
+    cutSlidingGlassRebate: cutSlidingGlassRebate ?? this.cutSlidingGlassRebate,
     rightInnerH: rightInnerH ?? this.rightInnerH,
     rightInnerV: rightInnerV ?? this.rightInnerV,
     innerHPositions: innerHPositions ?? this.innerHPositions,
@@ -2714,6 +2719,127 @@ class WindowModel extends ChangeNotifier {
   /// because a mixed drawing has two independently selected series.
   bool get isSlidingPVC => _isPvcSeries(activeSlidingSeries ?? activeSeries);
 
+  bool isSlidingZoneNestedInSingleFrame(WindowZone zone) {
+    if (systemMode == 'sliding') return false;
+    if (zones.length <= 1) return false;
+    if (!zones.any((candidate) => candidate.id == zone.id)) return false;
+    return getFrameRects().length == 1;
+  }
+
+  bool shouldAskSlidingRebateCut(WindowZone zone) {
+    return isSlidingZoneNestedInSingleFrame(zone);
+  }
+
+  Rect _outerClearRectForRebate() {
+    final topOffset = (hasShutter && !hasArchOrSlant && !isCaissonTunnel)
+        ? shutterBoxHeight
+        : 0.0;
+    final bottomFrame = hasBottomFrame ? profileThickness : 0.0;
+    final bottomPlinthe = hasFramePlintheBottom ? plintheHeight : 0.0;
+    return Rect.fromLTRB(
+      profileThickness,
+      topOffset + profileThickness,
+      math.max(profileThickness, width - profileThickness),
+      math.max(
+        topOffset + profileThickness,
+        height - bottomFrame - bottomPlinthe,
+      ),
+    );
+  }
+
+  bool _zoneEdgeTouchesAnotherZone(
+    WindowZone zone, {
+    required bool verticalEdge,
+    required bool negativeSide,
+  }) {
+    const tolerance = 3.0;
+    final boundary = zone.boundary;
+    for (final other in zones) {
+      if (other.id == zone.id) continue;
+      final otherBoundary = other.boundary;
+      if (verticalEdge) {
+        final edge = negativeSide ? boundary.left : boundary.right;
+        final otherEdge = negativeSide
+            ? otherBoundary.right
+            : otherBoundary.left;
+        final overlap =
+            math.min(boundary.bottom, otherBoundary.bottom) -
+            math.max(boundary.top, otherBoundary.top);
+        if ((edge - otherEdge).abs() <= divisionThickness + tolerance &&
+            overlap > 5.0) {
+          return true;
+        }
+      } else {
+        final edge = negativeSide ? boundary.top : boundary.bottom;
+        final otherEdge = negativeSide
+            ? otherBoundary.bottom
+            : otherBoundary.top;
+        final overlap =
+            math.min(boundary.right, otherBoundary.right) -
+            math.max(boundary.left, otherBoundary.left);
+        if ((edge - otherEdge).abs() <= divisionThickness + tolerance &&
+            overlap > 5.0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  int slidingRebateSideCount(WindowZone zone, {required bool horizontal}) {
+    if (!zone.cutSlidingGlassRebate) return 0;
+    if (!isSlidingZoneNestedInSingleFrame(zone)) return 0;
+    if (openingSashOverlap <= 0) return 0;
+
+    const tolerance = 3.0;
+    final outerClear = _outerClearRectForRebate();
+    final boundary = zone.boundary;
+    var count = 0;
+
+    if (horizontal) {
+      final hasLeft =
+          (boundary.left - outerClear.left).abs() <= tolerance ||
+          _zoneEdgeTouchesAnotherZone(
+            zone,
+            verticalEdge: true,
+            negativeSide: true,
+          );
+      final hasRight =
+          (boundary.right - outerClear.right).abs() <= tolerance ||
+          _zoneEdgeTouchesAnotherZone(
+            zone,
+            verticalEdge: true,
+            negativeSide: false,
+          );
+      if (hasLeft) count++;
+      if (hasRight) count++;
+    } else {
+      final hasTop =
+          (boundary.top - outerClear.top).abs() <= tolerance ||
+          _zoneEdgeTouchesAnotherZone(
+            zone,
+            verticalEdge: false,
+            negativeSide: true,
+          );
+      final hasBottom =
+          ((hasBottomFrame || hasFramePlintheBottom) &&
+              (boundary.bottom - outerClear.bottom).abs() <= tolerance) ||
+          _zoneEdgeTouchesAnotherZone(
+            zone,
+            verticalEdge: false,
+            negativeSide: false,
+          );
+      if (hasTop) count++;
+      if (hasBottom) count++;
+    }
+    return count;
+  }
+
+  double slidingRebateDeduction(WindowZone zone, {required bool horizontal}) {
+    return openingSashOverlap *
+        slidingRebateSideCount(zone, horizontal: horizontal);
+  }
+
   double profileThickness;
 
   bool coupleFrames = true;
@@ -2776,7 +2902,9 @@ class WindowModel extends ChangeNotifier {
     if (override != null) return Map<String, dynamic>.from(override);
 
     final profileType = mullionProfiles[key] ?? MullionProfileType.standard;
-    if (profileType == MullionProfileType.standard) return null;
+    if (profileType == MullionProfileType.standard) {
+      return null;
+    }
 
     if (profileType == MullionProfileType.flat && activeFrameOverride != null) {
       return Map<String, dynamic>.from(activeFrameOverride!);
@@ -2844,7 +2972,9 @@ class WindowModel extends ChangeNotifier {
       if (width > maximum) maximum = width;
     }
     for (final profileType in mullionProfiles.values) {
-      if (profileType == MullionProfileType.standard) continue;
+      if (profileType == MullionProfileType.standard) {
+        continue;
+      }
       final width = _sectionVisibleWidth(
         profileType == MullionProfileType.flat ? activeFrameOverride : null,
       );
@@ -2962,6 +3092,7 @@ class WindowModel extends ChangeNotifier {
   Set<String> hiddenSideCoverSegments = {};
   bool isFrame140 = false;
   bool isShutterOnly = false;
+  bool drawNextShapeAsShutterOnly = false;
   Set<String> removedShutterSides = {};
   String? workshopName;
 
@@ -3778,12 +3909,10 @@ class WindowModel extends ChangeNotifier {
         }
       }
     }
-    if (selectedColor == null && _selectedDbColor != null) {
-      selectedColor = _selectedDbColor;
-    }
     // A new drawing must begin with the white finish, independently of the
     // order in which the colours happen to be stored in the database.
     selectedColor ??= _defaultFrameColor();
+    selectedColor ??= availableColors.isNotEmpty ? availableColors.first : null;
 
     _selectedDbColor = selectedColor == null
         ? null
@@ -8453,6 +8582,7 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     bool isH = selection.isHorizontalMullion!;
     double oldPos = selection.mullionPosition!;
+    final oldKey = _mullionKey(isH, oldPos);
     final t = profileThickness;
     final mullionT = mullionThickness;
     final sep = mullionT / 2;
@@ -8535,6 +8665,7 @@ class WindowModel extends ChangeNotifier {
       isHorizontalMullion: isH,
       mullionPosition: newPos,
     );
+    _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
     notifyListeners();
   }
 
@@ -8695,6 +8826,7 @@ class WindowModel extends ChangeNotifier {
     String zoneId,
     ZoneContent content, {
     int? slidingSashesCount,
+    bool? cutSlidingGlassRebate,
   }) {
     _saveSnapshot();
     try {
@@ -8717,12 +8849,17 @@ class WindowModel extends ChangeNotifier {
       if (slidingSashesCount != null) {
         zone.slidingSashesCount = slidingSashesCount;
       }
+      if (content == ZoneContent.slidingSash) {
+        zone.cutSlidingGlassRebate =
+            cutSlidingGlassRebate ?? zone.cutSlidingGlassRebate;
+      }
 
       bool is105 = _determineIsSash105FromSashOverride();
       zone.isSash105 = is105;
       zone.sashThickness = _calculateSashThickness(is105);
       if (content == ZoneContent.doubleSash ||
-          content == ZoneContent.singleSash) {
+          content == ZoneContent.singleSash ||
+          content == ZoneContent.slidingSash) {
         zone.openDirection = OpenDirection.right;
       } else {
         zone.openDirection = null;
@@ -9371,10 +9508,9 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Resizes one selected outer frame from the supplied handles.  An edge
-  /// shared with another frame moves their common boundary, so the two frames
-  /// remain joined and exchange the available space.  An exposed outer edge
-  /// changes the overall drawing size instead.
+  /// Resizes one selected outer frame from the supplied handles.  Internal
+  /// edges change the overall drawing size and shift the following frames, so
+  /// neighbouring frame sizes stay unchanged.
   void resizeFrameFromHandles(
     String zoneId, {
     required bool moveLeft,
@@ -9418,9 +9554,26 @@ class WindowModel extends ChangeNotifier {
       if (zone.boundary.width + actual < minInnerSize) {
         actual = minInnerSize - zone.boundary.width;
       }
+      if (width + actual < 200.0) {
+        actual = 200.0 - width;
+      }
       if (actual.abs() < 0.001) return;
       if (!isRightOuter(zone)) {
-        _moveInternalBoundaryX(zone.boundary.right, actual);
+        final oldRight = zone.boundary.right;
+        zone.boundary = Rect.fromLTRB(
+          zone.boundary.left,
+          zone.boundary.top,
+          zone.boundary.right + actual,
+          zone.boundary.bottom,
+        );
+        for (var i = 0; i < zones.length; i++) {
+          final other = zones[i];
+          if (other.id == zone.id || other.boundary.left < oldRight - 1.0) {
+            continue;
+          }
+          zones[i].boundary = other.boundary.shift(Offset(actual, 0));
+        }
+        width = math.max(200.0, width + actual);
         return;
       }
 
@@ -9448,9 +9601,26 @@ class WindowModel extends ChangeNotifier {
       if (zone.boundary.width - actual < minInnerSize) {
         actual = zone.boundary.width - minInnerSize;
       }
+      if (width - actual < 200.0) {
+        actual = width - 200.0;
+      }
       if (actual.abs() < 0.001) return;
       if (!isLeftOuter(zone)) {
-        _moveInternalBoundaryX(zone.boundary.left, actual);
+        final oldRight = zone.boundary.right;
+        zone.boundary = Rect.fromLTRB(
+          zone.boundary.left,
+          zone.boundary.top,
+          zone.boundary.right - actual,
+          zone.boundary.bottom,
+        );
+        for (var i = 0; i < zones.length; i++) {
+          final other = zones[i];
+          if (other.id == zone.id || other.boundary.left < oldRight - 1.0) {
+            continue;
+          }
+          zones[i].boundary = other.boundary.shift(Offset(-actual, 0));
+        }
+        width = math.max(200.0, width - actual);
         return;
       }
 
@@ -9481,9 +9651,26 @@ class WindowModel extends ChangeNotifier {
       if (zone.boundary.height + actual < minInnerSize) {
         actual = minInnerSize - zone.boundary.height;
       }
+      if (height + actual < 200.0) {
+        actual = 200.0 - height;
+      }
       if (actual.abs() < 0.001) return;
       if (!isBottomOuter(zone)) {
-        _moveInternalBoundaryY(zone.boundary.bottom, actual);
+        final oldBottom = zone.boundary.bottom;
+        zone.boundary = Rect.fromLTRB(
+          zone.boundary.left,
+          zone.boundary.top,
+          zone.boundary.right,
+          zone.boundary.bottom + actual,
+        );
+        for (var i = 0; i < zones.length; i++) {
+          final other = zones[i];
+          if (other.id == zone.id || other.boundary.top < oldBottom - 1.0) {
+            continue;
+          }
+          zones[i].boundary = other.boundary.shift(Offset(0, actual));
+        }
+        height = math.max(200.0, height + actual);
         return;
       }
 
@@ -9511,9 +9698,26 @@ class WindowModel extends ChangeNotifier {
       if (zone.boundary.height - actual < minInnerSize) {
         actual = zone.boundary.height - minInnerSize;
       }
+      if (height - actual < 200.0) {
+        actual = height - 200.0;
+      }
       if (actual.abs() < 0.001) return;
       if (!isTopOuter(zone)) {
-        _moveInternalBoundaryY(zone.boundary.top, actual);
+        final oldBottom = zone.boundary.bottom;
+        zone.boundary = Rect.fromLTRB(
+          zone.boundary.left,
+          zone.boundary.top,
+          zone.boundary.right,
+          zone.boundary.bottom - actual,
+        );
+        for (var i = 0; i < zones.length; i++) {
+          final other = zones[i];
+          if (other.id == zone.id || other.boundary.top < oldBottom - 1.0) {
+            continue;
+          }
+          zones[i].boundary = other.boundary.shift(Offset(0, -actual));
+        }
+        height = math.max(200.0, height - actual);
         return;
       }
 
@@ -11026,13 +11230,15 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSelectedZoneSlidingSashes(int count) {
+  void setSelectedZoneSlidingSashes(int count, {bool? cutSlidingGlassRebate}) {
     if (hasArchOrSlant) return;
     final zone = selectedZone;
     if (zone == null) return;
     _saveSnapshot();
     zone.content = ZoneContent.slidingSash;
     zone.slidingSashesCount = count.clamp(2, 4).toInt();
+    zone.cutSlidingGlassRebate =
+        cutSlidingGlassRebate ?? zone.cutSlidingGlassRebate;
     zone.sashThickness = _calculateSashThickness(zone.isSash105);
     zone.openDirection = OpenDirection.right;
     zone.innerH = 0;
@@ -12541,7 +12747,47 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void prepareShutterOnlyDrawing() {
+    _saveSnapshot();
+    zones.clear();
+    width = 0;
+    height = 0;
+    isShutterOnly = false;
+    hasShutter = false;
+    isCaissonTunnel = false;
+    hasSideCovers = false;
+    useCustomSideCoverLayout = false;
+    sideCoverSegments = [];
+    hiddenSideCoverSegments = {};
+    topSlantLeftY = 0.0;
+    topSlantRightY = 0.0;
+    bottomSlantLeftY = 0.0;
+    bottomSlantRightY = 0.0;
+    archHeight = 0.0;
+    mullionProfiles.clear();
+    groovedMullionCavityOnPositiveSide.clear();
+    mullionSectionOverrides.clear();
+    primaryMullionAxis = null;
+    drawNextShapeAsShutterOnly = true;
+    isDrawingMode = true;
+    drawingMode = 'shutter_only';
+    pendingDrawStart = null;
+    drawingStart = null;
+    drawingCurrent = null;
+    selection = SelectionInfo.none;
+    activeSubZone = null;
+    notifyListeners();
+  }
+
   void startDrawing(Offset pos) {
+    if (drawNextShapeAsShutterOnly || isShutterOnly) {
+      drawingMode = 'shutter_only';
+      drawingStart = pos;
+      drawingCurrent = pos;
+      notifyListeners();
+      return;
+    }
+
     // A blank canvas can only create its first frame.  Keeping the previous
     // `add_frame` mode here used to create a second zone immediately, which
     // appeared as an unwanted central mullion.
@@ -12581,6 +12827,40 @@ class WindowModel extends ChangeNotifier {
     pendingDrawStart = null; // always clear, even if we return early
     if (drawingStart == null || drawingCurrent == null) return;
     _saveSnapshot();
+    if (drawingMode == 'shutter_only') {
+      final drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
+      if (drawnRect.width > 50 && drawnRect.height > 50) {
+        width = drawnRect.width.clamp(200.0, 10000.0);
+        height = drawnRect.height.clamp(200.0, 10000.0);
+        drawnLeft = drawnRect.left;
+        drawnTop = drawnRect.top;
+        zones.clear();
+        mullionProfiles.clear();
+        groovedMullionCavityOnPositiveSide.clear();
+        mullionSectionOverrides.clear();
+        primaryMullionAxis = null;
+        selection = SelectionInfo.none;
+        activeSubZone = null;
+        hasShutter = true;
+        isShutterOnly = true;
+        drawNextShapeAsShutterOnly = false;
+        isCaissonTunnel = false;
+        hasSideCovers = false;
+        useCustomSideCoverLayout = false;
+        sideCoverSegments = [];
+        hiddenSideCoverSegments = {};
+        topSlantLeftY = 0.0;
+        topSlantRightY = 0.0;
+        bottomSlantLeftY = 0.0;
+        bottomSlantRightY = 0.0;
+        archHeight = 0.0;
+        updateShutterDefaultsIfNeeded();
+      }
+      drawingStart = null;
+      drawingCurrent = null;
+      notifyListeners();
+      return;
+    }
     if (zones.isEmpty) {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
@@ -13333,6 +13613,7 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     bool isH = selection.isHorizontalMullion!;
     double pos = selection.mullionPosition!;
+    final oldKey = _mullionKey(isH, pos);
     final sep = mullionThickness / 2;
     final t = profileThickness;
     if (isH) {
@@ -13380,6 +13661,7 @@ class WindowModel extends ChangeNotifier {
         mullionStart: selection.mullionStart,
         mullionEnd: selection.mullionEnd,
       );
+      _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
     } else {
       double minAllowedX = t * 2;
       double maxAllowedX = width - t * 2;
@@ -13425,8 +13707,25 @@ class WindowModel extends ChangeNotifier {
         mullionStart: selection.mullionStart,
         mullionEnd: selection.mullionEnd,
       );
+      _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
     }
     notifyListeners();
+  }
+
+  void _moveMullionMetadata(String oldKey, String newKey) {
+    if (oldKey == newKey) return;
+    final profile = mullionProfiles.remove(oldKey);
+    if (profile != null) {
+      mullionProfiles[newKey] = profile;
+    }
+    final cavity = groovedMullionCavityOnPositiveSide.remove(oldKey);
+    if (cavity != null) {
+      groovedMullionCavityOnPositiveSide[newKey] = cavity;
+    }
+    final section = mullionSectionOverrides.remove(oldKey);
+    if (section != null) {
+      mullionSectionOverrides[newKey] = section;
+    }
   }
 
   void setMullionProfile(MullionProfileType type) {
@@ -13435,13 +13734,142 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     _saveSnapshot();
-    String key =
-        "${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection.mullionPosition!.toStringAsFixed(1)}";
+    final isHorizontal = selection.isHorizontalMullion!;
+    final position = selection.mullionPosition!;
+    String key = _mullionKey(isHorizontal, position);
     mullionProfiles[key] = type;
+    mullionSectionOverrides.remove(key);
     if (type != MullionProfileType.grooved) {
       groovedMullionCavityOnPositiveSide.remove(key);
+      _restoreGlassOnBothSidesOfMullion(isHorizontal, position);
+    } else {
+      _enforceGroovedMullionGlassSide(isHorizontal, position);
     }
     notifyListeners();
+  }
+
+  void setMullionFrameSection(
+    MullionProfileType type,
+    Map<String, dynamic> section,
+  ) {
+    if (selection.type != SelectionType.mullion ||
+        selection.mullionPosition == null) {
+      return;
+    }
+    if (type == MullionProfileType.standard) {
+      setMullionProfile(type);
+      return;
+    }
+
+    _saveSnapshot();
+    final key = _mullionKey(
+      selection.isHorizontalMullion!,
+      selection.mullionPosition!,
+    );
+    final selected = Map<String, dynamic>.from(section);
+    selected['mullion_profile_type'] = type.name;
+    selected['is_double_frame'] = type == MullionProfileType.flat;
+    mullionProfiles[key] = type;
+    mullionSectionOverrides[key] = selected;
+    if (type != MullionProfileType.grooved) {
+      groovedMullionCavityOnPositiveSide.remove(key);
+      _restoreGlassOnBothSidesOfMullion(
+        selection.isHorizontalMullion!,
+        selection.mullionPosition!,
+      );
+    }
+    if (type == MullionProfileType.grooved) {
+      _enforceGroovedMullionGlassSide(
+        selection.isHorizontalMullion!,
+        selection.mullionPosition!,
+      );
+    }
+    notifyListeners();
+  }
+
+  List<(WindowZone, WindowZone)> _mullionAdjacentPairs(
+    bool isHorizontal,
+    double position,
+  ) {
+    final tolerance = math.max(maximumMullionThickness, profileThickness) + 8.0;
+
+    bool isManaged(WindowZone zone) =>
+        zone.content == ZoneContent.fixedGlass ||
+        zone.content == ZoneContent.empty;
+
+    bool touchesNegativeSide(WindowZone zone) => isHorizontal
+        ? (zone.boundary.bottom <= position &&
+              (zone.boundary.bottom - position).abs() <= tolerance)
+        : (zone.boundary.right <= position &&
+              (zone.boundary.right - position).abs() <= tolerance);
+
+    bool touchesPositiveSide(WindowZone zone) => isHorizontal
+        ? (zone.boundary.top >= position &&
+              (zone.boundary.top - position).abs() <= tolerance)
+        : (zone.boundary.left >= position &&
+              (zone.boundary.left - position).abs() <= tolerance);
+
+    double overlap(WindowZone a, WindowZone b) {
+      if (isHorizontal) {
+        return math.min(a.boundary.right, b.boundary.right) -
+            math.max(a.boundary.left, b.boundary.left);
+      }
+      return math.min(a.boundary.bottom, b.boundary.bottom) -
+          math.max(a.boundary.top, b.boundary.top);
+    }
+
+    final negativeZones = zones
+        .where((zone) => isManaged(zone) && touchesNegativeSide(zone))
+        .toList();
+    final positiveZones = zones
+        .where((zone) => isManaged(zone) && touchesPositiveSide(zone))
+        .toList();
+
+    final pairs = <(WindowZone, WindowZone)>[];
+    for (final negative in negativeZones) {
+      for (final positive in positiveZones) {
+        if (overlap(negative, positive) > 5.0) {
+          pairs.add((negative, positive));
+        }
+      }
+    }
+    return pairs;
+  }
+
+  void _restoreGlassOnBothSidesOfMullion(bool isHorizontal, double position) {
+    for (final (negative, positive) in _mullionAdjacentPairs(
+      isHorizontal,
+      position,
+    )) {
+      final hasGlass =
+          negative.content == ZoneContent.fixedGlass ||
+          positive.content == ZoneContent.fixedGlass;
+      if (!hasGlass) continue;
+      negative.content = ZoneContent.fixedGlass;
+      positive.content = ZoneContent.fixedGlass;
+    }
+  }
+
+  void _enforceGroovedMullionGlassSide(bool isHorizontal, double position) {
+    final holderOnPositiveSide = isGroovedMullionCavityOnPositiveSide(
+      isHorizontal,
+      position,
+    );
+
+    for (final (negative, positive) in _mullionAdjacentPairs(
+      isHorizontal,
+      position,
+    )) {
+      final hasGlass =
+          negative.content == ZoneContent.fixedGlass ||
+          positive.content == ZoneContent.fixedGlass;
+      if (!hasGlass) continue;
+
+      final holder = holderOnPositiveSide ? positive : negative;
+      final emptySide = holderOnPositiveSide ? negative : positive;
+      holder.content = ZoneContent.fixedGlass;
+      emptySide.content = ZoneContent.empty;
+    }
   }
 
   /// Reverses the cavity direction of a Cadre 140.  The direction is stored
@@ -13453,6 +13881,7 @@ class WindowModel extends ChangeNotifier {
     final key = _mullionKey(isHorizontal, position);
     groovedMullionCavityOnPositiveSide[key] =
         !(groovedMullionCavityOnPositiveSide[key] ?? false);
+    _enforceGroovedMullionGlassSide(isHorizontal, position);
     notifyListeners();
     return true;
   }
@@ -13669,6 +14098,7 @@ class WindowModel extends ChangeNotifier {
     activeSubZone = null;
     isDrawingMode = true;
     drawingMode = 'new_frame';
+    drawNextShapeAsShutterOnly = false;
     drawnLeft = null;
     drawnTop = null;
     copyPreviousFrameSize = false;

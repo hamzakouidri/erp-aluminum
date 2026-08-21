@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,8 +13,59 @@ import 'app_workspace_shell.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 
-class SubscriptionChecker extends StatelessWidget {
+class SubscriptionChecker extends StatefulWidget {
   const SubscriptionChecker({super.key});
+
+  @override
+  State<SubscriptionChecker> createState() => _SubscriptionCheckerState();
+}
+
+class _SubscriptionCheckerState extends State<SubscriptionChecker> {
+  Timer? _subscriptionClock;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscriptionClock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscriptionClock?.cancel();
+    super.dispose();
+  }
+
+  DateTime? _cloudDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  bool _hasActiveSubscription(Map<String, dynamic> data) {
+    final status = data['subscriptionStatus']?.toString().toLowerCase().trim();
+    if (status == 'active') return true;
+    if (status == 'expired' ||
+        status == 'blocked' ||
+        status == 'cancelled' ||
+        status == 'canceled') {
+      return false;
+    }
+
+    final expiresAt = _cloudDate(
+      data['trialEndDate'] ??
+          data['subscriptionEndDate'] ??
+          data['subscriptionExpiresAt'] ??
+          data['expiresAt'],
+    );
+    if (expiresAt != null) {
+      return DateTime.now().isBefore(expiresAt);
+    }
+
+    return status == null || status.isEmpty;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +106,27 @@ class SubscriptionChecker extends StatelessWidget {
         }
 
         if (!snapshot.data!.exists) {
+          if (isApplicationAdminEmail(user.email)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .set({
+                    'email': user.email,
+                    'role': 'admin',
+                    'subscriptionStatus': 'active',
+                    'isBlocked': false,
+                    'workshopId': user.uid,
+                  }, SetOptions(merge: true))
+                  .catchError((error) {
+                    debugPrint('Admin bootstrap error: $error');
+                  });
+            });
+            return const Scaffold(
+              backgroundColor: Colors.white,
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
           return Scaffold(
             backgroundColor: Colors.white,
             body: Center(
@@ -122,7 +195,7 @@ class SubscriptionChecker extends StatelessWidget {
         final data = snapshot.data!.data() as Map<String, dynamic>;
 
         // Safety fix: Auto-correct Firestore document if admin has incorrect role/workshopId
-        if (user.email == 'kouidrihamza45@gmail.com') {
+        if (isApplicationAdminEmail(user.email)) {
           if (data['role'] != 'admin' || data['workshopId'] != user.uid) {
             FirebaseFirestore.instance
                 .collection('users')
@@ -133,8 +206,7 @@ class SubscriptionChecker extends StatelessWidget {
         }
 
         final bool isAdmin =
-            (data['role'] == 'admin' ||
-            user.email == 'kouidrihamza45@gmail.com');
+            (data['role'] == 'admin' || isApplicationAdminEmail(user.email));
 
         // Sync role to SharedPreferences and trigger AppSettingsProvider
         // ✅ الافتراضي هو 'worker' وليس 'manager' لمنع الوصول غير المصرح به
@@ -409,24 +481,7 @@ class SubscriptionChecker extends StatelessWidget {
               final managerData =
                   managerSnap.data!.data() as Map<String, dynamic>;
 
-              bool isManagerSubscribed = false;
-
-              // فحص حالة اشتراك المدير
-              if (managerData['subscriptionStatus'] == 'active') {
-                isManagerSubscribed = true;
-              } else if (managerData['trialEndDate'] != null) {
-                try {
-                  final trialEnd = DateTime.parse(
-                    managerData['trialEndDate']?.toString() ?? '',
-                  );
-                  if (DateTime.now().isBefore(trialEnd)) {
-                    isManagerSubscribed = true;
-                  }
-                } catch (_) {}
-              } else if (managerData['subscriptionStatus'] == null &&
-                  managerData['trialEndDate'] == null) {
-                isManagerSubscribed = true; // دعم الحسابات القديمة جداً إن وجدت
-              }
+              final isManagerSubscribed = _hasActiveSubscription(managerData);
 
               if (isManagerSubscribed) {
                 final wName = managerData['workshopName']?.toString() ?? '';
@@ -500,27 +555,7 @@ class SubscriptionChecker extends StatelessWidget {
         // -------------------------------------------------------------
         // 3. معالجة حالة المدير (يفحص اشتراكه الشخصي)
         // -------------------------------------------------------------
-        if (data['subscriptionStatus'] == 'active') {
-          return const SyncGateway(key: ValueKey('sync_gateway'));
-        }
-
-        if (data['trialEndDate'] != null) {
-          try {
-            final trialEnd = DateTime.parse(
-              data['trialEndDate']?.toString() ?? '',
-            );
-            if (DateTime.now().isBefore(trialEnd)) {
-              return const SyncGateway(key: ValueKey('sync_gateway'));
-            } else {
-              return const SubscriptionExpiredScreen();
-            }
-          } catch (e) {
-            return const SubscriptionExpiredScreen();
-          }
-        }
-
-        if (data['subscriptionStatus'] == null &&
-            data['trialEndDate'] == null) {
+        if (_hasActiveSubscription(data)) {
           return const SyncGateway(key: ValueKey('sync_gateway'));
         }
 
@@ -541,7 +576,6 @@ class SyncGateway extends StatefulWidget {
 }
 
 class _SyncGatewayState extends State<SyncGateway> {
-  static bool _hasSyncedOnce = false;
   bool _isSyncing = false;
   String? _syncError;
   String _syncStatus = 'جاري فحص قاعدة البيانات المحلية...';
@@ -549,43 +583,49 @@ class _SyncGatewayState extends State<SyncGateway> {
   @override
   void initState() {
     super.initState();
-    if (_hasSyncedOnce) {
-      _isSyncing = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _enterApp();
-      });
-    } else {
-      _checkAndSync();
-    }
+    _checkAndSync();
   }
 
   Future<void> _checkAndSync() async {
     try {
-      // Resolve the workshop from the signed-in Firebase account before
-      // opening/restoring the local web database. The preference write from
-      // SubscriptionChecker is asynchronous and can otherwise be stale.
-      await CloudSyncService().init();
+      final prefs = await SharedPreferences.getInstance();
+      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final activeUid = prefs.getString('active_cloud_user_uid') ?? '';
+      final activeWorkshop = _storedActiveWorkshop(prefs);
       final db = SqlDatabase();
       final myDb = await db.db;
       if (myDb == null) {
         throw StateError('تعذر فتح قاعدة البيانات المحلية.');
       }
 
-      final prefs = await SharedPreferences.getInstance();
+      final hasLocalBusinessData = await _hasLocalBusinessData(myDb);
+      if (hasLocalBusinessData &&
+          currentUid.isNotEmpty &&
+          activeUid == currentUid &&
+          activeWorkshop.isNotEmpty) {
+        _enterApp(startListening: false);
+        _syncSameAccountInBackground(db);
+        return;
+      }
+
+      // Resolve the workshop from the signed-in Firebase account before
+      // deciding whether local data belongs to this workshop.
+      await CloudSyncService().init();
+      final clearedDifferentWorkshop = await _clearLocalDataIfWorkshopChanged();
+      final effectiveDb = clearedDifferentWorkshop ? SqlDatabase() : db;
+      final effectiveMyDb = clearedDifferentWorkshop
+          ? await effectiveDb.db
+          : myDb;
+      if (effectiveMyDb == null) {
+        throw StateError('تعذر فتح قاعدة البيانات المحلية.');
+      }
+
       final userRole = prefs.getString('user_role') ?? 'worker';
       final isWorker = userRole == 'worker';
 
-      // الإعدادات الأساسية (Profile وSeries) تُنشأ محلياً حتى بعد تثبيت
-      // التطبيق من جديد، لذلك لا يصح اعتبارها دليلاً على أن بيانات الورشة
-      // قد استُعيدت. نعتمد فقط على بيانات العمل الفعلية هنا.
-      bool hasLocalBusinessData = false;
-      try {
-        final clients = await myDb.query('Client', limit: 1);
-        final orders = await myDb.query('Commandes', limit: 1);
-        hasLocalBusinessData = clients.isNotEmpty || orders.isNotEmpty;
-      } catch (_) {}
+      final hasEffectiveLocalData = await _hasLocalBusinessData(effectiveMyDb);
 
-      if (hasLocalBusinessData) {
+      if (hasEffectiveLocalData) {
         // ✅ إذا كانت قاعدة البيانات تحتوي على بيانات: الدخول فوراً للتطبيق بدون انتظار!
         _enterApp();
         // تشغيل المزامنة في الخلفية بصمت
@@ -616,8 +656,8 @@ class _SyncGatewayState extends State<SyncGateway> {
         );
         _enterApp();
       }
-      db.runAutoDailyBackup().catchError((_) {});
-      _hasSyncedOnce = true;
+      effectiveDb.runAutoDailyBackup().catchError((_) {});
+      await _rememberActiveWorkshop();
     } catch (e) {
       debugPrint('Sync gateway error: $e');
       if (!mounted) return;
@@ -631,15 +671,100 @@ class _SyncGatewayState extends State<SyncGateway> {
     }
   }
 
-  void _enterApp() {
+  Future<bool> _hasLocalBusinessData(dynamic myDb) async {
+    // الإعدادات الأساسية (Profile وSeries) تُنشأ محلياً حتى بعد تثبيت
+    // التطبيق من جديد، لذلك لا يصح اعتبارها دليلاً على أن بيانات الورشة
+    // قد استُعيدت. نعتمد فقط على بيانات العمل الفعلية هنا.
+    try {
+      final clients = await myDb.query('Client', limit: 1);
+      final orders = await myDb.query('Commandes', limit: 1);
+      return clients.isNotEmpty || orders.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _storedActiveWorkshop(SharedPreferences prefs) {
+    final direct = prefs.getString('active_cloud_workshop_id') ?? '';
+    if (direct.isNotEmpty) return direct;
+    final legacy = prefs.getString('active_cloud_session_key') ?? '';
+    final separator = legacy.indexOf('|');
+    if (separator >= 0 && separator < legacy.length - 1) {
+      return legacy.substring(separator + 1);
+    }
+    return '';
+  }
+
+  Future<String> _currentWorkshopKey() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final prefs = await SharedPreferences.getInstance();
+    return CloudSyncService().workshopId ??
+        prefs.getString('workshop_code') ??
+        user?.uid ??
+        '';
+  }
+
+  Future<bool> _clearLocalDataIfWorkshopChanged() async {
+    final prefs = await SharedPreferences.getInstance();
+    final previousWorkshop = _storedActiveWorkshop(prefs);
+    final currentWorkshop = await _currentWorkshopKey();
+    if (previousWorkshop.isEmpty || previousWorkshop == currentWorkshop) {
+      return false;
+    }
+
+    CloudSyncService().reset();
+    await SqlDatabase.clearAllLocalData();
+    await CloudSyncService().init();
+    return true;
+  }
+
+  Future<void> _rememberActiveWorkshop() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'active_cloud_workshop_id',
+      await _currentWorkshopKey(),
+    );
+    await prefs.setString(
+      'active_cloud_user_uid',
+      FirebaseAuth.instance.currentUser?.uid ?? '',
+    );
+  }
+
+  void _syncSameAccountInBackground(SqlDatabase db) {
+    () async {
+      try {
+        await CloudSyncService().init();
+        if (!mounted) return;
+        CloudSyncService().startListeningForUpdates(() {
+          if (mounted) setState(() {});
+        });
+        await _rememberActiveWorkshop();
+        CloudSyncService()
+            .fullRecoverySync()
+            .timeout(const Duration(seconds: 45), onTimeout: () {})
+            .catchError((_) {});
+        CloudSyncService()
+            .loadAndApplyWorkshopSystems()
+            .timeout(const Duration(seconds: 20), onTimeout: () {})
+            .catchError((_) {});
+        db.runAutoDailyBackup().catchError((_) {});
+      } catch (error) {
+        debugPrint('Background same-account sync error: $error');
+      }
+    }();
+  }
+
+  void _enterApp({bool startListening = true}) {
     if (mounted) {
       setState(() {
         _isSyncing = false;
       });
       // بدء المزامنة التلقائية الصامتة في الخلفية
-      CloudSyncService().startListeningForUpdates(() {
-        if (mounted) setState(() {});
-      });
+      if (startListening) {
+        CloudSyncService().startListeningForUpdates(() {
+          if (mounted) setState(() {});
+        });
+      }
     }
   }
 

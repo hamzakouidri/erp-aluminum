@@ -54,7 +54,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   AppLanguage get lang => _invoiceLanguage;
 
   DevisData get data => _currentDevisData;
-  bool get _isOfficial => data.isProForma || data.documentTitleKey == 'FACTURE_VENTE' || data.documentTitleKey == 'BON_ROUTE';
+  bool get _isOfficial =>
+      data.isProForma ||
+      data.documentTitleKey == 'FACTURE_VENTE' ||
+      data.documentTitleKey == 'BON_ROUTE';
 
   String get _documentTitle {
     if (data.isProForma) {
@@ -102,7 +105,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     _currentDevisData = widget.data;
     _chequeNumber = widget.data.chequeNumber;
     _isLoaded = widget.initialIsLoaded;
-    _invoiceLanguage = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    _invoiceLanguage = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _initPdfGeneration();
   }
 
@@ -114,9 +120,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Future<void> _initPdfGeneration() async {
     try {
-      await PdfInvoiceApi.preloadFonts().timeout(
-        const Duration(seconds: 15),
-      );
+      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 15));
       final bytes = await PdfInvoiceApi.buildPdfBytes(
         _currentDevisData,
         overrideLang: _invoiceLanguage,
@@ -135,7 +139,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في توليد PDF: $e',
+            content: Text(
+              'خطأ في توليد PDF: $e',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
@@ -169,7 +174,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         rebuiltData,
         overrideLang: newLang,
       ).timeout(const Duration(seconds: 45));
-      
+
       if (mounted) {
         setState(() {
           _currentDevisData = rebuiltData;
@@ -185,7 +190,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ أثناء تغيير لغة الفاتورة: $e',
+            content: Text(
+              'خطأ أثناء تغيير لغة الفاتورة: $e',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
@@ -221,7 +227,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         chequeNumber: number,
       );
 
-      final bytes = await PdfInvoiceApi.buildPdfBytes(rebuiltData, overrideLang: _invoiceLanguage);
+      final bytes = await PdfInvoiceApi.buildPdfBytes(
+        rebuiltData,
+        overrideLang: _invoiceLanguage,
+      );
 
       if (mounted) {
         setState(() {
@@ -246,7 +255,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300, width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade300, width: 0.5),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -259,7 +270,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   const Icon(Icons.translate, color: _blue, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    _invoiceLanguage == AppLanguage.french ? 'Langue de la facture :' : 'لغة تفاصيل الفاتورة :',
+                    _invoiceLanguage == AppLanguage.french
+                        ? 'Langue de la facture :'
+                        : 'لغة تفاصيل الفاتورة :',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
@@ -284,7 +297,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                         }
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: isArabic ? _blue : Colors.transparent,
                           borderRadius: BorderRadius.circular(18),
@@ -307,7 +323,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                         }
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: !isArabic ? _blue : Colors.transparent,
                           borderRadius: BorderRadius.circular(18),
@@ -340,9 +359,17 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     child: TextField(
                       onChanged: _onChequeChanged,
                       decoration: InputDecoration(
-                        labelText: _invoiceLanguage == AppLanguage.french ? 'Numéro de chèque' : 'رقم الشيك',
-                        labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        labelText: _invoiceLanguage == AppLanguage.french
+                            ? 'Numéro de chèque'
+                            : 'رقم الشيك',
+                        labelStyle: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -365,7 +392,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final subtextColor = isDark ? Colors.white70 : Colors.black54;
     final headerBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade200;
     final clientBg = isDark ? const Color(0xFF0F172A) : Colors.grey.shade100;
-    final clientBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
+    final clientBorder = isDark
+        ? const Color(0xFF334155)
+        : Colors.grey.shade300;
     final itemBg = isDark ? const Color(0xFF1E293B) : Colors.white;
 
     final List<Map<String, dynamic>> rows = [];
@@ -373,7 +402,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     for (final item in data.items) {
       for (int i = 0; i < item.quantity; i++) {
         globalIndex++;
-        final barcodeVal = 'CMD-${data.orderId}-D${item.detailId}-W$globalIndex-F';
+        final barcodeVal =
+            'CMD-${data.orderId}-D${item.detailId}-W$globalIndex-F';
         final cumTicketNum = data.priorConfirmedWindowsCount + globalIndex;
         rows.add({
           'num': '$globalIndex',
@@ -396,27 +426,49 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
             decoration: BoxDecoration(
-              color: _isLoaded ? (isDark ? Colors.green.shade900.withValues(alpha: 0.4) : Colors.green.shade100) : (isDark ? Colors.amber.shade900.withValues(alpha: 0.4) : Colors.amber.shade100),
+              color: _isLoaded
+                  ? (isDark
+                        ? Colors.green.shade900.withValues(alpha: 0.4)
+                        : Colors.green.shade100)
+                  : (isDark
+                        ? Colors.amber.shade900.withValues(alpha: 0.4)
+                        : Colors.amber.shade100),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _isLoaded ? Colors.green : Colors.amber.shade700),
+              border: Border.all(
+                color: _isLoaded ? Colors.green : Colors.amber.shade700,
+              ),
             ),
             child: Row(
               children: [
                 Icon(
                   _isLoaded ? Icons.check_circle : Icons.hourglass_top,
-                  color: _isLoaded ? (isDark ? Colors.green.shade300 : Colors.green.shade800) : (isDark ? Colors.amber.shade300 : Colors.amber.shade900),
+                  color: _isLoaded
+                      ? (isDark ? Colors.green.shade300 : Colors.green.shade800)
+                      : (isDark
+                            ? Colors.amber.shade300
+                            : Colors.amber.shade900),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _isLoaded
-                        ? (isFr ? 'Statut: Chargement confirmé ✓' : 'الحالة: تم تأكيد التحميل بنجاح ✓')
-                        : (isFr ? 'Statut: Non encore chargé' : 'الحالة: معلق - لم يتم تأكيد التحميل بعد'),
+                        ? (isFr
+                              ? 'Statut: Chargement confirmé ✓'
+                              : 'الحالة: تم تأكيد التحميل بنجاح ✓')
+                        : (isFr
+                              ? 'Statut: Non encore chargé'
+                              : 'الحالة: معلق - لم يتم تأكيد التحميل بعد'),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       fontFamily: 'Cairo',
-                      color: _isLoaded ? (isDark ? Colors.green.shade200 : Colors.green.shade900) : (isDark ? Colors.amber.shade200 : Colors.amber.shade900),
+                      color: _isLoaded
+                          ? (isDark
+                                ? Colors.green.shade200
+                                : Colors.green.shade900)
+                          : (isDark
+                                ? Colors.amber.shade200
+                                : Colors.amber.shade900),
                     ),
                   ),
                 ),
@@ -424,26 +476,44 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                     ),
                     onPressed: () async {
-                      await SqlDatabase().updateCommandeDeliveryIsLoaded(widget.deliveryId!, 1);
+                      await SqlDatabase().updateCommandeDeliveryIsLoaded(
+                        widget.deliveryId!,
+                        1,
+                      );
                       setState(() {
                         _isLoaded = true;
                       });
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(isFr ? 'Chargement confirmé avec succès!' : 'تم تأكيد التحميل وتحديث السجل بنجاح!'),
+                            content: Text(
+                              isFr
+                                  ? 'Chargement confirmé avec succès!'
+                                  : 'تم تأكيد التحميل وتحديث السجل بنجاح!',
+                            ),
                             backgroundColor: Colors.green,
                           ),
                         );
                       }
                     },
-                    icon: const Icon(Icons.check, size: 16, color: Colors.white),
+                    icon: const Icon(
+                      Icons.check,
+                      size: 16,
+                      color: Colors.white,
+                    ),
                     label: Text(
                       isFr ? 'Confirmer le chargement' : 'تأكيد التحميل',
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'Cairo'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontFamily: 'Cairo',
+                      ),
                     ),
                   ),
               ],
@@ -458,10 +528,18 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               children: [
                 Text(
                   data.workshop.name,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Cairo', color: textColor),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontFamily: 'Cairo',
+                    color: textColor,
+                  ),
                 ),
                 if (data.workshop.phone.isNotEmpty)
-                  Text('Tél: ${data.workshop.phone}', style: TextStyle(fontSize: 12, color: subtextColor)),
+                  Text(
+                    'Tél: ${data.workshop.phone}',
+                    style: TextStyle(fontSize: 12, color: subtextColor),
+                  ),
               ],
             ),
             Column(
@@ -469,15 +547,23 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               children: [
                 Text(
                   isFr ? 'Bon de charge' : 'وصل الشحن',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: _blue, fontFamily: 'Cairo'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: _blue,
+                    fontFamily: 'Cairo',
+                  ),
                 ),
-                Text('Date: ${data.orderDate}', style: TextStyle(fontSize: 12, color: subtextColor)),
+                Text(
+                  'Date: ${data.orderDate}',
+                  style: TextStyle(fontSize: 12, color: subtextColor),
+                ),
               ],
             ),
           ],
         ),
         const Divider(height: 20, thickness: 1),
-        
+
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -489,11 +575,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             children: [
               Text(
                 isFr ? 'Client: ' : 'الزبون: ',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Cairo', color: textColor),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  fontFamily: 'Cairo',
+                  color: textColor,
+                ),
               ),
               Text(
                 data.clientName,
-                style: TextStyle(fontSize: 14, fontFamily: 'Cairo', color: textColor),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Cairo',
+                  color: textColor,
+                ),
               ),
             ],
           ),
@@ -511,36 +606,81 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               SizedBox(
                 width: 45,
                 child: Text(
-                  isFr ? 'N°' : _invoiceLanguage == AppLanguage.english ? 'No' : 'رقم',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                  isFr
+                      ? 'N°'
+                      : _invoiceLanguage == AppLanguage.english
+                      ? 'No'
+                      : 'رقم',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                    color: textColor,
+                  ),
                 ),
               ),
               Expanded(
                 flex: 3,
                 child: Text(
-                  isFr ? 'Désignation' : _invoiceLanguage == AppLanguage.english ? 'Item Designation' : 'البيان / النافذة',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                  isFr
+                      ? 'Désignation'
+                      : _invoiceLanguage == AppLanguage.english
+                      ? 'Item Designation'
+                      : 'البيان / النافذة',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                    color: textColor,
+                  ),
                 ),
               ),
               Expanded(
                 flex: 2,
                 child: Text(
-                  isFr ? 'Dimensions' : _invoiceLanguage == AppLanguage.english ? 'Dimensions' : 'المقاسات',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                  isFr
+                      ? 'Dimensions'
+                      : _invoiceLanguage == AppLanguage.english
+                      ? 'Dimensions'
+                      : 'المقاسات',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                    color: textColor,
+                  ),
                 ),
               ),
               Expanded(
                 flex: 2,
                 child: Text(
-                  isFr ? 'Couleur' : _invoiceLanguage == AppLanguage.english ? 'Color' : 'اللون',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                  isFr
+                      ? 'Couleur'
+                      : _invoiceLanguage == AppLanguage.english
+                      ? 'Color'
+                      : 'اللون',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                    color: textColor,
+                  ),
                 ),
               ),
               Expanded(
                 flex: 3,
                 child: Text(
-                  isFr ? 'Code à barres' : _invoiceLanguage == AppLanguage.english ? 'Barcode' : 'الكود بار',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo', color: textColor),
+                  isFr
+                      ? 'Code à barres'
+                      : _invoiceLanguage == AppLanguage.english
+                      ? 'Barcode'
+                      : 'الكود بار',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                    color: textColor,
+                  ),
                 ),
               ),
             ],
@@ -566,11 +706,19 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                       children: [
                         Text(
                           row['num']!,
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
                         ),
                         Text(
                           row['cumNum']!,
-                          style: TextStyle(fontSize: 10, color: isDark ? Colors.cyanAccent : subtextColor, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.cyanAccent : subtextColor,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -579,14 +727,23 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     flex: 3,
                     child: Text(
                       row['title'] ?? '',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Cairo', color: textColor),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Cairo',
+                        color: textColor,
+                      ),
                     ),
                   ),
                   Expanded(
                     flex: 2,
                     child: Text(
                       row['dims']!,
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
                     ),
                   ),
                   Expanded(
@@ -601,11 +758,19 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.qr_code, size: 20, color: isDark ? Colors.white : Colors.black87),
+                        Icon(
+                          Icons.qr_code,
+                          size: 20,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
                         const SizedBox(height: 2),
                         Text(
                           row['barcode']!,
-                          style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : subtextColor, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.white70 : subtextColor,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -626,7 +791,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final isBonDeCharge = data.documentTitleKey == 'BON_CHARGE';
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF3F5F8),
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF3F5F8),
       appBar: AppBar(
         title: Text(
           _documentTitle,
@@ -676,7 +843,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                             Align(
                               alignment: Alignment.centerRight,
                               child: Text(
-                                _invoiceLanguage == AppLanguage.french ? 'N° chèque: $_chequeNumber' : 'رقم الشيك: $_chequeNumber',
+                                _invoiceLanguage == AppLanguage.french
+                                    ? 'N° chèque: $_chequeNumber'
+                                    : 'رقم الشيك: $_chequeNumber',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
@@ -707,9 +876,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                _invoiceLanguage == AppLanguage.french ? 'RIB: ${data.workshop.rib}' :
-                                _invoiceLanguage == AppLanguage.english ? 'RIB: ${data.workshop.rib}' :
-                                'الحساب البنكي (RIB): ${data.workshop.rib}',
+                                _invoiceLanguage == AppLanguage.french
+                                    ? 'RIB: ${data.workshop.rib}'
+                                    : _invoiceLanguage == AppLanguage.english
+                                    ? 'RIB: ${data.workshop.rib}'
+                                    : 'الحساب البنكي (RIB): ${data.workshop.rib}',
                                 style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
@@ -759,9 +930,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       prefix = 'DVP';
     } else if (data.isProForma) {
       prefix = data.isPartial ? 'FPP' : 'FP';
-    } else if (key == 'doc_bon_livraison' || key == 'doc_bon_livraison_sans_prix') {
+    } else if (key == 'doc_bon_livraison' ||
+        key == 'doc_bon_livraison_sans_prix') {
       prefix = 'BL';
-    } else if (key == 'doc_bon_livraison_partiel' || key == 'doc_bon_livraison_partiel_sans_prix') {
+    } else if (key == 'doc_bon_livraison_partiel' ||
+        key == 'doc_bon_livraison_partiel_sans_prix') {
       prefix = 'BLP';
     } else {
       if (data.isProForma) {
@@ -788,8 +961,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final seq = data.sequenceNumber > 0
         ? data.sequenceNumber
         : (data.orderId > 0 && data.orderId < 100000
-            ? data.orderId
-            : (data.orderId % 1000).abs());
+              ? data.orderId
+              : (data.orderId % 1000).abs());
     final seqNum = seq.toString().padLeft(3, '0');
     return '$prefix$year2$seqNum';
   }
@@ -811,10 +984,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (logoWidget != null) ...[
-              logoWidget,
-              const SizedBox(width: 10),
-            ],
+            if (logoWidget != null) ...[logoWidget, const SizedBox(width: 10)],
             Text(
               data.workshop.name,
               style: const TextStyle(
@@ -848,20 +1018,20 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 ],
               ),
             ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            _metaLine('N°:', _formatDocumentNumber(data)),
-            _metaLine('Date:', data.orderDate),
-            if (data.isProForma && data.validUntil.isNotEmpty)
-              _metaLine('Valide jusqu\'au:', data.validUntil),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _metaLine('N°:', _formatDocumentNumber(data)),
+                _metaLine('Date:', data.orderDate),
+                if (data.isProForma && data.validUntil.isNotEmpty)
+                  _metaLine('Valide jusqu\'au:', data.validUntil),
+              ],
+            ),
           ],
         ),
       ],
-    ),
-  ],
-);
-}
+    );
+  }
 
   Widget _metaLine(String label, String value) {
     return Padding(
@@ -882,12 +1052,21 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Widget _buildParties() {
-    final phonePrefix = _invoiceLanguage == AppLanguage.french ? 'Tél: ' :
-                        _invoiceLanguage == AppLanguage.english ? 'Phone: ' : 'الهاتف: ';
-    final clientIdPrefix = _invoiceLanguage == AppLanguage.french ? 'N° Client: ' :
-                           _invoiceLanguage == AppLanguage.english ? 'Client ID: ' : 'رقم الزبون: ';
-    final addressPrefix = _invoiceLanguage == AppLanguage.french ? 'Adresse: ' :
-                          _invoiceLanguage == AppLanguage.english ? 'Address: ' : 'العنوان: ';
+    final phonePrefix = _invoiceLanguage == AppLanguage.french
+        ? 'Tél: '
+        : _invoiceLanguage == AppLanguage.english
+        ? 'Phone: '
+        : 'الهاتف: ';
+    final clientIdPrefix = _invoiceLanguage == AppLanguage.french
+        ? 'N° Client: '
+        : _invoiceLanguage == AppLanguage.english
+        ? 'Client ID: '
+        : 'رقم الزبون: ';
+    final addressPrefix = _invoiceLanguage == AppLanguage.french
+        ? 'Adresse: '
+        : _invoiceLanguage == AppLanguage.english
+        ? 'Address: '
+        : 'العنوان: ';
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -895,8 +1074,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         Expanded(
           child: _partyBlock('FOURNISSEUR', [
             data.workshop.name,
-            if (data.workshop.phone.isNotEmpty) '$phonePrefix${data.workshop.phone}',
-            if (data.workshop.address.isNotEmpty) '$addressPrefix${data.workshop.address}',
+            if (data.workshop.phone.isNotEmpty)
+              '$phonePrefix${data.workshop.phone}',
+            if (data.workshop.address.isNotEmpty)
+              '$addressPrefix${data.workshop.address}',
             if (_isOfficial) ...[
               if (data.workshop.rc.isNotEmpty) 'RC: ${data.workshop.rc}',
               if (data.workshop.nif.isNotEmpty) 'NIF: ${data.workshop.nif}',
@@ -957,8 +1138,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       child: Row(
         children: [
           if (!_isOfficial)
-            const SizedBox(width: 88, child: Text('Image', style: _headerStyle)),
-          Expanded(flex: hidePrices ? 8 : 4, child: const Text('Désignation', style: _headerStyle)),
+            const SizedBox(
+              width: 88,
+              child: Text('Image', style: _headerStyle),
+            ),
+          Expanded(
+            flex: hidePrices ? 8 : 4,
+            child: const Text('Désignation', style: _headerStyle),
+          ),
           if (!hidePrices)
             Expanded(
               flex: 2,
@@ -995,7 +1182,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Widget _buildItemRow(int index, DevisLineItem item) {
     final bg = index.isEven ? Colors.white : const Color(0xFFF8FAFC);
     final textColor = item.isReplaced ? Colors.grey.shade500 : Colors.black87;
-    final detailColor = item.isReplaced ? Colors.grey.shade400 : Colors.grey.shade800;
+    final detailColor = item.isReplaced
+        ? Colors.grey.shade400
+        : Colors.grey.shade800;
     final priceColor = item.isReplaced ? Colors.grey.shade500 : _blue;
     final hidePrices = data.hidePrices;
 
@@ -1043,23 +1232,25 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                       ...() {
                         if (_isOfficial) {
                           if (_invoiceLanguage == AppLanguage.french) {
-                            return ['Largeur: ${item.width} mm | Hauteur: ${item.height} mm'];
+                            return [
+                              'Largeur: ${item.width} mm | Hauteur: ${item.height} mm',
+                            ];
                           } else if (_invoiceLanguage == AppLanguage.english) {
-                            return ['Width: ${item.width} mm | Height: ${item.height} mm'];
+                            return [
+                              'Width: ${item.width} mm | Height: ${item.height} mm',
+                            ];
                           } else {
-                            return ['العرض: ${item.width} مم | الارتفاع: ${item.height} مم'];
+                            return [
+                              'العرض: ${item.width} مم | الارتفاع: ${item.height} مم',
+                            ];
                           }
                         } else {
                           return item.details;
                         }
-                      }()
-                          .map(
-                        (d) => Text(
+                      }().map(
+                        (d) => _detailRichText(
                           d,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: detailColor,
-                          ),
+                          style: TextStyle(fontSize: 11, color: detailColor),
                         ),
                       ),
                     ],
@@ -1083,10 +1274,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                   child: Text(
                     '${item.quantity}',
                     textAlign: TextAlign.end,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: textColor,
-                    ),
+                    style: TextStyle(fontSize: 12, color: textColor),
                   ),
                 ),
                 if (!hidePrices)
@@ -1116,7 +1304,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.amber.shade800),
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.amber.shade800,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1137,10 +1329,53 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     );
   }
 
+  Widget _detailRichText(String text, {required TextStyle style}) {
+    final labelStyle = style.copyWith(fontWeight: FontWeight.w700);
+    return RichText(
+      textDirection: _containsArabic(text)
+          ? TextDirection.rtl
+          : TextDirection.ltr,
+      text: TextSpan(children: _detailTextSpans(text, style, labelStyle)),
+    );
+  }
+
+  List<TextSpan> _detailTextSpans(
+    String text,
+    TextStyle normalStyle,
+    TextStyle labelStyle,
+  ) {
+    final spans = <TextSpan>[];
+    final parts = text.split('|');
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        spans.add(TextSpan(text: ' | ', style: normalStyle));
+      }
+      final part = parts[i];
+      final colonIndex = part.indexOf(':');
+      if (colonIndex > 0) {
+        spans.add(
+          TextSpan(text: part.substring(0, colonIndex + 1), style: labelStyle),
+        );
+        spans.add(
+          TextSpan(text: part.substring(colonIndex + 1), style: normalStyle),
+        );
+      } else {
+        spans.add(TextSpan(text: part, style: normalStyle));
+      }
+    }
+    return spans;
+  }
+
+  bool _containsArabic(String text) {
+    return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+  }
+
   Widget _buildItemImage(DevisLineItem item) {
     final path = item.imagePath;
 
-    if (item.title.contains('Caisson Tunnel') || item.title.contains('Caisson Tunnel') || (path != null && path.contains('caisson_tunnel'))) {
+    if (item.title.contains('Caisson Tunnel') ||
+        item.title.contains('Caisson Tunnel') ||
+        (path != null && path.contains('caisson_tunnel'))) {
       return Container(
         decoration: BoxDecoration(
           color: Colors.grey.shade50,
@@ -1151,13 +1386,17 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         child: Image.asset(
           'Icon/caisson_tunnel.jpg',
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) =>
-              Image.asset('assets/Icon/caisson_tunnel.jpg', fit: BoxFit.contain),
+          errorBuilder: (context, error, stackTrace) => Image.asset(
+            'assets/Icon/caisson_tunnel.jpg',
+            fit: BoxFit.contain,
+          ),
         ),
       );
     }
 
-    if (item.title.contains('Moustiquaire') || item.title.contains('موستيكير') || (path != null && path.contains('moustiquaire'))) {
+    if (item.title.contains('Moustiquaire') ||
+        item.title.contains('موستيكير') ||
+        (path != null && path.contains('moustiquaire'))) {
       return Container(
         decoration: BoxDecoration(
           color: Colors.grey.shade50,
@@ -1247,7 +1486,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final totalBrutLabel = isOfficial ? 'TOTAL HT' : t('Total Brut');
     final remiseLabel = isOfficial ? 'REMISE' : t('Remise');
     final netHtLabel = isOfficial ? 'NET HT' : t('Total après remise');
-    final tvaLabel = isOfficial ? 'TVA' : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
+    final tvaLabel = isOfficial
+        ? 'TVA'
+        : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
     final totalTtcLabel = isOfficial ? 'NET A PAYER' : t('TOTAL TTC');
 
     return Align(
@@ -1283,7 +1524,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     if (data.workshop.nif.isNotEmpty) parts.add('NIF: ${data.workshop.nif}');
     if (data.workshop.nis.isNotEmpty) parts.add('NIS: ${data.workshop.nis}');
     if (data.workshop.ai.isNotEmpty) parts.add('AI: ${data.workshop.ai}');
-    if (data.workshop.phone.isNotEmpty) parts.add('Tél: ${data.workshop.phone}');
+    if (data.workshop.phone.isNotEmpty)
+      parts.add('Tél: ${data.workshop.phone}');
 
     if (parts.isEmpty) return const SizedBox.shrink();
 
@@ -1386,7 +1628,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 icon: const Icon(Icons.save, size: 16),
                 label: Text(
                   t('حفظ'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                  ),
                 ),
               ),
             ),
@@ -1405,7 +1651,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 icon: const Icon(Icons.share, size: 16),
                 label: Text(
                   t('مشاركة'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                  ),
                 ),
               ),
             ),
@@ -1424,7 +1674,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 icon: const Icon(Icons.print, size: 16),
                 label: Text(
                   t('طباعة'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontFamily: 'Cairo',
+                  ),
                 ),
               ),
             ),
@@ -1447,8 +1701,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final confirmedName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(t('اسم الملف'),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+        title: Text(
+          t('اسم الملف'),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+          ),
         ),
         content: TextField(
           controller: nameController,
@@ -1463,7 +1721,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, null),
-            child: Text(t('إلغاء'), style: const TextStyle(fontFamily: 'Cairo')),
+            child: Text(
+              t('إلغاء'),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, nameController.text.trim()),
@@ -1520,7 +1781,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       if (finalPath != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(t('تم حفظ PDF بنجاح'),
+            content: Text(
+              t('تم حفظ PDF بنجاح'),
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             duration: const Duration(seconds: 4),
@@ -1531,7 +1793,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في الحفظ: $e',
+            content: Text(
+              'خطأ في الحفظ: $e',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
@@ -1557,7 +1820,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في الطباعة: $e',
+            content: Text(
+              'خطأ في الطباعة: $e',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
@@ -1575,7 +1839,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final cleanName = data.clientName.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final cleanName = data.clientName.trim().replaceAll(
+        RegExp(r'[\\/:*?"<>|]'),
+        '_',
+      );
       final filename = cleanName.isNotEmpty
           ? '$cleanName.pdf'
           : 'devis_${data.orderId}.pdf';
@@ -1593,7 +1860,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(t('تم حفظ PDF بنجاح'),
+                content: Text(
+                  t('تم حفظ PDF بنجاح'),
                   style: const TextStyle(fontFamily: 'Cairo'),
                 ),
                 duration: const Duration(seconds: 4),
@@ -1609,7 +1877,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في المشاركة: $e',
+            content: Text(
+              'خطأ في المشاركة: $e',
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             backgroundColor: Colors.red,
