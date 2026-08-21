@@ -1486,11 +1486,6 @@ class ComponentCalculator {
           ).round(),
         )
         .toInt();
-    final double pvcRailClearance = math.max(
-      0.0,
-      slidingRuleNumber('sliding_rail_clearance', fallback: 1.0),
-    );
-
     for (var zone in window.zones) {
       if (zone.content == ZoneContent.singleSash ||
           zone.content == ZoneContent.doubleSash) {
@@ -1942,12 +1937,6 @@ class ComponentCalculator {
         (window.hasBottomFrame ? weldVal : noBottomWeldVal) -
         (hasSeparateCoverTop ? separateCoverThickness : 0.0) -
         (hasSeparateCoverBottom ? separateCoverThickness : 0.0);
-
-    final String sName =
-        window.activeSlidingSeries?.name.toLowerCase() ??
-        window.activeSeries?.name.toLowerCase() ??
-        '';
-    final bool isTPRSeries = sName.contains('tpr');
 
     final frameRects = window.getFrameRects();
     final minFrameLeft = frameRects.isEmpty
@@ -2488,12 +2477,13 @@ class ComponentCalculator {
               ((window.system?.name.toLowerCase().contains('tpr') ?? false) ||
                   (window.system?.name.toLowerCase().contains('hps') ?? false));
           if (!excludeChicane) {
-            final int chicaneCount = window.isSlidingPVC
-                ? (sashes - 1) * pvcChicanePiecesPerJunction
-                : sashes - 1;
-            final double chicaneLength = window.isSlidingPVC
-                ? window.height - 5.0
-                : sashH;
+            final int chicaneCount = math.max(
+              2,
+              window.isSlidingPVC
+                  ? (sashes - 1) * pvcChicanePiecesPerJunction
+                  : 2,
+            );
+            final double chicaneLength = sashH;
             for (int c = 0; c < chicaneCount; c++) {
               slidingChicanePieces.add(chicaneLength / 1000.0);
             }
@@ -2517,14 +2507,19 @@ class ComponentCalculator {
                   window.profileThickness;
             }
           }
-          final railClearWidth = isNestedSliding
-              ? wForCalc
-              : window.width - (frameT * 2);
-          double railLen = window.isSlidingPVC
-              ? (railClearWidth - pvcRailClearance) / 1000.0
-              : isTPRSeries
-              ? (railClearWidth - 1.0) / 1000.0
-              : (wForCalc - 5.0) / 1000.0;
+          final railFrameWidth = isNestedSliding
+              ? (slidingFrame == null
+                  ? zone.boundary.width
+                  : math.max(
+                      0.0,
+                      clearW -
+                          window.slidingRebateDeduction(
+                            zone,
+                            horizontal: true,
+                          ),
+                    ))
+              : window.width.toDouble();
+          double railLen = (railFrameWidth - (frameT * 2.0)) / 1000.0;
           if (railLen < 0) railLen = 0;
           slidingRailPieces.add(railLen);
           slidingRailPieces.add(railLen);

@@ -241,12 +241,12 @@ class _WindowViewState extends State<WindowView> {
       final openingFrames = needsOpeningFrames
           ? (openingSeriesId == seriesId
               ? frames
-              : await _loadFrameProfilesForSeries(db, myDb, openingSeriesId))
+              : await _loadFrameProfilesForSeries(db, myDb, openingSeriesId!))
           : <Map<String, dynamic>>[];
       final slidingFrames = needsSlidingFrames
           ? (slidingSeriesId == seriesId
               ? frames
-              : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId))
+              : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId!))
           : <Map<String, dynamic>>[];
 
       // Ignore an old result when the user has already switched series.
@@ -7421,7 +7421,7 @@ class _WindowViewState extends State<WindowView> {
                     ),
                   ),
               ],
-              (() {
+              if (!widget.model.isShutterOnly) (() {
                 final isArchedOrSlanted =
                     widget.model.archHeight > 0 ||
                         widget.model.topSlantLeftY != 0 ||
@@ -11344,23 +11344,25 @@ class _WindowViewState extends State<WindowView> {
   List<Widget> _buildShutterCommonOptions(BuildContext context) {
     final items = <Widget>[];
 
-    // تفعيل/إلغاء الستار
-    items.add(
-      _ShutterChip(
-        label: 'الستار مفعّل',
-        icon: Icons.layers_rounded,
-        selected: widget.model.hasShutter,
-        color: Colors.orange,
-        onTap: () {
-          final enable = !widget.model.hasShutter;
-          setState(() {
-            widget.model.toggleShutter(enable);
-            if (!enable) _isShutterSelected = false;
-          });
-        },
-      ),
-    );
-    items.add(const SizedBox(width: 8));
+    if (!widget.model.isShutterOnly) {
+      // تفعيل/إلغاء الستار
+      items.add(
+        _ShutterChip(
+          label: 'الستار مفعّل',
+          icon: Icons.layers_rounded,
+          selected: widget.model.hasShutter,
+          color: Colors.orange,
+          onTap: () {
+            final enable = !widget.model.hasShutter;
+            setState(() {
+              widget.model.toggleShutter(enable);
+              if (!enable) _isShutterSelected = false;
+            });
+          },
+        ),
+      );
+      items.add(const SizedBox(width: 8));
+    }
 
     if (widget.model.shutterHeightWarning != null) {
       items.add(
@@ -13646,9 +13648,10 @@ class _WindowViewState extends State<WindowView> {
                             ),
                           ),
                           onPressed: () async {
-                            if (widget.model.zones.every(
-                                  (z) => z.content == ZoneContent.empty,
-                            )) {
+                            if (!widget.model.isShutterOnly &&
+                                widget.model.zones.every(
+                                      (z) => z.content == ZoneContent.empty,
+                                )) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(

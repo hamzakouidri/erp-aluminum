@@ -3756,7 +3756,42 @@ class WindowModel extends ChangeNotifier {
   }
 
   String _normalizedProfileColorName(String value) {
-    return value.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ى', 'ي')
+        .replaceAll('ة', 'ه')
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  bool _isWhiteProfileColor(Map<String, dynamic>? colorData) {
+    final name = _normalizedProfileColorName(_profileColorName(colorData));
+    final hex = (colorData?['hex_code'] ?? colorData?['hex'] ?? '')
+        .toString()
+        .replaceAll('#', '')
+        .toLowerCase()
+        .trim();
+    return name.contains('white') ||
+        name.contains('blanc') ||
+        name.contains('ابيض') ||
+        hex == 'ffffff' ||
+        hex == 'fff';
+  }
+
+  bool _isWoodProfileColor(Map<String, dynamic>? colorData) {
+    final name = _normalizedProfileColorName(_profileColorName(colorData));
+    return name.contains('wood') ||
+        name.contains('bois') ||
+        name.contains('خشب') ||
+        name.contains('خشبي') ||
+        name.contains('chene') ||
+        name.contains('oak') ||
+        name.contains('desert') ||
+        name.contains('ديزر') ||
+        name.contains('ديزير');
   }
 
   /// Resolves the colour actually used by a bardage cell. In automatic mode
@@ -3943,12 +3978,13 @@ class WindowModel extends ChangeNotifier {
             ?.toString()
             .toLowerCase()
             .trim();
+    final previousWasWood = _isWoodProfileColor(_selectedDbColor);
     availableColors = (await db.getColorsForProfile(
       profileId,
     )).map((color) => Map<String, dynamic>.from(color)).toList();
 
     Map<String, dynamic>? selectedColor;
-    if (previousColorId != null) {
+    if (!previousWasWood && previousColorId != null) {
       for (final color in availableColors) {
         if (color['id']?.toString() == previousColorId.toString()) {
           selectedColor = color;
@@ -3956,7 +3992,8 @@ class WindowModel extends ChangeNotifier {
         }
       }
     }
-    if (selectedColor == null &&
+    if (!previousWasWood &&
+        selectedColor == null &&
         previousColorName != null &&
         previousColorName.isNotEmpty) {
       for (final color in availableColors) {
@@ -3990,19 +4027,7 @@ class WindowModel extends ChangeNotifier {
 
   Map<String, dynamic>? _defaultFrameColor() {
     for (final color in availableColors) {
-      final name = (color['name'] ?? color['color_name'] ?? '')
-          .toString()
-          .toLowerCase()
-          .trim();
-      final hex = (color['hex_code'] ?? color['hex'] ?? '')
-          .toString()
-          .replaceAll('#', '')
-          .toLowerCase();
-      if (name.contains('white') ||
-          name.contains('blanc') ||
-          name.contains('أبيض') ||
-          hex == 'ffffff' ||
-          hex == 'fff') {
+      if (_isWhiteProfileColor(color)) {
         return color;
       }
     }
@@ -9905,6 +9930,8 @@ class WindowModel extends ChangeNotifier {
       newDivisionX = maxAllowedX - sep;
     }
     double actualDiff = newDivisionX - divisionX;
+    if (actualDiff.abs() < 0.001) return;
+    final oldKey = _mullionKey(false, divisionX);
 
     for (int i = 0; i < zones.length; i++) {
       var z = zones[i];
@@ -9924,6 +9951,19 @@ class WindowModel extends ChangeNotifier {
           z.boundary.bottom,
         );
       }
+    }
+    _moveMullionMetadata(oldKey, _mullionKey(false, newDivisionX));
+    if (selection.type == SelectionType.mullion &&
+        selection.isHorizontalMullion == false &&
+        selection.mullionPosition != null &&
+        (selection.mullionPosition! - divisionX).abs() < 2) {
+      selection = SelectionInfo(
+        type: SelectionType.mullion,
+        isHorizontalMullion: false,
+        mullionPosition: newDivisionX,
+        mullionStart: selection.mullionStart,
+        mullionEnd: selection.mullionEnd,
+      );
     }
   }
 
@@ -9973,6 +10013,8 @@ class WindowModel extends ChangeNotifier {
       newDivisionY = maxAllowedY - sep;
     }
     double actualDiff = newDivisionY - divisionY;
+    if (actualDiff.abs() < 0.001) return;
+    final oldKey = _mullionKey(true, divisionY);
 
     for (int i = 0; i < zones.length; i++) {
       var z = zones[i];
@@ -9992,6 +10034,19 @@ class WindowModel extends ChangeNotifier {
           z.boundary.bottom,
         );
       }
+    }
+    _moveMullionMetadata(oldKey, _mullionKey(true, newDivisionY));
+    if (selection.type == SelectionType.mullion &&
+        selection.isHorizontalMullion == true &&
+        selection.mullionPosition != null &&
+        (selection.mullionPosition! - divisionY).abs() < 2) {
+      selection = SelectionInfo(
+        type: SelectionType.mullion,
+        isHorizontalMullion: true,
+        mullionPosition: newDivisionY,
+        mullionStart: selection.mullionStart,
+        mullionEnd: selection.mullionEnd,
+      );
     }
   }
 

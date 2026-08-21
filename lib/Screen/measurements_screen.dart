@@ -67,6 +67,39 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   String _glassType = 'Double'; // Simple or Double
   bool _bottomFrameExists = true;
 
+  String _normalizedColorName(Map<String, dynamic>? color) {
+    return (color?['name'] ?? color?['color_name'] ?? '')
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ى', 'ي')
+        .replaceAll('ة', 'ه');
+  }
+
+  bool _isWhiteColor(Map<String, dynamic>? color) {
+    final name = _normalizedColorName(color);
+    final hex = (color?['hex_code'] ?? color?['hex'] ?? '')
+        .toString()
+        .replaceAll('#', '')
+        .toLowerCase()
+        .trim();
+    return name.contains('white') ||
+        name.contains('blanc') ||
+        name.contains('ابيض') ||
+        hex == 'ffffff' ||
+        hex == 'fff';
+  }
+
+  Map<String, dynamic>? _defaultWhiteColor() {
+    for (final color in _allColors) {
+      if (_isWhiteColor(color)) return color;
+    }
+    return _allColors.isNotEmpty ? _allColors.first : null;
+  }
+
   // Attached files
   File? _imageFile;
   File? _videoFile;
@@ -123,7 +156,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         setState(() {
           _allColors = colorsData;
           if (_allColors.isNotEmpty) {
-            _selectedColor = _allColors.first;
+            _selectedColor = _defaultWhiteColor();
           }
         });
       }
@@ -188,7 +221,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         try {
           _selectedColor = _allColors.firstWhere(
             (c) => c['name'].toString().toLowerCase() == frameType.toLowerCase(),
-            orElse: () => _allColors.first,
+            orElse: () => _defaultWhiteColor() ?? _allColors.first,
           );
         } catch (_) {}
       }
@@ -314,7 +347,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       try {
         final matched = _allColors.firstWhere(
           (c) => c['name'].toString().toLowerCase() == frameType.toLowerCase(),
-          orElse: () => _allColors.first,
+          orElse: () => _defaultWhiteColor() ?? _allColors.first,
         );
         model.selectedDbColor = matched;
       } catch (_) {}

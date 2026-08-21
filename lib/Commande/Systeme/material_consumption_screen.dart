@@ -175,6 +175,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   double _verrouInstallFee = 0.0; // أجرة تركيب Verrou Central
   CostMethod _costMethod = CostMethod
       .percentage; // طريقة احتساب سعر البيع الحالية (نسبة/متر مربع/متر خطي)
+  bool get _isShutterOnlyPricing => widget.model.isShutterOnly;
   Map<String, List<Map<String, dynamic>>> _kitBundleData =
       {}; // بيانات حزم الكيت (Kit Bundles) المحمّلة من القاعدة
   Map<String, bool> _kitPerLeafMap =
@@ -3019,6 +3020,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           prefs.getInt('app_cost_method') ?? CostMethod.percentage.index;
       _costMethod =
           CostMethod.values[methodIndex]; // تحويل الرقم المحفوظ إلى enum
+      if (_isShutterOnlyPricing && _costMethod == CostMethod.linearMeter) {
+        _costMethod = CostMethod.percentage;
+      }
       // مزامنة الكونترولرز مع القيم المحمّلة لعرضها في حقول الإدخال
       _profitMarginController.text = _profitMargin.toStringAsFixed(1);
       _pricePerSqmController.text = _pricePerSqm.toStringAsFixed(0);
@@ -4100,7 +4104,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // أزرار اختيار طريقة الحساب (Chips) — عند الاختيار تُحفظ في SharedPreferences فورًا
             Wrap(
               spacing: 8.0,
-              children: CostMethod.values.map((method) {
+              children: CostMethod.values
+                  .where(
+                    (method) =>
+                        !_isShutterOnlyPricing ||
+                        method != CostMethod.linearMeter,
+                  )
+                  .map((method) {
                 final isSelected = _costMethod == method;
                 String label = '';
                 if (method == CostMethod.percentage) {
