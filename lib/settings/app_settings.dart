@@ -36,6 +36,7 @@ class AppSettingsProvider extends ChangeNotifier {
   String _userDisplayName = 'مدير الورشة';
   Map<String, dynamic> _workerPermissions = {};
   StreamSubscription<DocumentSnapshot>? _permSubscription;
+  String? _permissionListenerUid;
 
   @override
   void dispose() {
@@ -72,9 +73,7 @@ class AppSettingsProvider extends ChangeNotifier {
       _userRole == 'manager' ||
       _userRole == 'admin' ||
       (_userRole == 'co_manager' &&
-          (_isPermissionTrue(
-                _workerPermissions['full_manager_permissions'],
-              ) ||
+          (_isPermissionTrue(_workerPermissions['full_manager_permissions']) ||
               _isPermissionTrue(_workerPermissions['co_manager']))) ||
       isAdmin;
 
@@ -82,6 +81,69 @@ class AppSettingsProvider extends ChangeNotifier {
 
   AppSettingsProvider() {
     loadSettings();
+  }
+
+  void _startPermissionListener(User user, SharedPreferences prefs) {
+    // Keep one live listener per signed-in account. Recreating this listener
+    // during every subscription snapshot could briefly miss a permission
+    // change exactly while the manager was saving it.
+    if (_permissionListenerUid == user.uid && _permSubscription != null) {
+      return;
+    }
+
+    _permSubscription?.cancel();
+    _permissionListenerUid = user.uid;
+    _permSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((docSnap) {
+          final data = docSnap.data();
+          if (!docSnap.exists || data == null) {
+            _userRole = 'worker';
+            _workerPermissions = {};
+            notifyListeners();
+            unawaited(prefs.setString('user_role', _userRole));
+            return;
+          }
+
+          if (!isApplicationAdminEmail(user.email)) {
+            final remoteRole = data['role']?.toString() ?? '';
+            final isWorkshopOwner = data['workshopId']?.toString() == user.uid;
+            _userRole = remoteRole == 'manager' || isWorkshopOwner
+                ? 'manager'
+                : remoteRole == 'co_manager'
+                ? 'co_manager'
+                : 'worker';
+          }
+
+          Map<String, dynamic> cloudPermissions = {};
+          final permissionsJson = data['permissions_json'];
+          if (permissionsJson is String && permissionsJson.isNotEmpty) {
+            try {
+              final decoded = jsonDecode(permissionsJson);
+              if (decoded is Map) {
+                cloudPermissions = Map<String, dynamic>.from(decoded);
+              }
+            } catch (_) {}
+          } else if (data['permissions'] is Map) {
+            cloudPermissions = Map<String, dynamic>.from(data['permissions']);
+          }
+
+          // Update the running app first. Cache writes must never delay the
+          // permission that the worker sees on screen.
+          _workerPermissions = cloudPermissions;
+          notifyListeners();
+          unawaited(prefs.setString('user_role', _userRole));
+          unawaited(
+            prefs.setString(
+              'permissions_cloud_fingerprint',
+              permissionsJson is String
+                  ? permissionsJson
+                  : jsonEncode(data['permissions'] ?? {}),
+            ),
+          );
+        });
   }
 
   Future<void> reloadPermissions() async {
@@ -95,6 +157,9 @@ class AppSettingsProvider extends ChangeNotifier {
     } catch (_) {}
 
     if (user == null) {
+      _permSubscription?.cancel();
+      _permSubscription = null;
+      _permissionListenerUid = null;
       _userRole = prefs.getString('user_role') ?? 'worker';
       _workerPermissions = {};
     } else {
@@ -108,55 +173,8 @@ class AppSettingsProvider extends ChangeNotifier {
         _userRole = prefs.getString('user_role') ?? 'worker';
       }
 
-      // 🔄 استماع فوري ودائم لتعديلات الصلاحيات والدور من السحابة لجميع الحسابات
-      _permSubscription?.cancel();
       try {
-        _permSubscription = FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .snapshots()
-            .listen((docSnap) async {
-              // A deleted or incomplete account must not retain permissions
-              // cached on this computer before the manager revoked them.
-              if (!docSnap.exists || docSnap.data() == null) {
-                _userRole = 'worker';
-                _workerPermissions = {};
-                await prefs.setString('user_role', _userRole);
-                notifyListeners();
-                return;
-              }
-
-              final data = docSnap.data()!;
-              if (!isApplicationAdminEmail(user?.email)) {
-                final remoteRole = data['role']?.toString() ?? '';
-                final isWorkshopOwner =
-                    data['workshopId']?.toString() == user?.uid;
-                _userRole = remoteRole == 'manager' || isWorkshopOwner
-                    ? 'manager'
-                    : remoteRole == 'co_manager'
-                    ? 'co_manager'
-                    : 'worker';
-                await prefs.setString('user_role', _userRole);
-              }
-              // Firestore is the authority for permissions. A worker's local
-              // database can be older than the change made by the manager.
-              Map<String, dynamic> cloudPermissions = {};
-              if (data['permissions_json'] is String &&
-                  (data['permissions_json'] as String).isNotEmpty) {
-                try {
-                  final decoded = jsonDecode(data['permissions_json']);
-                  if (decoded is Map) {
-                    cloudPermissions = Map<String, dynamic>.from(decoded);
-                  }
-                } catch (_) {}
-              } else if (data['permissions'] is Map) {
-                cloudPermissions = Map<String, dynamic>.from(
-                  data['permissions'],
-                );
-              }
-              _workerPermissions = cloudPermissions;
-              notifyListeners();
-            });
+        _startPermissionListener(user, prefs);
       } catch (_) {}
     }
     notifyListeners();

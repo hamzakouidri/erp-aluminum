@@ -21,6 +21,9 @@ import 'package:database_data/Commande/order_required_goods_screen.dart';
 import 'package:database_data/Commande/order_measurements_confirm_screen.dart';
 import 'package:database_data/Commande/partial_proforma_screen.dart';
 import 'package:database_data/Screen/order_allocation_screen.dart';
+import 'package:database_data/widgets/resizable_columns_table.dart';
+import 'package:database_data/widgets/numeric_filter_search_field.dart';
+import 'package:database_data/widgets/table_date_range_filter.dart';
 
 class Commande extends StatefulWidget {
   /// Opens the normal new-order form after the orders page has appeared.
@@ -207,6 +210,8 @@ class _CommandeState extends State<Commande> {
     'status': TextEditingController(),
     'creator': TextEditingController(),
   };
+  final Map<String, NumericFilterState> _orderNumericFilters = {};
+  TableDateRange _orderDateRange = const TableDateRange();
 
   String? _orderSortColumn;
   bool _orderSortAscending = true;
@@ -234,6 +239,8 @@ class _CommandeState extends State<Commande> {
 
   bool get _hasActiveOrderColumnFilters {
     return _orderSortColumn != null ||
+        _orderDateRange.isActive ||
+        _orderNumericFilters.values.any((f) => f.isActive) ||
         _orderColumnControllers.values.any((c) => c.text.trim().isNotEmpty);
   }
 
@@ -253,6 +260,37 @@ class _CommandeState extends State<Commande> {
         }
       }
 
+      // Date Range Filter
+      if (_orderDateRange.isActive) {
+        final dStr = (d['created_at'] ?? d['date'] ?? '').toString();
+        final dt = DateTime.tryParse(dStr);
+        if (!_orderDateRange.isWithinRange(dt)) return false;
+      }
+
+      // Numeric Filters (id, total, advance, remaining)
+      if (_orderNumericFilters['id']?.isActive == true) {
+        final idNum = (d['id'] as num?)?.toDouble() ?? 0.0;
+        if (!_orderNumericFilters['id']!.matches(idNum)) return false;
+      }
+
+      final netPayable =
+          (d['net_payable'] as num?)?.toDouble() ??
+          (d['total'] as num?)?.toDouble() ??
+          0.0;
+      final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
+      final remaining = netPayable - advance;
+
+      if (_orderNumericFilters['total']?.isActive == true) {
+        if (!_orderNumericFilters['total']!.matches(netPayable)) return false;
+      }
+      if (_orderNumericFilters['advance']?.isActive == true) {
+        if (!_orderNumericFilters['advance']!.matches(advance)) return false;
+      }
+      if (_orderNumericFilters['remaining']?.isActive == true) {
+        if (!_orderNumericFilters['remaining']!.matches(remaining)) return false;
+      }
+
+      // Text column filters
       for (final entry in _orderColumnControllers.entries) {
         final colKey = entry.key;
         final filterVal = entry.value.text.toLowerCase().trim();
@@ -260,8 +298,10 @@ class _CommandeState extends State<Commande> {
 
         switch (colKey) {
           case 'id':
-            final idStr = (d['id'] ?? '').toString().toLowerCase();
-            if (!idStr.contains(filterVal)) return false;
+            if (_orderNumericFilters['id']?.isActive != true) {
+              final idStr = (d['id'] ?? '').toString().toLowerCase();
+              if (!idStr.contains(filterVal)) return false;
+            }
             break;
           case 'client_project':
             final clientFirst = (d['firstname'] ?? '').toString().toLowerCase();
@@ -278,119 +318,90 @@ class _CommandeState extends State<Commande> {
             if (!dt.contains(filterVal)) return false;
             break;
           case 'total':
-            final netPayable =
-                (d['net_payable'] as num?)?.toDouble() ??
-                (d['total'] as num?)?.toDouble() ??
-                0.0;
-            final tStr = netPayable.toStringAsFixed(0);
-            if (!tStr.contains(filterVal)) return false;
+            if (_orderNumericFilters['total']?.isActive != true) {
+              final tStr = netPayable.toStringAsFixed(0);
+              if (!tStr.contains(filterVal)) return false;
+            }
             break;
           case 'advance':
-            final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
-            final aStr = advance.toStringAsFixed(0);
-            if (!aStr.contains(filterVal)) return false;
+            if (_orderNumericFilters['advance']?.isActive != true) {
+              final aStr = advance.toStringAsFixed(0);
+              if (!aStr.contains(filterVal)) return false;
+            }
             break;
           case 'remaining':
-            final netPayable =
-                (d['net_payable'] as num?)?.toDouble() ??
-                (d['total'] as num?)?.toDouble() ??
-                0.0;
-            final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
-            final remaining = netPayable - advance;
-            final rStr = remaining.toStringAsFixed(0);
-            if (!rStr.contains(filterVal)) return false;
+            if (_orderNumericFilters['remaining']?.isActive != true) {
+              final rStr = remaining.toStringAsFixed(0);
+              if (!rStr.contains(filterVal)) return false;
+            }
             break;
           case 'status':
             final rawStatus = (d['status'] ?? 'Pending').toString();
             final statusStr = _translateStatus(rawStatus, lang).toLowerCase();
             if (!statusStr.contains(filterVal) &&
-                !rawStatus.toLowerCase().contains(filterVal))
+                !rawStatus.toLowerCase().contains(filterVal)) {
               return false;
+            }
             break;
           case 'creator':
-            final creator = _formatCreatorDisplay(
-              d['creation_platform']?.toString(),
-            ).toLowerCase();
-            if (!creator.contains(filterVal)) return false;
+            final rawPlatform = d['creation_platform']?.toString();
+            final creatorStr = _formatCreatorDisplay(rawPlatform).toLowerCase();
+            if (!creatorStr.contains(filterVal) &&
+                !(rawPlatform ?? '').toLowerCase().contains(filterVal)) {
+              return false;
+            }
             break;
         }
       }
-
       return true;
     }).toList();
 
     if (_orderSortColumn != null) {
       filtered.sort((a, b) {
-        int cmp = 0;
+        int comp = 0;
         switch (_orderSortColumn) {
           case 'id':
-            final idA = (a['id'] as num?)?.toInt() ?? 0;
-            final idB = (b['id'] as num?)?.toInt() ?? 0;
-            cmp = idA.compareTo(idB);
+            final aId = (a['id'] as num?)?.toInt() ?? 0;
+            final bId = (b['id'] as num?)?.toInt() ?? 0;
+            comp = aId.compareTo(bId);
             break;
           case 'client_project':
-            final nameA =
-                '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}'
-                    .trim();
-            final nameB =
-                '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}'
-                    .trim();
-            cmp = nameA.compareTo(nameB);
+            final aName = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}';
+            final bName = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}';
+            comp = aName.compareTo(bName);
             break;
           case 'date':
-            final dtA = (a['created_at'] ?? '').toString();
-            final dtB = (b['created_at'] ?? '').toString();
-            cmp = dtA.compareTo(dtB);
+            final aDate = (a['created_at'] ?? a['date'] ?? '').toString();
+            final bDate = (b['created_at'] ?? b['date'] ?? '').toString();
+            comp = aDate.compareTo(bDate);
             break;
           case 'total':
-            final tA =
-                (a['net_payable'] as num?)?.toDouble() ??
-                (a['total'] as num?)?.toDouble() ??
-                0.0;
-            final tB =
-                (b['net_payable'] as num?)?.toDouble() ??
-                (b['total'] as num?)?.toDouble() ??
-                0.0;
-            cmp = tA.compareTo(tB);
+            final aTot = (a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0;
+            final bTot = (b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0;
+            comp = aTot.compareTo(bTot);
             break;
           case 'advance':
-            final advA = (a['advance_payment'] as num?)?.toDouble() ?? 0.0;
-            final advB = (b['advance_payment'] as num?)?.toDouble() ?? 0.0;
-            cmp = advA.compareTo(advB);
+            final aAdv = (a['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final bAdv = (b['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            comp = aAdv.compareTo(bAdv);
             break;
           case 'remaining':
-            final netA =
-                (a['net_payable'] as num?)?.toDouble() ??
-                (a['total'] as num?)?.toDouble() ??
-                0.0;
-            final advA = (a['advance_payment'] as num?)?.toDouble() ?? 0.0;
-            final remA = netA - advA;
-
-            final netB =
-                (b['net_payable'] as num?)?.toDouble() ??
-                (b['total'] as num?)?.toDouble() ??
-                0.0;
-            final advB = (b['advance_payment'] as num?)?.toDouble() ?? 0.0;
-            final remB = netB - advB;
-
-            cmp = remA.compareTo(remB);
+            final aRem = ((a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0) - ((a['advance_payment'] as num?)?.toDouble() ?? 0.0);
+            final bRem = ((b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0) - ((b['advance_payment'] as num?)?.toDouble() ?? 0.0);
+            comp = aRem.compareTo(bRem);
             break;
           case 'status':
-            final stA = _translateStatus(a['status'] ?? 'Pending', lang);
-            final stB = _translateStatus(b['status'] ?? 'Pending', lang);
-            cmp = stA.compareTo(stB);
+            final aSt = (a['status'] ?? '').toString();
+            final bSt = (b['status'] ?? '').toString();
+            comp = aSt.compareTo(bSt);
             break;
           case 'creator':
-            final crA = _formatCreatorDisplay(
-              a['creation_platform']?.toString(),
-            );
-            final crB = _formatCreatorDisplay(
-              b['creation_platform']?.toString(),
-            );
-            cmp = crA.compareTo(crB);
+            final aCr = _formatCreatorDisplay(a['creation_platform']?.toString());
+            final bCr = _formatCreatorDisplay(b['creation_platform']?.toString());
+            comp = aCr.compareTo(bCr);
             break;
         }
-        return _orderSortAscending ? cmp : -cmp;
+        return _orderSortAscending ? comp : -comp;
       });
     }
 
@@ -3136,15 +3147,13 @@ class _CommandeState extends State<Commande> {
   }
 
   Widget _buildOrderSortableHeaderCell({
-    required int flex,
+    int flex = 1,
     required String label,
     required String colKey,
     required Color mutedColor,
   }) {
     final isSorted = _orderSortColumn == colKey;
-    return Expanded(
-      flex: flex,
-      child: InkWell(
+    return InkWell(
         onTap: () {
           setState(() {
             if (_orderSortColumn == colKey) {
@@ -3191,8 +3200,7 @@ class _CommandeState extends State<Commande> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildOrderFilterInputCell({
@@ -3274,12 +3282,321 @@ class _CommandeState extends State<Commande> {
     AppLanguage lang,
   ) {
     final cardColor = Theme.of(context).cardColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final contentColor =
         Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
     final mutedColor =
         Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
+    final borderColor = isDark ? Colors.grey.shade800 : Colors.blue.shade100;
 
     final data = _applyOrderFiltersAndSort(rawData, lang);
+
+    final columns = [
+      ResizableTableColumn(
+        id: 'id',
+        label: _buildOrderSortableHeaderCell(label: '#', colKey: 'id', mutedColor: mutedColor),
+        filter: CompactTableFilterField(
+          hintText: '#...',
+          isNumeric: true,
+          lang: lang,
+          initialNumericState: _orderNumericFilters['id'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['id'] = f),
+        ),
+        initialWidth: 75,
+        minWidth: 55,
+        maxWidth: 130,
+      ),
+      ResizableTableColumn(
+        id: 'client_project',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('الزبون والمشروع', lang),
+          colKey: 'client_project',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'زبون / مشروع...',
+          controller: _orderColumnControllers['client_project'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 220,
+        minWidth: 140,
+        maxWidth: 380,
+      ),
+      ResizableTableColumn(
+        id: 'date',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('تاريخ الإنشاء', lang),
+          colKey: 'date',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'سنة-شهر...',
+          controller: _orderColumnControllers['date'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 125,
+        minWidth: 95,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'total',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('المجموع الكلي (د.ج)', lang),
+          colKey: 'total',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'المجموع...',
+          isNumeric: true,
+          lang: lang,
+          initialNumericState: _orderNumericFilters['total'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['total'] = f),
+        ),
+        initialWidth: 130,
+        minWidth: 95,
+        maxWidth: 220,
+      ),
+      ResizableTableColumn(
+        id: 'advance',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('المدفوع', lang),
+          colKey: 'advance',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'المدفوع...',
+          isNumeric: true,
+          lang: lang,
+          initialNumericState: _orderNumericFilters['advance'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['advance'] = f),
+        ),
+        initialWidth: 120,
+        minWidth: 90,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'remaining',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('المتبقي', lang),
+          colKey: 'remaining',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'المتبقي...',
+          isNumeric: true,
+          lang: lang,
+          initialNumericState: _orderNumericFilters['remaining'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['remaining'] = f),
+        ),
+        initialWidth: 120,
+        minWidth: 90,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'status',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('حالة الورشة', lang),
+          colKey: 'status',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'حالة الورشة...',
+          controller: _orderColumnControllers['status'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 130,
+        minWidth: 95,
+        maxWidth: 220,
+      ),
+      ResizableTableColumn(
+        id: 'creator',
+        label: _buildOrderSortableHeaderCell(
+          label: Localization.translate('المُدخل', lang),
+          colKey: 'creator',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'المُدخل...',
+          controller: _orderColumnControllers['creator'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 130,
+        minWidth: 95,
+        maxWidth: 240,
+      ),
+      ResizableTableColumn(
+        id: 'actions',
+        label: Center(
+          child: Text(
+            Localization.translate('إجراءات', lang),
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        filter: _hasActiveOrderColumnFilters
+            ? Center(
+                child: InkWell(
+                  onTap: _clearAllOrderColumnFilters,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.clear_all, size: 13, color: Colors.red),
+                        const SizedBox(width: 2),
+                        Text(
+                          Localization.translate('مسح', lang),
+                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        initialWidth: 95,
+        minWidth: 75,
+        maxWidth: 150,
+      ),
+    ];
+
+    final rows = data.map((order) {
+      final orderId = (order['id'] as num?)?.toInt() ?? 0;
+      final clientFirst = order['firstname'] ?? '';
+      final clientLast = order['lastname'] ?? '';
+      final clientName = '$clientFirst $clientLast'.trim();
+      final projectName = (order['project_name'] ?? '').toString().trim();
+      final clientProject = projectName.isNotEmpty
+          ? '$clientName ($projectName)'
+          : (clientName.isEmpty ? 'زبون عام' : clientName);
+
+      final netPayable =
+          (order['net_payable'] as num?)?.toDouble() ??
+          (order['total'] as num?)?.toDouble() ??
+          0.0;
+      final advance = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
+      final remaining = netPayable - advance;
+      final status = (order['status'] ?? 'Pending').toString();
+      final statusColor = _getStatusColor(status);
+      final creator = _formatCreatorDisplay(
+        order['creation_platform']?.toString(),
+      );
+
+      return ResizableTableRow(
+        onTap: () => _showOrderOptions(context, order),
+        cells: [
+          // ID
+          Text(
+            '#$orderId',
+            style: const TextStyle(
+              color: Color(0xFF2563EB),
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          // Client & Project
+          Text(
+            clientProject,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              color: contentColor,
+            ),
+          ),
+          // Date
+          Text(
+            formatDate(order),
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+            ),
+          ),
+          // Total
+          Text(
+            '${netPayable.toStringAsFixed(0)} د.ج',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: contentColor,
+            ),
+          ),
+          // Advance
+          Text(
+            '${advance.toStringAsFixed(0)} د.ج',
+            style: const TextStyle(
+              color: Color(0xFF10B981),
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          // Remaining
+          Text(
+            '${remaining.toStringAsFixed(0)} د.ج',
+            style: TextStyle(
+              color: remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          // Status
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _translateStatus(status, lang),
+              style: TextStyle(
+                color: statusColor,
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          // Creator
+          Text(
+            creator,
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          // Actions
+          Center(
+            child: IconButton(
+              icon: const Icon(Icons.more_horiz_rounded, size: 18),
+              onPressed: () => _showOrderOptions(context, order),
+              tooltip: Localization.translate('خيارات الطلبية', lang),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+      );
+    }).toList();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -3296,166 +3613,20 @@ class _CommandeState extends State<Commande> {
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2563EB).withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    _buildOrderSortableHeaderCell(
-                      flex: 1,
-                      label: '#',
-                      colKey: 'id',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 3,
-                      label: Localization.translate('الزبون والمشروع', lang),
-                      colKey: 'client_project',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('تاريخ الإنشاء', lang),
-                      colKey: 'date',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate(
-                        'المجموع الكلي (د.ج)',
-                        lang,
-                      ),
-                      colKey: 'total',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('المدفوع', lang),
-                      colKey: 'advance',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('المتبقي', lang),
-                      colKey: 'remaining',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('حالة الورشة', lang),
-                      colKey: 'status',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildOrderSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('المُدخل', lang),
-                      colKey: 'creator',
-                      mutedColor: mutedColor,
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Row(
-                        children: [
-                          Text(
-                            Localization.translate('إجراءات', lang),
-                            style: TextStyle(
-                              color: mutedColor,
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (_hasActiveOrderColumnFilters) ...[
-                            const SizedBox(width: 2),
-                            InkWell(
-                              onTap: _clearAllOrderColumnFilters,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 3,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Icon(
-                                  Icons.clear_all,
-                                  size: 12,
-                                  color: Colors.red,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildOrderFilterInputCell(
-                      flex: 1,
-                      controller: _orderColumnControllers['id']!,
-                      hintText: '#...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 3,
-                      controller: _orderColumnControllers['client_project']!,
-                      hintText: 'زبون / مشروع...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 2,
-                      controller: _orderColumnControllers['date']!,
-                      hintText: 'سنة-شهر...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 2,
-                      controller: _orderColumnControllers['total']!,
-                      hintText: 'المجموع...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 2,
-                      controller: _orderColumnControllers['advance']!,
-                      hintText: 'المدفوع...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 2,
-                      controller: _orderColumnControllers['remaining']!,
-                      hintText: 'المتبقي...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 2,
-                      controller: _orderColumnControllers['status']!,
-                      hintText: 'حالة الورشة...',
-                      context: context,
-                    ),
-                    _buildOrderFilterInputCell(
-                      flex: 2,
-                      controller: _orderColumnControllers['creator']!,
-                      hintText: 'المُدخل...',
-                      context: context,
-                    ),
-                    const Expanded(flex: 1, child: SizedBox.shrink()),
-                  ],
-                ),
-              ],
-            ),
+          // ── Date Range Filter Bar for Desktop ──
+          TableDateRangeFilterBar(
+            initialRange: _orderDateRange,
+            lang: lang,
+            compact: true,
+            onRangeChanged: (range) {
+              setState(() => _orderDateRange = range);
+            },
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+
+          // ── Desktop Resizable Table with zero vertical overflow ──
           Expanded(
             child: data.isEmpty
                 ? Center(
@@ -3490,177 +3661,28 @@ class _CommandeState extends State<Commande> {
                       ],
                     ),
                   )
-                : ListView.separated(
-                    controller: _scrollController,
-                    itemCount: data.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(height: 1, color: mutedColor.withOpacity(0.12)),
-                    itemBuilder: (context, index) {
-                      final order = data[index];
-                      final orderId = (order['id'] as num?)?.toInt() ?? 0;
-                      final clientFirst = order['firstname'] ?? '';
-                      final clientLast = order['lastname'] ?? '';
-                      final clientName = '$clientFirst $clientLast'.trim();
-                      final projectName = (order['project_name'] ?? '')
-                          .toString()
-                          .trim();
-                      final clientProject = projectName.isNotEmpty
-                          ? '$clientName ($projectName)'
-                          : (clientName.isEmpty ? 'زبون عام' : clientName);
-
-                      final netPayable =
-                          (order['net_payable'] as num?)?.toDouble() ??
-                          (order['total'] as num?)?.toDouble() ??
-                          0.0;
-                      final advance =
-                          (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
-                      final remaining = netPayable - advance;
-                      final status = (order['status'] ?? 'Pending').toString();
-                      final statusColor = _getStatusColor(status);
-                      final creator = _formatCreatorDisplay(
-                        order['creation_platform']?.toString(),
-                      );
-
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => _showOrderOptions(context, order),
-                          child: Container(
-                            height: 48,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  flex: 1,
-                                  child: Text(
-                                    '#$orderId',
-                                    style: const TextStyle(
-                                      color: Color(0xFF2563EB),
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    clientProject,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: contentColor,
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    formatDate(order),
-                                    style: TextStyle(
-                                      color: mutedColor,
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    netPayable.toStringAsFixed(0),
-                                    style: TextStyle(
-                                      color: contentColor,
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    advance.toStringAsFixed(0),
-                                    style: const TextStyle(
-                                      color: Color(0xFF10B981),
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    remaining.toStringAsFixed(0),
-                                    style: TextStyle(
-                                      color: remaining > 0
-                                          ? const Color(0xFFEF4444)
-                                          : const Color(0xFF10B981),
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.13),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        _translateStatus(status, lang),
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: statusColor,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    creator,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: mutedColor,
-                                      fontFamily: 'Cairo',
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 1,
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.settings_suggest_rounded,
-                                      size: 20,
-                                      color: Color(0xFF2563EB),
-                                    ),
-                                    onPressed: () =>
-                                        _showOrderOptions(context, order),
-                                    tooltip: 'خصائص وخيارات الطلبية',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                : Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: borderColor),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        child: ResizableColumnsTable(
+                          columns: columns,
+                          rows: rows,
+                          headerColor: const Color(0xFF2563EB).withValues(alpha: 0.08),
+                          filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          borderColor: borderColor,
+                          rowColor: cardColor,
+                          headerMinHeight: 38,
+                          filterRowMinHeight: 34,
+                          rowMinHeight: 46,
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
           ),
         ],

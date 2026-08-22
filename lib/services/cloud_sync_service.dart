@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:database_data/sql_database.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,9 +35,11 @@ class CloudSyncFeedback {
 
 class NoWorkshopBackupException implements Exception {
   final String message;
+
   const NoWorkshopBackupException([
     this.message = 'لم يتم العثور على نسخة احتياطية سابقة',
   ]);
+
   @override
   String toString() => message;
 }
@@ -56,8 +60,14 @@ class CloudSyncService {
   static const int _maxFirestoreDocumentBytes = 900000;
   static const int _maxLiveEventDocumentBytes = 650000;
   static const int _liveEventListenerLimit = 120;
+  static const int _mobileLiveEventListenerLimit = 20;
+  static const int _mobileDeltaListenerLimit = 40;
+  static const int _mobileStatusListenerLimit = 300;
+  static const int _mobileMeasurementListenerLimit = 150;
+  static const int _mobileTombstoneListenerLimit = 300;
   static const int _largeFieldInlineBytes = 180000;
   static const int _largeFieldPartCharacters = 180000;
+
   // Firestore sends a query result through Android's platform channel in one
   // message. Downloading every chunk in one query can exceed the Android heap
   // before Dart receives it, even though every individual chunk is small.
@@ -131,6 +141,8 @@ class CloudSyncService {
   DateTime? _latestFullSnapshotCompletedAt;
   final Set<String> _latestFullCompactedDeltaIds = <String>{};
   String? _lastAnnouncedListenerWorkshopId;
+  String? _listenersWorkshopId;
+  bool _listenersStarted = false;
   DateTime? _lastRealtimeErrorFeedbackAt;
   Future<void>? _activeBackup;
   Future<void>? _activeLiveEventUpload;
@@ -162,6 +174,11 @@ class CloudSyncService {
   String? _workshopId;
 
   String? get workshopId => _workshopId;
+
+  bool get _isMobilePlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
   String lastBackupUploadSummary = '';
   String lastCatalogUploadSummary = '';
   String lastRestoreSummary = 'لم يتم الاسترجاع بعد';
@@ -923,6 +940,8 @@ class CloudSyncService {
     _orderDeletionsListener = null;
     _pendingCloudChangePollTimer = null;
     _pendingTransactionUploadTimer = null;
+    _listenersStarted = false;
+    _listenersWorkshopId = null;
     _lastHandledBackupFingerprint = null;
     _lastHandledCatalogFingerprint = null;
     _ownUploadIds.clear();
@@ -933,6 +952,7 @@ class CloudSyncService {
     _handledLiveEventIds.clear();
     _processingLiveEventIds.clear();
     _liveEventApplyChain = Future<void>.value();
+    _allocationStatusApplyChain = Future<void>.value();
     _loadedLiveEventWorkshopId = null;
     _latestFullSnapshotCompletedAt = null;
     _latestFullCompactedDeltaIds.clear();
@@ -977,26 +997,40 @@ class CloudSyncService {
       return;
     }
 
-    // 1. الاستماع لتغييرات نسخة السحابة الكاملة (Latest Backup)
-    _listener?.cancel();
-    _listener = _firestore
-        .collection('workshops')
-        .doc(_workshopId)
-        .collection('backups')
-        .doc('latest')
-        .snapshots()
-        .listen(
-          (doc) async {
-            if (!doc.exists || doc.data() == null) return;
+    // main.dart and the authenticated shell can both request realtime sync
+    // during startup. Do not briefly create two sets of Firestore streams.
+    if (_listenersStarted && _listenersWorkshopId == _workshopId) {
+      return;
+    }
+    _listenersStarted = true;
+    _listenersWorkshopId = _workshopId;
 
-            final Map<String, dynamic> payload = Map<String, dynamic>.from(
-              doc.data() as Map,
-            );
-            await _applyLatestBackupUpdate(payload);
-          },
-          onError: _scheduleRealtimeListenerRetry,
-          onDone: _scheduleRealtimeListenerRetry,
-        );
+    // 1. Desktop can listen to the full backup document. On Android/iOS this
+    // document may contain the whole workshop database; encoding it through
+    // Firestore's platform channel can exceed the phone heap and kill the app.
+    _listener?.cancel();
+    if (!_isMobilePlatform) {
+      _listener = _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .collection('backups')
+          .doc('latest')
+          .snapshots()
+          .listen(
+            (doc) async {
+              if (!doc.exists || doc.data() == null) return;
+
+              final Map<String, dynamic> payload = Map<String, dynamic>.from(
+                doc.data() as Map,
+              );
+              await _applyLatestBackupUpdate(payload);
+            },
+            onError: _scheduleRealtimeListenerRetry,
+            onDone: _scheduleRealtimeListenerRetry,
+          );
+    } else {
+      _listener = null;
+    }
 
     // Small immutable delta documents carry only rows changed by a phone.
     // Keeping each delta as its own document means several phones can publish
@@ -1008,6 +1042,7 @@ class CloudSyncService {
         .doc(_workshopId)
         .collection('backups')
         .where('kind', isEqualTo: 'delta')
+        .limit(_isMobilePlatform ? _mobileDeltaListenerLimit : 200)
         .snapshots()
         .listen(
           _queueDeltaSnapshot,
@@ -1024,7 +1059,11 @@ class CloudSyncService {
         .doc(_workshopId)
         .collection('live_events')
         .orderBy('createdAt', descending: true)
-        .limit(_liveEventListenerLimit)
+        .limit(
+          _isMobilePlatform
+              ? _mobileLiveEventListenerLimit
+              : _liveEventListenerLimit,
+        )
         .snapshots()
         .listen(
           _queueLiveEventSnapshot,
@@ -1055,6 +1094,8 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('worker_allocations_status')
+        .orderBy('updated_at', descending: true)
+        .limit(_isMobilePlatform ? _mobileStatusListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) {
           if (_isRestoring) return;
@@ -1092,11 +1133,23 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('orders_status')
+        .orderBy('updated_at', descending: true)
+        .limit(_isMobilePlatform ? _mobileStatusListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
           try {
-            final didChange = await _db.syncOrdersStatusFromCloud();
+            final changedRows = snapshot.docChanges
+                .where((change) => change.type != DocumentChangeType.removed)
+                .map(
+                  (change) => <String, dynamic>{
+                    '__order_status_id': change.doc.id,
+                    ...?change.doc.data(),
+                  },
+                );
+            final didChange = await _db.syncOrdersStatusFromCloud(
+              changedRows: changedRows,
+            );
             if (didChange) {
               _dbUpdateController.add('order_status_updated');
             }
@@ -1112,11 +1165,23 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('confirmed_measurements')
+        .orderBy('updated_at', descending: true)
+        .limit(_isMobilePlatform ? _mobileMeasurementListenerLimit : 1000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
           try {
-            await _db.syncConfirmedMeasurementsFromCloud();
+            final changedRows = snapshot.docChanges
+                .where((change) => change.type != DocumentChangeType.removed)
+                .map(
+                  (change) => <String, dynamic>{
+                    '__measurement_id': change.doc.id,
+                    ...?change.doc.data(),
+                  },
+                );
+            await _db.syncConfirmedMeasurementsFromCloud(
+              changedRows: changedRows,
+            );
             _dbUpdateController.add('measurements_updated');
             // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
           } catch (e) {
@@ -1130,6 +1195,8 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('deleted_allocations')
+        .orderBy('deleted_at', descending: true)
+        .limit(_isMobilePlatform ? _mobileTombstoneListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
@@ -1161,6 +1228,8 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('deleted_orders')
+        .orderBy('deleted_at', descending: true)
+        .limit(_isMobilePlatform ? _mobileTombstoneListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
@@ -1844,6 +1913,8 @@ class CloudSyncService {
   }
 
   void _scheduleRealtimeListenerRetry([Object? error, StackTrace? stackTrace]) {
+    _listenersStarted = false;
+    _listenersWorkshopId = null;
     if (error != null) {
       print('Realtime listener stopped: $error');
       final now = DateTime.now();
@@ -2037,6 +2108,8 @@ class CloudSyncService {
     _orderDeletionsListener = null;
     _pendingCloudChangePollTimer = null;
     _pendingTransactionUploadTimer = null;
+    _listenersStarted = false;
+    _listenersWorkshopId = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)

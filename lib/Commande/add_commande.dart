@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:database_data/Screen/show_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/show_system_francais.dart';
 import 'package:database_data/Commande/Systeme/volet.dart' show SystemRoling;
 import 'package:database_data/Commande/window_painter.dart';
@@ -24,6 +25,7 @@ import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
 import 'package:database_data/Screen/tempered_glass_work_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CommandePage extends StatefulWidget {
   final SqlDatabase db;
@@ -163,6 +165,96 @@ class _CommandePageState extends State<CommandePage> {
   int _editProductsTotal = 0;
   bool _isApplyingBulkChange = false;
   final Set<WindowModel> _bulkSelectedProducts = <WindowModel>{};
+  bool _isBulkSelectionMode = false;
+  String _editOrderStatus = 'Pending';
+  bool _editOrderStatusLoaded = false;
+
+  String _normalizedOrderStatus(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('أ', 'ا')
+      .replaceAll('إ', 'ا')
+      .replaceAll('آ', 'ا')
+      .replaceAll(RegExp(r'\s+'), ' ');
+
+  bool get _bulkChangesAllowed {
+    if (widget.editCommandeId == null) return true;
+    if (!_editOrderStatusLoaded) return false;
+    final status = _normalizedOrderStatus(_editOrderStatus);
+    return status == 'pending' ||
+        status == 'draft' ||
+        status == 'new' ||
+        status == 'en attente' ||
+        status == 'en_attente' ||
+        status == 'في الانتظار' ||
+        status == 'confirmed' ||
+        status == 'confirme' ||
+        status == 'مؤكد' ||
+        status == 'مؤكدة';
+  }
+
+  void _showBulkChangesBlockedMessage() {
+    final status = _editOrderStatus.trim().isEmpty
+        ? 'غير معروفة'
+        : _editOrderStatus.trim();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.orange.shade800,
+        content: Text(
+          'لا يمكن تغيير السلسلة أو اللون أو الزجاج الآن. حالة الطلبية: '
+          '$status. هذه التغييرات متاحة فقط في الانتظار أو المؤكدة، '
+          'وبعد بدء التصنيع يجب إرجاع الطلبية يدويًا أولاً.',
+        ),
+      ),
+    );
+  }
+
+  bool _isBulkEditableProduct(WindowModel product) {
+    return !product.isReplaced &&
+        !product.isGlassWork &&
+        !product.isMoustiquaire &&
+        !product.isCaissonTunnel &&
+        !product.isShutterOnly;
+  }
+
+  void _enterBulkSelectionMode() {
+    if (_isBulkSelectionMode) return;
+    setState(() {
+      _isBulkSelectionMode = true;
+      _bulkSelectedProducts.clear();
+    });
+  }
+
+  void _exitBulkSelectionMode() {
+    setState(() {
+      _isBulkSelectionMode = false;
+      _bulkSelectedProducts.clear();
+    });
+  }
+
+  void _toggleBulkProduct(WindowModel product) {
+    if (!_isBulkEditableProduct(product)) return;
+    setState(() {
+      if (_bulkSelectedProducts.contains(product)) {
+        _bulkSelectedProducts.remove(product);
+      } else {
+        _bulkSelectedProducts.add(product);
+      }
+    });
+  }
+
+  void _toggleAllBulkProducts() {
+    final products = _bulkEditableProducts();
+    setState(() {
+      if (_bulkSelectedProducts.length == products.length) {
+        _bulkSelectedProducts.clear();
+      } else {
+        _bulkSelectedProducts
+          ..clear()
+          ..addAll(products);
+      }
+    });
+  }
 
   WindowModel? _highlightedProduct;
   final Map<WindowModel, GlobalKey> _cardKeys = {};
@@ -393,6 +485,8 @@ class _CommandePageState extends State<CommandePage> {
   void initState() {
     super.initState();
 
+    _editOrderStatusLoaded = widget.editCommandeId == null;
+
     quoteDateController.text = today;
     validDateController.text = DateFormat(
       'yyyy/MM/dd',
@@ -496,6 +590,10 @@ class _CommandePageState extends State<CommandePage> {
       final firstName = cmd['firstname']?.toString() ?? '';
       final lastName = cmd['lastname']?.toString() ?? '';
       setState(() {
+        _editOrderStatus = cmd['status']?.toString().trim().isNotEmpty == true
+            ? cmd['status'].toString()
+            : 'Pending';
+        _editOrderStatusLoaded = true;
         selectedClient = {
           'id': cmd['client_id'],
           'firstname': firstName,
@@ -988,7 +1086,6 @@ class _CommandePageState extends State<CommandePage> {
     await syncService.beginLocalWrite();
     try {
       if (!mounted) return;
-      final settings = Provider.of<AppSettingsProvider>(context, listen: false);
       double rawTotal = addedProducts
           .where((p) => !p.isReplaced)
           .fold(
@@ -996,10 +1093,10 @@ class _CommandePageState extends State<CommandePage> {
             (sum, p) =>
                 sum + ((p.manualPriceOverride ?? p.totalCost) * p.quantity),
           );
-      double total = rawTotal;
-      if (settings.costMethod == CostMethod.percentage) {
-        total = rawTotal * (1 + settings.profitMargin / 100);
-      }
+      // Each product price is already the final unit selling price produced
+      // by the pricing screen (including percentage/linear/square-meter
+      // rules). Applying the percentage again at order level doubles it.
+      final total = rawTotal;
 
       double remise = double.tryParse(remiseController.text) ?? 0.0;
       double tax = double.tryParse(taxController.text) ?? 0.0;
@@ -1096,7 +1193,9 @@ class _CommandePageState extends State<CommandePage> {
       await widget.db.saveCommandeWithDetails(
         idCommande: widget.editCommandeId,
         clientId: (clientId as num).toInt(),
-        status: 'Pending',
+        // Editing an existing order must never move it back to Pending. This
+        // preserves the production workflow state on every later save.
+        status: widget.editCommandeId == null ? 'Pending' : _editOrderStatus,
         description: controller.text,
         remise: remise,
         tva: tax,
@@ -1155,18 +1254,27 @@ class _CommandePageState extends State<CommandePage> {
   }
 
   List<WindowModel> _bulkEditableProducts() {
-    return addedProducts.where((product) {
-      return !product.isReplaced &&
-          !product.isGlassWork &&
-          !product.isMoustiquaire &&
-          !product.isCaissonTunnel &&
-          !product.isShutterOnly;
-    }).toList();
+    return addedProducts.where(_isBulkEditableProduct).toList();
   }
 
   Future<List<WindowModel>?> _selectBulkProducts({
     required String title,
   }) async {
+    if (widget.editCommandeId != null) {
+      final fresh = await widget.db.readCommandeWithClientById(
+        widget.editCommandeId!,
+      );
+      if (fresh != null && mounted) {
+        setState(() {
+          _editOrderStatus = fresh['status']?.toString() ?? _editOrderStatus;
+          _editOrderStatusLoaded = true;
+        });
+      }
+    }
+    if (!_bulkChangesAllowed) {
+      _showBulkChangesBlockedMessage();
+      return null;
+    }
     final products = _bulkEditableProducts();
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1174,102 +1282,22 @@ class _CommandePageState extends State<CommandePage> {
       );
       return null;
     }
-
-    final selected = <WindowModel>{
-      ..._bulkSelectedProducts.where(products.contains),
-    };
-    if (selected.isEmpty) selected.addAll(products);
-
-    final result = await showDialog<List<WindowModel>>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final allSelected = selected.length == products.length;
-            return AlertDialog(
-              title: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: 420,
-                child: Column(
-                  children: [
-                    CheckboxListTile(
-                      value: allSelected,
-                      tristate: false,
-                      title: const Text('تحديد الكل'),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (value) {
-                        setDialogState(() {
-                          if (value == true) {
-                            selected.addAll(products);
-                          } else {
-                            selected.clear();
-                          }
-                        });
-                      },
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: products.length,
-                        itemBuilder: (context, index) {
-                          final product = products[index];
-                          final title = product.manualNameOverride?.trim();
-                          return CheckboxListTile(
-                            value: selected.contains(product),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            title: Text(
-                              title == null || title.isEmpty
-                                  ? 'عنصر ${index + 1}'
-                                  : title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              '${product.width.toInt()} × ${product.height.toInt()} mm',
-                            ),
-                            onChanged: (value) {
-                              setDialogState(() {
-                                if (value == true) {
-                                  selected.add(product);
-                                } else {
-                                  selected.remove(product);
-                                }
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('إلغاء'),
-                ),
-                FilledButton(
-                  onPressed: selected.isEmpty
-                      ? null
-                      : () => Navigator.pop(dialogContext, selected.toList()),
-                  child: Text('متابعة (${selected.length})'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    if (result != null) {
-      _bulkSelectedProducts
-        ..clear()
-        ..addAll(result);
+    // Selection is intentionally performed on the cards themselves. The
+    // first press on a bulk action only opens selection mode; pressing the
+    // same action again applies it to the checked cards.
+    if (!_isBulkSelectionMode) {
+      _enterBulkSelectionMode();
+      return null;
     }
-    return result;
+
+    _bulkSelectedProducts.removeWhere((product) => !products.contains(product));
+    if (_bulkSelectedProducts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('حدد عنصرًا واحدًا على الأقل لتطبيق $title.')),
+      );
+      return null;
+    }
+    return _bulkSelectedProducts.toList(growable: false);
   }
 
   Future<T?> _runBulkOperation<T>(Future<T> Function() operation) async {
@@ -1304,51 +1332,198 @@ class _CommandePageState extends State<CommandePage> {
   double _readMapPrice(Map<String, dynamic>? value) {
     if (value == null) return 0.0;
     final raw =
-        value['calculated_price'] ?? value['price_dzd'] ?? value['price'];
+        value['calculated_price'] ??
+        value['price_dzd'] ??
+        value['price_per_meter'] ??
+        value['price'];
     return raw is num
         ? raw.toDouble()
         : double.tryParse(raw?.toString() ?? '') ?? 0.0;
   }
 
-  double _productProfileUnitPrice(WindowModel product) {
-    final sash = product.usesSlidingPrimaryProfiles
-        ? product.slidingSashOverride
-        : product.sashOverride;
-    return _readMapPrice(product.activeFrameOverride) + _readMapPrice(sash);
+  Future<double> _readSeriesLinearMeterPrice(WindowModel product) async {
+    final database = await widget.db.db;
+    if (database == null) return 0.0;
+    final series = product.usesSlidingPrimaryProfiles
+        ? product.activeSlidingSeries
+        : product.activeSeries;
+    if (series == null) return 0.0;
+    final rawColorId = product.selectedDbColor?['id'];
+    final colorId = rawColorId is num
+        ? rawColorId.toInt()
+        : int.tryParse(rawColorId?.toString() ?? '');
+    var price = colorId == null
+        ? 0.0
+        : await widget.db.getSeriesColorPrice(series.id, colorId);
+    if (price <= 0) {
+      final rows = await database.query(
+        'Series',
+        columns: const ['price_per_meter'],
+        where: 'id = ?',
+        whereArgs: [series.id],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) price = _readMapPrice(rows.first);
+    }
+    return price;
   }
 
-  double _productGlassCost(WindowModel product) {
-    if (product.allGlassCache.isEmpty) return 0.0;
-    var total = 0.0;
-    for (final zone in product.zones) {
-      if (zone.content == ZoneContent.empty) continue;
-      final area = zone.boundary.width / 1000 * zone.boundary.height / 1000;
-      total += area * product.calculateTotalGlassPricePerSqmForZone(zone);
+  Future<double> _readShutterSquareMeterPrice(WindowModel product) async {
+    final database = await widget.db.db;
+    if (database == null) return 0.0;
+    final override = product.componentOverrides['الشرائح (Lames)'];
+    final bladeName = override?['name']?.toString() ?? product.shutterLame;
+    final subtype = override?['shutter_subtype']?.toString() ?? 'normal';
+    final rawColorId = product.selectedDbColor?['id'];
+    final colorId = rawColorId is num
+        ? rawColorId.toInt()
+        : int.tryParse(rawColorId?.toString() ?? '');
+    final prices = await database.query('ShutterSqmPrices');
+    var price = WindowModel.resolveShutterSqmPrice(
+      bladeName: bladeName,
+      bladeSubtype: subtype,
+      colorId: colorId,
+      prices: prices,
+    );
+    if (price <= 0 && bladeName.trim().isNotEmpty) {
+      final rows = await database.query(
+        'ShutterComponents',
+        columns: const ['price'],
+        where: 'LOWER(name) = ?',
+        whereArgs: [bladeName.trim().toLowerCase()],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) price = _readMapPrice(rows.first);
     }
-    return total;
+    return price;
   }
 
-  void _applyPriceDelta(
-    WindowModel product, {
-    required double oldGlassCost,
-    required double oldProfilePrice,
-  }) {
-    final oldUnitPrice = product.manualPriceOverride ?? product.totalCost;
-    final perimeterMeters = (2 * product.width + 2 * product.height) / 1000.0;
-    final newGlassCost = _productGlassCost(product);
-    final newProfilePrice = _productProfileUnitPrice(product);
-    final delta =
-        (newGlassCost - oldGlassCost) +
-        ((newProfilePrice - oldProfilePrice) * perimeterMeters);
-    var updated = oldUnitPrice + delta;
-    if (oldUnitPrice <= 0 && updated <= 0) {
-      updated = newGlassCost + newProfilePrice * perimeterMeters;
+  Map<String, bool> _bulkPricingVariants(WindowModel product) {
+    final isMotor = product.shutterMechanism == 'محرك';
+    final isCrank =
+        product.shutterMechanism.contains('مان') ||
+        product.shutterMechanism.contains('منا');
+    return {
+      'Verrou Central': product.useVerrouCentral,
+      'System OB': product.useSystemOB,
+      'Demi System OB': product.useDemiOB,
+      'كيت فولي موتور (Kit Volet Moteur)': isMotor,
+      'كيت فولي مانيفر (Kit Volet Manivelle)': isCrank,
+      'كيت مانيفر (Kit Manivelle)': isCrank,
+      'كيت فولي (Kit Volet)': !isMotor && !isCrank,
+      'طانديم (Tandem)': product.isCaissonTunnel,
+      'أغطية الشفرات (Bouchons Lames)': product.componentOverrides.containsKey(
+        'أغطية الشفرات (Bouchons Lames)',
+      ),
+    };
+  }
+
+  /// Rebuilds the complete selling price after a bulk change. A price delta
+  /// is unsafe here because changing series can also change mullions, kits,
+  /// parcloses, glass and the selected pricing basis at the same time.
+  Future<void> _recalculateProductSellingPrice(WindowModel product) async {
+    final bom = ComponentCalculator.generateBom(
+      product,
+      _bulkPricingVariants(product),
+    ).where((item) => item.isActive && item.requiredQuantity > 0).toList();
+    if (bom.isEmpty) return;
+
+    var profileCost = 0.0;
+    var glassCost = 0.0;
+    var shutterCost = 0.0;
+    var jointCost = 0.0;
+    var otherProfileCost = 0.0;
+    var mainProfileMeters = 0.0;
+    var accessorySellingCost = 0.0;
+
+    for (final item in bom) {
+      final itemTotal = item.total;
+      if (item.category == 'profile') {
+        profileCost += itemTotal;
+        final name = item.originalName.toLowerCase();
+        final isMain =
+            name.contains('إطار') ||
+            name.contains('frame') ||
+            name.contains('cadre') ||
+            name.contains('ظلفة') ||
+            name.contains('sash') ||
+            name.contains('ouvrant') ||
+            name.contains('تقسيم') ||
+            name.contains('mullion') ||
+            name.contains('باتمو') ||
+            name.contains('batmo');
+        final isRenfort = name.contains('حديد') || name.contains('renfort');
+        if (isMain && !isRenfort) {
+          if (item.pieces != null && item.pieces!.isNotEmpty) {
+            mainProfileMeters += item.pieces!.fold(0.0, (sum, p) => sum + p);
+          } else if (item.length != null) {
+            mainProfileMeters += item.length! / 1000 * item.quantity;
+          }
+        } else {
+          otherProfileCost += itemTotal;
+        }
+      } else if (item.category == 'glass' || item.category == 'panneau') {
+        glassCost += itemTotal;
+      } else if (item.category == 'shutter') {
+        shutterCost += itemTotal;
+      } else if (item.category == 'joint') {
+        jointCost += itemTotal;
+      } else if (item.category == 'accessory' || item.category == 'other') {
+        final override = product.componentOverrides[item.originalName];
+        if (override is Map &&
+            (override['is_selling_calculated'] == 1 ||
+                override['is_selling_calculated'] == true)) {
+          accessorySellingCost += itemTotal;
+        }
+      }
     }
-    if (updated <= 0) return;
-    if (product.manualPriceOverride != null) {
-      product.manualPriceOverride = updated;
-    } else {
-      product.totalCost = updated;
+
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final prefs = await SharedPreferences.getInstance();
+    final pricePerSqm = prefs.getDouble('app_price_per_sqm') ?? 0.0;
+    final marginFactor = 1 + settings.profitMargin / 100;
+    final areaSqm = product.width / 1000 * product.height / 1000;
+    final quantity = product.quantity <= 0 ? 1 : product.quantity;
+    final linearMeterPrice = await _readSeriesLinearMeterPrice(product);
+    final shutterSqmPrice = await _readShutterSquareMeterPrice(product);
+    var shutterSelling = shutterSqmPrice > 0
+        ? shutterSqmPrice * areaSqm * quantity
+        : shutterCost;
+
+    double profileSelling;
+    double glassSelling = glassCost;
+    double accessorySelling = accessorySellingCost;
+    double jointSelling = jointCost;
+    switch (settings.costMethod) {
+      case CostMethod.percentage:
+        profileSelling = profileCost * marginFactor;
+        shutterSelling = shutterCost * marginFactor;
+        accessorySelling *= marginFactor;
+        jointSelling *= marginFactor;
+        break;
+      case CostMethod.squareMeter:
+        final windowPrice = pricePerSqm * areaSqm * quantity;
+        profileSelling = (windowPrice - glassCost).clamp(0.0, double.infinity);
+        break;
+      case CostMethod.linearMeter:
+        profileSelling =
+            mainProfileMeters * linearMeterPrice + otherProfileCost;
+        break;
+    }
+
+    final totalSelling =
+        profileSelling +
+        glassSelling +
+        shutterSelling +
+        accessorySelling +
+        jointSelling;
+    final rawTotal = bom.fold<double>(0.0, (sum, item) => sum + item.total);
+    final unitPrice = (totalSelling > 0 ? totalSelling : rawTotal) / quantity;
+    if (unitPrice.isFinite && unitPrice >= 0) {
+      // Bulk changes intentionally replace the old calculated/manual price:
+      // keeping the old override would make the invoice display stale data.
+      product.manualPriceOverride = null;
+      product.totalCost = unitPrice;
     }
   }
 
@@ -1417,10 +1592,6 @@ class _CommandePageState extends State<CommandePage> {
                         final changed = await _runBulkOperation<int>(() async {
                           var count = 0;
                           for (final product in selected) {
-                            final oldGlass = _productGlassCost(product);
-                            final oldProfile = _productProfileUnitPrice(
-                              product,
-                            );
                             final allowed = product.availableColors.any(
                               (color) =>
                                   color['id']?.toString() ==
@@ -1431,17 +1602,14 @@ class _CommandePageState extends State<CommandePage> {
                             await product.refreshSectionPricesForSelectedColor(
                               notify: false,
                             );
-                            _applyPriceDelta(
-                              product,
-                              oldGlassCost: oldGlass,
-                              oldProfilePrice: oldProfile,
-                            );
+                            await _recalculateProductSellingPrice(product);
                             count++;
                           }
                           if (mounted) setState(() {});
                           return count;
                         });
                         if (mounted && changed != null) {
+                          _exitBulkSelectionMode();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               backgroundColor: Colors.green.shade700,
@@ -1538,8 +1706,6 @@ class _CommandePageState extends State<CommandePage> {
             .cast<AluminumSeries?>()
             .firstWhere((series) => series != null, orElse: () => null);
         if (localSeries == null) continue;
-        final oldGlass = _productGlassCost(product);
-        final oldProfile = _productProfileUnitPrice(product);
         if (isSlidingSeriesForDrawing(localSeries)) {
           if (product.systemMode == 'sliding') {
             await product.setActiveSeries(localSeries);
@@ -1553,17 +1719,14 @@ class _CommandePageState extends State<CommandePage> {
           product.loadedSeriesId = localSeries.id;
           product.loadedSeriesName = localSeries.name;
         }
-        _applyPriceDelta(
-          product,
-          oldGlassCost: oldGlass,
-          oldProfilePrice: oldProfile,
-        );
+        await _recalculateProductSellingPrice(product);
         count++;
       }
       if (mounted) setState(() {});
       return count;
     });
     if (mounted && changed != null) {
+      _exitBulkSelectionMode();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.green.shade700,
@@ -1828,20 +1991,15 @@ class _CommandePageState extends State<CommandePage> {
       var count = 0;
       for (final product in selected) {
         if (product.zones.isEmpty) continue;
-        final oldGlass = _productGlassCost(product);
-        final oldProfile = _productProfileUnitPrice(product);
         await product.applyGlassSpecificationToAllZones(spec);
-        _applyPriceDelta(
-          product,
-          oldGlassCost: oldGlass,
-          oldProfilePrice: oldProfile,
-        );
+        await _recalculateProductSellingPrice(product);
         count++;
       }
       if (mounted) setState(() {});
       return count;
     });
     if (mounted && changed != null) {
+      _exitBulkSelectionMode();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.green.shade700,
@@ -2008,9 +2166,84 @@ class _CommandePageState extends State<CommandePage> {
 
   // ==============================================================================
 
+  Widget _buildBulkActionsPanel({required bool isDark}) {
+    final products = _bulkEditableProducts();
+    if (products.isEmpty) return const SizedBox.shrink();
+    final allSelected =
+        products.isNotEmpty && products.every(_bulkSelectedProducts.contains);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElegantAnimatedButton(
+          gradientColors: const [Colors.deepPurple, Colors.purpleAccent],
+          onPressed: _isApplyingBulkChange ? null : _showApplyBulkColorDialog,
+          icon: const Icon(Icons.palette_outlined, color: Colors.white),
+          label: const Text(
+            'تغيير لون العناصر',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          height: 50,
+        ),
+        const SizedBox(height: 8),
+        ElegantAnimatedButton(
+          gradientColors: const [Colors.indigo, Colors.blueAccent],
+          onPressed: _isApplyingBulkChange ? null : _showBulkSeriesDialog,
+          icon: const Icon(Icons.layers_outlined, color: Colors.white),
+          label: const Text(
+            'تغيير السلسلة',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          height: 50,
+        ),
+        const SizedBox(height: 8),
+        ElegantAnimatedButton(
+          gradientColors: const [Colors.teal, Colors.green],
+          onPressed: _isApplyingBulkChange ? null : _showBulkGlassDialog,
+          icon: const Icon(Icons.window_outlined, color: Colors.white),
+          label: const Text(
+            'تغيير الزجاج',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          height: 50,
+        ),
+        if (_isBulkSelectionMode) ...[
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? Colors.blueGrey : Colors.blue.shade200,
+              ),
+            ),
+            child: Column(
+              children: [
+                CheckboxListTile(
+                  value: allSelected,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(
+                    'تحديد الكل (${products.length})',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text('تم تحديد ${_bulkSelectedProducts.length}'),
+                  onChanged: (_) => _toggleAllBulkProducts(),
+                ),
+                TextButton.icon(
+                  onPressed: _exitBulkSelectionMode,
+                  icon: const Icon(Icons.close),
+                  label: const Text('إلغاء التحديد'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<AppSettingsProvider>(context);
     final double rawTotal = addedProducts
         .where((p) => !p.isReplaced)
         .fold(
@@ -2018,10 +2251,7 @@ class _CommandePageState extends State<CommandePage> {
           (sum, p) =>
               sum + ((p.manualPriceOverride ?? p.totalCost) * p.quantity),
         );
-    double finalTotal = rawTotal;
-    if (settings.costMethod == CostMethod.percentage) {
-      finalTotal = rawTotal * (1 + settings.profitMargin / 100);
-    }
+    final finalTotal = rawTotal;
     final double remise = double.tryParse(remiseController.text) ?? 0.0;
     final double taxVal = double.tryParse(taxController.text) ?? 0.0;
     final double calculatedTax = (finalTotal * taxVal) / 100;
@@ -2047,25 +2277,6 @@ class _CommandePageState extends State<CommandePage> {
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         actions: [
-          if (addedProducts.isNotEmpty) ...[
-            IconButton(
-              icon: const Icon(Icons.palette, color: Colors.purpleAccent),
-              onPressed: _isApplyingBulkChange
-                  ? null
-                  : _showApplyBulkColorDialog,
-              tooltip: 'تغيير لون عناصر الطلبية',
-            ),
-            IconButton(
-              icon: const Icon(Icons.layers, color: Colors.blueAccent),
-              onPressed: _isApplyingBulkChange ? null : _showBulkSeriesDialog,
-              tooltip: 'تغيير سلسلة عناصر الطلبية',
-            ),
-            IconButton(
-              icon: const Icon(Icons.window, color: Colors.teal),
-              onPressed: _isApplyingBulkChange ? null : _showBulkGlassDialog,
-              tooltip: 'تغيير زجاج عناصر الطلبية',
-            ),
-          ],
           if (addedProducts.length > 1)
             IconButton(
               icon: Icon(
@@ -2203,38 +2414,6 @@ class _CommandePageState extends State<CommandePage> {
             if (_isLoadingEditProducts) ...[
               _buildEditItemsLoadingCard(),
               const SizedBox(height: 15),
-            ],
-
-            if (addedProducts.isNotEmpty && !_isReordering) ...[
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _isApplyingBulkChange
-                        ? null
-                        : _showApplyBulkColorDialog,
-                    icon: const Icon(Icons.palette_outlined, size: 20),
-                    label: const Text('تغيير اللون'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _isApplyingBulkChange
-                        ? null
-                        : _showBulkSeriesDialog,
-                    icon: const Icon(Icons.layers_outlined, size: 20),
-                    label: const Text('تغيير السلسلة'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _isApplyingBulkChange
-                        ? null
-                        : _showBulkGlassDialog,
-                    icon: const Icon(Icons.window_outlined, size: 20),
-                    label: const Text('تغيير الزجاج'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
             ],
 
             if (_isReordering) ...[
@@ -2395,6 +2574,10 @@ class _CommandePageState extends State<CommandePage> {
                           }
                         },
                 ),
+              if (addedProducts.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildBulkActionsPanel(isDark: isDark),
+              ],
               const SizedBox(height: 15),
               ...addedProducts.map((p) => _buildProductCard(p)),
               if (addedProducts.isNotEmpty) const SizedBox(height: 15),
@@ -3068,6 +3251,8 @@ class _CommandePageState extends State<CommandePage> {
 
     final cardKey = _cardKeys.putIfAbsent(p, () => GlobalKey());
     bool isHighlighted = _highlightedProduct == p;
+    final isBulkSelectable = _isBulkEditableProduct(p);
+    final isBulkSelected = _bulkSelectedProducts.contains(p);
 
     final bool isCaisson =
         p.isCaissonTunnel ||
@@ -3109,8 +3294,10 @@ class _CommandePageState extends State<CommandePage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
         side: BorderSide(
-          color: isHighlighted ? Colors.blue.shade400 : Colors.transparent,
-          width: isHighlighted ? 2.5 : 0,
+          color: isBulkSelected
+              ? Colors.deepPurple
+              : (isHighlighted ? Colors.blue.shade400 : Colors.transparent),
+          width: isBulkSelected ? 3 : (isHighlighted ? 2.5 : 0),
         ),
       ),
       color: isDark
@@ -3120,575 +3307,602 @@ class _CommandePageState extends State<CommandePage> {
           : ((p.isReplaced && !isCaisson)
                 ? const Color(0xFFF5F5F5)
                 : Colors.white),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CustomPaint(
-              foregroundPainter: (p.isReplaced && !isCaisson)
-                  ? CardCrossPainter()
-                  : null,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          isCaisson
-                              ? (() {
-                                  String dimSummary = '';
-                                  if (p.caissonPayload != null &&
-                                      p.caissonPayload!['items'] != null) {
-                                    final itemsList =
-                                        (p.caissonPayload!['items'] as List);
-                                    if (itemsList.isNotEmpty) {
-                                      final firstMap = itemsList.first as Map;
-                                      final double lengthMm =
-                                          (firstMap['lengthMm'] as num? ?? 0.0)
-                                              .toDouble();
-                                      final int sizeCm =
-                                          (firstMap['sizeCm'] as num? ?? 25)
-                                              .toInt();
-                                      final String lenStr = (lengthMm / 10.0)
-                                          .toStringAsFixed(0);
-                                      dimSummary =
-                                          ' ($lenStr سم - صندوق $sizeCm سم)';
+      child: InkWell(
+        onTap: _isBulkSelectionMode && isBulkSelectable
+            ? () => _toggleBulkProduct(p)
+            : null,
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CustomPaint(
+                foregroundPainter: (p.isReplaced && !isCaisson)
+                    ? CardCrossPainter()
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        if (_isBulkSelectionMode && isBulkSelectable)
+                          Checkbox(
+                            value: isBulkSelected,
+                            onChanged: (_) => _toggleBulkProduct(p),
+                          ),
+                        Expanded(
+                          child: Text(
+                            isCaisson
+                                ? (() {
+                                    String dimSummary = '';
+                                    if (p.caissonPayload != null &&
+                                        p.caissonPayload!['items'] != null) {
+                                      final itemsList =
+                                          (p.caissonPayload!['items'] as List);
+                                      if (itemsList.isNotEmpty) {
+                                        final firstMap = itemsList.first as Map;
+                                        final double lengthMm =
+                                            (firstMap['lengthMm'] as num? ??
+                                                    0.0)
+                                                .toDouble();
+                                        final int sizeCm =
+                                            (firstMap['sizeCm'] as num? ?? 25)
+                                                .toInt();
+                                        final String lenStr = (lengthMm / 10.0)
+                                            .toStringAsFixed(0);
+                                        dimSummary =
+                                            ' ($lenStr سم - صندوق $sizeCm سم)';
+                                      }
                                     }
-                                  }
-                                  return '${invoiceLine.title}$dimSummary';
-                                })()
-                              : invoiceLine.title,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: (p.isReplaced && !isCaisson)
-                                ? Colors.grey
-                                : Colors.blueAccent,
+                                    return '${invoiceLine.title}$dimSummary';
+                                  })()
+                                : invoiceLine.title,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: (p.isReplaced && !isCaisson)
+                                  ? Colors.grey
+                                  : Colors.blueAccent,
+                            ),
                           ),
                         ),
-                      ),
-                      Row(
-                        children: [
-                          if (!p.isReplaced) ...[
-                            IconButton(
-                              icon: const Icon(
-                                Icons.upgrade,
-                                color: Colors.deepOrange,
+                        Row(
+                          children: [
+                            if (!p.isReplaced) ...[
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.upgrade,
+                                  color: Colors.deepOrange,
+                                ),
+                                tooltip: t('تعديل (Amélioration)'),
+                                onPressed: () {
+                                  _showUpgradeDialog(p);
+                                },
                               ),
-                              tooltip: t('تعديل (Amélioration)'),
-                              onPressed: () {
-                                _showUpgradeDialog(p);
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.table_chart,
-                                color: Colors.purple,
-                              ),
-                              tooltip: 'جدول المقاسات (Edit Table Details)',
-                              onPressed: () async {
-                                final result = await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        OrderTableEditScreen(products: [p]),
-                                  ),
-                                );
-                                if (result == true) {
-                                  if (mounted) {
-                                    setState(() {
-                                      _highlightedProduct = p;
-                                    });
-                                    _scrollToHighlightedProduct();
-                                  }
-                                }
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () async {
-                                if (p.isCaissonTunnel ||
-                                    (p.manualNameOverride?.contains(
-                                          'Caisson Tunnel',
-                                        ) ==
-                                        true)) {
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.table_chart,
+                                  color: Colors.purple,
+                                ),
+                                tooltip: 'جدول المقاسات (Edit Table Details)',
+                                onPressed: () async {
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => CaissonTunnelScreen(
-                                        initialPayload: p.caissonPayload,
-                                      ),
+                                      builder: (context) =>
+                                          OrderTableEditScreen(products: [p]),
                                     ),
                                   );
-                                  if (result != null &&
-                                      result is Map<String, dynamic> &&
-                                      mounted) {
-                                    final int cBars =
-                                        (result['grandTotalCaissonBars']
-                                            as int? ??
-                                        0);
-                                    final int bBars =
-                                        (result['grandTotalBottomCoverBars']
-                                            as int? ??
-                                        0);
-                                    final int pairs =
-                                        (result['grandTotalPairs'] as int? ??
-                                        0);
-
-                                    // Compute suggested price from DB prices
-                                    double suggestedPrice = 0.0;
-                                    try {
-                                      final ctPrices = await widget.db
-                                          .getCaissonTunnelPrices();
-                                      if (ctPrices.isNotEmpty) {
-                                        // Use first color entry (or match by color if set)
-                                        final priceRow = ctPrices.first;
-                                        final profileBar =
-                                            (priceRow['profile_price_per_bar']
-                                                        as num? ??
-                                                    0)
-                                                .toDouble();
-                                        final bottomBar =
-                                            (priceRow['bottom_cover_price_per_bar']
-                                                        as num? ??
-                                                    0)
-                                                .toDouble();
-                                        suggestedPrice =
-                                            (cBars * profileBar) +
-                                            (bBars * bottomBar);
-                                      }
-                                    } catch (_) {}
-
+                                  if (result == true) {
                                     if (mounted) {
                                       setState(() {
-                                        p.isCaissonTunnel = true;
-                                        p.isReplaced = false;
-                                        p.manualNameOverride = 'Caisson Tunnel';
-                                        p.description =
-                                            'Kit: ${result['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
-                                        p.caissonPayload = result;
-                                        if (suggestedPrice > 0 &&
-                                            p.manualPriceOverride == null) {
-                                          p.manualPriceOverride =
-                                              suggestedPrice;
-                                        }
                                         _highlightedProduct = p;
                                       });
-                                      _saveLastSettings(p);
                                       _scrollToHighlightedProduct();
                                     }
                                   }
-                                  return;
-                                }
-
-                                if (p.isGlassWork ||
-                                    (p.manualNameOverride?.contains(
-                                          'Verre Trempé',
-                                        ) ==
-                                        true)) {
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          TemperedGlassWorkScreen(
-                                            initialPayload: p.glassWorkPayload,
-                                          ),
-                                    ),
-                                  );
-                                  if (result is Map<String, dynamic> &&
-                                      mounted) {
-                                    final models = _modelsFromGlassWorkPayload(
-                                      result,
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () async {
+                                  if (p.isCaissonTunnel ||
+                                      (p.manualNameOverride?.contains(
+                                            'Caisson Tunnel',
+                                          ) ==
+                                          true)) {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            CaissonTunnelScreen(
+                                              initialPayload: p.caissonPayload,
+                                            ),
+                                      ),
                                     );
-                                    setState(() {
-                                      _replaceProductWithIndependentModels(
-                                        p,
-                                        models,
-                                      );
-                                    });
-                                    if (models.isNotEmpty) {
-                                      _saveLastSettings(models.last);
-                                    }
-                                    _scrollToHighlightedProduct();
-                                  }
-                                  return;
-                                }
+                                    if (result != null &&
+                                        result is Map<String, dynamic> &&
+                                        mounted) {
+                                      final int cBars =
+                                          (result['grandTotalCaissonBars']
+                                              as int? ??
+                                          0);
+                                      final int bBars =
+                                          (result['grandTotalBottomCoverBars']
+                                              as int? ??
+                                          0);
+                                      final int pairs =
+                                          (result['grandTotalPairs'] as int? ??
+                                          0);
 
-                                if (p.isMoustiquaire ||
-                                    (p.manualNameOverride?.contains(
-                                          'Moustiquaire',
-                                        ) ==
-                                        true) ||
-                                    (p.manualNameOverride?.contains(
-                                          'موستيكير',
-                                        ) ==
-                                        true)) {
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => MoustiquaireScreen(
-                                        initialPayload: p.moustiquairePayload,
-                                      ),
-                                    ),
-                                  );
-                                  if (result is Map<String, dynamic> &&
-                                      mounted) {
-                                    final models =
-                                        _modelsFromMoustiquairePayload(result);
-                                    setState(() {
-                                      _replaceProductWithIndependentModels(
-                                        p,
-                                        models,
-                                      );
-                                    });
-                                    if (models.isNotEmpty) {
-                                      _saveLastSettings(models.last);
-                                    }
-                                    _scrollToHighlightedProduct();
-                                  }
-                                  return;
-                                }
+                                      // Compute suggested price from DB prices
+                                      double suggestedPrice = 0.0;
+                                      try {
+                                        final ctPrices = await widget.db
+                                            .getCaissonTunnelPrices();
+                                        if (ctPrices.isNotEmpty) {
+                                          // Use first color entry (or match by color if set)
+                                          final priceRow = ctPrices.first;
+                                          final profileBar =
+                                              (priceRow['profile_price_per_bar']
+                                                          as num? ??
+                                                      0)
+                                                  .toDouble();
+                                          final bottomBar =
+                                              (priceRow['bottom_cover_price_per_bar']
+                                                          as num? ??
+                                                      0)
+                                                  .toDouble();
+                                          suggestedPrice =
+                                              (cBars * profileBar) +
+                                              (bBars * bottomBar);
+                                        }
+                                      } catch (_) {}
 
-                                // العودة إلى الرسم لتعديل النافذة أو الستار
-                                if (p.isShutterOnly) {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          SystemRoling(model: p),
-                                    ),
-                                  );
-                                } else {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => WindowView(
-                                        model: p,
-                                        systemMode: 'mixed',
-                                      ),
-                                    ),
-                                  );
-                                }
-                                _saveLastSettings(p);
-                                // بمجرد العودة (حتى لو لم يضغط إضافة للطلبية، فالمودل يعدل مباشرة في الذاكرة)
-                                // نعمل setState لتحديث الصورة والتكلفة ونحدد الإضاءة والتحريك
-                                setState(() {
-                                  _highlightedProduct = p;
-                                });
-                                _scrollToHighlightedProduct();
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.copy, color: Colors.green),
-                              tooltip: 'تكرار (Duplicate)',
-                              onPressed: () {
-                                final cloned = WindowModel(db: p.db);
-                                final map = p.toMap();
-                                applyWindowModelFromMap(cloned, map);
-                                cloned.availableSystems = List.from(
-                                  p.availableSystems,
-                                );
-                                cloned.activeSeries = p.activeSeries;
-                                cloned.availableColors = List.from(
-                                  p.availableColors,
-                                );
-                                cloned.quantity =
-                                    1; // Default to 1 for the new clone
-                                setState(() {
-                                  addedProducts.add(cloned);
-                                  _highlightedProduct = cloned;
-                                });
-                                _saveLastSettings(cloned);
-                                _scrollToHighlightedProduct();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      t('تم استنساخ النافذة بنجاح'),
-                                    ),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: Text(t('حذف النافذة')),
-                                  content: Text(
-                                    t(
-                                      'هل أنت متأكد أنك تريد حذف هذه النافذة من الطلبية؟',
-                                    ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(ctx),
-                                      child: Text(t('إلغاء')),
-                                    ),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      onPressed: () {
+                                      if (mounted) {
                                         setState(() {
-                                          addedProducts.remove(p);
+                                          p.isCaissonTunnel = true;
+                                          p.isReplaced = false;
+                                          p.manualNameOverride =
+                                              'Caisson Tunnel';
+                                          p.description =
+                                              'Kit: ${result['kitType']} | Barres caisson: $cBars (6m) | Fond: $bBars (6m) | Paires: $pairs';
+                                          p.caissonPayload = result;
+                                          if (suggestedPrice > 0 &&
+                                              p.manualPriceOverride == null) {
+                                            p.manualPriceOverride =
+                                                suggestedPrice;
+                                          }
+                                          _highlightedProduct = p;
                                         });
-                                        Navigator.pop(ctx);
-                                      },
-                                      child: Text(t('Delete')),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const Divider(),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ...invoiceDetails.map(
-                              (detail) => Padding(
-                                padding: const EdgeInsets.only(bottom: 3),
-                                child: _detailRichText(
-                                  detail,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: p.isReplaced
-                                        ? Colors.grey
-                                        : (isDark
-                                              ? Colors.white70
-                                              : Colors.black87),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            if (p.isReplaced)
-                              Text(
-                                '${t('الكمية:')} ${p.quantity}',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey,
-                                ),
-                              )
-                            else
-                              Wrap(
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  Text(
-                                    t('الكمية: '),
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  QuantityInput(
-                                    initialValue: p.quantity,
-                                    onChanged: (val) {
+                                        _saveLastSettings(p);
+                                        _scrollToHighlightedProduct();
+                                      }
+                                    }
+                                    return;
+                                  }
+
+                                  if (p.isGlassWork ||
+                                      (p.manualNameOverride?.contains(
+                                            'Verre Trempé',
+                                          ) ==
+                                          true)) {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            TemperedGlassWorkScreen(
+                                              initialPayload:
+                                                  p.glassWorkPayload,
+                                            ),
+                                      ),
+                                    );
+                                    if (result is Map<String, dynamic> &&
+                                        mounted) {
+                                      final models =
+                                          _modelsFromGlassWorkPayload(result);
                                       setState(() {
-                                        p.quantity = val;
+                                        _replaceProductWithIndependentModels(
+                                          p,
+                                          models,
+                                        );
                                       });
-                                    },
+                                      if (models.isNotEmpty) {
+                                        _saveLastSettings(models.last);
+                                      }
+                                      _scrollToHighlightedProduct();
+                                    }
+                                    return;
+                                  }
+
+                                  if (p.isMoustiquaire ||
+                                      (p.manualNameOverride?.contains(
+                                            'Moustiquaire',
+                                          ) ==
+                                          true) ||
+                                      (p.manualNameOverride?.contains(
+                                            'موستيكير',
+                                          ) ==
+                                          true)) {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            MoustiquaireScreen(
+                                              initialPayload:
+                                                  p.moustiquairePayload,
+                                            ),
+                                      ),
+                                    );
+                                    if (result is Map<String, dynamic> &&
+                                        mounted) {
+                                      final models =
+                                          _modelsFromMoustiquairePayload(
+                                            result,
+                                          );
+                                      setState(() {
+                                        _replaceProductWithIndependentModels(
+                                          p,
+                                          models,
+                                        );
+                                      });
+                                      if (models.isNotEmpty) {
+                                        _saveLastSettings(models.last);
+                                      }
+                                      _scrollToHighlightedProduct();
+                                    }
+                                    return;
+                                  }
+
+                                  // العودة إلى الرسم لتعديل النافذة أو الستار
+                                  if (p.isShutterOnly) {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            SystemRoling(model: p),
+                                      ),
+                                    );
+                                  } else {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => WindowView(
+                                          model: p,
+                                          systemMode: 'mixed',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  _saveLastSettings(p);
+                                  // بمجرد العودة (حتى لو لم يضغط إضافة للطلبية، فالمودل يعدل مباشرة في الذاكرة)
+                                  // نعمل setState لتحديث الصورة والتكلفة ونحدد الإضاءة والتحريك
+                                  setState(() {
+                                    _highlightedProduct = p;
+                                  });
+                                  _scrollToHighlightedProduct();
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.copy,
+                                  color: Colors.green,
+                                ),
+                                tooltip: 'تكرار (Duplicate)',
+                                onPressed: () {
+                                  final cloned = WindowModel(db: p.db);
+                                  final map = p.toMap();
+                                  applyWindowModelFromMap(cloned, map);
+                                  cloned.availableSystems = List.from(
+                                    p.availableSystems,
+                                  );
+                                  cloned.activeSeries = p.activeSeries;
+                                  cloned.availableColors = List.from(
+                                    p.availableColors,
+                                  );
+                                  cloned.quantity =
+                                      1; // Default to 1 for the new clone
+                                  setState(() {
+                                    addedProducts.add(cloned);
+                                    _highlightedProduct = cloned;
+                                  });
+                                  _saveLastSettings(cloned);
+                                  _scrollToHighlightedProduct();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        t('تم استنساخ النافذة بنجاح'),
+                                      ),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: Text(t('حذف النافذة')),
+                                    content: Text(
+                                      t(
+                                        'هل أنت متأكد أنك تريد حذف هذه النافذة من الطلبية؟',
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: Text(t('إلغاء')),
+                                      ),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            addedProducts.remove(p);
+                                          });
+                                          Navigator.pop(ctx);
+                                        },
+                                        child: Text(t('Delete')),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 8),
-                                ],
-                              ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${t('المجموع:')} ${((p.manualPriceOverride ?? p.totalCost) * p.quantity).toStringAsFixed(2)} ${t('دج')}',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: p.isReplaced
-                                    ? Colors.grey
-                                    : Colors.green,
-                              ),
+                                );
+                              },
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        children: [
-                          Text(
-                            isGlassWork
-                                ? t('صورة العمل الزجاجي')
-                                : (isMoustiquaire
-                                      ? t('صورة الموستيكير')
-                                      : t('شكل النافذة')),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
+                      ],
+                    ),
+                    const Divider(),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ...invoiceDetails.map(
+                                (detail) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 3),
+                                  child: _detailRichText(
+                                    detail,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: p.isReplaced
+                                          ? Colors.grey
+                                          : (isDark
+                                                ? Colors.white70
+                                                : Colors.black87),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              if (p.isReplaced)
+                                Text(
+                                  '${t('الكمية:')} ${p.quantity}',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey,
+                                  ),
+                                )
+                              else
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      t('الكمية: '),
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    QuantityInput(
+                                      initialValue: p.quantity,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          p.quantity = val;
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${t('المجموع:')} ${((p.manualPriceOverride ?? p.totalCost) * p.quantity).toStringAsFixed(2)} ${t('دج')}',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: p.isReplaced
+                                      ? Colors.grey
+                                      : Colors.green,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 5),
-                          Container(
-                            height: 130,
-                            width: 130,
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
-                              border: Border.all(color: Colors.grey.shade300),
-                              borderRadius: BorderRadius.circular(8),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          children: [
+                            Text(
+                              isGlassWork
+                                  ? t('صورة العمل الزجاجي')
+                                  : (isMoustiquaire
+                                        ? t('صورة الموستيكير')
+                                        : t('شكل النافذة')),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
                             ),
-                            child: isCaisson
-                                ? Image.asset(
-                                    'Icon/caisson_tunnel.jpg',
-                                    fit: BoxFit.contain,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Image.asset(
-                                              'assets/Icon/caisson_tunnel.jpg',
-                                              fit: BoxFit.contain,
-                                            ),
-                                  )
-                                : isMoustiquaire
-                                ? Image.asset(
-                                    'Icon/media.webp',
-                                    fit: BoxFit.contain,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Image.asset(
-                                              'assets/Icon/media.webp',
-                                              fit: BoxFit.contain,
-                                            ),
-                                  )
-                                : isGlassWork
-                                ? Builder(
-                                    builder: (context) {
-                                      final path = p
-                                          .glassWorkPayload?['imagePath']
-                                          ?.toString();
-                                      if (path != null &&
-                                          path.isNotEmpty &&
-                                          File(path).existsSync()) {
-                                        return Image.file(
-                                          File(path),
-                                          fit: BoxFit.contain,
-                                        );
-                                      }
-                                      return Image.asset(
-                                        'Icon/verre.png',
-                                        fit: BoxFit.contain,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                const Icon(
-                                                  Icons.window_rounded,
-                                                  color: Colors.cyan,
-                                                  size: 56,
-                                                ),
-                                      );
-                                    },
-                                  )
-                                : IgnorePointer(
-                                    child: FittedBox(
+                            const SizedBox(height: 5),
+                            Container(
+                              height: 130,
+                              width: 130,
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                border: Border.all(color: Colors.grey.shade300),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: isCaisson
+                                  ? Image.asset(
+                                      'Icon/caisson_tunnel.jpg',
                                       fit: BoxFit.contain,
-                                      child: Opacity(
-                                        opacity: p.isReplaced ? 0.5 : 1.0,
-                                        child: CustomPaint(
-                                          size: Size(
-                                            p.width.toDouble(),
-                                            p.height.toDouble(),
+                                      errorBuilder:
+                                          (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) => Image.asset(
+                                            'assets/Icon/caisson_tunnel.jpg',
+                                            fit: BoxFit.contain,
                                           ),
-                                          painter: WindowPainter(model: p),
+                                    )
+                                  : isMoustiquaire
+                                  ? Image.asset(
+                                      'Icon/media.webp',
+                                      fit: BoxFit.contain,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              Image.asset(
+                                                'assets/Icon/media.webp',
+                                                fit: BoxFit.contain,
+                                              ),
+                                    )
+                                  : isGlassWork
+                                  ? Builder(
+                                      builder: (context) {
+                                        final path = p
+                                            .glassWorkPayload?['imagePath']
+                                            ?.toString();
+                                        if (path != null &&
+                                            path.isNotEmpty &&
+                                            File(path).existsSync()) {
+                                          return Image.file(
+                                            File(path),
+                                            fit: BoxFit.contain,
+                                          );
+                                        }
+                                        return Image.asset(
+                                          'Icon/verre.png',
+                                          fit: BoxFit.contain,
+                                          errorBuilder:
+                                              (context, error, stackTrace) =>
+                                                  const Icon(
+                                                    Icons.window_rounded,
+                                                    color: Colors.cyan,
+                                                    size: 56,
+                                                  ),
+                                        );
+                                      },
+                                    )
+                                  : IgnorePointer(
+                                      child: FittedBox(
+                                        fit: BoxFit.contain,
+                                        child: Opacity(
+                                          opacity: p.isReplaced ? 0.5 : 1.0,
+                                          child: CustomPaint(
+                                            size: Size(
+                                              p.width.toDouble(),
+                                              p.height.toDouble(),
+                                            ),
+                                            painter: WindowPainter(model: p),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: p.isReplaced
+                          ? MainAxisAlignment.spaceBetween
+                          : MainAxisAlignment.end,
+                      children: [
+                        if (p.isReplaced)
+                          Text(
+                            t('(عنصر مستبدل - غير محسوب في المجموع)'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: p.isReplaced
-                        ? MainAxisAlignment.spaceBetween
-                        : MainAxisAlignment.end,
-                    children: [
-                      if (p.isReplaced)
                         Text(
-                          t('(عنصر مستبدل - غير محسوب في المجموع)'),
+                          '${t('السعر:')} ${(p.manualPriceOverride ?? p.totalCost).toStringAsFixed(2)} ${t('دج')}',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.red,
+                            color: p.isReplaced ? Colors.grey : Colors.green,
                           ),
                         ),
-                      Text(
-                        '${t('السعر:')} ${(p.manualPriceOverride ?? p.totalCost).toStringAsFixed(2)} ${t('دج')}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: p.isReplaced ? Colors.grey : Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            if (p.isReplaced && p.replacementReason.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  border: Border.all(color: Colors.amber.shade200),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.amber.shade800,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'سبب التعديل: ${p.replacementReason}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.amber.shade900,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit_note, color: Colors.amber),
-                      tooltip: t('تعديل السبب'),
-                      onPressed: () {
-                        _showEditReasonDialog(p);
-                      },
+                      ],
                     ),
                   ],
                 ),
               ),
+              if (p.isReplaced && p.replacementReason.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    border: Border.all(color: Colors.amber.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.amber.shade800,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'سبب التعديل: ${p.replacementReason}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_note, color: Colors.amber),
+                        tooltip: t('تعديل السبب'),
+                        onPressed: () {
+                          _showEditReasonDialog(p);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

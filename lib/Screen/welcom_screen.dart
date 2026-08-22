@@ -31,6 +31,7 @@ import 'external_operations_hub_screen.dart';
 
 import 'worker_archive_screen.dart';
 import 'subscription_overview_card.dart';
+import '../widgets/resizable_columns_table.dart';
 
 bool get _isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -77,6 +78,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   StreamSubscription? _userSub;
   StreamSubscription<String>? _databaseUpdateSub;
   Timer? _statsDebounce; // debounce لمنع تكرار _loadStats خلال ms قصيرة
+  int _statsLoadToken = 0;
 
   // إحصائيات
   String _commandesCount = '—';
@@ -375,58 +377,70 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   Future<void> _loadStats() async {
+    final loadToken = ++_statsLoadToken;
     try {
-      final dashboardData = await Future.wait<dynamic>([
+      // The mobile dashboard must paint from the local SQLite database first.
+      // Loading tables, employees, treasury and stock before the first paint
+      // made a cold process restart look frozen even though the data was local.
+      final coreData = await Future.wait<dynamic>([
         db.getDashboardStats(),
-        db.readProfile(),
         db.getOrderStatusStats(),
         db.readCommande(),
+      ]);
+      final stats = coreData[0] as Map<String, dynamic>;
+      final chartData = coreData[1] as Map<String, dynamic>;
+      final allCmds = coreData[2] as List<Map<String, dynamic>>;
+      final prefs = await SharedPreferences.getInstance();
+      final lastCmdCount = prefs.getInt('last_seen_orders_count');
+      final unreadOrders = lastCmdCount == null
+          ? 0
+          : math.max(0, allCmds.length - lastCmdCount);
+
+      if (!mounted || loadToken != _statsLoadToken) return;
+      setState(() {
+        _newOrdersCount = unreadOrders;
+        _commandesCount = stats['cmdCount'] ?? '0';
+        _cmdTrend = stats['cmdTrend'] ?? '—';
+        _ordersByStatus = Map<String, int>.from(
+          (chartData['byStatus'] as Map<String, int>?) ?? {},
+        );
+        _ordersByMonth = Map<String, int>.from(
+          (chartData['monthly'] as Map<String, int>?) ?? {},
+        );
+      });
+
+      if (lastCmdCount == null) {
+        await prefs.setInt('last_seen_orders_count', allCmds.length);
+      }
+
+      // Secondary dashboard sections are intentionally independent of the
+      // first paint. They still refresh normally, but a slow stock query or a
+      // large client table can no longer delay entry into the app.
+      final secondaryData = await Future.wait<dynamic>([
+        db.readProfile(),
         db.readCommandesWithClients(),
         db.readTreasury(),
         db.readEmployees(),
         db.readClientsForDisplay(),
         db.getOrderAssignedWorkersMap(),
       ]);
-      final stats = dashboardData[0] as Map<String, dynamic>;
-      final profiles = dashboardData[1] as List<Map<String, dynamic>>;
-      final chartData = dashboardData[2] as Map<String, dynamic>;
-      final allCmds = dashboardData[3] as List<Map<String, dynamic>>;
+      final profiles = secondaryData[0] as List<Map<String, dynamic>>;
       final desktopOrders = List<Map<String, dynamic>>.from(
-        dashboardData[4] as List<Map<String, dynamic>>,
+        secondaryData[1] as List<Map<String, dynamic>>,
       );
-      final treasuryRows = dashboardData[5] as List<Map<String, dynamic>>;
-      final employees = dashboardData[6] as List<Map<String, dynamic>>;
+      final treasuryRows = secondaryData[2] as List<Map<String, dynamic>>;
+      final employees = secondaryData[3] as List<Map<String, dynamic>>;
       final clients = List<Map<String, dynamic>>.from(
-        dashboardData[7] as List<Map<String, dynamic>>,
+        secondaryData[4] as List<Map<String, dynamic>>,
       );
       final assignedWorkersMap = Map<int, String>.from(
-        dashboardData[8] as Map<int, String>,
+        secondaryData[5] as Map<int, String>,
       );
-      final prefs = await SharedPreferences.getInstance();
-      final lastCmdCount = prefs.getInt('last_seen_orders_count');
-      int unreadOrders = 0;
-      if (lastCmdCount == null) {
-        await prefs.setInt('last_seen_orders_count', allCmds.length);
-        unreadOrders = 0;
-      } else {
-        unreadOrders = allCmds.length > lastCmdCount
-            ? (allCmds.length - lastCmdCount)
-            : 0;
-      }
-      if (mounted) {
+      if (mounted && loadToken == _statsLoadToken) {
         setState(() {
-          _newOrdersCount = unreadOrders;
-          _commandesCount = stats['cmdCount'] ?? '0';
-          _cmdTrend = stats['cmdTrend'] ?? '—';
           _clientsCount = stats['cliCount'] ?? '0';
           _cliTrend = stats['cliTrend'] ?? '—';
           _produitsCount = profiles.length.toString();
-          _ordersByStatus = Map<String, int>.from(
-            (chartData['byStatus'] as Map<String, int>?) ?? {},
-          );
-          _ordersByMonth = Map<String, int>.from(
-            (chartData['monthly'] as Map<String, int>?) ?? {},
-          );
           _desktopOrders = desktopOrders;
           _desktopClients = clients;
           _desktopTreasury = treasuryRows;
@@ -437,7 +451,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
           _pendingOrdersCount = desktopOrders.where(_isOpenOrder).length;
         });
       }
-      await _checkLowStock();
+
+      // Stock is the heaviest dashboard query on a phone. It is deliberately
+      // last and may update only its own cards when it finishes.
+      if (loadToken == _statsLoadToken) await _checkLowStock();
     } catch (e) {
       debugPrint("Error loading stats: $e");
     }
@@ -2022,97 +2039,186 @@ class _WelcomScreenState extends State<WelcomScreen> {
       );
     }
 
-    return Column(
-      children: [
-        _desktopOrdersTableHeader(contentColor, mutedColor, lang),
-        const SizedBox(height: 6),
-        Expanded(
-          child: ListView.separated(
-            itemCount: math.min(10, _desktopOrders.length),
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: mutedColor.withOpacity(0.12)),
-            itemBuilder: (context, index) => _desktopDetailedOrderRow(
-              context,
-              _desktopOrders[index],
-              contentColor,
-              mutedColor,
-              lang,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _desktopOrdersTableHeader(
-    Color contentColor,
-    Color mutedColor,
-    AppLanguage lang,
-  ) {
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2563EB).withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
+    final columns = [
+      ResizableTableColumn(
+        id: 'id',
+        label: _desktopTableCell('#', 1, mutedColor, true),
+        initialWidth: 60,
+        minWidth: 45,
+        maxWidth: 100,
       ),
-      child: Row(
-        children: [
-          _desktopTableCell('#', 1, mutedColor, true),
-          _desktopTableCell(
-            _desktopText(
-              lang,
-              'الزبون والمشروع',
-              'Client & Projet',
-              'Client & Project',
+      ResizableTableColumn(
+        id: 'client_project',
+        label: _desktopTableCell(
+          _desktopText(lang, 'الزبون والمشروع', 'Client & Projet', 'Client & Project'),
+          3,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 200,
+        minWidth: 120,
+        maxWidth: 350,
+      ),
+      ResizableTableColumn(
+        id: 'date',
+        label: _desktopTableCell(
+          _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Order Date'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 110,
+        minWidth: 90,
+        maxWidth: 180,
+      ),
+      ResizableTableColumn(
+        id: 'total',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المجموع (د.ج)', 'Total (DA)', 'Total (DA)'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 120,
+        minWidth: 90,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'advance',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 110,
+        minWidth: 85,
+        maxWidth: 180,
+      ),
+      ResizableTableColumn(
+        id: 'remaining',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المتبقي', 'Reste', 'Balance'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 110,
+        minWidth: 85,
+        maxWidth: 180,
+      ),
+      ResizableTableColumn(
+        id: 'status',
+        label: _desktopTableCell(
+          _desktopText(lang, 'حالة الورشة', 'Statut', 'Status'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 120,
+        minWidth: 90,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'creator',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المُدخل', 'Inscrit par', 'Recorded By'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 130,
+        minWidth: 90,
+        maxWidth: 220,
+      ),
+      ResizableTableColumn(
+        id: 'workers',
+        label: _desktopTableCell(
+          _desktopText(lang, 'فريق التنفيذ', 'Assignés', 'Assigned Workers'),
+          3,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 160,
+        minWidth: 110,
+        maxWidth: 300,
+      ),
+    ];
+
+    final displayOrders = _desktopOrders.take(15).toList();
+    final rows = displayOrders.map((order) {
+      final orderId = (order['id'] as num?)?.toInt() ?? 0;
+      final status = (order['status'] ?? 'Pending').toString();
+      final color = _desktopStatusColor(status);
+      final firstName = (order['firstname'] ?? '').toString().trim();
+      final lastName = (order['lastname'] ?? '').toString().trim();
+      final clientName = '$firstName $lastName'.trim();
+      final projectName = (order['project_name'] ?? '').toString().trim();
+      final clientProject = projectName.isNotEmpty
+          ? '$clientName ($projectName)'
+          : clientName;
+
+      final total =
+          (order['net_payable'] as num?)?.toDouble() ??
+          (order['total'] as num?)?.toDouble() ??
+          0.0;
+      final advance = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
+      final remaining = total - advance;
+      final creator = _formatCreatorDisplay(
+        order['creation_platform']?.toString(),
+      );
+      final assignedWorkers = _assignedWorkersMap[orderId] ?? 'غير مُسند';
+
+      return ResizableTableRow(
+        onTap: _openOrders,
+        cells: [
+          Text('#$orderId', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF2563EB), fontSize: 12)),
+          Text(clientProject.isEmpty ? 'زبون عام' : clientProject, style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12), overflow: TextOverflow.ellipsis),
+          Text(_formatDate(order['created_at']), style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11)),
+          Text(_formatCurrency(total), style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12)),
+          Text(_formatCurrency(advance), style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF10B981), fontSize: 12)),
+          Text(
+            _formatCurrency(remaining),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
             ),
-            3,
-            mutedColor,
-            true,
           ),
-          _desktopTableCell(
-            _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Order Date'),
-            2,
-            mutedColor,
-            true,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.13),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _desktopStatusText(status, lang),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'Cairo',
+              ),
+            ),
           ),
-          _desktopTableCell(
-            _desktopText(lang, 'المجموع (د.ج)', 'Total (DA)', 'Total (DA)'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'المتبقي', 'Reste', 'Balance'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'حالة الورشة', 'Statut', 'Status'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'المُدخل', 'Inscrit par', 'Recorded By'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'فريق التنفيذ', 'Assignés', 'Assigned Workers'),
-            3,
-            mutedColor,
-            true,
-          ),
+          Text(creator, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11), overflow: TextOverflow.ellipsis),
+          Text(assignedWorkers, style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 11), overflow: TextOverflow.ellipsis),
         ],
+      );
+    }).toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: ResizableColumnsTable(
+        columns: columns,
+        rows: rows,
+        headerColor: const Color(0xFF2563EB).withOpacity(0.08),
+        borderColor: mutedColor.withOpacity(0.12),
+        rowColor: Colors.transparent,
+        headerMinHeight: 36,
+        rowMinHeight: 44,
       ),
     );
   }
@@ -2275,243 +2381,244 @@ class _WelcomScreenState extends State<WelcomScreen> {
       );
     }
 
-    return Column(
-      children: [
-        _desktopClientsTableHeader(contentColor, mutedColor, lang),
-        const SizedBox(height: 6),
-        Expanded(
-          child: ListView.separated(
-            itemCount: math.min(10, _desktopClients.length),
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: mutedColor.withOpacity(0.12)),
-            itemBuilder: (context, index) => _desktopDetailedClientRow(
-              context,
-              _desktopClients[index],
-              contentColor,
-              mutedColor,
-              lang,
-            ),
-          ),
+    final columns = [
+      ResizableTableColumn(
+        id: 'id',
+        label: _desktopTableCell('#', 1, mutedColor, true),
+        initialWidth: 60,
+        minWidth: 45,
+        maxWidth: 100,
+      ),
+      ResizableTableColumn(
+        id: 'name',
+        label: _desktopTableCell(
+          _desktopText(lang, 'اسم الزبون', 'Nom client', 'Client Name'),
+          3,
+          mutedColor,
+          true,
         ),
-      ],
-    );
-  }
-
-  Widget _desktopClientsTableHeader(
-    Color contentColor,
-    Color mutedColor,
-    AppLanguage lang,
-  ) {
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0EA5E9).withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
+        initialWidth: 180,
+        minWidth: 120,
+        maxWidth: 320,
       ),
-      child: Row(
-        children: [
-          _desktopTableCell('#', 1, mutedColor, true),
-          _desktopTableCell(
-            _desktopText(lang, 'اسم الزبون', 'Nom client', 'Client Name'),
-            3,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'رقم الهاتف', 'Téléphone', 'Phone'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'العنوان', 'Adresse', 'Address'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'البريد الإلكتروني', 'E-mail', 'Email'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(
-              lang,
-              'البيانات الجبائية (NIF/RC)',
-              'Fiscaux',
-              'Tax & Com',
-            ),
-            3,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'تاريخ الإضافة', 'Date d\'ajout', 'Added Date'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'مجموع الحسابات', 'Total', 'Total'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'المتبقي', 'Reste', 'Remaining'),
-            2,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'عدد الطلبيات', 'Cmds', 'Orders'),
-            1,
-            mutedColor,
-            true,
-          ),
-          _desktopTableCell(
-            _desktopText(lang, 'المُضيف', 'Ajouté par', 'Added By'),
-            2,
-            mutedColor,
-            true,
-          ),
-        ],
+      ResizableTableColumn(
+        id: 'phone',
+        label: _desktopTableCell(
+          _desktopText(lang, 'رقم الهاتف', 'Téléphone', 'Phone'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 130,
+        minWidth: 95,
+        maxWidth: 200,
       ),
-    );
-  }
+      ResizableTableColumn(
+        id: 'address',
+        label: _desktopTableCell(
+          _desktopText(lang, 'العنوان', 'Adresse', 'Address'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 140,
+        minWidth: 95,
+        maxWidth: 240,
+      ),
+      ResizableTableColumn(
+        id: 'email',
+        label: _desktopTableCell(
+          _desktopText(lang, 'البريد الإلكتروني', 'E-mail', 'Email'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 140,
+        minWidth: 95,
+        maxWidth: 240,
+      ),
+      ResizableTableColumn(
+        id: 'fiscal',
+        label: _desktopTableCell(
+          _desktopText(
+            lang,
+            'البيانات الجبائية (NIF/RC)',
+            'Fiscaux',
+            'Tax & Com',
+          ),
+          3,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 150,
+        minWidth: 100,
+        maxWidth: 260,
+      ),
+      ResizableTableColumn(
+        id: 'date',
+        label: _desktopTableCell(
+          _desktopText(lang, 'تاريخ الإضافة', 'Date d\'ajout', 'Added Date'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 110,
+        minWidth: 85,
+        maxWidth: 180,
+      ),
+      ResizableTableColumn(
+        id: 'total',
+        label: _desktopTableCell(
+          _desktopText(lang, 'مجموع الحسابات', 'Total', 'Total'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 120,
+        minWidth: 90,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'paid',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 110,
+        minWidth: 85,
+        maxWidth: 180,
+      ),
+      ResizableTableColumn(
+        id: 'remaining',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المتبقي', 'Reste', 'Remaining'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 110,
+        minWidth: 85,
+        maxWidth: 180,
+      ),
+      ResizableTableColumn(
+        id: 'orders_count',
+        label: _desktopTableCell(
+          _desktopText(lang, 'عدد الطلبيات', 'Cmds', 'Orders'),
+          1,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 80,
+        minWidth: 60,
+        maxWidth: 130,
+      ),
+      ResizableTableColumn(
+        id: 'creator',
+        label: _desktopTableCell(
+          _desktopText(lang, 'المُضيف', 'Ajouté par', 'Added By'),
+          2,
+          mutedColor,
+          true,
+        ),
+        initialWidth: 120,
+        minWidth: 90,
+        maxWidth: 200,
+      ),
+    ];
 
-  Widget _desktopDetailedClientRow(
-    BuildContext context,
-    Map<String, dynamic> client,
-    Color contentColor,
-    Color mutedColor,
-    AppLanguage lang,
-  ) {
-    final clientId = (client['id'] as num?)?.toInt() ?? 0;
-    final clientNumber =
-        (client['display_number'] as num?)?.toInt() ?? clientId;
-    final firstName = (client['firstname'] ?? '').toString().trim();
-    final lastName = (client['lastname'] ?? '').toString().trim();
-    final fullName = '$firstName $lastName'.trim();
+    final displayClients = _desktopClients.take(15).toList();
+    final rows = displayClients.map((client) {
+      final clientId = (client['id'] as num?)?.toInt() ?? 0;
+      final clientNumber = (client['display_number'] as num?)?.toInt() ?? clientId;
+      final firstName = (client['firstname'] ?? '').toString().trim();
+      final lastName = (client['lastname'] ?? '').toString().trim();
+      final fullName = '$firstName $lastName'.trim();
 
-    final phone1 = (client['phone1'] ?? '').toString().trim();
-    final phone2 = (client['phone2'] ?? '').toString().trim();
-    final phoneDisplay = phone1.isNotEmpty
-        ? (phone2.isNotEmpty && phone2 != '0' ? '$phone1 / $phone2' : phone1)
-        : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
+      final phone1 = (client['phone1'] ?? '').toString().trim();
+      final phone2 = (client['phone2'] ?? '').toString().trim();
+      final phoneDisplay = phone1.isNotEmpty
+          ? (phone2.isNotEmpty && phone2 != '0' ? '$phone1 / $phone2' : phone1)
+          : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
 
-    final addressDisplay =
-        (client['address'] ?? '').toString().trim().isNotEmpty
-        ? client['address'].toString().trim()
-        : '—';
+      final addressDisplay =
+          (client['address'] ?? '').toString().trim().isNotEmpty
+          ? client['address'].toString().trim()
+          : '—';
 
-    final emailDisplay = (client['email'] ?? '').toString().trim().isNotEmpty
-        ? client['email'].toString().trim()
-        : '—';
+      final emailDisplay = (client['email'] ?? '').toString().trim().isNotEmpty
+          ? client['email'].toString().trim()
+          : '—';
 
-    final nif = (client['nif'] ?? '').toString().trim();
-    final nis = (client['nis'] ?? '').toString().trim();
-    final rc = (client['rc'] ?? '').toString().trim();
-    final ai = (client['ai'] ?? '').toString().trim();
+      final nif = (client['nif'] ?? '').toString().trim();
+      final nis = (client['nis'] ?? '').toString().trim();
+      final rc = (client['rc'] ?? '').toString().trim();
+      final ai = (client['ai'] ?? '').toString().trim();
 
-    final List<String> taxParts = [];
-    if (nif.isNotEmpty) taxParts.add('NIF: $nif');
-    if (nis.isNotEmpty) taxParts.add('NIS: $nis');
-    if (rc.isNotEmpty) taxParts.add('RC: $rc');
-    if (ai.isNotEmpty) taxParts.add('AI: $ai');
-    final taxDisplay = taxParts.isNotEmpty ? taxParts.join(' | ') : '—';
+      final List<String> taxParts = [];
+      if (nif.isNotEmpty) taxParts.add('NIF: $nif');
+      if (nis.isNotEmpty) taxParts.add('NIS: $nis');
+      if (rc.isNotEmpty) taxParts.add('RC: $rc');
+      if (ai.isNotEmpty) taxParts.add('AI: $ai');
+      final taxDisplay = taxParts.isNotEmpty ? taxParts.join(' | ') : '—';
 
-    final clientOrders = _desktopOrders
-        .where((o) => (o['client_id'] as num?)?.toInt() == clientId)
-        .toList();
-    double totalSum = 0.0;
-    double paidSum = 0.0;
-    for (var o in clientOrders) {
-      double net =
-          (o['net_payable'] as num?)?.toDouble() ??
-          (o['total'] as num?)?.toDouble() ??
-          0.0;
-      double advance = (o['advance_payment'] as num?)?.toDouble() ?? 0.0;
-      totalSum += net;
-      paidSum += advance;
-    }
-    double remainingDebt = totalSum - paidSum;
-    final addedBy = _formatCreatorDisplay(
-      client['creation_platform']?.toString(),
-    );
+      final clientOrders = _desktopOrders
+          .where((o) => (o['client_id'] as num?)?.toInt() == clientId)
+          .toList();
+      double totalSum = 0.0;
+      double paidSum = 0.0;
+      for (var o in clientOrders) {
+        double net =
+            (o['net_payable'] as num?)?.toDouble() ??
+            (o['total'] as num?)?.toDouble() ??
+            0.0;
+        double advance = (o['advance_payment'] as num?)?.toDouble() ?? 0.0;
+        totalSum += net;
+        paidSum += advance;
+      }
+      double remainingDebt = totalSum - paidSum;
+      final addedBy = _formatCreatorDisplay(
+        client['creation_platform']?.toString(),
+      );
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+      return ResizableTableRow(
         onTap: _openClients,
-        child: Container(
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              _desktopTableCell(
-                '#$clientNumber',
-                1,
-                contentColor,
-                false,
-                colorOverride: const Color(0xFF0EA5E9),
-              ),
-              _desktopTableCell(
-                fullName.isEmpty ? 'زبون #$clientNumber' : fullName,
-                3,
-                contentColor,
-                false,
-                colorOverride: const Color(0xFF0EA5E9),
-              ),
-              _desktopTableCell(phoneDisplay, 2, contentColor, false),
-              _desktopTableCell(addressDisplay, 2, mutedColor, false),
-              _desktopTableCell(emailDisplay, 2, mutedColor, false),
-              _desktopTableCell(taxDisplay, 3, const Color(0xFF8B5CF6), false),
-              _desktopTableCell(
-                _formatDate(client['created_at']),
-                2,
-                mutedColor,
-                false,
-              ),
-              _desktopTableCell(
-                _formatCurrency(totalSum),
-                2,
-                contentColor,
-                false,
-              ),
-              _desktopTableCell(
-                _formatCurrency(paidSum),
-                2,
-                const Color(0xFF10B981),
-                false,
-              ),
-              _desktopTableCell(
-                _formatCurrency(remainingDebt),
-                2,
-                remainingDebt > 0
-                    ? const Color(0xFFEF4444)
-                    : const Color(0xFF10B981),
-                false,
-                fontWeight: FontWeight.bold,
-              ),
-              _desktopTableCell(
-                '${clientOrders.length}',
-                1,
-                contentColor,
-                false,
-              ),
-              _desktopTableCell(addedBy, 2, mutedColor, false),
-            ],
+        cells: [
+          Text('#$clientNumber', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF0EA5E9), fontSize: 12)),
+          Text(fullName.isEmpty ? 'زبون #$clientNumber' : fullName, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0EA5E9), fontSize: 12, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+          Text(phoneDisplay, style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 11.5)),
+          Text(addressDisplay, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11.5), overflow: TextOverflow.ellipsis),
+          Text(emailDisplay, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11.5), overflow: TextOverflow.ellipsis),
+          Text(taxDisplay, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF8B5CF6), fontSize: 11), overflow: TextOverflow.ellipsis),
+          Text(_formatDate(client['created_at']), style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11)),
+          Text(_formatCurrency(totalSum), style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12)),
+          Text(_formatCurrency(paidSum), style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF10B981), fontSize: 12)),
+          Text(
+            _formatCurrency(remainingDebt),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: remainingDebt > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
           ),
-        ),
+          Text('${clientOrders.length}', style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12)),
+          Text(addedBy, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11), overflow: TextOverflow.ellipsis),
+        ],
+      );
+    }).toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: ResizableColumnsTable(
+        columns: columns,
+        rows: rows,
+        headerColor: const Color(0xFF0EA5E9).withOpacity(0.08),
+        borderColor: mutedColor.withOpacity(0.12),
+        rowColor: Colors.transparent,
+        headerMinHeight: 36,
+        rowMinHeight: 44,
       ),
     );
   }

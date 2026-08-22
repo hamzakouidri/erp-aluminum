@@ -1235,6 +1235,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         _isLoading = true;
         _errorMessage = null;
         _processingWarnings = [];
+        // Never keep showing the previous calculation while the order rows
+        // are being reread. The database rows are the source of truth after a
+        // series, colour or glass change.
+        _aggregatedItems = [];
+        _productBreakdowns = [];
+        _productCount = 0;
       });
 
       final orderId = _safeInt(widget.orderData['id']);
@@ -2239,7 +2245,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ),
         centerTitle: true,
         backgroundColor: isDark
-            ? (Theme.of(context).appBarTheme.backgroundColor ?? const Color(0xFF1A237E))
+            ? (Theme.of(context).appBarTheme.backgroundColor ??
+                  const Color(0xFF1A237E))
             : const Color(0xFF1A237E),
         foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -2275,7 +2282,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.shopping_cart_checkout, color: Colors.white),
+                  : const Icon(
+                      Icons.shopping_cart_checkout,
+                      color: Colors.white,
+                    ),
               tooltip: _t('تحويل إلى طلب أو فاتورة شراء'),
               onPressed: _isCreatingPurchase
                   ? null

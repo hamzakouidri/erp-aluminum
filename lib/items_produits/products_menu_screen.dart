@@ -334,9 +334,9 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
   }
 
   String _seriesDesignTitle(AppLanguage language) => switch (language) {
-    AppLanguage.arabic => 'تعريف مكوّنات السلسلة',
-    AppLanguage.french => 'Définition des composants de la série',
-    AppLanguage.english => 'Series components definition',
+    AppLanguage.arabic => 'مكوّنات وحسابات السلسلة',
+    AppLanguage.french => 'Composants et calculs de la série',
+    AppLanguage.english => 'Series components and calculations',
   };
 
   Widget _buildMenuCard(

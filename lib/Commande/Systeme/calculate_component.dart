@@ -1075,7 +1075,9 @@ class ComponentCalculator {
         window.componentOverrides,
         originalName,
         color: color,
-        qty: qty * window.quantity,
+        qty: unit == 'متر'
+            ? ((qty * window.quantity) * 100).round() / 100.0
+            : qty * window.quantity,
         unit: unit,
         pieces: multipliedPieces,
         kitGroupName: kitGroupName,
@@ -1117,7 +1119,9 @@ class ComponentCalculator {
       window.componentOverrides,
       originalName,
       color: color,
-      qty: qty * window.quantity,
+      // Joint lengths are physical metre quantities. Keep the table stable
+      // and readable across devices by rounding only at the final BOM step.
+      qty: ((qty * window.quantity) * 100).round() / 100.0,
       unit: unit,
       catalogItemId: catalogueId(window.componentOverrides[originalName]),
     );
@@ -1238,18 +1242,13 @@ class ComponentCalculator {
     }
 
     final integratedFrameCoverWidth = selectedFrameIntegratedCoverWidth();
-    bool frameHasIntegratedSideCover =
-        integratedFrameCoverWidth > 0 && window.isSideCoverAllowed;
-    // In PVC an integrated cover belongs to the selected frame itself.  It is
-    // therefore present even when the separate-cover switch is off.
-    bool hasIntegratedSideCover = isOuterFramePvc
-        ? frameHasIntegratedSideCover
-        : window.hasSideCovers &&
-              window.isSideCoverAllowed &&
-              frameHasIntegratedSideCover;
+    // The selected frame owns an integrated cover. This rule is shared by
+    // PVC, aluminium, and TPR; the model disables it for aluminium shutters.
+    final bool hasIntegratedSideCover =
+        integratedFrameCoverWidth > 0 && window.isIntegratedFrame;
     bool hasNonIntegratedSideCover =
         window.hasSideCovers &&
-        window.isSideCoverAllowed &&
+        window.canUseStandaloneSideCover &&
         !hasIntegratedSideCover;
     // Both integrated and standalone covers are workshop/drawing details.
     // A standalone cover has its own cutting row and its thickness shortens
@@ -1459,19 +1458,6 @@ class ComponentCalculator {
       final value = slidingTableConfig[key];
       if (value is num) return value.toDouble();
       return double.tryParse(value?.toString() ?? '') ?? fallback;
-    }
-
-    double pvcSlidingWidthDeduction(int sashCount) {
-      switch (sashCount) {
-        case 2:
-          return slidingRuleNumber('sash_w_deduction_2');
-        case 3:
-          return slidingRuleNumber('sash_w_deduction_3');
-        case 4:
-          return slidingRuleNumber('sash_w_deduction_4');
-        default:
-          return 0.0;
-      }
     }
 
     final int pvcChicanePiecesPerJunction = math
@@ -1907,14 +1893,12 @@ class ComponentCalculator {
     final double weldVal = isOuterFramePvc ? 5.0 : 0.0;
     final double noBottomWeldVal = isOuterFramePvc ? 5.0 : 0.0;
 
-    // A PVC frame with an integrated couvre-joint is cut around the finished
-    // window on all four sides.  Add the integrated cover width at each end,
-    // plus the 5 mm welding allowance.  This applies whether or not the
-    // window has a bottom frame. A separate cover stays a separate profile;
-    // only its thickness deductions, calculated above per installed side,
-    // affect the plain frame.
+    // An integrated couvre-joint is cut around the finished window on all four
+    // sides. Add its visible width at both ends of each frame piece, plus the
+    // PVC welding allowance where applicable. A separate cover remains its
+    // own profile and only its thickness shortens the plain frame.
     final double integratedCoverCutExtension =
-        isOuterFramePvc && hasIntegratedSideCover
+        hasIntegratedSideCover
         ? integratedFrameCoverWidth * 2
         : 0.0;
     final double frameWidth =
@@ -2373,12 +2357,11 @@ class ComponentCalculator {
           int sashes = zone.slidingSashesCount > 0
               ? zone.slidingSashesCount
               : 2;
-          double sashW = (wForCalc + ((sashes - 1) * 26.0)) / sashes;
-          if (window.isSlidingPVC) {
-            // The overlap is a *height* rule. Width is specific to every
-            // PVC sliding series and stored as a series deduction.
-            sashW = (wForCalc - pvcSlidingWidthDeduction(sashes)) / sashes;
-          }
+          final configuredSashDeduction =
+              window.slidingSashWidthDeduction(sashes);
+          double sashW = configuredSashDeduction > 0
+              ? (wForCalc - configuredSashDeduction) / sashes
+              : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
           double sashH = hForCalc + slidingOverlap * 2;
           final String seriesName =
               window.activeSlidingSeries?.name.toLowerCase() ??
@@ -3361,7 +3344,7 @@ class ComponentCalculator {
             createJoint(
               'جوان بروس للظلفة (Joint Brosse Sash)',
               color: colorName,
-              qty: slidingTotalJointBrosse.ceilToDouble(),
+              qty: slidingTotalJointBrosse,
               unit: 'متر',
             ),
           );
@@ -3371,7 +3354,7 @@ class ComponentCalculator {
           items.add(
             createJoint(
               jointName,
-              qty: totalLength.ceilToDouble(),
+              qty: totalLength,
               unit: 'متر',
             ),
           );
@@ -3849,7 +3832,7 @@ class ComponentCalculator {
           items.add(
             createShutter(
               'جوان بروس للستار (Joint Brosse Shutter)',
-              qty: (coulisseLengthM * 4).ceilToDouble(),
+              qty: coulisseLengthM * 4,
               unit: 'متر',
             ),
           );
@@ -3857,7 +3840,7 @@ class ComponentCalculator {
           items.add(
             createJoint(
               'جوان بروس للستار (Joint Brosse Shutter)',
-              qty: (coulisseLengthM * 4).ceilToDouble(),
+              qty: coulisseLengthM * 4,
               unit: 'متر',
             ),
           );
@@ -4805,14 +4788,16 @@ class ComponentCalculator {
             configuredSlidingSashVisibleWidth > 0
             ? configuredSlidingSashVisibleWidth
             : sw;
-        final double sashCutW = window.isSlidingPVC
-            ? (wForCalc - pvcSlidingWidthDeduction(sashes)) / sashes
+        final configuredSashDeduction =
+            window.slidingSashWidthDeduction(sashes);
+        final double sashCutW = configuredSashDeduction > 0
+            ? (wForCalc - configuredSashDeduction) / sashes
             : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
         final configuredGlassSafety = slidingRuleNumber('glass_w_deduction');
         final glassSafety = configuredGlassSafety > 0
             ? configuredGlassSafety
             : videVerre;
-        baseGw = window.isSlidingPVC
+        baseGw = configuredSashDeduction > 0 || window.isSlidingPVC
             ? sashCutW - slidingSashVisibleWidth - glassSafety
             : sashCutW - (sw * 2) - videVerre;
         // The height formula stays unchanged for the sliding glazing groove.
@@ -4976,6 +4961,15 @@ class ComponentCalculator {
               zone.content == ZoneContent.slidingSash;
           final bool isPvcSlidingSystem =
               isSlidingSystem && window.isSlidingPVC;
+          final String slidingSeriesLabel =
+              '${window.activeSlidingSeries?.name ?? ''} '
+                      '${window.activeSlidingSeries?.type ?? ''}'
+                  .toLowerCase();
+          final bool isTprSlidingSystem =
+              isSlidingSystem &&
+              !isPvcSlidingSystem &&
+              (slidingSeriesLabel.contains('tpr') ||
+                  slidingSeriesLabel.contains('67000'));
 
           if (isSlidingSystem) {
             if (isPvcSlidingSystem) {
@@ -4992,7 +4986,23 @@ class ComponentCalculator {
                 targetParclosePieces.add(cellGh / 1000.0);
               }
             }
-            if (!isPvcSlidingSystem &&
+            if (isTprSlidingSystem &&
+                !isPanneau &&
+                cellGlass.structure != GlassStructure.closed) {
+              // TPR parclose is cut in the catalogue's order: two pieces are
+              // the inner sash length, while the other two are the inner sash
+              // width minus 2 x 20 mm parclose overlap.
+              final targetParclosePieces = cellThick > 10.0
+                  ? slidingParcloseDoublePieces
+                  : slidingParcloseSimplePieces;
+              final double tprWidth = math.max(0.0, cellGw - 40.0);
+              for (int q = 0; q < pieceMultiplier; q++) {
+                targetParclosePieces.add(cellGh / 1000.0);
+                targetParclosePieces.add(cellGh / 1000.0);
+                targetParclosePieces.add(tprWidth / 1000.0);
+                targetParclosePieces.add(tprWidth / 1000.0);
+              }
+            } else if (!isPvcSlidingSystem &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
               final double reducteurThick =
@@ -5724,7 +5734,7 @@ class ComponentCalculator {
         items.add(
           createJoint(
             'جوان الضرب (Joint Frappe)',
-            qty: (frappeQty * 1000).ceil() / 1000.0,
+            qty: frappeQty,
             unit: 'متر',
           ),
         );
@@ -5735,7 +5745,7 @@ class ComponentCalculator {
         items.add(
           createJoint(
             'جوان الوسط (Joint Central)',
-            qty: (swingCentralFramePerim * 1000).ceil() / 1000.0,
+            qty: swingCentralFramePerim,
             unit: 'متر',
           ),
         );

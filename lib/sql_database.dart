@@ -4253,26 +4253,35 @@ class SqlDatabase {
   }
 
   /// Returns true only when cloud data changed a local order.
-  Future<bool> syncOrdersStatusFromCloud() async {
+  Future<bool> syncOrdersStatusFromCloud({
+    Iterable<Map<String, dynamic>>? changedRows,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
     if (workshopId == null || workshopId.isEmpty) return false;
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('workshops')
-          .doc(workshopId)
-          .collection('orders_status')
-          .get();
-
       Database? myDb = await db;
       if (myDb == null) return false;
       var didChange = false;
 
-      for (var doc in snapshot.docs) {
-        final orderId = int.tryParse(doc.id);
+      final rows = changedRows ??
+          (await FirebaseFirestore.instance
+                  .collection('workshops')
+                  .doc(workshopId)
+                  .collection('orders_status')
+                  .get())
+              .docs
+              .map((doc) => <String, dynamic>{
+                    '__order_status_id': doc.id,
+                    ...doc.data(),
+                  });
+
+      for (final data in rows) {
+        final orderId = int.tryParse(
+          data['__order_status_id']?.toString() ?? data['id']?.toString() ?? '',
+        );
         if (orderId == null) continue;
-        final data = doc.data();
         final cloudStatus = data['status']?.toString() ?? '';
         final cloudClientId = (data['client_id'] as num?)?.toInt();
 
@@ -4347,25 +4356,34 @@ class SqlDatabase {
     }
   }
 
-  Future<void> syncConfirmedMeasurementsFromCloud() async {
+  Future<void> syncConfirmedMeasurementsFromCloud({
+    Iterable<Map<String, dynamic>>? changedRows,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
     if (workshopId == null || workshopId.isEmpty) return;
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('workshops')
-          .doc(workshopId)
-          .collection('confirmed_measurements')
-          .get();
-
       Database? myDb = await db;
       if (myDb == null) return;
 
-      for (var doc in snapshot.docs) {
-        final detailId = int.tryParse(doc.id);
+      final rows = changedRows ??
+          (await FirebaseFirestore.instance
+                  .collection('workshops')
+                  .doc(workshopId)
+                  .collection('confirmed_measurements')
+                  .get())
+              .docs
+              .map((doc) => <String, dynamic>{
+                    '__measurement_id': doc.id,
+                    ...doc.data(),
+                  });
+
+      for (final data in rows) {
+        final detailId = int.tryParse(
+          data['__measurement_id']?.toString() ?? data['id']?.toString() ?? '',
+        );
         if (detailId == null) continue;
-        final data = doc.data();
         final instancesStr = data['instances_json']?.toString() ?? '';
         final confirmedStr = data['confirmed_mesures_json']?.toString() ?? '';
         if (instancesStr.isEmpty && confirmedStr.isEmpty) continue;

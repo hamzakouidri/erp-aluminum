@@ -7163,6 +7163,8 @@ class _WindowViewState extends State<WindowView> {
                 const SizedBox(height: 4),
               ],
               (() {
+                final canUseStandaloneCover =
+                    widget.model.canUseStandaloneSideCover;
                 return SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -7172,12 +7174,15 @@ class _WindowViewState extends State<WindowView> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  value: widget.model.hasSideCovers,
+                  value: canUseStandaloneCover && widget.model.hasSideCovers,
                   activeColor: Colors.blue,
-                  onChanged: (value) => widget.model.toggleSideCovers(value),
+                  onChanged: canUseStandaloneCover
+                      ? (value) => widget.model.toggleSideCovers(value)
+                      : null,
                 );
               }()),
-              if (widget.model.hasSideCovers) ...[
+              if (widget.model.hasSideCovers &&
+                  widget.model.canUseStandaloneSideCover) ...[
                 if ((widget.model.getSectionByType('frame')?.couvreJointWidth ??
                             0) ==
                         0 &&
@@ -14311,7 +14316,9 @@ class AppWorkspacePainter extends CustomPainter {
         model.isSideCoverAllowed &&
         integratedCoverWidth > 0;
     final hasSeparateCover =
-        !hasIntegratedCover && model.hasSideCovers && model.isSideCoverAllowed;
+        !hasIntegratedCover &&
+        model.hasSideCovers &&
+        model.canUseStandaloneSideCover;
     final separateCover = model.selectedSideCover;
     final separateCoverWidth = model.standaloneSideCoverWidth;
     final separateCoverThickness = model.standaloneSideCoverThickness;

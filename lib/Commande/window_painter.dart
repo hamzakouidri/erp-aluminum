@@ -310,14 +310,11 @@ class WindowPainter extends CustomPainter {
 
         // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم دائماً عند تفعيله)
         {
-          final _frameForCover = model.getSectionByType('frame');
           final bool _hasBuiltInCoverBand =
               model.isIntegratedFrame &&
-              model.isSideCoverAllowed &&
-              _frameForCover != null &&
-              _frameForCover.couvreJointWidth > 0;
+              model.integratedFrameSideCoverWidth > 0;
           if (_hasBuiltInCoverBand ||
-              (model.hasSideCovers && model.isSideCoverAllowed)) {
+              (model.hasSideCovers && model.canUseStandaloneSideCover)) {
             if (model.useCustomSideCoverLayout) {
               _drawCustomSideCovers(canvas, w, h, 0.0);
             } else {
@@ -396,14 +393,11 @@ class WindowPainter extends CustomPainter {
 
         // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم في الوجه الخارجي أيضاً عند تفعيله)
         {
-          final _frameForCover2 = model.getSectionByType('frame');
           final bool _hasBuiltInCoverBand2 =
               model.isIntegratedFrame &&
-              model.isSideCoverAllowed &&
-              _frameForCover2 != null &&
-              _frameForCover2.couvreJointWidth > 0;
+              model.integratedFrameSideCoverWidth > 0;
           if ((_hasBuiltInCoverBand2 ||
-                  (model.hasSideCovers && model.isSideCoverAllowed)) &&
+                  (model.hasSideCovers && model.canUseStandaloneSideCover)) &&
               !model.showWall) {
             if (model.useCustomSideCoverLayout) {
               _drawCustomSideCovers(canvas, w, h, 0.0);
@@ -1618,10 +1612,7 @@ class WindowPainter extends CustomPainter {
 
     final paint = Paint();
     if (_isWoodColor() && TextureCache.woodTexture != null) {
-      _applyWoodShader(
-        paint,
-        frameRect.inflate(coverWidth),
-      );
+      _applyWoodShader(paint, frameRect.inflate(coverWidth));
     } else {
       paint.color = _fc[1];
     }
@@ -1836,7 +1827,9 @@ class WindowPainter extends CustomPainter {
 
   void _drawCustomSideCovers(Canvas canvas, double w, double h, double topY) {
     final segments = model.effectiveSideCoverSegments;
-    if (!model.hasSideCovers || segments.isEmpty) return;
+    if (!model.hasSideCovers ||
+        !model.canUseStandaloneSideCover ||
+        segments.isEmpty) return;
 
     final paint = Paint();
     if (_isWoodColor() && TextureCache.woodTexture != null) {
@@ -2560,13 +2553,7 @@ class WindowPainter extends CustomPainter {
           x = profile.left + math.max(6.0, sideWidth * 0.5);
         }
       }
-      text.paint(
-        canvas,
-        Offset(
-          x,
-          profile.center.dy - text.height / 2,
-        ),
-      );
+      text.paint(canvas, Offset(x, profile.center.dy - text.height / 2));
     }
 
     void paintHeightInSashProfile(
@@ -2674,8 +2661,12 @@ class WindowPainter extends CustomPainter {
       hForCalc = math.max(0.0, hForCalc);
 
       int sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
-      double cuttingW = (wForCalc + ((sashes - 1) * 26.0)) / sashes;
-      if (model.isPVC) {
+      final configuredSashDeduction =
+          model.slidingSashWidthDeduction(sashes);
+      double cuttingW = configuredSashDeduction > 0
+          ? (wForCalc - configuredSashDeduction) / sashes
+          : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
+      if (configuredSashDeduction <= 0 && model.isPVC) {
         cuttingW = (wForCalc + ((sashes - 1) * slidingOverlap)) / sashes;
       }
       double cuttingH = hForCalc + slidingOverlap * 2;

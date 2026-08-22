@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
@@ -151,6 +150,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       context.read<AppSettingsProvider>().language == AppLanguage.arabic;
   String _t(String ar, String fr) => _isArabic ? ar : fr;
   int? get _seriesId => (_selectedSeries?['id'] as num?)?.toInt();
+  bool get _isSlidingSeries {
+    final value = '${_selectedSeries?['type'] ?? ''} '
+        '${_selectedSeries?['name'] ?? ''}'.toLowerCase();
+    return value.contains('sliding') ||
+        value.contains('couliss') ||
+        value.contains('منزلق') ||
+        value.contains('جرار') ||
+        value.contains('كوليس');
+  }
   bool get _isPvcProfile =>
       (_selectedProfile?['name']?.toString().toLowerCase() ?? '')
           .contains('pvc');
@@ -416,7 +424,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _t('تعريف مكوّنات السلسلة', 'Définition des composants de la série'),
+          _t(
+            'مكوّنات وحسابات السلسلة',
+            'Composants et calculs de la série',
+          ),
         ),
         actions: [
           if (_selectedSeries != null)
@@ -548,10 +559,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         children: [
           _informationCard(
             icon: Icons.table_chart_rounded,
-            title: _t('وظيفة هذه الصفحة', 'Rôle de cette page'),
+            title: _t('مكوّنات وحسابات السلسلة', 'Composants et calculs'),
             text: _t(
-              'هذه الصفحة لا تختار نوع الرسم: زجاج ثابت أو ضلفة أو منزلق. الرسم مستقل، وهي لا تعدّل جدول الكمية والتكلفة في هذه المرحلة.',
-              'Cette page ne choisit pas le type de dessin : fixe, ouvrant ou coulissant. Le dessin est indépendant et le tableau de quantité et coût n’est pas modifié à cette étape.',
+              'حدد المقاطع التي تستعملها السلسلة. عند اختيار سلسلة منزلقة تظهر هنا حسابات عرض الضلفة لكل حالتين أو ثلاث أو أربع ضلفات، وتستعمل في الرسم وحساب الكميات.',
+              'Définissez les profils utilisés par la série. Pour une série coulissante, les calculs de largeur pour 2, 3 ou 4 ouvrants sont utilisés par le dessin et le calcul des quantités.',
             ),
           ),
           const SizedBox(height: 18),
@@ -567,8 +578,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          if (_isPvcProfile) ...[
-            _pvcSlidingFormulaCard(),
+          if (_isSlidingSeries) ...[
+            _slidingFormulaCard(),
             const SizedBox(height: 14),
           ],
           for (final role in _availableRoles) _roleCard(role),
@@ -641,7 +652,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     );
   }
 
-  Widget _pvcSlidingFormulaCard() => Card(
+  Widget _slidingFormulaCard() => Card(
     color: Theme.of(context).colorScheme.primaryContainer,
     child: Padding(
       padding: const EdgeInsets.all(14),
@@ -649,14 +660,14 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _t('حسابات المنزلق PVC', 'Calculs coulissant PVC'),
+            _t('حسابات ضلف النظام المنزلق', 'Calculs des ouvrants coulissants'),
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
           Text(
             _t(
-              'عرض كل ضلفة = (العرض الداخلي − خصم السلسلة) ÷ عدد الضلفات. التداخل أدناه يخص طول الضلفة فقط.',
-              'Largeur ouvrant = (largeur intérieure − déduction série) ÷ nombre d’ouvrants. Le recouvrement ci-dessous ne concerne que la hauteur.',
+              'أدخل خصم العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (العرض الداخلي − الخصم) ÷ عدد الضلفات. إذا بقيت القيمة صفرًا يستعمل النظام الحساب القديم.',
+              'Saisissez la déduction de largeur propre à cette série pour 2, 3 ou 4 ouvrants. Largeur = (largeur intérieure − déduction) ÷ nombre d’ouvrants. Zéro conserve l’ancien calcul.',
             ),
           ),
           const SizedBox(height: 12),

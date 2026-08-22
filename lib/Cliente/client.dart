@@ -10,6 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
+import 'package:database_data/widgets/resizable_columns_table.dart';
+import 'package:database_data/widgets/numeric_filter_search_field.dart';
+import 'package:database_data/widgets/table_date_range_filter.dart';
 
 class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
@@ -39,6 +42,8 @@ class _CustomersState extends State<Customers> {
     'date': TextEditingController(),
     'creator': TextEditingController(),
   };
+  final Map<String, NumericFilterState> _clientNumericFilters = {};
+  TableDateRange _clientDateRange = const TableDateRange();
 
   String? _clientSortColumn;
   bool _clientSortAscending = true;
@@ -59,6 +64,8 @@ class _CustomersState extends State<Customers> {
       for (final controller in _clientColumnControllers.values) {
         controller.clear();
       }
+      _clientNumericFilters.clear();
+      _clientDateRange = const TableDateRange();
       _clientSortColumn = null;
       _clientSortAscending = true;
     });
@@ -66,6 +73,8 @@ class _CustomersState extends State<Customers> {
 
   bool get _hasActiveClientColumnFilters {
     return _clientSortColumn != null ||
+        _clientDateRange.isActive ||
+        _clientNumericFilters.values.any((f) => f.isActive) ||
         _clientColumnControllers.values.any((c) => c.text.trim().isNotEmpty);
   }
 
@@ -73,6 +82,18 @@ class _CustomersState extends State<Customers> {
     List<Map<String, dynamic>> rawData,
   ) {
     List<Map<String, dynamic>> filtered = rawData.where((d) {
+      // Date Range Filter
+      if (_clientDateRange.isActive) {
+        final dStr = (d['created_at'] ?? d['date'] ?? '').toString();
+        final dt = DateTime.tryParse(dStr);
+        if (!_clientDateRange.isWithinRange(dt)) return false;
+      }
+
+      // Numeric ID filter
+      if (_clientNumericFilters['id']?.isActive == true) {
+        final idNum = (d['display_number'] as num?)?.toDouble() ?? (d['id'] as num?)?.toDouble() ?? 0.0;
+        if (!_clientNumericFilters['id']!.matches(idNum)) return false;
+      }
       final q = _searchQuery.toLowerCase().trim();
       if (q.isNotEmpty) {
         final first = (d['firstname'] ?? '').toString().toLowerCase();
@@ -1041,7 +1062,7 @@ class _CustomersState extends State<Customers> {
   }
 
   Widget _buildSortableHeaderCell({
-    required int flex,
+    int flex = 1,
     required String label,
     required String colKey,
     required Color mutedColor,
@@ -1179,12 +1200,323 @@ class _CustomersState extends State<Customers> {
     AppLanguage lang,
   ) {
     final cardColor = Theme.of(context).cardColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final contentColor =
         Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
     final mutedColor =
         Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
+    final borderColor = isDark ? Colors.grey.shade800 : Colors.lightBlue.shade100;
 
     final data = _applyClientFiltersAndSort(rawData);
+
+    final columns = [
+      ResizableTableColumn(
+        id: 'id',
+        label: _buildSortableHeaderCell(label: '#', colKey: 'id', mutedColor: mutedColor),
+        filter: CompactTableFilterField(
+          hintText: '#...',
+          isNumeric: true,
+          lang: lang,
+          initialNumericState: _clientNumericFilters['id'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) => setState(() => _clientNumericFilters['id'] = f),
+        ),
+        initialWidth: 70,
+        minWidth: 50,
+        maxWidth: 120,
+      ),
+      ResizableTableColumn(
+        id: 'name',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('اسم الزبون', lang),
+          colKey: 'name',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'بحث بالاسم...',
+          controller: _clientColumnControllers['name'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 200,
+        minWidth: 130,
+        maxWidth: 360,
+      ),
+      ResizableTableColumn(
+        id: 'phone',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('رقم الهاتف', lang),
+          colKey: 'phone',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'بحث بالهاتف...',
+          controller: _clientColumnControllers['phone'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 135,
+        minWidth: 100,
+        maxWidth: 220,
+      ),
+      ResizableTableColumn(
+        id: 'address',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('العنوان', lang),
+          colKey: 'address',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'بحث بالعنوان...',
+          controller: _clientColumnControllers['address'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 150,
+        minWidth: 100,
+        maxWidth: 260,
+      ),
+      ResizableTableColumn(
+        id: 'email',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('البريد الإلكتروني', lang),
+          colKey: 'email',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'بحث بالبريد...',
+          controller: _clientColumnControllers['email'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 150,
+        minWidth: 100,
+        maxWidth: 260,
+      ),
+      ResizableTableColumn(
+        id: 'fiscal',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('البيانات الجبائية (NIF/RC)', lang),
+          colKey: 'fiscal',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'NIF / NIS...',
+          controller: _clientColumnControllers['fiscal'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 160,
+        minWidth: 100,
+        maxWidth: 280,
+      ),
+      ResizableTableColumn(
+        id: 'date',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('تاريخ الإضافة', lang),
+          colKey: 'date',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'سنة-شهر...',
+          controller: _clientColumnControllers['date'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 125,
+        minWidth: 95,
+        maxWidth: 200,
+      ),
+      ResizableTableColumn(
+        id: 'creator',
+        label: _buildSortableHeaderCell(
+          label: Localization.translate('العامل المُضيف', lang),
+          colKey: 'creator',
+          mutedColor: mutedColor,
+        ),
+        filter: CompactTableFilterField(
+          hintText: 'المُضيف...',
+          controller: _clientColumnControllers['creator'],
+          lang: lang,
+          onTextChanged: (_) => setState(() {}),
+        ),
+        initialWidth: 130,
+        minWidth: 95,
+        maxWidth: 220,
+      ),
+      ResizableTableColumn(
+        id: 'actions',
+        label: Center(
+          child: Text(
+            Localization.translate('إجراءات', lang),
+            style: TextStyle(
+              color: mutedColor,
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        filter: _hasActiveClientColumnFilters
+            ? Center(
+                child: InkWell(
+                  onTap: _clearAllClientColumnFilters,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.clear_all, size: 13, color: Colors.red),
+                        const SizedBox(width: 2),
+                        Text(
+                          Localization.translate('مسح', lang),
+                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        initialWidth: 100,
+        minWidth: 80,
+        maxWidth: 160,
+      ),
+    ];
+
+    final rows = data.map((client) {
+      final clientId = (client['id'] as num?)?.toInt() ?? 0;
+      final clientNumber =
+          (client['display_number'] as num?)?.toInt() ?? clientId;
+      final firstName = (client['firstname'] ?? '').toString().trim();
+      final lastName = (client['lastname'] ?? '').toString().trim();
+      final fullName = '$firstName $lastName'.trim();
+
+      final phone1 = (client['phone1'] ?? '').toString().trim();
+      final phone2 = (client['phone2'] ?? '').toString().trim();
+      final phoneDisplay = phone1.isNotEmpty
+          ? (phone2.isNotEmpty && phone2 != '0' ? '$phone1 / $phone2' : phone1)
+          : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
+
+      final addressDisplay =
+          (client['address'] ?? '').toString().trim().isNotEmpty
+          ? client['address'].toString().trim()
+          : '—';
+
+      final emailDisplay =
+          (client['email'] ?? '').toString().trim().isNotEmpty
+          ? client['email'].toString().trim()
+          : '—';
+
+      final nif = (client['nif'] ?? '').toString().trim();
+      final nis = (client['nis'] ?? '').toString().trim();
+      final rc = (client['rc'] ?? '').toString().trim();
+      final ai = (client['ai'] ?? '').toString().trim();
+
+      final List<String> taxParts = [];
+      if (nif.isNotEmpty) taxParts.add('NIF: $nif');
+      if (nis.isNotEmpty) taxParts.add('NIS: $nis');
+      if (rc.isNotEmpty) taxParts.add('RC: $rc');
+      if (ai.isNotEmpty) taxParts.add('AI: $ai');
+      final taxDisplay = taxParts.isNotEmpty ? taxParts.join(' | ') : '—';
+
+      final addedBy = _formatCreatorDisplay(
+        client['creation_platform']?.toString(),
+      );
+      final createdAt = formatDate(client['created_at'] ?? '');
+
+      return ResizableTableRow(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ShowClient(clientId: clientId),
+            ),
+          );
+        },
+        cells: [
+          // ID
+          Text(
+            '#$clientNumber',
+            style: const TextStyle(
+              color: Color(0xFF0EA5E9),
+              fontFamily: 'Cairo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          // Name
+          Text(
+            fullName.isEmpty ? 'زبون #$clientNumber' : fullName,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0EA5E9),
+            ),
+          ),
+          // Phone
+          Text(
+            phoneDisplay,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: contentColor),
+          ),
+          // Address
+          Text(
+            addressDisplay,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+          ),
+          // Email
+          Text(
+            emailDisplay,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+          ),
+          // Fiscal
+          Text(
+            taxDisplay,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Color(0xFF8B5CF6)),
+          ),
+          // Date
+          Text(
+            createdAt.isEmpty ? '—' : createdAt,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+          ),
+          // Creator
+          Text(
+            addedBy,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+          ),
+          // Actions
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.blue),
+                  onPressed: () => _showUpdateClientDialog(context, client),
+                  tooltip: Localization.translate('تعديل', lang),
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                  onPressed: () => _deleteClient(client['id']),
+                  tooltip: Localization.translate('حذف', lang),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }).toList();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1201,181 +1533,20 @@ class _CustomersState extends State<Customers> {
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    _buildSortableHeaderCell(
-                      flex: 1,
-                      label: '#',
-                      colKey: 'id',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 3,
-                      label: Localization.translate('اسم الزبون', lang),
-                      colKey: 'name',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('رقم الهاتف', lang),
-                      colKey: 'phone',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('العنوان', lang),
-                      colKey: 'address',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('البريد الإلكتروني', lang),
-                      colKey: 'email',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 3,
-                      label: Localization.translate(
-                        'البيانات الجبائية (NIF/RC)',
-                        lang,
-                      ),
-                      colKey: 'fiscal',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('تاريخ الإضافة', lang),
-                      colKey: 'date',
-                      mutedColor: mutedColor,
-                    ),
-                    _buildSortableHeaderCell(
-                      flex: 2,
-                      label: Localization.translate('العامل المُضيف', lang),
-                      colKey: 'creator',
-                      mutedColor: mutedColor,
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        children: [
-                          Text(
-                            Localization.translate('إجراءات', lang),
-                            style: TextStyle(
-                              color: mutedColor,
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (_hasActiveClientColumnFilters) ...[
-                            const SizedBox(width: 4),
-                            InkWell(
-                              onTap: _clearAllClientColumnFilters,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.clear_all,
-                                      size: 12,
-                                      color: Colors.red,
-                                    ),
-                                    SizedBox(width: 2),
-                                    Text(
-                                      'مسح',
-                                      style: TextStyle(
-                                        color: Colors.red,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'Cairo',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildFilterInputCell(
-                      flex: 1,
-                      controller: _clientColumnControllers['id']!,
-                      hintText: 'بحث...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 3,
-                      controller: _clientColumnControllers['name']!,
-                      hintText: 'بحث بالاسم...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 2,
-                      controller: _clientColumnControllers['phone']!,
-                      hintText: 'بحث بالهاتف...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 2,
-                      controller: _clientColumnControllers['address']!,
-                      hintText: 'بحث بالعنوان...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 2,
-                      controller: _clientColumnControllers['email']!,
-                      hintText: 'بحث بالبريد...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 3,
-                      controller: _clientColumnControllers['fiscal']!,
-                      hintText: 'NIF / NIS...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 2,
-                      controller: _clientColumnControllers['date']!,
-                      hintText: 'سنة-شهر-يوم...',
-                      context: context,
-                    ),
-                    _buildFilterInputCell(
-                      flex: 2,
-                      controller: _clientColumnControllers['creator']!,
-                      hintText: 'المُضيف...',
-                      context: context,
-                    ),
-                    const Expanded(flex: 2, child: SizedBox.shrink()),
-                  ],
-                ),
-              ],
-            ),
+          // ── Date Range Filter Bar ──
+          TableDateRangeFilterBar(
+            initialRange: _clientDateRange,
+            lang: lang,
+            compact: true,
+            onRangeChanged: (range) {
+              setState(() => _clientDateRange = range);
+            },
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+
+          // ── Desktop Resizable Table with zero vertical overflow ──
           Expanded(
             child: data.isEmpty
                 ? Center(
@@ -1410,205 +1581,27 @@ class _CustomersState extends State<Customers> {
                       ],
                     ),
                   )
-                : ListView.separated(
-                    itemCount: data.length,
-                    separatorBuilder: (_, __) => Divider(
-                      height: 1,
-                      color: mutedColor.withValues(alpha: 0.12),
+                : Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: borderColor),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    itemBuilder: (context, index) {
-                      final client = data[index];
-                      final clientId = (client['id'] as num?)?.toInt() ?? 0;
-                      final clientNumber =
-                          (client['display_number'] as num?)?.toInt() ??
-                          clientId;
-                      final firstName = (client['firstname'] ?? '')
-                          .toString()
-                          .trim();
-                      final lastName = (client['lastname'] ?? '')
-                          .toString()
-                          .trim();
-                      final fullName = '$firstName $lastName'.trim();
-
-                      final phone1 = (client['phone1'] ?? '').toString().trim();
-                      final phone2 = (client['phone2'] ?? '').toString().trim();
-                      final phoneDisplay = phone1.isNotEmpty
-                          ? (phone2.isNotEmpty && phone2 != '0'
-                                ? '$phone1 / $phone2'
-                                : phone1)
-                          : (phone2.isNotEmpty && phone2 != '0' ? phone2 : '—');
-
-                      final addressDisplay =
-                          (client['address'] ?? '').toString().trim().isNotEmpty
-                          ? client['address'].toString().trim()
-                          : '—';
-
-                      final emailDisplay =
-                          (client['email'] ?? '').toString().trim().isNotEmpty
-                          ? client['email'].toString().trim()
-                          : '—';
-
-                      final nif = (client['nif'] ?? '').toString().trim();
-                      final nis = (client['nis'] ?? '').toString().trim();
-                      final rc = (client['rc'] ?? '').toString().trim();
-                      final ai = (client['ai'] ?? '').toString().trim();
-
-                      final List<String> taxParts = [];
-                      if (nif.isNotEmpty) taxParts.add('NIF: $nif');
-                      if (nis.isNotEmpty) taxParts.add('NIS: $nis');
-                      if (rc.isNotEmpty) taxParts.add('RC: $rc');
-                      if (ai.isNotEmpty) taxParts.add('AI: $ai');
-                      final taxDisplay = taxParts.isNotEmpty
-                          ? taxParts.join(' | ')
-                          : '—';
-
-                      final addedBy = _formatCreatorDisplay(
-                        client['creation_platform']?.toString(),
-                      );
-                      final createdAt = formatDate(client['created_at'] ?? '');
-
-                      return Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: Text(
-                                '#$clientNumber',
-                                style: const TextStyle(
-                                  color: Color(0xFF0EA5E9),
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                fullName.isEmpty
-                                    ? 'زبون #$clientNumber'
-                                    : fullName,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF0EA5E9),
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                phoneDisplay,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: contentColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                addressDisplay,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: mutedColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                emailDisplay,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: mutedColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                taxDisplay,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF8B5CF6),
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                createdAt,
-                                style: TextStyle(
-                                  color: mutedColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                addedBy,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: contentColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Row(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.edit_rounded,
-                                      size: 18,
-                                      color: Colors.blue,
-                                    ),
-                                    onPressed: () => _showUpdateClientDialog(
-                                      context,
-                                      client,
-                                    ),
-                                    tooltip: Localization.translate(
-                                      'تعديل',
-                                      lang,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete_outline_rounded,
-                                      size: 18,
-                                      color: Colors.red,
-                                    ),
-                                    onPressed: () =>
-                                        _deleteClient(client['id']),
-                                    tooltip: Localization.translate(
-                                      'حذف',
-                                      lang,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SingleChildScrollView(
+                        child: ResizableColumnsTable(
+                          columns: columns,
+                          rows: rows,
+                          headerColor: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
+                          filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          borderColor: borderColor,
+                          rowColor: cardColor,
+                          headerMinHeight: 38,
+                          filterRowMinHeight: 34,
+                          rowMinHeight: 46,
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
           ),
         ],
