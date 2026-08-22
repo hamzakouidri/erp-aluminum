@@ -1058,20 +1058,23 @@ class CloudSyncService {
         .snapshots()
         .listen((snapshot) {
           if (_isRestoring) return;
-          final changedRows = snapshot.docChanges
-              .where((change) => change.type != DocumentChangeType.removed)
-              .map((change) {
-                final row = Map<String, dynamic>.from(change.doc.data());
-                row['__allocation_id'] = change.doc.id;
-                return row;
-              })
-              .toList(growable: false);
+          final changedRows = <Map<String, dynamic>>[];
+          for (final change in snapshot.docChanges) {
+            if (change.type == DocumentChangeType.removed) continue;
+            final data = change.doc.data();
+            if (data == null) continue;
+            final row = Map<String, dynamic>.from(data);
+            row['__allocation_id'] = change.doc.id;
+            changedRows.add(row);
+          }
           if (changedRows.isEmpty) return;
 
           // Firestore can deliver several snapshots while one write is in
           // flight. Apply them in order so a slower older snapshot cannot
           // overwrite the newest local row.
-          _allocationStatusApplyChain = _allocationStatusApplyChain.then((_) async {
+          _allocationStatusApplyChain = _allocationStatusApplyChain.then((
+            _,
+          ) async {
             try {
               await _db.syncWorkerAllocationsStatusFromCloud(
                 changedRows: changedRows,
