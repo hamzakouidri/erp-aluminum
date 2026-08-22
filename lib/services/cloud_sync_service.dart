@@ -93,7 +93,7 @@ class CloudSyncService {
   StreamSubscription<DocumentSnapshot>? _listener;
   StreamSubscription<DocumentSnapshot>? _catalogListener;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _deltaListener;
-  StreamSubscription<QuerySnapshot>? _statusListener;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _statusListener;
   StreamSubscription<QuerySnapshot>? _orderStatusListener;
   StreamSubscription<QuerySnapshot>? _measurementsListener;
   StreamSubscription<QuerySnapshot>?
@@ -126,12 +126,15 @@ class CloudSyncService {
   final Set<String> _handledLiveEventIds = <String>{};
   final Set<String> _processingLiveEventIds = <String>{};
   Future<void> _liveEventApplyChain = Future<void>.value();
+  Future<void> _allocationStatusApplyChain = Future<void>.value();
   String? _loadedLiveEventWorkshopId;
   DateTime? _latestFullSnapshotCompletedAt;
   final Set<String> _latestFullCompactedDeltaIds = <String>{};
   String? _lastAnnouncedListenerWorkshopId;
   DateTime? _lastRealtimeErrorFeedbackAt;
   Future<void>? _activeBackup;
+  Future<void>? _activeLiveEventUpload;
+  bool _liveEventUploadQueued = false;
   Future<void>? _activeCatalogBackup;
   Future<void>? _activeRestore;
   Future<void>? _activeFullRecovery;
@@ -245,6 +248,7 @@ class CloudSyncService {
         await refreshFromCloudIfChanged();
       }
       if (shouldBackup || await _hasPendingTransactions()) {
+        _queueImmediateLiveEventUpload();
         await _silentBackup();
       }
     });
@@ -935,6 +939,8 @@ class CloudSyncService {
     _lastAnnouncedListenerWorkshopId = null;
     _lastRealtimeErrorFeedbackAt = null;
     _activeBackup = null;
+    _activeLiveEventUpload = null;
+    _liveEventUploadQueued = false;
     _activeCatalogBackup = null;
     _activeRestore = null;
     _activeFullRecovery = null;
@@ -1050,16 +1056,31 @@ class CloudSyncService {
         .doc(_workshopId)
         .collection('worker_allocations_status')
         .snapshots()
-        .listen((snapshot) async {
+        .listen((snapshot) {
           if (_isRestoring) return;
-          try {
-            await _db.syncWorkerAllocationsStatusFromCloud();
-            _dbUpdateController.add('status_updated');
-            // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش وإعادة البناء الثقيلة.
-            // واجهات المستخدم تستمع لـ dbUpdateStream مباشرةً.
-          } catch (e) {
-            print('Error syncing allocation status real-time: $e');
-          }
+          final changedRows = snapshot.docChanges
+              .where((change) => change.type != DocumentChangeType.removed)
+              .map((change) {
+                final row = Map<String, dynamic>.from(change.doc.data());
+                row['__allocation_id'] = change.doc.id;
+                return row;
+              })
+              .toList(growable: false);
+          if (changedRows.isEmpty) return;
+
+          // Firestore can deliver several snapshots while one write is in
+          // flight. Apply them in order so a slower older snapshot cannot
+          // overwrite the newest local row.
+          _allocationStatusApplyChain = _allocationStatusApplyChain.then((_) async {
+            try {
+              await _db.syncWorkerAllocationsStatusFromCloud(
+                changedRows: changedRows,
+              );
+              _dbUpdateController.add('status_updated');
+            } catch (e) {
+              print('Error syncing allocation status real-time: $e');
+            }
+          });
         }, onError: _scheduleRealtimeListenerRetry);
 
     // 3. ⚡ الاستماع الفوري واللحظي لتحديثات حالات الطلبيات من أي هاتف في الورشة
@@ -1594,6 +1615,17 @@ class CloudSyncService {
       return;
     }
 
+    // A small live event/delta is the authoritative fast path for a local
+    // change. Do not start a full snapshot preflight here: it can wait behind
+    // a large backup and produce the misleading "protected local data"
+    // warning even though the changed rows are already being published.
+    // The 20-second health check will apply this full snapshot after the
+    // pending delta is acknowledged.
+    if (await _hasPendingTransactions()) {
+      _queueImmediateLiveEventUpload();
+      return;
+    }
+
     // An incoming update must not replace a record that exists only on this
     // phone. This applies to background real-time downloads as well as the
     // manual refresh button: publish and verify local work first.
@@ -1705,6 +1737,7 @@ class CloudSyncService {
 
     if (_localSyncQueuedAfterRestore) {
       _localSyncQueuedAfterRestore = false;
+      _queueImmediateLiveEventUpload();
       scheduleMicrotask(_silentBackup);
     }
 
@@ -2007,6 +2040,7 @@ class CloudSyncService {
   void notifyChange() async {
     _dbUpdateController.add('');
     _backupRetryTimer?.cancel();
+    _queueImmediateLiveEventUpload();
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2048,6 +2082,7 @@ class CloudSyncService {
   void notifyChangeImmediate() async {
     _dbUpdateController.add('');
     _backupRetryTimer?.cancel();
+    _queueImmediateLiveEventUpload();
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2155,6 +2190,64 @@ class CloudSyncService {
     _backupRetryTimer = Timer(const Duration(seconds: 5), () {
       _silentBackup();
     });
+  }
+
+  /// Publishes the changed rows independently of the durable backup queue.
+  ///
+  /// A full snapshot can legitimately take longer on a large workshop. It
+  /// must never delay a one-row customer/order/payment change, so recipients
+  /// receive this small event first and the delta/full backup confirms it
+  /// afterwards.
+  void _queueImmediateLiveEventUpload() {
+    if (_isRestoring || _isLocalWriteInProgress) {
+      _liveEventUploadQueued = true;
+      return;
+    }
+    if (_activeLiveEventUpload != null) {
+      _liveEventUploadQueued = true;
+      return;
+    }
+
+    final task = _publishPendingLiveChangesNow();
+    _activeLiveEventUpload = task;
+    task.whenComplete(() {
+      if (!identical(_activeLiveEventUpload, task)) return;
+      _activeLiveEventUpload = null;
+      if (_liveEventUploadQueued && !_isRestoring && !_isLocalWriteInProgress) {
+        _liveEventUploadQueued = false;
+        scheduleMicrotask(_queueImmediateLiveEventUpload);
+      }
+    });
+  }
+
+  Future<void> _publishPendingLiveChangesNow() async {
+    try {
+      if (_auth.currentUser == null) return;
+      if (_workshopId == null || _workshopId!.isEmpty) {
+        await init();
+      }
+      if (_workshopId == null ||
+          _workshopId!.isEmpty ||
+          _isRestoring ||
+          _isLocalWriteInProgress) {
+        return;
+      }
+
+      final pending = await _db.exportPendingCloudChanges();
+      if (pending.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      final uploadId = _newUploadId();
+      _rememberOwnUpload(uploadId);
+      await _publishLiveEvent(
+        pending: pending,
+        uploadId: uploadId,
+        prefs: prefs,
+      );
+    } catch (error) {
+      // The durable delta path remains responsible for retrying this change.
+      // A transient live-event failure must not interrupt the user's save.
+      print('Immediate live change publish failed: $error');
+    }
   }
 
   Future<void> _acquireWorkshopUploadLease(
@@ -2491,7 +2584,6 @@ class CloudSyncService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final eventId = 'live_$uploadId';
     final data = <String, dynamic>{};
     for (final entry in pending.data.entries) {
       final table = entry.key;
@@ -2502,45 +2594,88 @@ class CloudSyncService {
     }
     if (data.isEmpty) return;
 
-    final estimatedPayload = <String, dynamic>{
-      'kind': 'live_event',
-      'status': 'uploading',
-      'uploadId': uploadId,
-      'deviceId': _deviceId,
-      'uploaderUid': user.uid,
-      'uploaderRole': prefs.getString('user_role') ?? 'worker',
-      'createdAt': DateTime.now().toUtc().toIso8601String(),
-      'tables': data.keys.toList(),
-      'changedRows': pending.changedRows,
-      'deletedRows': pending.deletedRows,
-      'data': data,
-    };
-
-    final estimatedBytes = _estimateJsonBytes(estimatedPayload);
-    if (estimatedBytes > _maxLiveEventDocumentBytes) {
-      print(
-        'Skipping live event $eventId: ${_formatBytes(estimatedBytes)} '
-        'is too large for one Firestore document.',
-      );
-      return;
+    Map<String, dynamic> buildPayload(Map<String, dynamic> chunk) {
+      return {
+        'kind': 'live_event',
+        'status': 'uploading',
+        'uploadId': uploadId,
+        'deviceId': _deviceId,
+        'uploaderUid': user.uid,
+        'uploaderRole': prefs.getString('user_role') ?? 'worker',
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+        'tables': chunk.keys.toList(),
+        'changedRows': pending.changedRows,
+        'deletedRows': pending.deletedRows,
+        'data': chunk,
+      };
     }
 
-    final eventRef = _firestore
-        .collection('workshops')
-        .doc(_workshopId)
-        .collection('live_events')
-        .doc(eventId);
+    // Split large changes by row. This keeps a large order or catalogue edit
+    // on the same fast path instead of dropping its live event altogether.
+    // The durable delta remains the source of truth and will retry any single
+    // row that is itself larger than the Firestore live-event budget.
+    final chunks = <Map<String, dynamic>>[];
+    var current = <String, dynamic>{};
+    for (final entry in data.entries) {
+      final rows = entry.value;
+      if (rows is! List) continue;
+      for (final rawRow in rows) {
+        if (rawRow is! Map) continue;
+        final row = Map<String, dynamic>.from(rawRow);
+        final candidate = <String, dynamic>{
+          ...current,
+          entry.key: [
+            ...(current[entry.key] is List
+                ? current[entry.key] as List
+                : const <dynamic>[]),
+            row,
+          ],
+        };
+        if (_estimateJsonBytes(buildPayload(candidate)) >
+                _maxLiveEventDocumentBytes &&
+            current.isNotEmpty) {
+          chunks.add(current);
+          current = <String, dynamic>{
+            entry.key: [row],
+          };
+        } else {
+          current = candidate;
+        }
+      }
+    }
+    if (current.isNotEmpty) chunks.add(current);
 
-    await eventRef
-        .set({...estimatedPayload, 'createdAt': FieldValue.serverTimestamp()})
-        .timeout(const Duration(seconds: 8));
-    await eventRef
-        .update({
-          'status': 'completed',
-          'completedAt': FieldValue.serverTimestamp(),
-        })
-        .timeout(const Duration(seconds: 8));
-    await _markLiveEventHandled(eventId);
+    for (var index = 0; index < chunks.length; index++) {
+      final chunk = chunks[index];
+      final eventId = chunks.length == 1
+          ? 'live_$uploadId'
+          : 'live_${uploadId}_$index';
+      final estimatedPayload = buildPayload(chunk);
+      final estimatedBytes = _estimateJsonBytes(estimatedPayload);
+      if (estimatedBytes > _maxLiveEventDocumentBytes) {
+        print(
+          'Skipping oversized live event $eventId: '
+          '${_formatBytes(estimatedBytes)}. Durable delta will retry it.',
+        );
+        continue;
+      }
+
+      final eventRef = _firestore
+          .collection('workshops')
+          .doc(_workshopId)
+          .collection('live_events')
+          .doc(eventId);
+      await eventRef
+          .set({...estimatedPayload, 'createdAt': FieldValue.serverTimestamp()})
+          .timeout(const Duration(seconds: 8));
+      await eventRef
+          .update({
+            'status': 'completed',
+            'completedAt': FieldValue.serverTimestamp(),
+          })
+          .timeout(const Duration(seconds: 8));
+      await _markLiveEventHandled(eventId);
+    }
   }
 
   Future<bool> _performDeltaBackupToCloud() async {

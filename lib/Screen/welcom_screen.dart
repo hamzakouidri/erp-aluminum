@@ -30,6 +30,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
 
 import 'worker_archive_screen.dart';
+import 'subscription_overview_card.dart';
 
 bool get _isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -789,6 +790,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
                                 byStatus: _ordersByStatus,
                                 byMonth: _ordersByMonth,
                               ),
+                              const SizedBox(height: 24),
+
+                              // ── بيانات الاشتراك ──────────────────────────────
+                              _sectionLabel(
+                                Localization.translate('الاشتراك والمدة المتبقية', lang),
+                              ),
+                              const SizedBox(height: 12),
+                              const SubscriptionOverviewCard(),
                             ]),
                           ),
                         ),
@@ -1263,6 +1272,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     return orders;
                   },
                 ),
+                const SizedBox(height: 18),
+                const SubscriptionOverviewCard(),
               ],
             ),
           ),

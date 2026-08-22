@@ -8,6 +8,7 @@ import 'projects_screen.dart';
 import 'sales_screen.dart';
 import 'dart:math' as dart_math;
 import 'package:database_data/Screen/support_dialog.dart';
+import 'package:database_data/Screen/subscription_review_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../Cliente/client.dart';
@@ -906,11 +907,23 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    managementItems.add(
+
+    final accountItems = <Widget>[
       _desktopMenuItem(
         title: _desktopLabel(
           lang,
-          arabic: 'الدعم والتقييم',
+          arabic: 'مراجعة الاشتراك',
+          french: 'Mon abonnement',
+          english: 'Subscription review',
+        ),
+        icon: Icons.card_membership_rounded,
+        onTap: () => showSubscriptionReviewDialog(context),
+        color: Colors.amber,
+      ),
+      _desktopMenuItem(
+        title: _desktopLabel(
+          lang,
+          arabic: 'مراسلة الإدارة وتقييم التطبيق',
           french: 'Assistance et avis',
           english: 'Support and feedback',
         ),
@@ -918,15 +931,13 @@ class _AppDrawerState extends State<AppDrawer> {
         onTap: _openSupportDialog,
         color: Colors.green,
       ),
-    );
-    managementItems.add(
       _desktopMenuItem(
         title: Localization.translate('deconnexion', lang),
         icon: Icons.logout_rounded,
         onTap: _signOut,
         color: Colors.red,
       ),
-    );
+    ];
 
     final menu = <Widget>[_buildWindowsHeader(lang), const Divider(height: 1)];
     if (orderItems.isNotEmpty) {
@@ -1054,6 +1065,19 @@ class _AppDrawerState extends State<AppDrawer> {
         icon: Icons.settings_suggest_rounded,
         color: Colors.blueGrey,
         children: managementItems,
+      ),
+    );
+    menu.add(
+      _desktopGroup(
+        title: _desktopLabel(
+          lang,
+          arabic: 'الحساب',
+          french: 'Compte',
+          english: 'Account',
+        ),
+        icon: Icons.account_circle_rounded,
+        color: const Color(0xFF6366F1),
+        children: accountItems,
       ),
     );
 
@@ -1694,6 +1718,17 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
 
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.card_membership_rounded, color: Color(0xFF2563EB)),
+            title: Text(
+              Localization.translate('مراجعة الاشتراك', lang),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              showSubscriptionReviewDialog(context);
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.support_agent, color: Colors.green),
             title: Text(

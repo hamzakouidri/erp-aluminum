@@ -161,6 +161,8 @@ class _CommandePageState extends State<CommandePage> {
   bool _isLoadingEditProducts = false;
   int _editProductsLoaded = 0;
   int _editProductsTotal = 0;
+  bool _isApplyingBulkChange = false;
+  final Set<WindowModel> _bulkSelectedProducts = <WindowModel>{};
 
   WindowModel? _highlightedProduct;
   final Map<WindowModel, GlobalKey> _cardKeys = {};
@@ -485,6 +487,12 @@ class _CommandePageState extends State<CommandePage> {
       widget.editCommandeId!,
     );
     if (cmd != null) {
+      // Start the local detail query before optional project metadata.  The
+      // project is secondary to the editable rows and should never delay
+      // their first paint.
+      final detailsFuture = widget.db.readCommandeDetails(
+        widget.editCommandeId!,
+      );
       final firstName = cmd['firstname']?.toString() ?? '';
       final lastName = cmd['lastname']?.toString() ?? '';
       setState(() {
@@ -510,9 +518,7 @@ class _CommandePageState extends State<CommandePage> {
         }
       }
 
-      final details = await widget.db.readCommandeDetails(
-        widget.editCommandeId!,
-      );
+      final details = await detailsFuture;
       if (!mounted) return;
       setState(() {
         addedProducts.clear();
@@ -532,7 +538,6 @@ class _CommandePageState extends State<CommandePage> {
         return int.tryParse(value?.toString().trim() ?? '');
       }
 
-      final allDbColors = await widget.db.readColors();
       for (final row in details) {
         final model = WindowModel(db: widget.db);
         final savedWidth = readDouble(row['largeur']);
@@ -559,7 +564,12 @@ class _CommandePageState extends State<CommandePage> {
           }
           if (map.isNotEmpty) {
             try {
-              await applyWindowModelAndLoadCatalog(model, map);
+              // Restore the saved drawing synchronously.  Loading the full
+              // catalogue here used to run dozens of database queries for
+              // every row before the first card could be painted, which was
+              // especially noticeable on phones.  WindowView loads the
+              // catalogue lazily when the user opens this specific drawing.
+              applyWindowModelFromMap(model, map);
             } catch (e, st) {
               debugPrint(
                 'Error restoring commande detail ${row['id']}: $e\n$st',
@@ -571,29 +581,17 @@ class _CommandePageState extends State<CommandePage> {
         // stale JSON from an earlier save, otherwise a former wood colour can
         // overwrite the colour the user most recently saved for the order.
         final rowColor = row['color']?.toString().trim() ?? '';
-        if (rowColor.isNotEmpty && !model.isGlassWork) {
-          final matched = allDbColors.firstWhere(
-            (c) =>
-                (c['name'] ?? c['color_name'])?.toString().toLowerCase() ==
-                rowColor.toLowerCase(),
-            orElse: () => <String, dynamic>{},
-          );
-          final allowedMatch = matched.isEmpty
-              ? <String, dynamic>{}
-              : model.availableColors.firstWhere(
-                  (c) => c['id']?.toString() == matched['id']?.toString(),
-                  orElse: () => <String, dynamic>{},
-                );
-          if (allowedMatch.isNotEmpty) {
-            model.selectedDbColor = allowedMatch;
-          } else if (model.availableColors.isEmpty) {
-            final enumMatch = FrameColor.values.firstWhere(
-              (e) => e.name.toLowerCase() == rowColor.toLowerCase(),
-              orElse: () => FrameColor.white,
-            );
-            model.selectedDbColor = null;
-            model.frameColor = enumMatch;
-          }
+        final savedColorName =
+            model.selectedDbColor?['name']?.toString().trim() ??
+            model.selectedDbColor?['color_name']?.toString().trim() ??
+            '';
+        if (rowColor.isNotEmpty &&
+            !model.isGlassWork &&
+            savedColorName.toLowerCase() != rowColor.toLowerCase()) {
+          // Keep the durable row value visible while the catalogue is still
+          // cold.  It is only a lightweight display fallback; the catalogue
+          // validates it later when the drawing is opened.
+          model.selectedDbColor = {'name': rowColor};
         }
 
         // These columns are a durable fallback if an old JSON model is
@@ -625,6 +623,9 @@ class _CommandePageState extends State<CommandePage> {
           addedProducts.add(model);
           _editProductsLoaded = addedProducts.length;
         });
+        // Give Flutter a paint opportunity after each local row.  This makes
+        // the first items visible immediately instead of waiting for the full
+        // order to finish decoding.
         await Future.delayed(Duration.zero);
       }
       if (!mounted) return;
@@ -1153,13 +1154,221 @@ class _CommandePageState extends State<CommandePage> {
     }
   }
 
-  // 🟢 دالة تغيير لون كل عناصر الطلبية دفعة واحدة
+  List<WindowModel> _bulkEditableProducts() {
+    return addedProducts.where((product) {
+      return !product.isReplaced &&
+          !product.isGlassWork &&
+          !product.isMoustiquaire &&
+          !product.isCaissonTunnel &&
+          !product.isShutterOnly;
+    }).toList();
+  }
+
+  Future<List<WindowModel>?> _selectBulkProducts({
+    required String title,
+  }) async {
+    final products = _bulkEditableProducts();
+    if (products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد عناصر قابلة لهذا التخصيص.')),
+      );
+      return null;
+    }
+
+    final selected = <WindowModel>{
+      ..._bulkSelectedProducts.where(products.contains),
+    };
+    if (selected.isEmpty) selected.addAll(products);
+
+    final result = await showDialog<List<WindowModel>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final allSelected = selected.length == products.length;
+            return AlertDialog(
+              title: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 420,
+                child: Column(
+                  children: [
+                    CheckboxListTile(
+                      value: allSelected,
+                      tristate: false,
+                      title: const Text('تحديد الكل'),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          if (value == true) {
+                            selected.addAll(products);
+                          } else {
+                            selected.clear();
+                          }
+                        });
+                      },
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: products.length,
+                        itemBuilder: (context, index) {
+                          final product = products[index];
+                          final title = product.manualNameOverride?.trim();
+                          return CheckboxListTile(
+                            value: selected.contains(product),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(
+                              title == null || title.isEmpty
+                                  ? 'عنصر ${index + 1}'
+                                  : title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${product.width.toInt()} × ${product.height.toInt()} mm',
+                            ),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  selected.add(product);
+                                } else {
+                                  selected.remove(product);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('إلغاء'),
+                ),
+                FilledButton(
+                  onPressed: selected.isEmpty
+                      ? null
+                      : () => Navigator.pop(dialogContext, selected.toList()),
+                  child: Text('متابعة (${selected.length})'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (result != null) {
+      _bulkSelectedProducts
+        ..clear()
+        ..addAll(result);
+    }
+    return result;
+  }
+
+  Future<T?> _runBulkOperation<T>(Future<T> Function() operation) async {
+    if (_isApplyingBulkChange) return null;
+    if (mounted) setState(() => _isApplyingBulkChange = true);
+    try {
+      return await operation();
+    } catch (error, stackTrace) {
+      debugPrint('Bulk order customization failed: $error\n$stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تعذر تطبيق التخصيص: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _isApplyingBulkChange = false);
+    }
+  }
+
+  Future<void> _prepareBulkCatalog(Iterable<WindowModel> products) async {
+    for (final product in products) {
+      if (product.availableSystems.isEmpty || product.allGlassCache.isEmpty) {
+        await product.loadCatalogData(product.systemMode ?? 'mixed');
+      }
+    }
+  }
+
+  double _readMapPrice(Map<String, dynamic>? value) {
+    if (value == null) return 0.0;
+    final raw =
+        value['calculated_price'] ?? value['price_dzd'] ?? value['price'];
+    return raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+  }
+
+  double _productProfileUnitPrice(WindowModel product) {
+    final sash = product.usesSlidingPrimaryProfiles
+        ? product.slidingSashOverride
+        : product.sashOverride;
+    return _readMapPrice(product.activeFrameOverride) + _readMapPrice(sash);
+  }
+
+  double _productGlassCost(WindowModel product) {
+    if (product.allGlassCache.isEmpty) return 0.0;
+    var total = 0.0;
+    for (final zone in product.zones) {
+      if (zone.content == ZoneContent.empty) continue;
+      final area = zone.boundary.width / 1000 * zone.boundary.height / 1000;
+      total += area * product.calculateTotalGlassPricePerSqmForZone(zone);
+    }
+    return total;
+  }
+
+  void _applyPriceDelta(
+    WindowModel product, {
+    required double oldGlassCost,
+    required double oldProfilePrice,
+  }) {
+    final oldUnitPrice = product.manualPriceOverride ?? product.totalCost;
+    final perimeterMeters = (2 * product.width + 2 * product.height) / 1000.0;
+    final newGlassCost = _productGlassCost(product);
+    final newProfilePrice = _productProfileUnitPrice(product);
+    final delta =
+        (newGlassCost - oldGlassCost) +
+        ((newProfilePrice - oldProfilePrice) * perimeterMeters);
+    var updated = oldUnitPrice + delta;
+    if (oldUnitPrice <= 0 && updated <= 0) {
+      updated = newGlassCost + newProfilePrice * perimeterMeters;
+    }
+    if (updated <= 0) return;
+    if (product.manualPriceOverride != null) {
+      product.manualPriceOverride = updated;
+    } else {
+      product.totalCost = updated;
+    }
+  }
+
+  // 🟢 تغيير لون العناصر المحددة من الطلبية
   Future<void> _showApplyBulkColorDialog() async {
+    final selected = await _selectBulkProducts(
+      title: 'تغيير لون عناصر الطلبية',
+    );
+    if (selected == null || selected.isEmpty) return;
+
+    final prepared = await _runBulkOperation<bool>(() async {
+      await _prepareBulkCatalog(selected);
+      return true;
+    });
+    if (prepared != true || !mounted) return;
+
     final allColors = await widget.db.readColors();
     Set<int>? allowedColorIds;
-    for (final product in addedProducts) {
-      if (product.isGlassWork || product.availableColors.isEmpty) continue;
-      final productColorIds = product.availableColors
+    for (final product in selected) {
+      final ids = product.availableColors
           .map((color) {
             final rawId = color['id'];
             return rawId is num
@@ -1169,136 +1378,477 @@ class _CommandePageState extends State<CommandePage> {
           .whereType<int>()
           .toSet();
       allowedColorIds = allowedColorIds == null
-          ? productColorIds
-          : allowedColorIds.intersection(productColorIds);
+          ? ids
+          : allowedColorIds.intersection(ids);
     }
-    final colors = allowedColorIds == null
-        ? <Map<String, dynamic>>[]
-        : allColors.where((color) {
-            final rawId = color['id'];
-            final id = rawId is num
-                ? rawId.toInt()
-                : int.tryParse(rawId?.toString() ?? '');
-            return id != null && allowedColorIds!.contains(id);
-          }).toList();
-    if (!mounted) return;
+    final colors = allColors.where((color) {
+      final rawId = color['id'];
+      final id = rawId is num
+          ? rawId.toInt()
+          : int.tryParse(rawId?.toString() ?? '');
+      return id != null && (allowedColorIds?.contains(id) ?? false);
+    }).toList();
 
+    if (!mounted) return;
     showDialog(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.palette, color: Colors.purple),
-              SizedBox(width: 10),
-              Text(
-                'تغيير لون كل العناصر',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'اختر لوناً متاحاً لكل السلاسل الموجودة في هذه الطلبية:',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (colors.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Text(
-                              'لا يوجد لون مشترك مسموح لكل عناصر الطلبية.',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ...colors.map((dbColor) {
-                          final name = dbColor['name']?.toString() ?? '';
-                          final hex =
-                              dbColor['hex_code']?.toString() ?? '#9E9E9E';
-                          Color parsedColor = Colors.grey;
-                          try {
-                            parsedColor = Color(
-                              int.parse(hex.replaceAll('#', '0xFF')),
+      builder: (ctx) => AlertDialog(
+        title: const Text('اختيار لون العناصر المحددة'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: colors.isEmpty
+              ? const Text('لا يوجد لون مشترك صالح لهذه العناصر.')
+              : ListView(
+                  shrinkWrap: true,
+                  children: colors.map((dbColor) {
+                    final name = dbColor['name']?.toString() ?? '';
+                    final hex = dbColor['hex_code']?.toString() ?? '#9E9E9E';
+                    Color parsedColor = Colors.grey;
+                    try {
+                      parsedColor = Color(
+                        int.parse(hex.replaceAll('#', '0xFF')),
+                      );
+                    } catch (_) {}
+                    return ListTile(
+                      leading: CircleAvatar(backgroundColor: parsedColor),
+                      title: Text(name),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        final changed = await _runBulkOperation<int>(() async {
+                          var count = 0;
+                          for (final product in selected) {
+                            final oldGlass = _productGlassCost(product);
+                            final oldProfile = _productProfileUnitPrice(
+                              product,
                             );
-                          } catch (_) {}
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: parsedColor,
-                              radius: 14,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.grey.shade400,
-                                  ),
-                                ),
+                            final allowed = product.availableColors.any(
+                              (color) =>
+                                  color['id']?.toString() ==
+                                  dbColor['id']?.toString(),
+                            );
+                            if (!allowed) continue;
+                            product.selectedDbColor = dbColor;
+                            await product.refreshSectionPricesForSelectedColor(
+                              notify: false,
+                            );
+                            _applyPriceDelta(
+                              product,
+                              oldGlassCost: oldGlass,
+                              oldProfilePrice: oldProfile,
+                            );
+                            count++;
+                          }
+                          if (mounted) setState(() {});
+                          return count;
+                        });
+                        if (mounted && changed != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: Colors.green.shade700,
+                              content: Text(
+                                'تم تغيير اللون لـ $changed عنصر بنجاح.',
                               ),
                             ),
-                            title: Text(
-                              name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              _applyColorToAllProducts(dbColor: dbColor);
-                            },
                           );
-                        }),
-                      ],
-                    ),
-                  ),
+                        }
+                      },
+                    );
+                  }).toList(),
                 ),
-              ],
-            ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 
-  void _applyColorToAllProducts({required Map<String, dynamic> dbColor}) {
-    final colorName = dbColor['name']?.toString() ?? '';
-
-    setState(() {
-      for (final p in addedProducts) {
-        final allowed = p.availableColors.any(
-          (color) => color['id']?.toString() == dbColor['id']?.toString(),
-        );
-        if (allowed || p.availableColors.isEmpty) {
-          p.selectedDbColor = dbColor;
-        }
-        p.refreshUI();
-      }
+  Future<void> _showBulkSeriesDialog() async {
+    final selected = await _selectBulkProducts(title: 'تغيير سلسلة العناصر');
+    if (selected == null || selected.isEmpty) return;
+    final prepared = await _runBulkOperation<bool>(() async {
+      await _prepareBulkCatalog(selected);
+      return true;
     });
+    if (prepared != true || !mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: Colors.purple.shade700,
-        content: Text('تم تغيير لون كل عناصر الطلبية إلى ($colorName) بنجاح!'),
+    final source = selected.first;
+    final candidates = <AluminumSeries>[];
+    for (final system in source.availableSystems) {
+      for (final series in system.series) {
+        if (!candidates.any((item) => item.id == series.id)) {
+          candidates.add(series);
+        }
+      }
+    }
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد سلاسل متاحة لهذه العناصر.')),
+      );
+      return;
+    }
+    final chosen = await showDialog<AluminumSeries>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('اختر السلسلة الجديدة'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 420,
+          child: ListView(
+            children: candidates.map((series) {
+              final system = source.availableSystems.firstWhere(
+                (item) =>
+                    item.series.any((candidate) => candidate.id == series.id),
+                orElse: () => AluminumProfileSystem(id: 0, name: '', type: ''),
+              );
+              final sliding = isSlidingSeriesForDrawing(series);
+              return ListTile(
+                leading: Icon(
+                  sliding ? Icons.swap_horiz : Icons.open_in_new,
+                  color: sliding ? Colors.green : Colors.blue,
+                ),
+                title: Text(series.name),
+                subtitle: Text(
+                  '${system.name}${sliding ? ' - منزلق' : ' - فتح'}',
+                ),
+                onTap: () => Navigator.pop(ctx, series),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+        ],
       ),
     );
+    if (chosen == null || !mounted) return;
+
+    final changed = await _runBulkOperation<int>(() async {
+      var count = 0;
+      for (final product in selected) {
+        final localSeries = product.availableSystems
+            .expand((system) => system.series)
+            .where((series) => series.id == chosen.id)
+            .cast<AluminumSeries?>()
+            .firstWhere((series) => series != null, orElse: () => null);
+        if (localSeries == null) continue;
+        final oldGlass = _productGlassCost(product);
+        final oldProfile = _productProfileUnitPrice(product);
+        if (isSlidingSeriesForDrawing(localSeries)) {
+          if (product.systemMode == 'sliding') {
+            await product.setActiveSeries(localSeries);
+          } else {
+            await product.setActiveSlidingSeries(localSeries);
+          }
+          product.loadedSlidingSeriesId = localSeries.id;
+          product.loadedSlidingSeriesName = localSeries.name;
+        } else {
+          await product.setActiveSeries(localSeries);
+          product.loadedSeriesId = localSeries.id;
+          product.loadedSeriesName = localSeries.name;
+        }
+        _applyPriceDelta(
+          product,
+          oldGlassCost: oldGlass,
+          oldProfilePrice: oldProfile,
+        );
+        count++;
+      }
+      if (mounted) setState(() {});
+      return count;
+    });
+    if (mounted && changed != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.green.shade700,
+          content: Text('تم تغيير السلسلة لـ $changed عنصر بنجاح.'),
+        ),
+      );
+    }
+  }
+
+  Future<GlassSpecification?> _showBulkGlassSpecDialog(
+    GlassSpecification base,
+  ) async {
+    final outerThickness = TextEditingController(
+      text: (base.thicknessOuter ?? 4).toStringAsFixed(0),
+    );
+    final innerThickness = TextEditingController(
+      text: (base.thicknessInner ?? 4).toStringAsFixed(0),
+    );
+    final intercall = TextEditingController(
+      text: base.intercallThickness.toString(),
+    );
+    var structure = base.structure;
+    var finishOuter = base.finishOuter;
+    var finishInner = base.finishInner;
+    var colorOuter = base.colorOuter;
+    var colorInner = base.colorInner;
+    var processingOuter = base.processingOuter;
+    var processingInner = base.processingInner;
+    var hasGas = base.hasGas;
+
+    try {
+      return await showDialog<GlassSpecification>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            Widget enumDropdown<T>({
+              required String label,
+              required T value,
+              required List<T> values,
+              required ValueChanged<T?> onChanged,
+            }) {
+              return DropdownButtonFormField<T>(
+                value: value,
+                decoration: InputDecoration(labelText: label),
+                items: values
+                    .map(
+                      (item) => DropdownMenuItem<T>(
+                        value: item,
+                        child: Text(item.toString().split('.').last),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onChanged,
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('تغيير زجاج العناصر المحددة'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      enumDropdown(
+                        label: 'نوع الزجاج',
+                        value: structure,
+                        values: GlassStructure.values,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => structure = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: outerThickness,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'سمك الزجاج الخارجي (مم)',
+                        ),
+                      ),
+                      if (structure == GlassStructure.double) ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: innerThickness,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'سمك الزجاج الداخلي (مم)',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: intercall,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'سمك الأنتركال (مم)',
+                          ),
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('مع غاز'),
+                          value: hasGas,
+                          onChanged: (value) =>
+                              setDialogState(() => hasGas = value),
+                        ),
+                      ],
+                      enumDropdown(
+                        label: 'معالجة الوجه الخارجي',
+                        value: processingOuter,
+                        values: GlassProcessing.values,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => processingOuter = value);
+                          }
+                        },
+                      ),
+                      enumDropdown(
+                        label: 'نوع الوجه الخارجي',
+                        value: finishOuter,
+                        values: GlassFinish.values,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => finishOuter = value);
+                          }
+                        },
+                      ),
+                      enumDropdown(
+                        label: 'لون الوجه الخارجي',
+                        value: colorOuter,
+                        values: GlassColor.values,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => colorOuter = value);
+                          }
+                        },
+                      ),
+                      if (structure == GlassStructure.double) ...[
+                        enumDropdown(
+                          label: 'معالجة الوجه الداخلي',
+                          value: processingInner,
+                          values: GlassProcessing.values,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setDialogState(() => processingInner = value);
+                            }
+                          },
+                        ),
+                        enumDropdown(
+                          label: 'نوع الوجه الداخلي',
+                          value: finishInner,
+                          values: GlassFinish.values,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setDialogState(() => finishInner = value);
+                            }
+                          },
+                        ),
+                        enumDropdown(
+                          label: 'لون الوجه الداخلي',
+                          value: colorInner,
+                          values: GlassColor.values,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setDialogState(() => colorInner = value);
+                            }
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إلغاء'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final outer =
+                        double.tryParse(
+                          outerThickness.text.replaceAll(',', '.'),
+                        ) ??
+                        4.0;
+                    final inner =
+                        double.tryParse(
+                          innerThickness.text.replaceAll(',', '.'),
+                        ) ??
+                        4.0;
+                    Navigator.pop(
+                      ctx,
+                      GlassSpecification(
+                        structure: structure,
+                        finishOuter: finishOuter,
+                        finishInner: structure == GlassStructure.double
+                            ? finishInner
+                            : finishOuter,
+                        colorOuter: colorOuter,
+                        colorInner: structure == GlassStructure.double
+                            ? colorInner
+                            : colorOuter,
+                        processingOuter: processingOuter,
+                        processingInner: structure == GlassStructure.double
+                            ? processingInner
+                            : GlassProcessing.none,
+                        temperedOuter:
+                            processingOuter == GlassProcessing.tempered,
+                        temperedInner:
+                            processingInner == GlassProcessing.tempered,
+                        hasGas: structure == GlassStructure.double && hasGas,
+                        intercallThickness:
+                            int.tryParse(intercall.text) ??
+                            base.intercallThickness,
+                        thicknessOuter: outer,
+                        thicknessInner: structure == GlassStructure.double
+                            ? inner
+                            : null,
+                        panneauSubtype: base.panneauSubtype,
+                        panneauColor: base.panneauColor,
+                        panneauProductId: base.panneauProductId,
+                      ),
+                    );
+                  },
+                  child: const Text('تطبيق'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      outerThickness.dispose();
+      innerThickness.dispose();
+      intercall.dispose();
+    }
+  }
+
+  Future<void> _showBulkGlassDialog() async {
+    final selected = await _selectBulkProducts(title: 'تغيير زجاج العناصر');
+    if (selected == null || selected.isEmpty) return;
+    final prepared = await _runBulkOperation<bool>(() async {
+      await _prepareBulkCatalog(selected);
+      return true;
+    });
+    if (prepared != true || !mounted) return;
+
+    final source = selected.firstWhere(
+      (product) => product.zones.isNotEmpty,
+      orElse: () => selected.first,
+    );
+    if (source.zones.isEmpty) return;
+    final base =
+        source.getUniformGlassSpecification() ?? source.zones.first.glass;
+    final spec = await _showBulkGlassSpecDialog(base);
+    if (spec == null || !mounted) return;
+
+    final changed = await _runBulkOperation<int>(() async {
+      var count = 0;
+      for (final product in selected) {
+        if (product.zones.isEmpty) continue;
+        final oldGlass = _productGlassCost(product);
+        final oldProfile = _productProfileUnitPrice(product);
+        await product.applyGlassSpecificationToAllZones(spec);
+        _applyPriceDelta(
+          product,
+          oldGlassCost: oldGlass,
+          oldProfilePrice: oldProfile,
+        );
+        count++;
+      }
+      if (mounted) setState(() {});
+      return count;
+    });
+    if (mounted && changed != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.green.shade700,
+          content: Text('تم تغيير الزجاج لـ $changed عنصر بنجاح.'),
+        ),
+      );
+    }
   }
 
   // 🟢 حل مشكلة الأوفر فلو العمودي في النافذة المنبثقة
@@ -1497,12 +2047,25 @@ class _CommandePageState extends State<CommandePage> {
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 0,
         actions: [
-          if (addedProducts.isNotEmpty)
+          if (addedProducts.isNotEmpty) ...[
             IconButton(
               icon: const Icon(Icons.palette, color: Colors.purpleAccent),
-              onPressed: _showApplyBulkColorDialog,
-              tooltip: "تغيير لون كل عناصر الطلبية",
+              onPressed: _isApplyingBulkChange
+                  ? null
+                  : _showApplyBulkColorDialog,
+              tooltip: 'تغيير لون عناصر الطلبية',
             ),
+            IconButton(
+              icon: const Icon(Icons.layers, color: Colors.blueAccent),
+              onPressed: _isApplyingBulkChange ? null : _showBulkSeriesDialog,
+              tooltip: 'تغيير سلسلة عناصر الطلبية',
+            ),
+            IconButton(
+              icon: const Icon(Icons.window, color: Colors.teal),
+              onPressed: _isApplyingBulkChange ? null : _showBulkGlassDialog,
+              tooltip: 'تغيير زجاج عناصر الطلبية',
+            ),
+          ],
           if (addedProducts.length > 1)
             IconButton(
               icon: Icon(
@@ -1643,30 +2206,35 @@ class _CommandePageState extends State<CommandePage> {
             ],
 
             if (addedProducts.isNotEmpty && !_isReordering) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple.shade700,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                      horizontal: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _isApplyingBulkChange
+                        ? null
+                        : _showApplyBulkColorDialog,
+                    icon: const Icon(Icons.palette_outlined, size: 20),
+                    label: const Text('تغيير اللون'),
                   ),
-                  onPressed: _showApplyBulkColorDialog,
-                  icon: const Icon(Icons.palette_outlined, size: 22),
-                  label: const Text(
-                    'تغيير لون كل عناصر الطلبية',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ElevatedButton.icon(
+                    onPressed: _isApplyingBulkChange
+                        ? null
+                        : _showBulkSeriesDialog,
+                    icon: const Icon(Icons.layers_outlined, size: 20),
+                    label: const Text('تغيير السلسلة'),
                   ),
-                ),
+                  ElevatedButton.icon(
+                    onPressed: _isApplyingBulkChange
+                        ? null
+                        : _showBulkGlassDialog,
+                    icon: const Icon(Icons.window_outlined, size: 20),
+                    label: const Text('تغيير الزجاج'),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
             ],
 
             if (_isReordering) ...[

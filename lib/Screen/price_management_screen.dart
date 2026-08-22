@@ -3359,7 +3359,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 final limit = shutterBoxLimitsList[index];
                 final id = limit['id'] as int;
                 final boxSize = limit['box_size'] as int;
-                final maxHeight = limit['max_height'] as double;
+                final maxHeight =
+                    (limit['max_height'] as num?)?.toDouble() ?? 0;
+                final maxWidth =
+                    (limit['blade_max_width'] as num?)?.toDouble() ?? 6000;
                 final bladeName =
                     limit['blade_name']?.toString() ?? 'شفرة غير معروفة';
 
@@ -3423,6 +3426,28 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                 color: isDark
                                     ? Colors.blue.shade200
                                     : Colors.blue.shade900,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF1B4332)
+                                  : Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '${Localization.translate('أقصى عرض اللامة:', lang)} ${maxWidth.toStringAsFixed(0)} ${Localization.translate('ملم', lang)}',
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.green.shade200
+                                    : Colors.green.shade900,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                               ),
@@ -3702,8 +3727,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         : 155;
     final heightCtrl = TextEditingController(
       text: existingLimit != null
-          ? (existingLimit['max_height'] as double).toStringAsFixed(0)
+          ? ((existingLimit['max_height'] as num?)?.toDouble() ?? 0)
+                .toStringAsFixed(0)
           : '1800',
+    );
+    final widthCtrl = TextEditingController(
+      text: existingLimit != null
+          ? ((existingLimit['blade_max_width'] as num?)?.toDouble() ?? 6000)
+                .toStringAsFixed(0)
+          : '6000',
     );
 
     final boxSizes = [155, 185, 205];
@@ -3746,6 +3778,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         if (val != null) {
                           setState(() {
                             selectedBladeId = val;
+                            final selectedBlade = blades.firstWhere(
+                              (blade) => blade['id'] == val,
+                            );
+                            widthCtrl.text =
+                                ((selectedBlade['max_width_mm'] as num?)
+                                            ?.toDouble() ??
+                                        6000)
+                                    .toStringAsFixed(0);
                           });
                         }
                       },
@@ -3789,6 +3829,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: widthCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'أقصى عرض للّامة (ملم) - خاص باللامة وليس الصندوق',
+                          lang,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3800,12 +3856,16 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 ElevatedButton(
                   onPressed: () async {
                     final maxHeight = double.tryParse(heightCtrl.text);
-                    if (maxHeight == null || maxHeight <= 0) {
+                    final maxWidth = double.tryParse(widthCtrl.text);
+                    if (maxHeight == null ||
+                        maxHeight <= 0 ||
+                        maxWidth == null ||
+                        maxWidth <= 0) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text(
                             Localization.translate(
-                              'الرجاء إدخال قيمة صحيحة للارتفاع.',
+                              'الرجاء إدخال قيم صحيحة للارتفاع والعرض.',
                               lang,
                             ),
                           ),
@@ -3819,6 +3879,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         selectedBoxSize,
                         selectedBladeId!,
                         maxHeight,
+                        maxWidth,
                       );
                     } else {
                       final id = existingLimit['id'] as int;
@@ -3827,6 +3888,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         selectedBoxSize,
                         selectedBladeId!,
                         maxHeight,
+                        maxWidth,
                       );
                     }
 

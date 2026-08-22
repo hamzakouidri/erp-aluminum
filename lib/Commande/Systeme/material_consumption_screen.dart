@@ -654,6 +654,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           .toDouble();
     });
   }
+
   // ==========================================================================
   // دالة: _fetchDefaults  ⭐ (الدالة الأهم في الملف)
   // الغرض: عند فتح الشاشة أو تغيير أي إعداد، تقوم "بالجلب الذكي" لكل المكونات
@@ -4196,40 +4197,43 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         method != CostMethod.linearMeter,
                   )
                   .map((method) {
-                final isSelected = _costMethod == method;
-                String label = '';
-                if (method == CostMethod.percentage) {
-                  label = Localization.translate('percentage', lang);
-                } else if (method == CostMethod.squareMeter) {
-                  label = Localization.translate('square_meter', lang);
-                } else if (method == CostMethod.linearMeter) {
-                  label = Localization.translate('linear_meter', lang);
-                }
-                return ChoiceChip(
-                  label: Text(label),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _costMethod = method);
-                      _saveCostMethod(method);
+                    final isSelected = _costMethod == method;
+                    String label = '';
+                    if (method == CostMethod.percentage) {
+                      label = Localization.translate('percentage', lang);
+                    } else if (method == CostMethod.squareMeter) {
+                      label = Localization.translate('square_meter', lang);
+                    } else if (method == CostMethod.linearMeter) {
+                      label = Localization.translate('linear_meter', lang);
                     }
-                  },
-                  selectedColor: isDark
-                      ? Colors.blue.shade900.withValues(alpha: 0.6)
-                      : Colors.blue.shade100,
-                  checkmarkColor: isDark
-                      ? Colors.blue.shade100
-                      : Colors.blue.shade800,
-                  labelStyle: TextStyle(
-                    color: isSelected
-                        ? (isDark ? Colors.blue.shade100 : Colors.blue.shade900)
-                        : (isDark ? Colors.white70 : Colors.black87),
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                );
-              }).toList(),
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() => _costMethod = method);
+                          _saveCostMethod(method);
+                        }
+                      },
+                      selectedColor: isDark
+                          ? Colors.blue.shade900.withValues(alpha: 0.6)
+                          : Colors.blue.shade100,
+                      checkmarkColor: isDark
+                          ? Colors.blue.shade100
+                          : Colors.blue.shade800,
+                      labelStyle: TextStyle(
+                        color: isSelected
+                            ? (isDark
+                                  ? Colors.blue.shade100
+                                  : Colors.blue.shade900)
+                            : (isDark ? Colors.white70 : Colors.black87),
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    );
+                  })
+                  .toList(),
             ),
             const SizedBox(height: 16),
             // حقل إدخال مختلف يظهر حسب طريقة الحساب المختارة حاليًا
@@ -5871,11 +5875,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _headerCell(
-              Localization.translate('الصورة', lang),
-              _colImg,
-              _wImg,
-            ),
+            _headerCell(Localization.translate('الصورة', lang), _colImg, _wImg),
             _headerCell(
               Localization.translate('البيان', lang),
               _colName,
@@ -6076,6 +6076,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         item.name.contains('Renfort');
     final bool isKitElement =
         item.kitGroupName != null; // هل هذا الصف عنصر فرعي داخل كيت
+    final normalizedUnit = item.unit.trim().toLowerCase();
+    final isGlassSquareMeter =
+        (item.category == 'glass' || item.category == 'panneau') &&
+        (normalizedUnit == 'م²' ||
+            normalizedUnit == 'm²' ||
+            normalizedUnit == 'm2' ||
+            normalizedUnit == 'sqm');
+    final quantityLabel = isGlassSquareMeter
+        ? '${item.quantity.toStringAsFixed(2)} ${item.unit}'
+        : '${item.quantity} ${item.unit}';
     return Container(
       decoration: BoxDecoration(
         color: inactive
@@ -6266,7 +6276,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // عمود الكمية
             _cell(
               Text(
-                '${item.quantity} ${item.unit}',
+                quantityLabel,
                 style: TextStyle(
                   fontSize: 12,
                   color: isDark ? Colors.white70 : Colors.black87,

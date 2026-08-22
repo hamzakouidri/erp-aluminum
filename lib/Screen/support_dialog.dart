@@ -5,49 +5,101 @@ class SupportDialog extends StatefulWidget {
   const SupportDialog({super.key});
 
   @override
-  _SupportDialogState createState() => _SupportDialogState();
+  State<SupportDialog> createState() => _SupportDialogState();
 }
 
 class _SupportDialogState extends State<SupportDialog> {
   int _rating = 0;
   final TextEditingController _msgController = TextEditingController();
+  bool _isSending = false;
 
   void _sendToWhatsApp() async {
+    final ratingText = _rating > 0 ? '$_rating نجوم' : 'لم يتم تحديد تقييم';
+    final userMsg = _msgController.text.trim();
     final String message =
-        "تقييم التطبيق: $_rating نجوم\nالملاحظة/الشكوى: ${_msgController.text}";
-    final String url =
-        "whatsapp://send?phone=213554301484&text=${Uri.encodeComponent(message)}";
+        "مراسلة الإدارة وتقديم شكوى / ملاحظة:\n• تقييم التطبيق: $ratingText\n• الملاحظة أو الشكوى:\n${userMsg.isNotEmpty ? userMsg : 'لا توجد تفاصيل إضافية'}";
+
+    final encodedMessage = Uri.encodeComponent(message);
+    final String webUrl = "https://wa.me/213554301484?text=$encodedMessage";
+    final String appUrl = "whatsapp://send?phone=213554301484&text=$encodedMessage";
+
+    setState(() => _isSending = true);
 
     try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final webUri = Uri.parse(webUrl);
+      final launched = await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        final appUri = Uri.parse(appUrl);
+        await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('لا يمكن فتح التطبيق. يرجى التأكد من تثبيت واتساب.'),
+          const SnackBar(
+            content: Text('تعذر فتح واتساب تلقائياً. يرجى التواصل مباشرة على الرقم: 0554301484'),
+            backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+        Navigator.pop(context);
+      }
     }
-    if (context.mounted) Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    _msgController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final canSend = _rating > 0 || _msgController.text.trim().isNotEmpty;
+
     return AlertDialog(
-      title: Text('ساعدنا في تحسين التطبيق'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.support_agent_rounded, color: Colors.green, size: 24),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'مراسلة الإدارة وتقييم التطبيق',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ما هو تقييمك للتطبيق؟'),
+            const Text(
+              'ما هو تقييمك للتطبيق؟',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+            ),
+            const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(5, (index) {
                 return IconButton(
                   icon: Icon(
-                    index < _rating ? Icons.star : Icons.star_border,
+                    index < _rating ? Icons.star_rounded : Icons.star_outline_rounded,
                     color: Colors.amber,
+                    size: 32,
                   ),
                   onPressed: () {
                     setState(() {
@@ -57,13 +109,23 @@ class _SupportDialogState extends State<SupportDialog> {
                 );
               }),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 12),
+            const Text(
+              'اكتب ملاحظتك أو شكواك للإدارة:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+            ),
+            const SizedBox(height: 6),
             TextField(
               controller: _msgController,
               maxLines: 4,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                hintText: 'اكتب ملاحظتك، شكواك، أو اقتراحك هنا...',
-                border: OutlineInputBorder(),
+                hintText: 'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...',
+                hintStyle: TextStyle(
+                  fontSize: 12.5,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
@@ -72,15 +134,19 @@ class _SupportDialogState extends State<SupportDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('إلغاء'),
+          child: const Text('إلغاء'),
         ),
         ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-          onPressed: _rating > 0 ? _sendToWhatsApp : null,
-          icon: Icon(Icons.send, color: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: canSend && !_isSending ? _sendToWhatsApp : null,
+          icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
           label: Text(
-            'إرسال عبر واتساب',
-            style: TextStyle(color: Colors.white),
+            _isSending ? 'جاري الإرسال...' : 'إرسال عبر واتساب',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
       ],

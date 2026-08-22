@@ -34,23 +34,22 @@ class _SystemRolingState extends State<SystemRoling> {
   @override
   void initState() {
     super.initState();
-    
+
     // Initialize drive type from model
     if (widget.model.shutterMechanism == 'محرك') {
       _shutterDriveType = 'motor';
     } else if (widget.model.shutterMechanism == 'منايفال' ||
-               widget.model.shutterMechanism == 'مانيفال' ||
-               widget.model.shutterMechanism == 'مانيفر') {
+        widget.model.shutterMechanism == 'مانيفال' ||
+        widget.model.shutterMechanism == 'مانيفر') {
       _shutterDriveType = 'crank';
     } else {
       _shutterDriveType = 'strap';
     }
 
-    _loadShutterOptions();
-
     // إجبار ظهور الستار برمجياً في هذه الصفحة المخصصة
     widget.model.hasShutter = true;
     widget.model.isShutterOnly = true;
+    _loadShutterOptions();
 
     // ضبط الكاميرا الافتراضية للـ InteractiveViewer
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -78,6 +77,9 @@ class _SystemRolingState extends State<SystemRoling> {
         }
         _isLoadingOptions = false;
       });
+      if (widget.model.hasShutter) {
+        await widget.model.updateShutterDefaultsIfNeeded();
+      }
     } catch (e) {
       setState(() {
         _isLoadingOptions = false;
@@ -114,14 +116,22 @@ class _SystemRolingState extends State<SystemRoling> {
 
   String _getColorName(FrameColor c) {
     switch (c) {
-      case FrameColor.white:     return 'Blanc / أبيض';
-      case FrameColor.brown:     return 'Bronze / بني';
-      case FrameColor.gray:      return 'Gris 7024 / رمادي غامق 7024';
-      case FrameColor.black:     return 'Noir / أسود';
-      case FrameColor.beige:     return 'Beige / بيج';
-      case FrameColor.gris:      return 'Gris 9007 / رمادي 9007';
-      case FrameColor.antique:   return 'Antique / أنتيك';
-      case FrameColor.lightWood: return 'Desert Oak / خشبي ديزرت أوك';
+      case FrameColor.white:
+        return 'Blanc / أبيض';
+      case FrameColor.brown:
+        return 'Bronze / بني';
+      case FrameColor.gray:
+        return 'Gris 7024 / رمادي غامق 7024';
+      case FrameColor.black:
+        return 'Noir / أسود';
+      case FrameColor.beige:
+        return 'Beige / بيج';
+      case FrameColor.gris:
+        return 'Gris 9007 / رمادي 9007';
+      case FrameColor.antique:
+        return 'Antique / أنتيك';
+      case FrameColor.lightWood:
+        return 'Desert Oak / خشبي ديزرت أوك';
     }
   }
 
@@ -501,7 +511,10 @@ class _SystemRolingState extends State<SystemRoling> {
                     if (widget.model.shutterHeightWarning != null) ...[
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
                           color: Colors.red.shade50,
@@ -510,13 +523,52 @@ class _SystemRolingState extends State<SystemRoling> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 20),
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.red.shade700,
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 widget.model.shutterHeightWarning!,
                                 style: TextStyle(
                                   color: Colors.red.shade900,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (widget.model.shutterWidthWarning != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          border: Border.all(color: Colors.orange.shade200),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.straighten,
+                              color: Colors.orange.shade800,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.model.shutterWidthWarning!,
+                                style: TextStyle(
+                                  color: Colors.orange.shade900,
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -562,15 +614,18 @@ class _SystemRolingState extends State<SystemRoling> {
                                       children: [
                                         ...FrameColor.values.map((color) {
                                           final isSelected =
-                                              widget.model.selectedDbColor == null &&
+                                              widget.model.selectedDbColor ==
+                                                  null &&
                                               widget.model.frameColor == color;
                                           return Tooltip(
                                             message: _getColorName(color),
                                             child: GestureDetector(
                                               onTap: () {
                                                 setState(() {
-                                                  widget.model.frameColor = color;
-                                                  widget.model.selectedDbColor = null;
+                                                  widget.model.frameColor =
+                                                      color;
+                                                  widget.model.selectedDbColor =
+                                                      null;
                                                   widget.model.refreshUI();
                                                 });
                                               },
@@ -578,19 +633,24 @@ class _SystemRolingState extends State<SystemRoling> {
                                                 duration: const Duration(
                                                   milliseconds: 200,
                                                 ),
-                                                margin: const EdgeInsets.symmetric(
-                                                  horizontal: 4,
-                                                ),
+                                                margin:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 4,
+                                                    ),
                                                 width: isSelected ? 26 : 22,
                                                 height: isSelected ? 26 : 22,
                                                 decoration: BoxDecoration(
                                                   shape: BoxShape.circle,
-                                                  color: _getFrameColorDisplay(color),
+                                                  color: _getFrameColorDisplay(
+                                                    color,
+                                                  ),
                                                   border: Border.all(
                                                     color: isSelected
                                                         ? Colors.blue
                                                         : Colors.grey.shade400,
-                                                    width: isSelected ? 2.5 : 1.0,
+                                                    width: isSelected
+                                                        ? 2.5
+                                                        : 1.0,
                                                   ),
                                                 ),
                                               ),
@@ -598,20 +658,31 @@ class _SystemRolingState extends State<SystemRoling> {
                                           );
                                         }),
                                         ..._dbColors.map((dbColor) {
-                                          final name = dbColor['name']?.toString() ?? '';
-                                          final hex = dbColor['hex_code']?.toString() ?? '#9E9E9E';
+                                          final name =
+                                              dbColor['name']?.toString() ?? '';
+                                          final hex =
+                                              dbColor['hex_code']?.toString() ??
+                                              '#9E9E9E';
                                           Color parsedColor = Colors.grey;
                                           try {
-                                            parsedColor = Color(int.parse(hex.replaceAll('#', '0xFF')));
+                                            parsedColor = Color(
+                                              int.parse(
+                                                hex.replaceAll('#', '0xFF'),
+                                              ),
+                                            );
                                           } catch (_) {}
                                           final isSelected =
-                                              widget.model.selectedDbColor?['name'] == name;
+                                              widget
+                                                  .model
+                                                  .selectedDbColor?['name'] ==
+                                              name;
                                           return Tooltip(
                                             message: name,
                                             child: GestureDetector(
                                               onTap: () {
                                                 setState(() {
-                                                  widget.model.selectedDbColor = dbColor;
+                                                  widget.model.selectedDbColor =
+                                                      dbColor;
                                                   widget.model.refreshUI();
                                                 });
                                               },
@@ -619,9 +690,10 @@ class _SystemRolingState extends State<SystemRoling> {
                                                 duration: const Duration(
                                                   milliseconds: 200,
                                                 ),
-                                                margin: const EdgeInsets.symmetric(
-                                                  horizontal: 4,
-                                                ),
+                                                margin:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 4,
+                                                    ),
                                                 width: isSelected ? 26 : 22,
                                                 height: isSelected ? 26 : 22,
                                                 decoration: BoxDecoration(
@@ -631,7 +703,9 @@ class _SystemRolingState extends State<SystemRoling> {
                                                     color: isSelected
                                                         ? Colors.blue
                                                         : Colors.grey.shade400,
-                                                    width: isSelected ? 2.5 : 1.0,
+                                                    width: isSelected
+                                                        ? 2.5
+                                                        : 1.0,
                                                   ),
                                                 ),
                                               ),
@@ -644,8 +718,12 @@ class _SystemRolingState extends State<SystemRoling> {
                                   const SizedBox(height: 4),
                                   Text(
                                     widget.model.selectedDbColor != null
-                                        ? (widget.model.selectedDbColor!['name']?.toString() ?? '')
-                                        : _getColorName(widget.model.frameColor),
+                                        ? (widget.model.selectedDbColor!['name']
+                                                  ?.toString() ??
+                                              '')
+                                        : _getColorName(
+                                            widget.model.frameColor,
+                                          ),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade700,
@@ -765,15 +843,21 @@ class _SystemRolingState extends State<SystemRoling> {
                                   onSelectionChanged:
                                       (Set<String> newSelection) {
                                         setState(() {
-                                          _shutterDriveType = newSelection.first;
+                                          _shutterDriveType =
+                                              newSelection.first;
                                           if (_shutterDriveType == 'motor') {
-                                            widget.model.shutterMechanism = 'محرك';
-                                          } else if (_shutterDriveType == 'crank') {
-                                            widget.model.shutterMechanism = 'منايفال';
+                                            widget.model.shutterMechanism =
+                                                'محرك';
+                                          } else if (_shutterDriveType ==
+                                              'crank') {
+                                            widget.model.shutterMechanism =
+                                                'منايفال';
                                           } else {
-                                            widget.model.shutterMechanism = 'حزام';
+                                            widget.model.shutterMechanism =
+                                                'حزام';
                                           }
-                                          widget.model.updateShutterDefaultsIfNeeded();
+                                          widget.model
+                                              .updateShutterDefaultsIfNeeded();
                                           widget.model.refreshUI();
                                         });
                                       },
@@ -868,11 +952,15 @@ class _SystemRolingState extends State<SystemRoling> {
                                   await widget.model.updateShutterLame(val);
                                   setState(() {
                                     // Sync SegmentedButton selection state
-                                    if (widget.model.shutterMechanism == 'محرك') {
+                                    if (widget.model.shutterMechanism ==
+                                        'محرك') {
                                       _shutterDriveType = 'motor';
-                                    } else if (widget.model.shutterMechanism == 'منايفال' ||
-                                               widget.model.shutterMechanism == 'مانيفال' ||
-                                               widget.model.shutterMechanism == 'مانيفر') {
+                                    } else if (widget.model.shutterMechanism ==
+                                            'منايفال' ||
+                                        widget.model.shutterMechanism ==
+                                            'مانيفال' ||
+                                        widget.model.shutterMechanism ==
+                                            'مانيفر') {
                                       _shutterDriveType = 'crank';
                                     } else {
                                       _shutterDriveType = 'strap';
@@ -1286,8 +1374,8 @@ class WindowPainter extends CustomPainter {
                   ? TextureCache.woodTextureAntique
                   : (isGreyTexture
                         ? TextureCache.woodTextureGrey
-                              : (TextureCache.woodTexture ??
-                                    TextureCache.woodTextureD0)));
+                        : (TextureCache.woodTexture ??
+                              TextureCache.woodTextureD0)));
 
         if (texture != null) {
           return ui.ImageShader(

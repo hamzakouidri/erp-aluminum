@@ -396,4 +396,19 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Carte Mes Tâches',
     AppLanguage.english: 'My Tasks Card',
   },
+  'مراجعة الاشتراك': {
+    AppLanguage.arabic: 'مراجعة الاشتراك',
+    AppLanguage.french: 'Mon abonnement',
+    AppLanguage.english: 'Subscription Review',
+  },
+  'الاشتراك والمدة المتبقية': {
+    AppLanguage.arabic: 'الاشتراك والمدة المتبقية',
+    AppLanguage.french: 'Abonnement et durée restante',
+    AppLanguage.english: 'Subscription & Remaining Time',
+  },
+  'الحساب': {
+    AppLanguage.arabic: 'الحساب',
+    AppLanguage.french: 'Compte',
+    AppLanguage.english: 'Account',
+  },
 };

@@ -2617,6 +2617,41 @@ class WindowModel extends ChangeNotifier {
   Map<String, dynamic>? get activeFrameOverride =>
       usesSlidingPrimaryProfiles ? slidingFrameOverride : frameOverride;
 
+  /// Maximum length of one frame profile piece, in millimetres.
+  ///
+  /// The catalogue stores [AluminumSection.barLength] in metres.  A legacy
+  /// row may already contain millimetres, so values above 100 are accepted as
+  /// millimetres.  A standalone cover is included when it is actually part
+  /// of the drawing; an integrated cover is already part of the frame row.
+  double get maximumFrameBarLengthMm {
+    double asMillimetres(double value) {
+      if (value <= 0) return 0.0;
+      return value > 100.0 ? value : value * 1000.0;
+    }
+
+    final lengths = <double>[];
+    final frameLength = asMillimetres(
+      getSectionByType('frame')?.barLength ?? 0,
+    );
+    if (frameLength > 0) lengths.add(frameLength);
+
+    if (hasSideCovers && !isIntegratedFrame) {
+      final overrideLength = sideCoverOverride?['bar_length'];
+      final coverLength = asMillimetres(
+        selectedSideCover?.barLength ??
+            (overrideLength is num
+                ? overrideLength.toDouble()
+                : double.tryParse(overrideLength?.toString() ?? '') ?? 0.0),
+      );
+      if (coverLength > 0) lengths.add(coverLength);
+    }
+
+    return lengths.isEmpty ? 6000.0 : lengths.reduce(math.min);
+  }
+
+  double _limitFrameDimension(double value) =>
+      value.clamp(200.0, maximumFrameBarLengthMm).toDouble();
+
   bool get isFramePVC => _isPvcSeries(activeFrameSeries);
 
   /// Replaces the frame reinforcement with the one linked to the currently
@@ -3035,6 +3070,28 @@ class WindowModel extends ChangeNotifier {
   String shutterLame = 'Lame Injectée';
   String shutterGlissiere = 'Glissière 25';
   String? shutterHeightWarning;
+  String? shutterWidthWarning;
+  double? shutterMaximumWidthMm;
+
+  double get maximumShutterBarLengthMm {
+    double readLength(Object? raw) {
+      final value = raw is num
+          ? raw.toDouble()
+          : double.tryParse(raw?.toString() ?? '') ?? 0.0;
+      if (value <= 0) return 6000.0;
+      final millimetres = value > 100.0 ? value : value * 1000.0;
+      return math.min(6000.0, millimetres);
+    }
+
+    final blade = componentOverrides['الشرائح (Lames)'];
+    if (blade is Map) {
+      return readLength(blade['bar_length_m'] ?? blade['bar_length']);
+    }
+    return 6000.0;
+  }
+
+  double get maximumAllowedShutterWidthMm =>
+      math.min(maximumShutterBarLengthMm, shutterMaximumWidthMm ?? 6000.0);
 
   Future<void> updateShutterLame(String name) async {
     shutterLame = name;
@@ -4917,6 +4974,28 @@ class WindowModel extends ChangeNotifier {
       }
 
       if (availableSystems.isNotEmpty) {
+        bool isOpeningCandidate(
+          AluminumSeries series,
+          AluminumProfileSystem profile,
+        ) {
+          if (systemMode == 'sliding') return false;
+          if (systemMode == 'mixed' || systemMode == 'french') {
+            return isOpeningSeriesForDrawing(series, profile);
+          }
+          return true;
+        }
+
+        bool isSlidingCandidate(
+          AluminumSeries series,
+          AluminumProfileSystem profile,
+        ) {
+          if (systemMode == 'french') return false;
+          if (systemMode == 'mixed' || systemMode == 'sliding') {
+            return isSlidingSeriesForDrawing(series);
+          }
+          return true;
+        }
+
         AluminumSeries? resolvedActive;
         String? activeNameToResolve = loadedSeriesName;
         if (activeNameToResolve == null || activeNameToResolve.isEmpty) {
@@ -4929,7 +5008,7 @@ class WindowModel extends ChangeNotifier {
           // First check availableSystems (already loaded)
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == loadedSeriesId) {
+              if (s.id == loadedSeriesId && isOpeningCandidate(s, sys)) {
                 resolvedActive = s;
                 break;
               }
@@ -4941,10 +5020,12 @@ class WindowModel extends ChangeNotifier {
             final allProfilesData0 = await db.readProfile();
             outer0:
             for (var pData in allProfilesData0) {
+              final sourceSystem = AluminumProfileSystem.fromMap(pData);
               final seriesData = await db.readSeriesByProfile(pData['id']);
               for (var sData in seriesData) {
                 final s = AluminumSeries.fromMap(sData);
-                if (s.id == loadedSeriesId) {
+                if (s.id == loadedSeriesId &&
+                    isOpeningCandidate(s, sourceSystem)) {
                   final sectionsData = await db.readSectionsBySeries(s.id);
                   s.sections = sectionsData
                       .map((e) => AluminumSection.fromMap(e))
@@ -4968,7 +5049,7 @@ class WindowModel extends ChangeNotifier {
         if (resolvedActive == null && activeSeries != null) {
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == activeSeries!.id) {
+              if (s.id == activeSeries!.id && isOpeningCandidate(s, sys)) {
                 resolvedActive = s;
                 break;
               }
@@ -4980,10 +5061,12 @@ class WindowModel extends ChangeNotifier {
             final allProfilesDataP1 = await db.readProfile();
             outerP1:
             for (var pData in allProfilesDataP1) {
+              final sourceSystem = AluminumProfileSystem.fromMap(pData);
               final seriesData = await db.readSeriesByProfile(pData['id']);
               for (var sData in seriesData) {
                 final s = AluminumSeries.fromMap(sData);
-                if (s.id == activeSeries!.id) {
+                if (s.id == activeSeries!.id &&
+                    isOpeningCandidate(s, sourceSystem)) {
                   final sectionsData = await db.readSectionsBySeries(s.id);
                   s.sections = sectionsData
                       .map((e) => AluminumSection.fromMap(e))
@@ -5008,6 +5091,7 @@ class WindowModel extends ChangeNotifier {
           final query = activeNameToResolve.toLowerCase().trim();
           for (var sys in availableSystems) {
             for (var s in sys.series) {
+              if (!isOpeningCandidate(s, sys)) continue;
               final sName = s.name.toLowerCase().trim();
               final sType = s.type.toLowerCase().trim();
               if (sName == query ||
@@ -5029,12 +5113,7 @@ class WindowModel extends ChangeNotifier {
           AluminumSeries? firstFrench;
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              final searchString = '${sys.type} ${sys.name} ${s.type} ${s.name}'
-                  .toLowerCase();
-              if (searchString.contains('frappe') ||
-                  searchString.contains('battant') ||
-                  searchString.contains('فتح') ||
-                  searchString.contains('فرنسي')) {
+              if (isOpeningCandidate(s, sys)) {
                 firstFrench = s;
                 break;
               }
@@ -5059,7 +5138,8 @@ class WindowModel extends ChangeNotifier {
         if (activeSlidingSeries != null) {
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == activeSlidingSeries!.id) {
+              if (s.id == activeSlidingSeries!.id &&
+                  isSlidingCandidate(s, sys)) {
                 resolvedSliding = s;
                 break;
               }
@@ -5071,7 +5151,7 @@ class WindowModel extends ChangeNotifier {
         if (resolvedSliding == null && loadedSlidingSeriesId != null) {
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              if (s.id == loadedSlidingSeriesId) {
+              if (s.id == loadedSlidingSeriesId && isSlidingCandidate(s, sys)) {
                 resolvedSliding = s;
                 break;
               }
@@ -5086,6 +5166,7 @@ class WindowModel extends ChangeNotifier {
           final query = slidingNameToResolve.toLowerCase().trim();
           for (var sys in availableSystems) {
             for (var s in sys.series) {
+              if (!isSlidingCandidate(s, sys)) continue;
               final sName = s.name.toLowerCase().trim();
               final sType = s.type.toLowerCase().trim();
               if (sName == query ||
@@ -5109,12 +5190,7 @@ class WindowModel extends ChangeNotifier {
           AluminumSeries? firstSliding;
           for (var sys in availableSystems) {
             for (var s in sys.series) {
-              final searchString = '${sys.type} ${sys.name} ${s.type} ${s.name}'
-                  .toLowerCase();
-              if (searchString.contains('coulissant') ||
-                  searchString.contains('sliding') ||
-                  searchString.contains('منزلق') ||
-                  searchString.contains('كوليس')) {
+              if (isSlidingCandidate(s, sys)) {
                 firstSliding = s;
                 break;
               }
@@ -5126,7 +5202,8 @@ class WindowModel extends ChangeNotifier {
             if (systemMode == 'sliding') {
               await setActiveSeries(firstSliding);
             }
-          } else if (availableSystems.isNotEmpty &&
+          } else if (systemMode == 'sliding' &&
+              availableSystems.isNotEmpty &&
               availableSystems.first.series.isNotEmpty) {
             await setActiveSlidingSeries(availableSystems.first.series.first);
             if (systemMode == 'sliding') {
@@ -5147,14 +5224,7 @@ class WindowModel extends ChangeNotifier {
                 orElse: () => availableSystems.first,
               );
               for (var ser in activeSystem.series) {
-                final name = ser.name.toLowerCase();
-                final type = ser.type.toLowerCase();
-                if (name.contains('couliss') ||
-                    name.contains('sliding') ||
-                    name.contains('منزلق') ||
-                    type.contains('couliss') ||
-                    type.contains('sliding') ||
-                    type.contains('منزلق')) {
+                if (isSlidingCandidate(ser, activeSystem)) {
                   firstSliding = ser;
                   break;
                 }
@@ -5163,10 +5233,7 @@ class WindowModel extends ChangeNotifier {
             if (firstSliding == null) {
               for (var sys in availableSystems) {
                 for (var ser in sys.series) {
-                  final name = ser.name.toLowerCase();
-                  if (name.contains('couliss') ||
-                      name.contains('sliding') ||
-                      name.contains('منزلق')) {
+                  if (isSlidingCandidate(ser, sys)) {
                     firstSliding = ser;
                     break;
                   }
@@ -5174,9 +5241,13 @@ class WindowModel extends ChangeNotifier {
                 if (firstSliding != null) break;
               }
             }
-            await setActiveSlidingSeries(
-              firstSliding ?? availableSystems.first.series.first,
-            );
+            if (firstSliding != null) {
+              await setActiveSlidingSeries(firstSliding);
+            } else {
+              // A mixed/opening drawing without a valid sliding series must
+              // keep the sliding choice empty; never reuse the opening series.
+              activeSlidingSeries = null;
+            }
           }
         }
       }
@@ -6700,6 +6771,8 @@ class WindowModel extends ChangeNotifier {
     if (!hasShutter) return;
 
     final previousBoxHeight = shutterBoxHeight;
+    shutterWidthWarning = null;
+    shutterMaximumWidthMm = null;
     final database = await db.db;
     Map<String, dynamic>? blade;
     final rawBlade = componentOverrides['الشرائح (Lames)'];
@@ -6742,6 +6815,35 @@ class WindowModel extends ChangeNotifier {
           bladeName.contains('إكسترودي') ||
           (isPVC && !isCaissonTunnel && _isX3dShutterComponent(blade))) {
         shutterMechanism = 'محرك';
+      }
+    }
+
+    // Width is governed by the selected blade, independently from the box
+    // height rule. The configured limit is stored in millimetres; the 6 m
+    // physical bar limit remains an absolute upper bound.
+    if (database != null && blade != null && blade['id'] != null) {
+      try {
+        final widthRows = await database.query(
+          'ShutterComponents',
+          columns: const ['max_width_mm'],
+          where: 'id = ?',
+          whereArgs: [blade['id']],
+        );
+        final configuredWidths = widthRows
+            .map((row) => (row['max_width_mm'] as num?)?.toDouble() ?? 0.0)
+            .where((value) => value > 0)
+            .toList();
+        if (configuredWidths.isNotEmpty) {
+          shutterMaximumWidthMm = configuredWidths.reduce(math.min);
+          if (width > maximumAllowedShutterWidthMm) {
+            shutterWidthWarning =
+                'عرض الستار ${width.toStringAsFixed(0)} مم يتجاوز الحد الأقصى '
+                '${maximumAllowedShutterWidthMm.toStringAsFixed(0)} مم '
+                'للامة ${blade['name'] ?? shutterLame}. اختر لامة مناسبة.';
+          }
+        }
+      } catch (e) {
+        print('Error loading shutter blade width limit: $e');
       }
     }
 
@@ -7866,6 +7968,8 @@ class WindowModel extends ChangeNotifier {
 
   void rescaleZones(double oldW, double oldH, double newW, double newH) {
     if (oldW <= 0 || oldH <= 0 || newW <= 0 || newH <= 0) return;
+    newW = _limitFrameDimension(newW);
+    newH = _limitFrameDimension(newH);
     _saveSnapshot();
     _rescaleZonesInternal(oldW, oldH, newW, newH);
     width = newW;
@@ -8719,8 +8823,8 @@ class WindowModel extends ChangeNotifier {
           }
         }
       }
-      if (newPos < minAllowedY) newPos = minAllowedY;
-      if (newPos > maxAllowedY) newPos = maxAllowedY;
+      if (newPos - sep < minAllowedY) newPos = minAllowedY + sep;
+      if (newPos + sep > maxAllowedY) newPos = maxAllowedY - sep;
       double delta = newPos - oldPos;
       for (var z in zones) {
         if ((z.boundary.bottom - (oldPos - sep)).abs() < 2) {
@@ -8755,8 +8859,8 @@ class WindowModel extends ChangeNotifier {
           }
         }
       }
-      if (newPos < minAllowedX) newPos = minAllowedX;
-      if (newPos > maxAllowedX) newPos = maxAllowedX;
+      if (newPos - sep < minAllowedX) newPos = minAllowedX + sep;
+      if (newPos + sep > maxAllowedX) newPos = maxAllowedX - sep;
       double delta = newPos - oldPos;
       for (var z in zones) {
         if ((z.boundary.right - (oldPos - sep)).abs() < 2) {
@@ -8780,6 +8884,8 @@ class WindowModel extends ChangeNotifier {
       type: SelectionType.mullion,
       isHorizontalMullion: isH,
       mullionPosition: newPos,
+      mullionStart: selection.mullionStart,
+      mullionEnd: selection.mullionEnd,
     );
     _moveMullionMetadata(oldKey, _mullionKey(isH, newPos));
     notifyListeners();
@@ -8890,6 +8996,25 @@ class WindowModel extends ChangeNotifier {
     }
     WindowZone.globalDefaultGlass = spec;
     updateGlassGasket();
+    notifyListeners();
+  }
+
+  /// Applies a bulk glazing choice through the same model path used by the
+  /// drawing screen, including automatic parclose and spacer compatibility.
+  Future<void> applyGlassSpecificationToAllZones(
+    GlassSpecification spec,
+  ) async {
+    paintAllZonesSpec(spec);
+    final paneThickness = spec.structure == GlassStructure.double
+        ? (spec.thicknessOuter ?? 4.0) + (spec.thicknessInner ?? 4.0)
+        : (spec.thicknessOuter ?? 4.0);
+    final parcloseChanged = await _ensureParcloseForGlass(
+      structure: spec.structure,
+      paneThickness: paneThickness,
+    );
+    if (parcloseChanged) {
+      fitDoubleGlassIntercallsToSelectedParclose();
+    }
     notifyListeners();
   }
 
@@ -9143,6 +9268,53 @@ class WindowModel extends ChangeNotifier {
     } catch (_) {}
   }
 
+  double? _clampInnerDivisionRatio({
+    required WindowZone zone,
+    required bool isRightSash,
+    required bool isHorizontal,
+    required int index,
+    required double ratio,
+    required List<double> positions,
+  }) {
+    if (index < 0 || index >= positions.length) return null;
+
+    final sashT =
+        zone.sashThickness ??
+        getSectionThickness('sash', fallback: profileThickness);
+    Rect sashR = zone.boundary;
+    if (zone.content == ZoneContent.doubleSash) {
+      const sep = 4.0;
+      final midX =
+          zone.boundary.left + zone.boundary.width * zone.doubleSashRatio;
+      sashR = isRightSash
+          ? Rect.fromLTRB(
+              midX + sep / 2,
+              zone.boundary.top,
+              zone.boundary.right,
+              zone.boundary.bottom,
+            )
+          : Rect.fromLTRB(
+              zone.boundary.left,
+              zone.boundary.top,
+              midX - sep / 2,
+              zone.boundary.bottom,
+            );
+    }
+
+    final glassR = getSafeGlassRect(sashR, sashT);
+    final physicalSize = isHorizontal ? glassR.height : glassR.width;
+    // Keep numeric editing and pointer dragging on the same 100 mm rule.
+    final minRatio = (100.0 / math.max(1.0, physicalSize))
+        .clamp(0.02, 0.45)
+        .toDouble();
+    final minVal = index == 0 ? minRatio : positions[index - 1] + minRatio;
+    final maxVal = index == positions.length - 1
+        ? 1.0 - minRatio
+        : positions[index + 1] - minRatio;
+    if (minVal > maxVal) return null;
+    return ratio.clamp(minVal, maxVal).toDouble();
+  }
+
   void updateZoneInnerHDivisionRatio(
     String zoneId,
     bool isRightSash,
@@ -9162,12 +9334,16 @@ class WindowModel extends ChangeNotifier {
       }
       final mutable = List<double>.from(zone.rightInnerHPositions);
       if (index >= 0 && index < mutable.length) {
-        double minVal = index == 0 ? 0.05 : mutable[index - 1] + 0.05;
-        double maxVal = index == mutable.length - 1
-            ? 0.95
-            : mutable[index + 1] - 0.05;
-        if (minVal > maxVal) minVal = maxVal - 0.01;
-        mutable[index] = ratio.clamp(minVal, maxVal);
+        final nextRatio = _clampInnerDivisionRatio(
+          zone: zone,
+          isRightSash: true,
+          isHorizontal: true,
+          index: index,
+          ratio: ratio,
+          positions: mutable,
+        );
+        if (nextRatio == null) return;
+        mutable[index] = nextRatio;
         zone.rightInnerHPositions = mutable;
       }
     } else {
@@ -9179,12 +9355,16 @@ class WindowModel extends ChangeNotifier {
       }
       final mutable = List<double>.from(zone.innerHPositions);
       if (index >= 0 && index < mutable.length) {
-        double minVal = index == 0 ? 0.05 : mutable[index - 1] + 0.05;
-        double maxVal = index == mutable.length - 1
-            ? 0.95
-            : mutable[index + 1] - 0.05;
-        if (minVal > maxVal) minVal = maxVal - 0.01;
-        mutable[index] = ratio.clamp(minVal, maxVal);
+        final nextRatio = _clampInnerDivisionRatio(
+          zone: zone,
+          isRightSash: false,
+          isHorizontal: true,
+          index: index,
+          ratio: ratio,
+          positions: mutable,
+        );
+        if (nextRatio == null) return;
+        mutable[index] = nextRatio;
         zone.innerHPositions = mutable;
       }
     }
@@ -9210,12 +9390,16 @@ class WindowModel extends ChangeNotifier {
       }
       final mutable = List<double>.from(zone.rightInnerVPositions);
       if (index >= 0 && index < mutable.length) {
-        double minVal = index == 0 ? 0.05 : mutable[index - 1] + 0.05;
-        double maxVal = index == mutable.length - 1
-            ? 0.95
-            : mutable[index + 1] - 0.05;
-        if (minVal > maxVal) minVal = maxVal - 0.01;
-        mutable[index] = ratio.clamp(minVal, maxVal);
+        final nextRatio = _clampInnerDivisionRatio(
+          zone: zone,
+          isRightSash: true,
+          isHorizontal: false,
+          index: index,
+          ratio: ratio,
+          positions: mutable,
+        );
+        if (nextRatio == null) return;
+        mutable[index] = nextRatio;
         zone.rightInnerVPositions = mutable;
       }
     } else {
@@ -9227,12 +9411,16 @@ class WindowModel extends ChangeNotifier {
       }
       final mutable = List<double>.from(zone.innerVPositions);
       if (index >= 0 && index < mutable.length) {
-        double minVal = index == 0 ? 0.05 : mutable[index - 1] + 0.05;
-        double maxVal = index == mutable.length - 1
-            ? 0.95
-            : mutable[index + 1] - 0.05;
-        if (minVal > maxVal) minVal = maxVal - 0.01;
-        mutable[index] = ratio.clamp(minVal, maxVal);
+        final nextRatio = _clampInnerDivisionRatio(
+          zone: zone,
+          isRightSash: false,
+          isHorizontal: false,
+          index: index,
+          ratio: ratio,
+          positions: mutable,
+        );
+        if (nextRatio == null) return;
+        mutable[index] = nextRatio;
         zone.innerVPositions = mutable;
       }
     }
@@ -9535,6 +9723,14 @@ class WindowModel extends ChangeNotifier {
   }
 
   void resizeWindow(double newW, double newH) {
+    if (isShutterOnly) {
+      newW = newW.clamp(200.0, maximumShutterBarLengthMm).toDouble();
+      // The blade rule is about width only; shutter height remains independent.
+      newH = newH.clamp(100.0, 10000.0).toDouble();
+    } else {
+      newW = _limitFrameDimension(newW);
+      newH = _limitFrameDimension(newH);
+    }
     _saveSnapshot();
     final oldWidth = width;
     final oldHeight = height;
@@ -9616,6 +9812,7 @@ class WindowModel extends ChangeNotifier {
     final zIdx = zones.indexWhere((z) => z.id == zoneId);
     if (zIdx == -1) return;
     final r = zones[zIdx].boundary;
+    newVal = math.min(newVal, maximumFrameBarLengthMm);
     if (isWidth) {
       double diff = newVal - r.width;
       if (diff == 0) return;
@@ -9688,6 +9885,12 @@ class WindowModel extends ChangeNotifier {
       if (zone.boundary.width + actual < minInnerSize) {
         actual = minInnerSize - zone.boundary.width;
       }
+      if (zone.boundary.width + actual > maximumFrameBarLengthMm) {
+        actual = maximumFrameBarLengthMm - zone.boundary.width;
+      }
+      if (width + actual > maximumFrameBarLengthMm) {
+        actual = maximumFrameBarLengthMm - width;
+      }
       if (width + actual < 200.0) {
         actual = 200.0 - width;
       }
@@ -9734,6 +9937,12 @@ class WindowModel extends ChangeNotifier {
       double actual = deltaX;
       if (zone.boundary.width - actual < minInnerSize) {
         actual = zone.boundary.width - minInnerSize;
+      }
+      if (zone.boundary.width - actual > maximumFrameBarLengthMm) {
+        actual = zone.boundary.width - maximumFrameBarLengthMm;
+      }
+      if (width - actual > maximumFrameBarLengthMm) {
+        actual = width - maximumFrameBarLengthMm;
       }
       if (width - actual < 200.0) {
         actual = width - 200.0;
@@ -9785,6 +9994,12 @@ class WindowModel extends ChangeNotifier {
       if (zone.boundary.height + actual < minInnerSize) {
         actual = minInnerSize - zone.boundary.height;
       }
+      if (zone.boundary.height + actual > maximumFrameBarLengthMm) {
+        actual = maximumFrameBarLengthMm - zone.boundary.height;
+      }
+      if (height + actual > maximumFrameBarLengthMm) {
+        actual = maximumFrameBarLengthMm - height;
+      }
       if (height + actual < 200.0) {
         actual = 200.0 - height;
       }
@@ -9831,6 +10046,12 @@ class WindowModel extends ChangeNotifier {
       double actual = deltaY;
       if (zone.boundary.height - actual < minInnerSize) {
         actual = zone.boundary.height - minInnerSize;
+      }
+      if (zone.boundary.height - actual > maximumFrameBarLengthMm) {
+        actual = zone.boundary.height - maximumFrameBarLengthMm;
+      }
+      if (height - actual > maximumFrameBarLengthMm) {
+        actual = height - maximumFrameBarLengthMm;
       }
       if (height - actual < 200.0) {
         actual = height - 200.0;
@@ -12989,7 +13210,22 @@ class WindowModel extends ChangeNotifier {
   }
 
   void updateDrawing(Offset pos) {
-    drawingCurrent = pos;
+    if (drawingStart != null &&
+        (drawingMode == 'new_frame' ||
+            drawingMode == 'add_frame' ||
+            drawingMode == 'shutter_only')) {
+      final maxWidth = drawingMode == 'shutter_only'
+          ? maximumShutterBarLengthMm
+          : maximumFrameBarLengthMm;
+      final maxHeight = drawingMode == 'shutter_only' ? 10000.0 : maxWidth;
+      final delta = pos - drawingStart!;
+      drawingCurrent = Offset(
+        drawingStart!.dx + delta.dx.clamp(-maxWidth, maxWidth),
+        drawingStart!.dy + delta.dy.clamp(-maxHeight, maxHeight),
+      );
+    } else {
+      drawingCurrent = pos;
+    }
     notifyListeners();
   }
 
@@ -13011,7 +13247,9 @@ class WindowModel extends ChangeNotifier {
     if (drawingMode == 'shutter_only') {
       final drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
-        width = drawnRect.width.clamp(200.0, 10000.0);
+        width = drawnRect.width
+            .clamp(200.0, maximumShutterBarLengthMm)
+            .toDouble();
         height = drawnRect.height.clamp(200.0, 10000.0);
         drawnLeft = drawnRect.left;
         drawnTop = drawnRect.top;
@@ -13045,8 +13283,8 @@ class WindowModel extends ChangeNotifier {
     if (zones.isEmpty) {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
-        width = drawnRect.width.clamp(200.0, 10000.0);
-        height = drawnRect.height.clamp(200.0, 10000.0);
+        width = _limitFrameDimension(drawnRect.width);
+        height = _limitFrameDimension(drawnRect.height);
         drawnLeft = drawnRect.left;
         drawnTop = drawnRect.top;
         double topOffset = (hasShutter && !hasArchOrSlant)
@@ -13081,8 +13319,8 @@ class WindowModel extends ChangeNotifier {
     if (drawingMode == 'add_frame') {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
-        double newW = drawnRect.width.clamp(200.0, 10000.0);
-        double newH = drawnRect.height.clamp(200.0, 10000.0);
+        double newW = _limitFrameDimension(drawnRect.width);
+        double newH = _limitFrameDimension(drawnRect.height);
 
         double topOffset = (hasShutter && !hasArchOrSlant)
             ? shutterBoxHeight
@@ -13137,6 +13375,9 @@ class WindowModel extends ChangeNotifier {
             newH = end;
           }
         }
+
+        newW = _limitFrameDimension(newW);
+        newH = _limitFrameDimension(newH);
 
         final List<WindowZone> newZones = [];
         final tThickness = divisionThickness;
@@ -13809,8 +14050,7 @@ class WindowModel extends ChangeNotifier {
           final aBelowB = (a.bottom - b.top).abs() <= mullionThickness + 4.0;
           final bBelowA = (b.bottom - a.top).abs() <= mullionThickness + 4.0;
           if (!aBelowB && !bBelowA) continue;
-          final overlap =
-              math.min(a.right, b.right) - math.max(a.left, b.left);
+          final overlap = math.min(a.right, b.right) - math.max(a.left, b.left);
           if (overlap <= 5.0) continue;
           candidates.add(
             aBelowB ? (a.bottom + b.top) / 2 : (b.bottom + a.top) / 2,
@@ -13819,8 +14059,7 @@ class WindowModel extends ChangeNotifier {
           final aLeftOfB = (a.right - b.left).abs() <= mullionThickness + 4.0;
           final bLeftOfA = (b.right - a.left).abs() <= mullionThickness + 4.0;
           if (!aLeftOfB && !bLeftOfA) continue;
-          final overlap =
-              math.min(a.bottom, b.bottom) - math.max(a.top, b.top);
+          final overlap = math.min(a.bottom, b.bottom) - math.max(a.top, b.top);
           if (overlap <= 5.0) continue;
           candidates.add(
             aLeftOfB ? (a.right + b.left) / 2 : (b.right + a.left) / 2,

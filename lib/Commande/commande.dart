@@ -985,6 +985,16 @@ class _CommandeState extends State<Commande> {
     Map<String, dynamic> orderData,
   ) async {
     final orderId = (orderData['id'] as num?)?.toInt() ?? 0;
+    // The list row can legitimately be one repaint behind a live detail
+    // update. Documents must always use the newest order header as well as
+    // the freshly read Commandes_details rows, otherwise edit and pricing can
+    // show two different versions of the same order.
+    if (orderId > 0) {
+      final freshOrder = await db.readCommandeWithClientById(orderId);
+      if (freshOrder != null) {
+        orderData = {...orderData, ...freshOrder};
+      }
+    }
     final isFullyManufactured = await db.isOrderFullyManufactured(orderId);
     if (!mounted) return;
 

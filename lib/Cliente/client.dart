@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/Cliente/show_client.dart';
 import 'package:flutter/material.dart';
 import '../sql_database.dart';
+import '../services/cloud_sync_service.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:database_data/settings/localization.dart';
@@ -24,6 +26,8 @@ class _CustomersState extends State<Customers> {
   final SqlDatabase db = SqlDatabase();
   final TextEditingController searchController = TextEditingController();
   String _searchQuery = '';
+  StreamSubscription<String>? _dbUpdateSubscription;
+  Timer? _syncRefreshDebounce;
 
   final Map<String, TextEditingController> _clientColumnControllers = {
     'id': TextEditingController(),
@@ -41,6 +45,8 @@ class _CustomersState extends State<Customers> {
 
   @override
   void dispose() {
+    _syncRefreshDebounce?.cancel();
+    _dbUpdateSubscription?.cancel();
     searchController.dispose();
     for (final controller in _clientColumnControllers.values) {
       controller.dispose();
@@ -139,10 +145,12 @@ class _CustomersState extends State<Customers> {
         int cmp = 0;
         switch (_clientSortColumn) {
           case 'id':
-            final idA = (a['display_number'] as num?)?.toInt() ??
+            final idA =
+                (a['display_number'] as num?)?.toInt() ??
                 (a['id'] as num?)?.toInt() ??
                 0;
-            final idB = (b['display_number'] as num?)?.toInt() ??
+            final idB =
+                (b['display_number'] as num?)?.toInt() ??
                 (b['id'] as num?)?.toInt() ??
                 0;
             cmp = idA.compareTo(idB);
@@ -258,6 +266,12 @@ class _CustomersState extends State<Customers> {
   void initState() {
     super.initState();
     _refreshData();
+    _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
+      _syncRefreshDebounce?.cancel();
+      _syncRefreshDebounce = Timer(const Duration(milliseconds: 120), () {
+        if (mounted) _refreshData();
+      });
+    });
     if (widget.openAddClientOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _showAddClientDialog(context);

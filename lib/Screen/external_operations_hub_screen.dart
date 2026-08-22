@@ -22,7 +22,8 @@ class ExternalOperationsHubScreen extends StatefulWidget {
 
 class _ExternalOperationsHubScreenState
     extends State<ExternalOperationsHubScreen> {
-  int _selectedTabIndex = 0; // 0: الزجاج, 1: الشراء والنواقص, 2: التركيبات, 3: التحفظات
+  int _selectedTabIndex =
+      0; // 0: الزجاج, 1: الشراء والنواقص, 2: التركيبات, 3: التحفظات
   bool _isLoading = true;
 
   List<Map<String, dynamic>> _allOrders = [];
@@ -52,8 +53,13 @@ class _ExternalOperationsHubScreenState
   void initState() {
     super.initState();
     _loadData();
-    _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
-      if (mounted && !_isLocalChangePending) {
+    _syncSub = CloudSyncService().dbUpdateStream.listen((event) {
+      if (!mounted || _isLocalChangePending) return;
+      if (event == 'status_updated') {
+        // A worker reassignment changes one allocation row. Re-reading all
+        // orders and their details here made the other phone look stale.
+        _loadInstallationDataQuietly();
+      } else {
         _loadDataQuietly();
       }
     });
@@ -146,6 +152,21 @@ class _ExternalOperationsHubScreenState
     }
   }
 
+  Future<void> _loadInstallationDataQuietly() async {
+    try {
+      final fieldAllocs = await widget.db.readFieldInstallationAllocations();
+      final reserveAllocs = await widget.db.readReserveAllocations();
+      if (mounted) {
+        setState(() {
+          _fieldInstallationAllocations = fieldAllocs;
+          _reserveAllocations = reserveAllocs;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading installation allocations quietly: $e');
+    }
+  }
+
   String _formatDate(String? isoStr) {
     if (isoStr == null || isoStr.trim().isEmpty) return '';
     try {
@@ -169,12 +190,13 @@ class _ExternalOperationsHubScreenState
     if (user == null) return false;
     final uid = user.uid.trim().toLowerCase();
     final email = (user.email ?? '').trim().toLowerCase();
-    final installUid = (allocation['installation_worker_uid'] ??
-            allocation['worker_uid'] ??
-            '')
-        .toString()
-        .trim()
-        .toLowerCase();
+    final installUid =
+        (allocation['installation_worker_uid'] ??
+                allocation['worker_uid'] ??
+                '')
+            .toString()
+            .trim()
+            .toLowerCase();
     if (installUid.isEmpty) return false;
     return (uid.isNotEmpty && installUid == uid) ||
         (email.isNotEmpty && installUid == email);
@@ -230,11 +252,12 @@ class _ExternalOperationsHubScreenState
     final selected = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) {
-        final currentKey = (allocation['installation_worker_uid'] ??
-                allocation['worker_uid'] ??
-                '')
-            .toString()
-            .trim();
+        final currentKey =
+            (allocation['installation_worker_uid'] ??
+                    allocation['worker_uid'] ??
+                    '')
+                .toString()
+                .trim();
         return AlertDialog(
           title: Text(
             _tr(
@@ -340,17 +363,38 @@ class _ExternalOperationsHubScreenState
     } catch (e) {
       debugPrint('Error updating installation worker: $e');
     } finally {
-      await Future.delayed(const Duration(milliseconds: 800));
       _isLocalChangePending = false;
     }
   }
 
-  Future<void> _confirmResetInstallationData(BuildContext context, AppLanguage lang) async {
+  Future<void> _confirmResetInstallationData(
+    BuildContext context,
+    AppLanguage lang,
+  ) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_tr('تأكيد المسح الكلي للعمليات الخارجية', 'Confirmation de réinitialisation', 'Confirm Reset', lang), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
-        content: Text(_tr('هل أنت تأكد من تصفير ومسح جميع بيانات طلبات الزجاج، الشراء والنواقص، والتركيبات والتحفظات الميدانية بالتطوير؟', 'Voulez-vous réinitialiser toutes les données d\'opérations externes ?', 'Do you want to reset all external operations data?', lang), style: const TextStyle(fontFamily: 'Cairo')),
+        title: Text(
+          _tr(
+            'تأكيد المسح الكلي للعمليات الخارجية',
+            'Confirmation de réinitialisation',
+            'Confirm Reset',
+            lang,
+          ),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Cairo',
+          ),
+        ),
+        content: Text(
+          _tr(
+            'هل أنت تأكد من تصفير ومسح جميع بيانات طلبات الزجاج، الشراء والنواقص، والتركيبات والتحفظات الميدانية بالتطوير؟',
+            'Voulez-vous réinitialiser toutes les données d\'opérations externes ?',
+            'Do you want to reset all external operations data?',
+            lang,
+          ),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -359,7 +403,13 @@ class _ExternalOperationsHubScreenState
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(_tr('مسح كلي 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(
+              _tr('مسح كلي 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -371,7 +421,14 @@ class _ExternalOperationsHubScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_tr('تم مسح وتصفير كافة بيانات العمليات الخارجية (الزجاج، الشراء والنواقص، التركيبات، والتحفظات) بنجاح 🧹', 'Données d\'opérations externes réinitialisées 🧹', 'External operations data cleared 🧹', lang)),
+            content: Text(
+              _tr(
+                'تم مسح وتصفير كافة بيانات العمليات الخارجية (الزجاج، الشراء والنواقص، التركيبات، والتحفظات) بنجاح 🧹',
+                'Données d\'opérations externes réinitialisées 🧹',
+                'External operations data cleared 🧹',
+                lang,
+              ),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -386,19 +443,37 @@ class _ExternalOperationsHubScreenState
     final lang = settings.language;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      backgroundColor: isDark
+          ? const Color(0xFF0F172A)
+          : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF0F172A) : Theme.of(context).primaryColor,
+        backgroundColor: isDark
+            ? const Color(0xFF0F172A)
+            : Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         title: Text(
-          _tr('المهمات والأعمال الخارجية', 'Tâches & Opérations Externe', 'External Tasks & Operations', lang),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 18),
+          _tr(
+            'المهمات والأعمال الخارجية',
+            'Tâches & Opérations Externe',
+            'External Tasks & Operations',
+            lang,
+          ),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-            tooltip: _tr('تصفير العمليات الخارجية والزجاج والمشتريات (للتطوير)', 'Vider les données d\'opérations (Dev)', 'Clear Operations Data (Dev)', lang),
+            tooltip: _tr(
+              'تصفير العمليات الخارجية والزجاج والمشتريات (للتطوير)',
+              'Vider les données d\'opérations (Dev)',
+              'Clear Operations Data (Dev)',
+              lang,
+            ),
             onPressed: () => _confirmResetInstallationData(context, lang),
           ),
           IconButton(
@@ -420,20 +495,42 @@ class _ExternalOperationsHubScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _tr('🧪 تصفير العمليات والزجاج والمشتريات (للتطوير)', '🧪 Réinitialiser Opérations (Dev)', '🧪 Reset Operations (Dev)', lang),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 13),
+                  _tr(
+                    '🧪 تصفير العمليات والزجاج والمشتريات (للتطوير)',
+                    '🧪 Réinitialiser Opérations (Dev)',
+                    '🧪 Reset Operations (Dev)',
+                    lang,
+                  ),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                  ),
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.red.shade900,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                   ),
                   onPressed: () => _confirmResetInstallationData(context, lang),
                   icon: const Icon(Icons.delete_sweep, size: 18),
                   label: Text(
-                    _tr('تصفير الكل 🧹', 'Effacer tout 🧹', 'Clear All 🧹', lang),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12),
+                    _tr(
+                      'تصفير الكل 🧹',
+                      'Effacer tout 🧹',
+                      'Clear All 🧹',
+                      lang,
+                    ),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
@@ -451,7 +548,12 @@ class _ExternalOperationsHubScreenState
                   _tabChip(
                     index: 0,
                     icon: Icons.square_outlined,
-                    label: _tr('طلبات الزجاج', 'Commandes de Vitrage', 'Glass Orders', lang),
+                    label: _tr(
+                      'طلبات الزجاج',
+                      'Commandes de Vitrage',
+                      'Glass Orders',
+                      lang,
+                    ),
                     color: Colors.teal,
                     lang: lang,
                   ),
@@ -459,7 +561,12 @@ class _ExternalOperationsHubScreenState
                   _tabChip(
                     index: 1,
                     icon: Icons.shopping_cart_outlined,
-                    label: _tr('شراء السلع والنواقص', 'Achats & Manquants', 'Goods Purchasing', lang),
+                    label: _tr(
+                      'شراء السلع والنواقص',
+                      'Achats & Manquants',
+                      'Goods Purchasing',
+                      lang,
+                    ),
                     color: Colors.indigo,
                     lang: lang,
                   ),
@@ -467,7 +574,12 @@ class _ExternalOperationsHubScreenState
                   _tabChip(
                     index: 2,
                     icon: Icons.construction_rounded,
-                    label: _tr('التركيبات الميدانية', 'Poses & Installations', 'Site Installations', lang),
+                    label: _tr(
+                      'التركيبات الميدانية',
+                      'Poses & Installations',
+                      'Site Installations',
+                      lang,
+                    ),
                     color: Colors.blue,
                     lang: lang,
                   ),
@@ -475,7 +587,12 @@ class _ExternalOperationsHubScreenState
                   _tabChip(
                     index: 3,
                     icon: Icons.report_problem_outlined,
-                    label: _tr('إدارة التحفظات (Réserve)', 'Gestion des Réserves', 'Reserve Management', lang),
+                    label: _tr(
+                      'إدارة التحفظات (Réserve)',
+                      'Gestion des Réserves',
+                      'Reserve Management',
+                      lang,
+                    ),
                     color: Colors.orange,
                     lang: lang,
                   ),
@@ -494,7 +611,12 @@ class _ExternalOperationsHubScreenState
                 setState(() => _searchQuery = val.toLowerCase().trim());
               },
               decoration: InputDecoration(
-                hintText: _tr('بحث باسم الزبون أو رقم الطلبية...', 'Rechercher par client ou N°...', 'Search by client or order #...', lang),
+                hintText: _tr(
+                  'بحث باسم الزبون أو رقم الطلبية...',
+                  'Rechercher par client ou N°...',
+                  'Search by client or order #...',
+                  lang,
+                ),
                 prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -505,16 +627,23 @@ class _ExternalOperationsHubScreenState
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 16,
+                ),
                 filled: true,
                 fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                  borderSide: BorderSide(
+                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                  borderSide: BorderSide(
+                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                  ),
                 ),
               ),
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
@@ -545,7 +674,9 @@ class _ExternalOperationsHubScreenState
     final bg = isSelected
         ? color.withValues(alpha: isDark ? 0.25 : 0.15)
         : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9));
-    final fg = isSelected ? color : (isDark ? Colors.grey[400]! : Colors.grey[700]!);
+    final fg = isSelected
+        ? color
+        : (isDark ? Colors.grey[400]! : Colors.grey[700]!);
 
     return InkWell(
       onTap: () => setState(() => _selectedTabIndex = index),
@@ -557,7 +688,9 @@ class _ExternalOperationsHubScreenState
           color: bg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? color : (isDark ? Colors.grey[800]! : Colors.grey[300]!),
+            color: isSelected
+                ? color
+                : (isDark ? Colors.grey[800]! : Colors.grey[300]!),
             width: isSelected ? 1.8 : 1,
           ),
         ),
@@ -602,17 +735,30 @@ class _ExternalOperationsHubScreenState
   Widget _buildGlassTab(AppLanguage lang, bool isDark) {
     final filteredOrders = _allOrders.where((o) {
       final status = o['status']?.toString() ?? '';
-      final isRelevant = status != 'Draft' && status != 'Pending' && status != 'في الانتظار' && status != 'ملغاة';
+      final isRelevant =
+          status != 'Draft' &&
+          status != 'Pending' &&
+          status != 'في الانتظار' &&
+          status != 'ملغاة';
       if (!isRelevant) return false;
       if (_searchQuery.isNotEmpty) {
-        final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''} ${o['id']}'.toLowerCase();
+        final clientName =
+            '${o['firstname'] ?? ''} ${o['lastname'] ?? ''} ${o['id']}'
+                .toLowerCase();
         return clientName.contains(_searchQuery);
       }
       return true;
     }).toList();
 
     if (filteredOrders.isEmpty) {
-      return _emptyState(_tr('لا توجد طلبات زجاج حالية', 'Aucune commande de vitrage', 'No glass orders found', lang));
+      return _emptyState(
+        _tr(
+          'لا توجد طلبات زجاج حالية',
+          'Aucune commande de vitrage',
+          'No glass orders found',
+          lang,
+        ),
+      );
     }
 
     return ListView.builder(
@@ -622,7 +768,8 @@ class _ExternalOperationsHubScreenState
         final o = filteredOrders[index];
         final oId = o['id'] as int;
         final details = _orderDetailsMap[oId] ?? [];
-        final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'.trim();
+        final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'
+            .trim();
 
         // تجميع أنواع ومساحات الزجاج
         final Map<String, double> glassSurfaceMap = {};
@@ -633,13 +780,16 @@ class _ExternalOperationsHubScreenState
             final h = (d['hauteur'] as num?)?.toDouble() ?? 0.0;
             final qty = (d['quantity'] as num?)?.toInt() ?? 1;
             final surfaceM2 = (w / 1000.0) * (h / 1000.0) * qty;
-            glassSurfaceMap[glassType] = (glassSurfaceMap[glassType] ?? 0.0) + surfaceM2;
+            glassSurfaceMap[glassType] =
+                (glassSurfaceMap[glassType] ?? 0.0) + surfaceM2;
           }
         }
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(14.0),
@@ -651,56 +801,119 @@ class _ExternalOperationsHubScreenState
                   children: [
                     Text(
                       '${_tr("طلب زجاج للطلبية", "Comm. Vitrage N°", "Glass Req. #", lang)} #$oId',
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.teal),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.teal,
+                      ),
                     ),
                     Text(
-                      clientName.isNotEmpty ? clientName : _tr('عميل غير مسمى', 'Client non spécifié', 'Unnamed Client', lang),
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.grey[300] : Colors.grey[800]),
+                      clientName.isNotEmpty
+                          ? clientName
+                          : _tr(
+                              'عميل غير مسمى',
+                              'Client non spécifié',
+                              'Unnamed Client',
+                              lang,
+                            ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.grey[300] : Colors.grey[800],
+                      ),
                     ),
                   ],
                 ),
                 const Divider(height: 16),
                 if (glassSurfaceMap.isEmpty)
-                  Text(_tr('لا توجد تفاصيل زجاج محددة في النوافظ', 'Aucune spécification de vitrage', 'No glass specs listed', lang),
-                      style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey))
+                  Text(
+                    _tr(
+                      'لا توجد تفاصيل زجاج محددة في النوافظ',
+                      'Aucune spécification de vitrage',
+                      'No glass specs listed',
+                      lang,
+                    ),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey,
+                    ),
+                  )
                 else
-                  ...glassSurfaceMap.entries.map((entry) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.square_outlined, size: 14, color: Colors.teal),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                entry.key,
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w600),
+                  ...glassSurfaceMap.entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.square_outlined,
+                            size: 14,
+                            color: Colors.teal,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              entry.key,
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.teal.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${entry.value.toStringAsFixed(2)} م²',
-                                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12, color: Colors.teal),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '${entry.value.toStringAsFixed(2)} م²',
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: Colors.teal,
                               ),
                             ),
-                          ],
-                        ),
-                      )),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_tr('حالة الطلب:', 'Statut :', 'Status :', lang), style: const TextStyle(fontSize: 12, fontFamily: 'Cairo')),
+                    Text(
+                      _tr('حالة الطلب:', 'Statut :', 'Status :', lang),
+                      style: const TextStyle(fontSize: 12, fontFamily: 'Cairo'),
+                    ),
                     Wrap(
                       spacing: 6,
                       children: [
-                        _statusChoiceButton(oId, 'pending', _tr('قيد الطلب ⏳', 'En attente ⏳', 'Pending ⏳', lang), Colors.orange),
-                        _statusChoiceButton(oId, 'ordered', _tr('تم الطلب 🚚', 'Commandé 🚚', 'Ordered 🚚', lang), Colors.blue),
-                        _statusChoiceButton(oId, 'received', _tr('تم الاستلام 💎', 'Reçu 💎', 'Received 💎', lang), Colors.green),
+                        _statusChoiceButton(
+                          oId,
+                          'pending',
+                          _tr('قيد الطلب ⏳', 'En attente ⏳', 'Pending ⏳', lang),
+                          Colors.orange,
+                        ),
+                        _statusChoiceButton(
+                          oId,
+                          'ordered',
+                          _tr('تم الطلب 🚚', 'Commandé 🚚', 'Ordered 🚚', lang),
+                          Colors.blue,
+                        ),
+                        _statusChoiceButton(
+                          oId,
+                          'received',
+                          _tr('تم الاستلام 💎', 'Reçu 💎', 'Received 💎', lang),
+                          Colors.green,
+                        ),
                       ],
                     ),
                   ],
@@ -726,14 +939,25 @@ class _ExternalOperationsHubScreenState
                     },
                     icon: const Icon(Icons.fact_check_outlined, size: 16),
                     label: Text(
-                      _tr('تدقيق واستلام القياسات 📏', 'Vérifier & Recevoir les Mesures 📏', 'Check & Receive Measurements 📏', lang),
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold),
+                      _tr(
+                        'تدقيق واستلام القياسات 📏',
+                        'Vérifier & Recevoir les Mesures 📏',
+                        'Check & Receive Measurements 📏',
+                        lang,
+                      ),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -745,7 +969,12 @@ class _ExternalOperationsHubScreenState
     );
   }
 
-  Widget _statusChoiceButton(int orderId, String value, String label, Color color) {
+  Widget _statusChoiceButton(
+    int orderId,
+    String value,
+    String label,
+    Color color,
+  ) {
     final current = _glassStatusMap[orderId] ?? 'pending';
     final isSelected = current == value;
 
@@ -798,7 +1027,11 @@ class _ExternalOperationsHubScreenState
                     color: Colors.indigo.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.shopping_cart_outlined, color: Colors.indigo, size: 28),
+                  child: const Icon(
+                    Icons.shopping_cart_outlined,
+                    color: Colors.indigo,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -806,13 +1039,30 @@ class _ExternalOperationsHubScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _tr('متابعة نواقص وسلع الورشة والموقع', 'Suivi des Manquants & Achats', 'Procurement & Missing Goods Tracking', lang),
-                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
+                        _tr(
+                          'متابعة نواقص وسلع الورشة والموقع',
+                          'Suivi des Manquants & Achats',
+                          'Procurement & Missing Goods Tracking',
+                          lang,
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _tr('حساب ومتابعة كميات الألمنيوم والاكسسوارات المطلوب شراؤها', 'Calculer les besoins en profilés et accessoires à acheter', 'Calculate required profiles & accessories to purchase', lang),
-                        style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                        _tr(
+                          'حساب ومتابعة كميات الألمنيوم والاكسسوارات المطلوب شراؤها',
+                          'Calculer les besoins en profilés et accessoires à acheter',
+                          'Calculate required profiles & accessories to purchase',
+                          lang,
+                        ),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
                       ),
                     ],
                   ),
@@ -823,63 +1073,104 @@ class _ExternalOperationsHubScreenState
           const SizedBox(height: 16),
 
           Text(
-            _tr('الطلبيات النشطة التي تتطلب متابعة التزويد:', 'Commandes nécessitant approvisionnement :', 'Active orders requiring supply:', lang),
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+            _tr(
+              'الطلبيات النشطة التي تتطلب متابعة التزويد:',
+              'Commandes nécessitant approvisionnement :',
+              'Active orders requiring supply:',
+              lang,
+            ),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: 8),
 
-          ..._allOrders.where((o) => o['status'] != 'Done' && o['status'] != 'ملغاة').map((o) {
-            final oId = o['id'] as int;
-            final clientName = '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'.trim();
-            final details = _orderDetailsMap[oId] ?? [];
+          ..._allOrders
+              .where((o) => o['status'] != 'Done' && o['status'] != 'ملغاة')
+              .map((o) {
+                final oId = o['id'] as int;
+                final clientName =
+                    '${o['firstname'] ?? ''} ${o['lastname'] ?? ''}'.trim();
+                final details = _orderDetailsMap[oId] ?? [];
 
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              child: ListTile(
-                leading: const Icon(Icons.inventory_2_outlined, color: Colors.indigo),
-                title: Text('${_tr("طلبية", "Commande", "Order", lang)} #$oId - ${clientName.isNotEmpty ? clientName : "Client"}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
-                subtitle: Text('${details.length} ${_tr("عنصر/نافذة", "éléments/fenêtres", "items/windows", lang)}', style: const TextStyle(fontSize: 11)),
-                trailing: ElevatedButton.icon(
-                  onPressed: () {
-                    // فتح شاشة تفاصيل النواقص للطلبية
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                      ),
-                      builder: (ctx) => _MissingItemsSheet(
-                        db: widget.db,
-                        orderId: oId,
-                        clientName: clientName,
-                        details: details,
-                        lang: lang,
-                        isDark: isDark,
-                        onPurchaseCreated: () {
-                          Navigator.pop(ctx);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => AchatScreen(db: widget.db)),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.add_shopping_cart, size: 14),
-                  label: Text(_tr('توفير السلع', 'Approvisionner', 'Supply', lang), style: const TextStyle(fontSize: 11, fontFamily: 'Cairo')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ),
-              ),
-            );
-          }),
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.inventory_2_outlined,
+                      color: Colors.indigo,
+                    ),
+                    title: Text(
+                      '${_tr("طلبية", "Commande", "Order", lang)} #$oId - ${clientName.isNotEmpty ? clientName : "Client"}',
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${details.length} ${_tr("عنصر/نافذة", "éléments/fenêtres", "items/windows", lang)}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: ElevatedButton.icon(
+                      onPressed: () {
+                        // فتح شاشة تفاصيل النواقص للطلبية
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: isDark
+                              ? const Color(0xFF1E293B)
+                              : Colors.white,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(20),
+                            ),
+                          ),
+                          builder: (ctx) => _MissingItemsSheet(
+                            db: widget.db,
+                            orderId: oId,
+                            clientName: clientName,
+                            details: details,
+                            lang: lang,
+                            isDark: isDark,
+                            onPurchaseCreated: () {
+                              Navigator.pop(ctx);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AchatScreen(db: widget.db),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.add_shopping_cart, size: 14),
+                      label: Text(
+                        _tr('توفير السلع', 'Approvisionner', 'Supply', lang),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
         ],
       ),
     );
@@ -893,10 +1184,12 @@ class _ExternalOperationsHubScreenState
     final canEditInstallationWorker = settings.isManager;
     final filtered = _fieldInstallationAllocations.where((t) {
       if (_searchQuery.isEmpty) return true;
-      final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
+      final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'
+          .toLowerCase();
       final workerName = (t['worker_name'] ?? '').toString().toLowerCase();
-      final installationWorkerName =
-          (t['installation_worker_name'] ?? '').toString().toLowerCase();
+      final installationWorkerName = (t['installation_worker_name'] ?? '')
+          .toString()
+          .toLowerCase();
       final wType = (t['window_type'] ?? '').toString().toLowerCase();
       final oId = (t['id_commandes'] ?? '').toString();
       return clientName.contains(_searchQuery) ||
@@ -907,7 +1200,14 @@ class _ExternalOperationsHubScreenState
     }).toList();
 
     if (filtered.isEmpty) {
-      return _emptyState(_tr('لا توجد نوافذ محولة للتركيبات الميدانية حالياً', 'Aucune fenêtre en pose sur site', 'No windows pending site installation', lang));
+      return _emptyState(
+        _tr(
+          'لا توجد نوافذ محولة للتركيبات الميدانية حالياً',
+          'Aucune fenêtre en pose sur site',
+          'No windows pending site installation',
+          lang,
+        ),
+      );
     }
 
     // تجميع العناصر مرتبة حسب الزبون
@@ -924,13 +1224,19 @@ class _ExternalOperationsHubScreenState
         final clientId = clientGroupedMap.keys.elementAt(index);
         final clientItems = clientGroupedMap[clientId]!;
         final firstItem = clientItems.first;
-        final clientName = '${firstItem['firstname'] ?? ''} ${firstItem['lastname'] ?? ''}'.trim();
-        final displayClientName = clientName.isNotEmpty ? clientName : _tr('زبون غير محدد', 'Client Inconnu', 'Unknown Client', lang);
+        final clientName =
+            '${firstItem['firstname'] ?? ''} ${firstItem['lastname'] ?? ''}'
+                .trim();
+        final displayClientName = clientName.isNotEmpty
+            ? clientName
+            : _tr('زبون غير محدد', 'Client Inconnu', 'Unknown Client', lang);
 
         return Card(
           margin: const EdgeInsets.only(bottom: 14),
           elevation: 3,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(14.0),
@@ -946,24 +1252,40 @@ class _ExternalOperationsHubScreenState
                         color: Colors.blue.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.person_rounded, color: Colors.blue, size: 20),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        color: Colors.blue,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         '${_tr("الزبون:", "Client :", "Client:", lang)} $displayClientName',
-                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '${clientItems.length} ${_tr("عناصر", "éléments", "items", lang)}',
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
                       ),
                     ),
                   ],
@@ -977,7 +1299,10 @@ class _ExternalOperationsHubScreenState
                   final windowType = t['window_type']?.toString() ?? 'Window';
                   final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
                   final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
-                  final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
+                  final qty =
+                      (t['quantity'] as num?)?.toInt() ??
+                      (t['detail_quantity'] as num?)?.toInt() ??
+                      1;
                   final workerName = (t['worker_name'] ?? '').toString().trim();
                   final installationWorkerName =
                       (t['installation_worker_name'] ?? workerName)
@@ -987,16 +1312,25 @@ class _ExternalOperationsHubScreenState
                   final isDistributed = t['is_distributed'] == 1;
                   final isInstalled = t['is_installed'] == 1;
                   final isCompleted = t['is_completed'] == 1;
+                  // The manager may reassign the installation, but the status
+                  // buttons themselves belong exclusively to the assigned
+                  // installer. Other users can still see the work item.
                   final canControlInstallation =
-                      !settings.isManager && _isInstallationAssignedToCurrentUser(t);
+                      _isInstallationAssignedToCurrentUser(t);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                      color: isDark
+                          ? const Color(0xFF0F172A)
+                          : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade300,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1009,7 +1343,10 @@ class _ExternalOperationsHubScreenState
                               height: 75,
                               child: LazyWindowImage(
                                 db: widget.db,
-                                detailId: (t['commande_detail_id'] as num?)?.toInt() ?? 0,
+                                detailId:
+                                    (t['commande_detail_id'] as num?)
+                                        ?.toInt() ??
+                                    0,
                                 initialImagePath: t['drawing_image_path'] ?? '',
                                 drawingImageBase64: t['drawing_image_base64'],
                                 partitionsJson: t['partitions_json'],
@@ -1022,18 +1359,29 @@ class _ExternalOperationsHubScreenState
                                 children: [
                                   Text(
                                     '${_tr("طلبية", "Commande", "Order", lang)} #$orderId | $windowType',
-                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                                    style: const TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     '${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${largeur}cm × ${hauteur}cm | ${_tr("الكمية:", "Qté:", "Qty:", lang)} $qty',
-                                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                                    style: const TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                    ),
                                   ),
                                   if (workerName.isNotEmpty) ...[
                                     const SizedBox(height: 2),
                                     Text(
                                       '👷 ${_tr("العامل الصانع:", "Ouvrier:", "Worker:", lang)} $workerName',
-                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blue),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 11,
+                                        color: Colors.blue,
+                                      ),
                                     ),
                                   ],
                                   const SizedBox(height: 2),
@@ -1059,7 +1407,8 @@ class _ExternalOperationsHubScreenState
                                             lang,
                                           ),
                                           child: IconButton(
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             constraints: const BoxConstraints(
                                               minWidth: 32,
                                               minHeight: 32,
@@ -1072,40 +1421,73 @@ class _ExternalOperationsHubScreenState
                                             ),
                                             onPressed: () =>
                                                 _showInstallationWorkerDialog(
-                                              t,
-                                              lang,
-                                            ),
+                                                  t,
+                                                  lang,
+                                                ),
                                           ),
                                         ),
                                     ],
                                   ),
-                                  
+
                                   // 🕒 إظهار تواريخ الإسناد والتوزيع والتركيب الميدانية
-                                  Builder(builder: (ctx) {
-                                    final assignedAtStr = _formatDate(t['assigned_at']?.toString());
-                                    final distributedAtStr = _formatDate(t['distributed_at']?.toString());
-                                    final installedAtStr = _formatDate(t['installed_at']?.toString());
+                                  Builder(
+                                    builder: (ctx) {
+                                      final assignedAtStr = _formatDate(
+                                        t['assigned_at']?.toString(),
+                                      );
+                                      final distributedAtStr = _formatDate(
+                                        t['distributed_at']?.toString(),
+                                      );
+                                      final installedAtStr = _formatDate(
+                                        t['installed_at']?.toString(),
+                                      );
 
-                                    if (assignedAtStr.isEmpty && distributedAtStr.isEmpty && installedAtStr.isEmpty) {
-                                      return const SizedBox.shrink();
-                                    }
+                                      if (assignedAtStr.isEmpty &&
+                                          distributedAtStr.isEmpty &&
+                                          installedAtStr.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
 
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Wrap(
-                                        spacing: 8,
-                                        runSpacing: 4,
-                                        children: [
-                                          if (assignedAtStr.isNotEmpty)
-                                            Text('📅 ${_tr("إسناد:", "Assigné:", "Assigned:", lang)} $assignedAtStr', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey)),
-                                          if (distributedAtStr.isNotEmpty)
-                                            Text('🚚 ${_tr("توزيع:", "Distribué:", "Distributed:", lang)} $distributedAtStr', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.indigo, fontWeight: FontWeight.bold)),
-                                          if (installedAtStr.isNotEmpty)
-                                            Text('🛠️ ${_tr("تركيب:", "Installé:", "Installed:", lang)} $installedAtStr', style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
-                                    );
-                                  }),
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            if (assignedAtStr.isNotEmpty)
+                                              Text(
+                                                '📅 ${_tr("إسناد:", "Assigné:", "Assigned:", lang)} $assignedAtStr',
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            if (distributedAtStr.isNotEmpty)
+                                              Text(
+                                                '🚚 ${_tr("توزيع:", "Distribué:", "Distributed:", lang)} $distributedAtStr',
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  color: Colors.indigo,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            if (installedAtStr.isNotEmpty)
+                                              Text(
+                                                '🛠️ ${_tr("تركيب:", "Installé:", "Installed:", lang)} $installedAtStr',
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 10,
+                                                  color: Colors.teal,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
                                 ],
                               ),
                             ),
@@ -1120,362 +1502,741 @@ class _ExternalOperationsHubScreenState
                           children: [
                             // 1. زر تم التوزيع
                             ElevatedButton.icon(
-                              onPressed: () async {
-                                if (!canControlInstallation) {
-                                  _showInstallationWorkerOnlyNotice(lang);
-                                  return;
-                                }
-                                _isLocalChangePending = true;
-                                final newVal = isDistributed ? 0 : 1;
-                                final nowIso = DateTime.now().toIso8601String();
-                                setState(() {
-                                  t['is_distributed'] = newVal;
-                                  t['distributed_at'] = newVal == 1 ? nowIso : null;
-                                });
-                                await widget.db.updateWorkerAllocationDistribution(allocId, newVal);
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(newVal == 1 ? 'تم تسجيل خروج وتوزيع النافذة للميدان 🚚✅' : 'تم إلغاء حالة التوزيع', style: const TextStyle(fontFamily: 'Cairo')),
-                                      duration: const Duration(seconds: 1),
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
-                                }
-                                await Future.delayed(const Duration(milliseconds: 1500));
-                                _isLocalChangePending = false;
-                              },
+                              onPressed: canControlInstallation
+                                  ? () async {
+                                      if (!canControlInstallation) {
+                                        _showInstallationWorkerOnlyNotice(lang);
+                                        return;
+                                      }
+                                      _isLocalChangePending = true;
+                                      final newVal = isDistributed ? 0 : 1;
+                                      final nowIso = DateTime.now()
+                                          .toIso8601String();
+                                      setState(() {
+                                        t['is_distributed'] = newVal;
+                                        t['distributed_at'] = newVal == 1
+                                            ? nowIso
+                                            : null;
+                                      });
+                                      await widget.db
+                                          .updateWorkerAllocationDistribution(
+                                            allocId,
+                                            newVal,
+                                          );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              newVal == 1
+                                                  ? 'تم تسجيل خروج وتوزيع النافذة للميدان 🚚✅'
+                                                  : 'تم إلغاء حالة التوزيع',
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                            duration: const Duration(
+                                              seconds: 1,
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 16,
+                                              right: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      await Future.delayed(
+                                        const Duration(milliseconds: 1500),
+                                      );
+                                      _isLocalChangePending = false;
+                                    }
+                                  : null,
                               icon: Icon(
-                                isDistributed ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                isDistributed
+                                    ? Icons.check_box_rounded
+                                    : Icons.check_box_outline_blank_rounded,
                                 size: 16,
                               ),
                               label: Text(
                                 isDistributed
-                                    ? _tr('تم التوزيع ✅', 'Distribué ✅', 'Distributed ✅', lang)
-                                    : _tr('تم التوزيع 🚚', 'Distribué 🚚', 'Distributed 🚚', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                                    ? _tr(
+                                        'تم التوزيع ✅',
+                                        'Distribué ✅',
+                                        'Distributed ✅',
+                                        lang,
+                                      )
+                                    : _tr(
+                                        'تم التوزيع 🚚',
+                                        'Distribué 🚚',
+                                        'Distributed 🚚',
+                                        lang,
+                                      ),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isDistributed ? Colors.indigo : Colors.grey.shade400,
+                                backgroundColor: isDistributed
+                                    ? Colors.indigo
+                                    : Colors.grey.shade400,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                               ),
                             ),
 
                             // 2. زر تم التركيب (يتطلب تم التوزيع أولاً)
                             ElevatedButton.icon(
-                              onPressed: () async {
-                                if (!canControlInstallation) {
-                                  _showInstallationWorkerOnlyNotice(lang);
-                                  return;
-                                }
+                              onPressed: canControlInstallation
+                                  ? () async {
+                                      if (!canControlInstallation) {
+                                        _showInstallationWorkerOnlyNotice(lang);
+                                        return;
+                                      }
 
-                                if (!isDistributed) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        _tr(
-                                          '⚠️ يجب تسجيل وتأكيد [تم التوزيع 🚚] أولاً قبل التركيب بالموقع!',
-                                          '⚠️ Veuillez d\'abord valider la distribution [Distribué 🚚] !',
-                                          '⚠️ Please validate distribution [Distributed 🚚] first!',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                      ),
-                                      backgroundColor: Colors.orange.shade800,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
-                                  return;
-                                }
+                                      if (!isDistributed) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              _tr(
+                                                '⚠️ يجب تسجيل وتأكيد [تم التوزيع 🚚] أولاً قبل التركيب بالموقع!',
+                                                '⚠️ Veuillez d\'abord valider la distribution [Distribué 🚚] !',
+                                                '⚠️ Please validate distribution [Distributed 🚚] first!',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            backgroundColor:
+                                                Colors.orange.shade800,
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 16,
+                                              right: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
 
-                                _isLocalChangePending = true;
-                                final newVal = isInstalled ? 0 : 1;
-                                final nowIso = DateTime.now().toIso8601String();
-                                setState(() {
-                                  t['is_installed'] = newVal;
-                                  t['installed_at'] = newVal == 1 ? nowIso : null;
-                                });
-                                await widget.db.updateWorkerAllocationInstallation(allocId, newVal);
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(newVal == 1 ? 'تم تسجيل تركيب النافذة بالموقع 🛠️✅' : 'تم إلغاء حالة التركيب', style: const TextStyle(fontFamily: 'Cairo')),
-                                      duration: const Duration(seconds: 1),
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
-                                }
-                                await Future.delayed(const Duration(milliseconds: 1500));
-                                _isLocalChangePending = false;
-                              },
+                                      _isLocalChangePending = true;
+                                      final newVal = isInstalled ? 0 : 1;
+                                      final nowIso = DateTime.now()
+                                          .toIso8601String();
+                                      setState(() {
+                                        t['is_installed'] = newVal;
+                                        t['installed_at'] = newVal == 1
+                                            ? nowIso
+                                            : null;
+                                      });
+                                      await widget.db
+                                          .updateWorkerAllocationInstallation(
+                                            allocId,
+                                            newVal,
+                                          );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              newVal == 1
+                                                  ? 'تم تسجيل تركيب النافذة بالموقع 🛠️✅'
+                                                  : 'تم إلغاء حالة التركيب',
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                            duration: const Duration(
+                                              seconds: 1,
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 16,
+                                              right: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      await Future.delayed(
+                                        const Duration(milliseconds: 1500),
+                                      );
+                                      _isLocalChangePending = false;
+                                    }
+                                  : null,
                               icon: Icon(
-                                isInstalled ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                isInstalled
+                                    ? Icons.check_box_rounded
+                                    : Icons.check_box_outline_blank_rounded,
                                 size: 16,
                               ),
                               label: Text(
                                 isInstalled
-                                    ? _tr('تم التركيب ✅', 'Installé ✅', 'Installed ✅', lang)
-                                    : _tr('تم التركيب 🛠️', 'Installé 🛠️', 'Installed 🛠️', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                                    ? _tr(
+                                        'تم التركيب ✅',
+                                        'Installé ✅',
+                                        'Installed ✅',
+                                        lang,
+                                      )
+                                    : _tr(
+                                        'تم التركيب 🛠️',
+                                        'Installé 🛠️',
+                                        'Installed 🛠️',
+                                        lang,
+                                      ),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isInstalled ? Colors.teal : Colors.grey.shade400,
+                                backgroundColor: isInstalled
+                                    ? Colors.teal
+                                    : Colors.grey.shade400,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                               ),
                             ),
 
                             // 3. زر تم الانتهاء (يتطلب تم التركيب أولاً ورصد خلو العناصر من أي تحفظ)
                             ElevatedButton.icon(
-                              onPressed: () async {
-                                if (!canControlInstallation) {
-                                  _showInstallationWorkerOnlyNotice(lang);
-                                  return;
-                                }
+                              onPressed: canControlInstallation
+                                  ? () async {
+                                      if (!canControlInstallation) {
+                                        _showInstallationWorkerOnlyNotice(lang);
+                                        return;
+                                      }
 
-                                if (!isInstalled) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        _tr(
-                                          '⚠️ يجب تسجيل وتأكيد [تم التركيب 🛠️] بالموقع أولاً قبل الانتهاء كلياً والأرشفة!',
-                                          '⚠️ Veuillez d\'abord valider l\'installation [Installé 🛠️] avant de terminer !',
-                                          '⚠️ Please validate installation [Installed 🛠️] first before completion!',
-                                          lang,
+                                      if (!isInstalled) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              _tr(
+                                                '⚠️ يجب تسجيل وتأكيد [تم التركيب 🛠️] بالموقع أولاً قبل الانتهاء كلياً والأرشفة!',
+                                                '⚠️ Veuillez d\'abord valider l\'installation [Installé 🛠️] avant de terminer !',
+                                                '⚠️ Please validate installation [Installed 🛠️] first before completion!',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            backgroundColor:
+                                                Colors.orange.shade800,
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 16,
+                                              right: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
+                                      final hasReserve = t['has_reserve'] == 1;
+                                      if (hasReserve) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              _tr(
+                                                '🛑 لا يمكن إنهاء هذا العنصر لوجود تحفظات ونقائص مسجلة! يجب رفع وإلغاء التحفظ أولاً من صفحة إدارة التحفظات (Réserve).',
+                                                '🛑 Impossible de terminer : des réserves sont actives. Veuillez lever les réserves d\'abord.',
+                                                '🛑 Cannot complete: active reserves exist. Please clear reserves first.',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            backgroundColor:
+                                                Colors.red.shade800,
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 16,
+                                              right: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            duration: const Duration(
+                                              seconds: 4,
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: Text(
+                                            _tr(
+                                              'إتمام العمل والتحويل للأرشيف',
+                                              'Terminer et archiver',
+                                              'Complete and archive',
+                                              lang,
+                                            ),
+                                            style: const TextStyle(
+                                              fontFamily: 'Cairo',
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          content: Text(
+                                            _tr(
+                                              'هل تم الانتهاء كلياً من تركيب هذا العنصر والتخلص من تحفظاته ونقله نهائياً للأرشيف؟',
+                                              'Voulez-vous vraiment terminer et archiver cet élément ?',
+                                              'Are you sure you want to complete and archive this item?',
+                                              lang,
+                                            ),
+                                            style: const TextStyle(
+                                              fontFamily: 'Cairo',
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: Text(
+                                                _tr(
+                                                  'إلغاء',
+                                                  'Annuler',
+                                                  'Cancel',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.green,
+                                              ),
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: Text(
+                                                _tr(
+                                                  'تأكيد الانتهاء',
+                                                  'Confirmer',
+                                                  'Confirm',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                      ),
-                                      backgroundColor: Colors.orange.shade800,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
-                                  return;
-                                }
+                                      );
 
-                                final hasReserve = t['has_reserve'] == 1;
-                                if (hasReserve) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        _tr(
-                                          '🛑 لا يمكن إنهاء هذا العنصر لوجود تحفظات ونقائص مسجلة! يجب رفع وإلغاء التحفظ أولاً من صفحة إدارة التحفظات (Réserve).',
-                                          '🛑 Impossible de terminer : des réserves sont actives. Veuillez lever les réserves d\'abord.',
-                                          '🛑 Cannot complete: active reserves exist. Please clear reserves first.',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                      ),
-                                      backgroundColor: Colors.red.shade800,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      duration: const Duration(seconds: 4),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: Text(_tr('إتمام العمل والتحويل للأرشيف', 'Terminer et archiver', 'Complete and archive', lang), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                                    content: Text(
-                                      _tr('هل تم الانتهاء كلياً من تركيب هذا العنصر والتخلص من تحفظاته ونقله نهائياً للأرشيف؟', 'Voulez-vous vraiment terminer et archiver cet élément ?', 'Are you sure you want to complete and archive this item?', lang),
-                                      style: const TextStyle(fontFamily: 'Cairo'),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, false),
-                                        child: Text(_tr('إلغاء', 'Annuler', 'Cancel', lang), style: const TextStyle(fontFamily: 'Cairo')),
-                                      ),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                        onPressed: () => Navigator.pop(ctx, true),
-                                        child: Text(_tr('تأكيد الانتهاء', 'Confirmer', 'Confirm', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.white)),
-                                      ),
-                                    ],
-                                  ),
-                                );
-
-                                if (confirm == true) {
-                                  _isLocalChangePending = true;
-                                  setState(() {
-                                    t['is_completed'] = 1;
-                                  });
-                                  await widget.db.updateWorkerAllocationCompletion(allocId, 1);
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: const Text('تم الانتهاء بنجاح وتحويل النافذة للأرشيف 📦✅', style: TextStyle(fontFamily: 'Cairo')),
-                                        backgroundColor: Colors.green,
-                                        behavior: SnackBarBehavior.floating,
-                                        margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                    );
-                                  }
-                                  await Future.delayed(const Duration(milliseconds: 1500));
-                                  _isLocalChangePending = false;
-                                }
-                              },
+                                      if (confirm == true) {
+                                        _isLocalChangePending = true;
+                                        setState(() {
+                                          t['is_completed'] = 1;
+                                        });
+                                        await widget.db
+                                            .updateWorkerAllocationCompletion(
+                                              allocId,
+                                              1,
+                                            );
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: const Text(
+                                                'تم الانتهاء بنجاح وتحويل النافذة للأرشيف 📦✅',
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                              backgroundColor: Colors.green,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              margin: const EdgeInsets.only(
+                                                bottom: 50,
+                                                left: 16,
+                                                right: 16,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        await Future.delayed(
+                                          const Duration(milliseconds: 1500),
+                                        );
+                                        _isLocalChangePending = false;
+                                      }
+                                    }
+                                  : null,
                               icon: Icon(
-                                isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                isCompleted
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked,
                                 size: 16,
-                                color: isCompleted ? Colors.white : (isDark ? Colors.grey.shade300 : Colors.grey.shade700),
+                                color: isCompleted
+                                    ? Colors.white
+                                    : (isDark
+                                          ? Colors.grey.shade300
+                                          : Colors.grey.shade700),
                               ),
                               label: Text(
                                 isCompleted
-                                    ? _tr('تم الانتهاء ✅', 'Terminé ✅', 'Completed ✅', lang)
-                                    : _tr('تم الانتهاء', 'Terminé', 'Completed', lang),
+                                    ? _tr(
+                                        'تم الانتهاء ✅',
+                                        'Terminé ✅',
+                                        'Completed ✅',
+                                        lang,
+                                      )
+                                    : _tr(
+                                        'تم الانتهاء',
+                                        'Terminé',
+                                        'Completed',
+                                        lang,
+                                      ),
                                 style: TextStyle(
                                   fontFamily: 'Cairo',
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: isCompleted ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                  color: isCompleted
+                                      ? Colors.white
+                                      : (isDark
+                                            ? Colors.white
+                                            : Colors.black87),
                                 ),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isCompleted ? Colors.green.shade600 : (isDark ? const Color(0xFF334155) : Colors.white),
-                                foregroundColor: isCompleted ? Colors.white : (isDark ? Colors.white : Colors.black87),
-                                side: isCompleted ? BorderSide.none : BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade400),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                backgroundColor: isCompleted
+                                    ? Colors.green.shade600
+                                    : (isDark
+                                          ? const Color(0xFF334155)
+                                          : Colors.white),
+                                foregroundColor: isCompleted
+                                    ? Colors.white
+                                    : (isDark ? Colors.white : Colors.black87),
+                                side: isCompleted
+                                    ? BorderSide.none
+                                    : BorderSide(
+                                        color: isDark
+                                            ? Colors.grey.shade700
+                                            : Colors.grey.shade400,
+                                      ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
                               ),
                             ),
 
                             // 4. زر تحفظ (Réserve) - يتطلب تم التوزيع أولاً
                             ElevatedButton.icon(
-                              onPressed: () async {
-                                if (!canControlInstallation) {
-                                  _showInstallationWorkerOnlyNotice(lang);
-                                  return;
-                                }
+                              onPressed: canControlInstallation
+                                  ? () async {
+                                      if (!canControlInstallation) {
+                                        _showInstallationWorkerOnlyNotice(lang);
+                                        return;
+                                      }
 
-                                if (!isDistributed) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        _tr(
-                                          '⚠️ لا يمكن تسجيل تحفظ إلا بعد توزيع ونقل النافذة للميدان [تم التوزيع 🚚]!',
-                                          '⚠️ Les réserves sont possibles uniquement après distribution [Distribué 🚚] !',
-                                          '⚠️ Reserves can only be logged after distribution [Distributed 🚚]!',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                      ),
-                                      backgroundColor: Colors.orange.shade800,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                final hasReserve = t['has_reserve'] == 1;
-                                final currentNotes = t['reserve_notes']?.toString() ?? '';
-                                final notesCtrl = TextEditingController(text: currentNotes);
-
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: Text(
-                                      hasReserve
-                                          ? _tr('تعديل أو إلغاء التحفظ (Réserve)', 'Modifier ou annuler réserve', 'Edit or cancel reserve', lang)
-                                          : _tr('تسجيل نقائص النافذة / تحفظ ⚠️', 'Saisir les réserves ⚠️', 'Log window reserve ⚠️', lang),
-                                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
-                                    ),
-                                    content: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(_tr('ما هي النقائص والتفاصيل الميدانية لهاته النافذة؟', 'Quels sont les détails des réserves ?', 'What are the details of the reserves?', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-                                        const SizedBox(height: 8),
-                                        TextField(
-                                          controller: notesCtrl,
-                                          maxLines: 3,
-                                          decoration: InputDecoration(
-                                            hintText: _tr('أدخل النقائص: مثال: ناقص مقبض، زجاج مكسور...', 'Saisir les réserves...', 'Enter reserve details...', lang),
-                                            border: const OutlineInputBorder(),
+                                      if (!isDistributed) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              _tr(
+                                                '⚠️ لا يمكن تسجيل تحفظ إلا بعد توزيع ونقل النافذة للميدان [تم التوزيع 🚚]!',
+                                                '⚠️ Les réserves sont possibles uniquement après distribution [Distribué 🚚] !',
+                                                '⚠️ Reserves can only be logged after distribution [Distributed 🚚]!',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            backgroundColor:
+                                                Colors.orange.shade800,
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.only(
+                                              bottom: 50,
+                                              left: 16,
+                                              right: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    actions: [
-                                      if (hasReserve)
-                                        TextButton(
-                                          onPressed: () async {
-                                            Navigator.pop(ctx, false);
-                                            _isLocalChangePending = true;
-                                            setState(() {
-                                              t['has_reserve'] = 0;
-                                              t['reserve_notes'] = null;
-                                            });
-                                            await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
-                                            await Future.delayed(const Duration(milliseconds: 1500));
-                                            _isLocalChangePending = false;
-                                          },
-                                          child: Text(_tr('إلغاء التحفظ', 'Annuler réserve', 'Cancel reserve', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.red)),
-                                        ),
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, null),
-                                        child: Text(_tr('إغلاق', 'Fermer', 'Close', lang), style: const TextStyle(fontFamily: 'Cairo')),
-                                      ),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                                        onPressed: () => Navigator.pop(ctx, true),
-                                        child: Text(_tr('حفظ التحفظ', 'Enregistrer', 'Save reserve', lang), style: const TextStyle(fontFamily: 'Cairo', color: Colors.white)),
-                                      ),
-                                    ],
-                                  ),
-                                );
+                                        );
+                                        return;
+                                      }
+                                      final hasReserve = t['has_reserve'] == 1;
+                                      final currentNotes =
+                                          t['reserve_notes']?.toString() ?? '';
+                                      final notesCtrl = TextEditingController(
+                                        text: currentNotes,
+                                      );
 
-                                if (confirm == true) {
-                                  final txt = notesCtrl.text.trim();
-                                  if (txt.isNotEmpty) {
-                                    _isLocalChangePending = true;
-                                    setState(() {
-                                      t['has_reserve'] = 1;
-                                      t['reserve_notes'] = txt;
-                                    });
-                                    await widget.db.updateWorkerAllocationReserve(allocId, 1, txt);
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: const Text('تم تسجيل النقائص والتحفظ بنجاح ونقله لصفحة إدارة التحفظات ⚠️✅', style: TextStyle(fontFamily: 'Cairo')),
-                                          backgroundColor: Colors.orange,
-                                          behavior: SnackBarBehavior.floating,
-                                          margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: Text(
+                                            hasReserve
+                                                ? _tr(
+                                                    'تعديل أو إلغاء التحفظ (Réserve)',
+                                                    'Modifier ou annuler réserve',
+                                                    'Edit or cancel reserve',
+                                                    lang,
+                                                  )
+                                                : _tr(
+                                                    'تسجيل نقائص النافذة / تحفظ ⚠️',
+                                                    'Saisir les réserves ⚠️',
+                                                    'Log window reserve ⚠️',
+                                                    lang,
+                                                  ),
+                                            style: const TextStyle(
+                                              fontFamily: 'Cairo',
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          content: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _tr(
+                                                  'ما هي النقائص والتفاصيل الميدانية لهاته النافذة؟',
+                                                  'Quels sont les détails des réserves ?',
+                                                  'What are the details of the reserves?',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              TextField(
+                                                controller: notesCtrl,
+                                                maxLines: 3,
+                                                decoration: InputDecoration(
+                                                  hintText: _tr(
+                                                    'أدخل النقائص: مثال: ناقص مقبض، زجاج مكسور...',
+                                                    'Saisir les réserves...',
+                                                    'Enter reserve details...',
+                                                    lang,
+                                                  ),
+                                                  border:
+                                                      const OutlineInputBorder(),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          actions: [
+                                            if (hasReserve)
+                                              TextButton(
+                                                onPressed: () async {
+                                                  Navigator.pop(ctx, false);
+                                                  _isLocalChangePending = true;
+                                                  setState(() {
+                                                    t['has_reserve'] = 0;
+                                                    t['reserve_notes'] = null;
+                                                  });
+                                                  await widget.db
+                                                      .updateWorkerAllocationReserve(
+                                                        allocId,
+                                                        0,
+                                                        null,
+                                                      );
+                                                  await Future.delayed(
+                                                    const Duration(
+                                                      milliseconds: 1500,
+                                                    ),
+                                                  );
+                                                  _isLocalChangePending = false;
+                                                },
+                                                child: Text(
+                                                  _tr(
+                                                    'إلغاء التحفظ',
+                                                    'Annuler réserve',
+                                                    'Cancel reserve',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, null),
+                                              child: Text(
+                                                _tr(
+                                                  'إغلاق',
+                                                  'Fermer',
+                                                  'Close',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.orange,
+                                              ),
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: Text(
+                                                _tr(
+                                                  'حفظ التحفظ',
+                                                  'Enregistrer',
+                                                  'Save reserve',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       );
+
+                                      if (confirm == true) {
+                                        final txt = notesCtrl.text.trim();
+                                        if (txt.isNotEmpty) {
+                                          _isLocalChangePending = true;
+                                          setState(() {
+                                            t['has_reserve'] = 1;
+                                            t['reserve_notes'] = txt;
+                                          });
+                                          await widget.db
+                                              .updateWorkerAllocationReserve(
+                                                allocId,
+                                                1,
+                                                txt,
+                                              );
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: const Text(
+                                                  'تم تسجيل النقائص والتحفظ بنجاح ونقله لصفحة إدارة التحفظات ⚠️✅',
+                                                  style: TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                                backgroundColor: Colors.orange,
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                                margin: const EdgeInsets.only(
+                                                  bottom: 50,
+                                                  left: 16,
+                                                  right: 16,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          await Future.delayed(
+                                            const Duration(milliseconds: 1500),
+                                          );
+                                          _isLocalChangePending = false;
+                                        }
+                                      }
                                     }
-                                    await Future.delayed(const Duration(milliseconds: 1500));
-                                    _isLocalChangePending = false;
-                                  }
-                                }
-                              },
+                                  : null,
                               icon: Icon(
-                                t['has_reserve'] == 1 ? Icons.warning_rounded : Icons.warning_amber_rounded,
+                                t['has_reserve'] == 1
+                                    ? Icons.warning_rounded
+                                    : Icons.warning_amber_rounded,
                                 size: 16,
                               ),
                               label: Text(
                                 t['has_reserve'] == 1
-                                    ? _tr('تحفظ مسجّل ⚠️', 'Réserve Inscrite ⚠️', 'Reserve Logged ⚠️', lang)
-                                    : _tr('تحفظ ⚠️', 'Réserve ⚠️', 'Reserve ⚠️', lang),
-                                style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                                    ? _tr(
+                                        'تحفظ مسجّل ⚠️',
+                                        'Réserve Inscrite ⚠️',
+                                        'Reserve Logged ⚠️',
+                                        lang,
+                                      )
+                                    : _tr(
+                                        'تحفظ ⚠️',
+                                        'Réserve ⚠️',
+                                        'Reserve ⚠️',
+                                        lang,
+                                      ),
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: t['has_reserve'] == 1 ? Colors.orange.shade800 : Colors.grey.shade400,
+                                backgroundColor: t['has_reserve'] == 1
+                                    ? Colors.orange.shade800
+                                    : Colors.grey.shade400,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                               ),
                             ),
                           ],
@@ -1498,15 +2259,26 @@ class _ExternalOperationsHubScreenState
   Widget _buildReservesTab(AppLanguage lang, bool isDark) {
     final filtered = _reserveAllocations.where((t) {
       if (_searchQuery.isEmpty) return true;
-      final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.toLowerCase();
+      final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'
+          .toLowerCase();
       final workerName = (t['worker_name'] ?? '').toString().toLowerCase();
       final wType = (t['window_type'] ?? '').toString().toLowerCase();
       final notes = (t['reserve_notes'] ?? '').toString().toLowerCase();
-      return clientName.contains(_searchQuery) || workerName.contains(_searchQuery) || wType.contains(_searchQuery) || notes.contains(_searchQuery);
+      return clientName.contains(_searchQuery) ||
+          workerName.contains(_searchQuery) ||
+          wType.contains(_searchQuery) ||
+          notes.contains(_searchQuery);
     }).toList();
 
     if (filtered.isEmpty) {
-      return _emptyState(_tr('لا توجد نوافذ بها تحفظات مسجلة حالياً (Réserve)', 'Aucune réserve en cours', 'No active window reserves', lang));
+      return _emptyState(
+        _tr(
+          'لا توجد نوافذ بها تحفظات مسجلة حالياً (Réserve)',
+          'Aucune réserve en cours',
+          'No active window reserves',
+          lang,
+        ),
+      );
     }
 
     return ListView.builder(
@@ -1516,18 +2288,24 @@ class _ExternalOperationsHubScreenState
         final t = filtered[index];
         final allocId = (t['id'] as num?)?.toInt() ?? 0;
         final orderId = (t['id_commandes'] as num?)?.toInt() ?? 0;
-        final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'.trim();
+        final clientName = '${t['firstname'] ?? ''} ${t['lastname'] ?? ''}'
+            .trim();
         final windowType = t['window_type']?.toString() ?? 'Window';
         final largeur = (t['largeur'] as num?)?.toInt() ?? 0;
         final hauteur = (t['hauteur'] as num?)?.toInt() ?? 0;
-        final qty = (t['quantity'] as num?)?.toInt() ?? (t['detail_quantity'] as num?)?.toInt() ?? 1;
+        final qty =
+            (t['quantity'] as num?)?.toInt() ??
+            (t['detail_quantity'] as num?)?.toInt() ??
+            1;
         final workerName = (t['worker_name'] ?? '').toString().trim();
         final notes = t['reserve_notes']?.toString() ?? '';
         final reserveAt = _formatDateStr(t['reserve_at']);
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
           child: Padding(
             padding: const EdgeInsets.all(14.0),
@@ -1540,12 +2318,28 @@ class _ExternalOperationsHubScreenState
                     Expanded(
                       child: Text(
                         '${_tr("تحفظ نافذة طلبية", "Réserve Commande", "Window Reserve", lang)} #$orderId',
-                        style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: Colors.orange),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.orange,
+                        ),
                       ),
                     ),
                     Text(
-                      clientName.isNotEmpty ? clientName : _tr('زبون غير محدد', 'Client Inconnu', 'Unknown Client', lang),
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                      clientName.isNotEmpty
+                          ? clientName
+                          : _tr(
+                              'زبون غير محدد',
+                              'Client Inconnu',
+                              'Unknown Client',
+                              lang,
+                            ),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -1559,7 +2353,8 @@ class _ExternalOperationsHubScreenState
                       height: 75,
                       child: LazyWindowImage(
                         db: widget.db,
-                        detailId: (t['commande_detail_id'] as num?)?.toInt() ?? 0,
+                        detailId:
+                            (t['commande_detail_id'] as num?)?.toInt() ?? 0,
                         initialImagePath: t['drawing_image_path'] ?? '',
                         drawingImageBase64: t['drawing_image_base64'],
                         partitionsJson: t['partitions_json'],
@@ -1572,18 +2367,29 @@ class _ExternalOperationsHubScreenState
                         children: [
                           Text(
                             windowType,
-                            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '${_tr("الأبعاد:", "Dims:", "Dims:", lang)} ${largeur}cm × ${hauteur}cm | ${_tr("الكمية:", "Qté:", "Qty:", lang)} $qty',
-                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                            ),
                           ),
                           if (workerName.isNotEmpty) ...[
                             const SizedBox(height: 2),
                             Text(
                               '👷 ${_tr("العامل الصانع:", "Ouvrier:", "Worker:", lang)} $workerName',
-                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.blue),
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: Colors.blue,
+                              ),
                             ),
                           ],
                         ],
@@ -1600,25 +2406,47 @@ class _ExternalOperationsHubScreenState
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.report_problem_rounded, size: 16, color: Colors.orange),
+                          const Icon(
+                            Icons.report_problem_rounded,
+                            size: 16,
+                            color: Colors.orange,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             '${_tr("تفاصيل النقائص والتحفظات الميدانية:", "Détails des réserves :", "Reserve details:", lang)} ($reserveAt)',
-                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange,
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        notes.isNotEmpty ? notes : _tr('لم تسجل تفاصيل', 'Pas de détails', 'No details', lang),
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold),
+                        notes.isNotEmpty
+                            ? notes
+                            : _tr(
+                                'لم تسجل تفاصيل',
+                                'Pas de détails',
+                                'No details',
+                                lang,
+                              ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -1629,35 +2457,69 @@ class _ExternalOperationsHubScreenState
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      final isManager = Provider.of<AppSettingsProvider>(context, listen: false).isManager;
+                      final isManager = Provider.of<AppSettingsProvider>(
+                        context,
+                        listen: false,
+                      ).isManager;
                       if (isManager) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              _tr('⚠️ أزرار رفع وإلغاء التحفظ مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️', '⚠️ Seul l\'ouvrier peut lever les réserves ! Compte gérant en lecture seule 👁️', '⚠️ Only worker can clear reserves! Manager account is read-only 👁️', lang),
+                              _tr(
+                                '⚠️ أزرار رفع وإلغاء التحفظ مخصصة للعامل فقط! حساب المدير للعرض والمتابعة فقط 👁️',
+                                '⚠️ Seul l\'ouvrier peut lever les réserves ! Compte gérant en lecture seule 👁️',
+                                '⚠️ Only worker can clear reserves! Manager account is read-only 👁️',
+                                lang,
+                              ),
                               style: const TextStyle(fontFamily: 'Cairo'),
                             ),
                             backgroundColor: Colors.orange,
                             behavior: SnackBarBehavior.floating,
-                            margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            margin: const EdgeInsets.only(
+                              bottom: 50,
+                              left: 16,
+                              right: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         );
                         return;
                       }
                       _isLocalChangePending = true;
                       setState(() {
-                        _reserveAllocations.removeWhere((item) => (item['id'] as num?)?.toInt() == allocId);
+                        _reserveAllocations.removeWhere(
+                          (item) => (item['id'] as num?)?.toInt() == allocId,
+                        );
                       });
-                      await widget.db.updateWorkerAllocationReserve(allocId, 0, null);
+                      await widget.db.updateWorkerAllocationReserve(
+                        allocId,
+                        0,
+                        null,
+                      );
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(_tr('تم رفع وإلغاء التحفظ بنجاح 🔄✅', 'Réserve levée avec succès 🔄✅', 'Reserve cleared successfully 🔄✅', lang), style: const TextStyle(fontFamily: 'Cairo')),
+                            content: Text(
+                              _tr(
+                                'تم رفع وإلغاء التحفظ بنجاح 🔄✅',
+                                'Réserve levée avec succès 🔄✅',
+                                'Reserve cleared successfully 🔄✅',
+                                lang,
+                              ),
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
                             backgroundColor: Colors.green,
                             behavior: SnackBarBehavior.floating,
-                            margin: const EdgeInsets.only(bottom: 50, left: 16, right: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            margin: const EdgeInsets.only(
+                              bottom: 50,
+                              left: 16,
+                              right: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         );
                       }
@@ -1666,14 +2528,25 @@ class _ExternalOperationsHubScreenState
                     },
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: Text(
-                      _tr('إلغاء التحفظ (Réserve Levée) ✅', 'Lever la réserve ✅', 'Clear Reserve ✅', lang),
-                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                      _tr(
+                        'إلغاء التحفظ (Réserve Levée) ✅',
+                        'Lever la réserve ✅',
+                        'Clear Reserve ✅',
+                        lang,
+                      ),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green.shade600,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -1694,7 +2567,11 @@ class _ExternalOperationsHubScreenState
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.inbox_outlined, size: 48, color: isDark ? Colors.grey[600] : Colors.grey[400]),
+            Icon(
+              Icons.inbox_outlined,
+              size: 48,
+              color: isDark ? Colors.grey[600] : Colors.grey[400],
+            ),
             const SizedBox(height: 12),
             Text(
               message,
@@ -1767,7 +2644,10 @@ class _MissingItemsSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
-                  const Icon(Icons.shopping_cart_outlined, color: Colors.indigo),
+                  const Icon(
+                    Icons.shopping_cart_outlined,
+                    color: Colors.indigo,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -1775,12 +2655,20 @@ class _MissingItemsSheet extends StatelessWidget {
                       children: [
                         Text(
                           '${_tr("نواقص الطلبية", "Manquants commande", "Order missing items")} #$orderId',
-                          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                         if (clientName.isNotEmpty)
                           Text(
                             clientName,
-                            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey.shade500),
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
                           ),
                       ],
                     ),
@@ -1791,12 +2679,18 @@ class _MissingItemsSheet extends StatelessWidget {
                     icon: const Icon(Icons.add_shopping_cart, size: 16),
                     label: Text(
                       _tr('فتح المشتريات', 'Ouvrir Achats', 'Open Purchases'),
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.indigo,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ],
@@ -1810,8 +2704,15 @@ class _MissingItemsSheet extends StatelessWidget {
                 ? Expanded(
                     child: Center(
                       child: Text(
-                        _tr('لا توجد سلع مسجلة لهذه الطلبية', 'Aucun article enregistré', 'No items recorded'),
-                        style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+                        _tr(
+                          'لا توجد سلع مسجلة لهذه الطلبية',
+                          'Aucun article enregistré',
+                          'No items recorded',
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          color: Colors.grey,
+                        ),
                       ),
                     ),
                   )
@@ -1828,13 +2729,16 @@ class _MissingItemsSheet extends StatelessWidget {
                         final qty = item['nbr'] ?? item['quantity'] ?? 1;
                         final glass = (item['glass'] ?? '').toString();
                         final color = (item['color'] ?? '').toString();
-                        final windowType = (item['window_type'] ?? '').toString();
+                        final windowType = (item['window_type'] ?? '')
+                            .toString();
                         final game = (item['game'] ?? '').toString();
 
                         return Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF0F172A) : Colors.indigo.shade50,
+                            color: isDark
+                                ? const Color(0xFF0F172A)
+                                : Colors.indigo.shade50,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: Colors.indigo.withValues(alpha: 0.18),
@@ -1869,23 +2773,44 @@ class _MissingItemsSheet extends StatelessWidget {
                                   children: [
                                     // النوع / اللعبة
                                     Text(
-                                      windowType.isNotEmpty ? windowType : game.isNotEmpty ? game : _tr('نافذة', 'Fenêtre', 'Window'),
-                                      style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13),
+                                      windowType.isNotEmpty
+                                          ? windowType
+                                          : game.isNotEmpty
+                                          ? game
+                                          : _tr('نافذة', 'Fenêtre', 'Window'),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                     const SizedBox(height: 3),
                                     // القياسات
                                     Text(
                                       '$height × $width مم',
-                                      style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey.shade600),
+                                      style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
                                     ),
-                                    if (glass.isNotEmpty || color.isNotEmpty) ...[
+                                    if (glass.isNotEmpty ||
+                                        color.isNotEmpty) ...[
                                       const SizedBox(height: 2),
                                       Text(
                                         [
-                                          if (glass.isNotEmpty) _tr('زجاج', 'Vitrage', 'Glass') + ': $glass',
-                                          if (color.isNotEmpty) _tr('لون', 'Couleur', 'Color') + ': $color',
+                                          if (glass.isNotEmpty)
+                                            _tr('زجاج', 'Vitrage', 'Glass') +
+                                                ': $glass',
+                                          if (color.isNotEmpty)
+                                            _tr('لون', 'Couleur', 'Color') +
+                                                ': $color',
                                         ].join(' — '),
-                                        style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey.shade500),
+                                        style: TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 11,
+                                          color: Colors.grey.shade500,
+                                        ),
                                       ),
                                     ],
                                   ],
@@ -1893,7 +2818,10 @@ class _MissingItemsSheet extends StatelessWidget {
                               ),
                               // الكمية
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.indigo.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(8),

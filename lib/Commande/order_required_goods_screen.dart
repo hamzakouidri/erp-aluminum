@@ -416,6 +416,8 @@ class AggregatedGoodItem {
   final List<BomItem> kitSubItems;
   final String? kitGroupName;
 
+  double? get length => stockLength;
+
   AggregatedGoodItem({
     required this.name,
     required this.originalName,
@@ -2219,26 +2221,36 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           children: [
             Text(
               _t('كمية السلع المطلوبة'),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.white,
+              ),
             ),
             Text(
               clientDisplay,
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
         centerTitle: true,
         backgroundColor: isDark
-            ? Theme.of(context).appBarTheme.backgroundColor
+            ? (Theme.of(context).appBarTheme.backgroundColor ?? const Color(0xFF1A237E))
             : const Color(0xFF1A237E),
         foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         actions: [
           if (!_isLoading &&
               _errorMessage == null &&
               _aggregatedItems.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.manage_search),
+              icon: const Icon(Icons.manage_search, color: Colors.white),
               tooltip: _t('إظهار النواقص'),
               onPressed: _showShortageReport,
             ),
@@ -2246,7 +2258,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               _errorMessage == null &&
               _cuttableCatalogItems.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.inventory_2_outlined),
+              icon: const Icon(Icons.inventory_2_outlined, color: Colors.white),
               tooltip: _t('اعتماد القص والبقايا'),
               onPressed: _approveAndStoreCuttingRemainders,
             ),
@@ -2263,7 +2275,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.shopping_cart_checkout),
+                  : const Icon(Icons.shopping_cart_checkout, color: Colors.white),
               tooltip: _t('تحويل إلى طلب أو فاتورة شراء'),
               onPressed: _isCreatingPurchase
                   ? null
@@ -2286,7 +2298,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             ),
           if (!_isLoading && _errorMessage == null)
             IconButton(
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh, color: Colors.white),
               tooltip: _t('إعادة الحساب'),
               onPressed: _loadAndAggregate,
             ),

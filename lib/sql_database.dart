@@ -956,6 +956,11 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await db.execute(
+        'ALTER TABLE ShutterComponents ADD COLUMN max_width_mm REAL NOT NULL DEFAULT 6000.0;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
         "ALTER TABLE ShutterComponents ADD COLUMN cap_thickness REAL NOT NULL DEFAULT 0.0;",
       );
     } catch (_) {}
@@ -2157,7 +2162,8 @@ class SqlDatabase {
           shutter_subtype TEXT NOT NULL DEFAULT 'normal',
           bar_length_m REAL NOT NULL DEFAULT 0.0,
           motor_diameter TEXT DEFAULT '',
-          cap_thickness REAL NOT NULL DEFAULT 0.0
+          cap_thickness REAL NOT NULL DEFAULT 0.0,
+          max_width_mm REAL NOT NULL DEFAULT 6000.0
         )
       ''');
     }
@@ -3031,7 +3037,8 @@ class SqlDatabase {
       bar_length_m REAL NOT NULL DEFAULT 0.0,
       motor_diameter TEXT DEFAULT '',
       motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0,
-      cap_thickness REAL NOT NULL DEFAULT 0.0
+      cap_thickness REAL NOT NULL DEFAULT 0.0,
+      max_width_mm REAL NOT NULL DEFAULT 6000.0
     )
     ''');
 
@@ -5767,28 +5774,51 @@ class SqlDatabase {
     }
   }
 
-  Future<void> syncWorkerAllocationsStatusFromCloud() async {
+  /// Synchronises allocation status rows. When [changedRows] is provided only
+  /// those rows are merged; the real-time listener uses this path so a single
+  /// reassignment never downloads the entire workshop again.
+  Future<void> syncWorkerAllocationsStatusFromCloud({
+    Iterable<Map<String, dynamic>>? changedRows,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
     if (workshopId == null || workshopId.isEmpty) return;
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('workshops')
-          .doc(workshopId)
-          .collection('worker_allocations_status')
-          .get();
+      final statusRows = <Map<String, dynamic>>[];
+      if (changedRows != null) {
+        for (final row in changedRows) {
+          final copy = Map<String, dynamic>.from(row);
+          if (copy['__allocation_id'] == null && copy['id'] != null) {
+            copy['__allocation_id'] = copy['id'];
+          }
+          statusRows.add(copy);
+        }
+      } else {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('workshops')
+            .doc(workshopId)
+            .collection('worker_allocations_status')
+            .get();
+        for (final doc in snapshot.docs) {
+          final data = Map<String, dynamic>.from(doc.data());
+          data['__allocation_id'] = doc.id;
+          statusRows.add(data);
+        }
+      }
 
       Database? myDb = await db;
       if (myDb == null) return;
 
       await myDb.transaction((txn) async {
-        for (var doc in snapshot.docs) {
-          final allocationId = int.tryParse(doc.id);
+        for (final data in statusRows) {
+          final allocationId = int.tryParse(
+            data['__allocation_id']?.toString() ?? '',
+          );
           if (allocationId == null) continue;
-          final data = doc.data();
-          final cloudUpdatedAt =
-              _sanitizeImportValue(data['updated_at'])?.toString();
+          final cloudUpdatedAt = _sanitizeImportValue(
+            data['updated_at'],
+          )?.toString();
 
           final existing = await txn.query(
             'WorkerAllocations',
@@ -5800,7 +5830,8 @@ class SqlDatabase {
             final oldTransferred =
                 (old['is_transferred_to_dist'] as num?)?.toInt() == 1;
             final incomingTransferredRaw = data['is_transferred_to_dist'];
-            final incomingTransferred = incomingTransferredRaw == true ||
+            final incomingTransferred =
+                incomingTransferredRaw == true ||
                 (incomingTransferredRaw is num &&
                     incomingTransferredRaw.toInt() == 1) ||
                 incomingTransferredRaw?.toString() == '1';
@@ -5810,10 +5841,9 @@ class SqlDatabase {
               continue;
             }
             if (cloudUpdatedAt != null &&
-                _localRowIsNewer(
-                  Map<String, dynamic>.from(old),
-                  {'updated_at': cloudUpdatedAt},
-                )) {
+                _localRowIsNewer(Map<String, dynamic>.from(old), {
+                  'updated_at': cloudUpdatedAt,
+                })) {
               continue;
             }
             await txn.update(
@@ -5857,12 +5887,12 @@ class SqlDatabase {
                     : old['installed_at'],
                 'installation_worker_uid':
                     data.containsKey('installation_worker_uid')
-                        ? data['installation_worker_uid']
-                        : old['installation_worker_uid'],
+                    ? data['installation_worker_uid']
+                    : old['installation_worker_uid'],
                 'installation_assigned_at':
                     data.containsKey('installation_assigned_at')
-                        ? data['installation_assigned_at']
-                        : old['installation_assigned_at'],
+                    ? data['installation_assigned_at']
+                    : old['installation_assigned_at'],
                 'is_completed':
                     data['is_completed'] ?? old['is_completed'] ?? 0,
                 'completed_at': data.containsKey('completed_at')
@@ -5911,8 +5941,7 @@ class SqlDatabase {
               'has_reserve': data['has_reserve'] ?? 0,
               'reserve_notes': data['reserve_notes'],
               'reserve_at': data['reserve_at'],
-              'updated_at':
-                  cloudUpdatedAt ?? DateTime.now().toIso8601String(),
+              'updated_at': cloudUpdatedAt ?? DateTime.now().toIso8601String(),
             });
           }
         }
@@ -6087,7 +6116,10 @@ class SqlDatabase {
     }
 
     await _uploadAllocationStatusToCloud(allocationId);
-    CloudSyncService().notifyChange();
+    // Reassignment is an urgent row-level event. Do not put it behind the
+    // normal backup debounce; the status listener on the other phone receives
+    // the single allocation document immediately.
+    CloudSyncService().notifyChangeImmediate();
   }
 
   Future<void> updateWorkerAllocationGlass(
@@ -6346,7 +6378,10 @@ class SqlDatabase {
     );
 
     await _uploadAllocationStatusToCloud(allocationId);
-    CloudSyncService().notifyChange();
+    // Reassignment is an urgent row-level event. Do not put it behind the
+    // normal backup debounce; the status listener on the other phone receives
+    // the single allocation document immediately.
+    CloudSyncService().notifyChangeImmediate();
   }
 
   Future<void> updateWorkerAllocationCompletion(
@@ -6539,7 +6574,15 @@ class SqlDatabase {
         AND (wa.is_completed = 1 OR wa.is_installed = 1)
       ORDER BY wa.transferred_at DESC, wa.assigned_at DESC
     ''',
-      [cleanEmail, workerUid, cleanEmail, cleanEmail, workerUid, cleanEmail, cleanEmail],
+      [
+        cleanEmail,
+        workerUid,
+        cleanEmail,
+        cleanEmail,
+        workerUid,
+        cleanEmail,
+        cleanEmail,
+      ],
     );
 
     final now = DateTime.now();
@@ -6584,10 +6627,7 @@ class SqlDatabase {
     if (myDb == null) return;
     await myDb.update(
       'WorkerAllocations',
-      {
-        'worker_price': price,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
+      {'worker_price': price, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [allocationId],
     );
@@ -11087,13 +11127,15 @@ class SqlDatabase {
       }
 
       final localTransferred = asInt(local['is_transferred_to_dist']) == 1;
-      final incomingTransferred = asInt(imported['is_transferred_to_dist']) == 1;
+      final incomingTransferred =
+          asInt(imported['is_transferred_to_dist']) == 1;
       if (!localTransferred || incomingTransferred) return;
 
       final localMap = Map<String, dynamic>.from(local);
       final localTime = _rowUpdateTime(localMap);
       final incomingTime = _rowUpdateTime(imported);
-      final incomingIsNewer = localTime != null &&
+      final incomingIsNewer =
+          localTime != null &&
           incomingTime != null &&
           incomingTime.isAfter(localTime);
       if (incomingIsNewer) return;
@@ -11209,7 +11251,8 @@ class SqlDatabase {
         is_active INTEGER NOT NULL DEFAULT 1,
         shutter_subtype TEXT NOT NULL DEFAULT 'normal',
         motor_has_emergency_crank INTEGER NOT NULL DEFAULT 0,
-        cap_thickness REAL NOT NULL DEFAULT 0.0
+        cap_thickness REAL NOT NULL DEFAULT 0.0,
+        max_width_mm REAL NOT NULL DEFAULT 6000.0
       )
     ''');
     await db.execute('''
@@ -14083,6 +14126,7 @@ class SqlDatabase {
         l.box_size, 
         l.blade_id, 
         l.max_height,
+        c.max_width_mm AS blade_max_width,
         c.name as blade_name
       FROM ShutterBoxLimits l
       LEFT JOIN ShutterComponents c ON l.blade_id = c.id
@@ -14094,6 +14138,7 @@ class SqlDatabase {
     int boxSize,
     int bladeId,
     double maxHeight,
+    double maxWidth,
   ) async {
     final myDb = await db;
     if (myDb == null) return -1;
@@ -14102,6 +14147,12 @@ class SqlDatabase {
       'blade_id': bladeId,
       'max_height': maxHeight,
     });
+    await myDb.update(
+      'ShutterComponents',
+      {'max_width_mm': maxWidth},
+      where: 'id = ?',
+      whereArgs: [bladeId],
+    );
     CloudSyncService().notifyCatalogChange();
     return res;
   }
@@ -14111,6 +14162,7 @@ class SqlDatabase {
     int boxSize,
     int bladeId,
     double maxHeight,
+    double maxWidth,
   ) async {
     final myDb = await db;
     if (myDb == null) return -1;
@@ -14119,6 +14171,12 @@ class SqlDatabase {
       {'box_size': boxSize, 'blade_id': bladeId, 'max_height': maxHeight},
       where: 'id = ?',
       whereArgs: [id],
+    );
+    await myDb.update(
+      'ShutterComponents',
+      {'max_width_mm': maxWidth},
+      where: 'id = ?',
+      whereArgs: [bladeId],
     );
     CloudSyncService().notifyCatalogChange();
     return res;

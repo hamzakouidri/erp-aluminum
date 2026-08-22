@@ -677,10 +677,7 @@ class ComponentCalculator {
     final touchesEndEdge = (sideLength - safeEnd).abs() <= 0.1;
     final miterEnds =
         (touchesStartEdge ? 1.0 : 0.0) + (touchesEndEdge ? 1.0 : 0.0);
-    return safeEnd -
-        safeStart +
-        (visibleWidth * miterEnds) +
-        weldingAllowance;
+    return safeEnd - safeStart + (visibleWidth * miterEnds) + weldingAllowance;
   }
 
   static Map<String, dynamic> optimizeCutting({
@@ -2509,15 +2506,15 @@ class ComponentCalculator {
           }
           final railFrameWidth = isNestedSliding
               ? (slidingFrame == null
-                  ? zone.boundary.width
-                  : math.max(
-                      0.0,
-                      clearW -
-                          window.slidingRebateDeduction(
-                            zone,
-                            horizontal: true,
-                          ),
-                    ))
+                    ? zone.boundary.width
+                    : math.max(
+                        0.0,
+                        clearW -
+                            window.slidingRebateDeduction(
+                              zone,
+                              horizontal: true,
+                            ),
+                      ))
               : window.width.toDouble();
           double railLen = (railFrameWidth - (frameT * 2.0)) / 1000.0;
           if (railLen < 0) railLen = 0;
@@ -4621,6 +4618,11 @@ class ComponentCalculator {
     final Map<String, Map<String, dynamic>?> bardageColorData = {};
     List<double> parcloseSimplePieces = [];
     List<double> parcloseDoublePieces = [];
+    // Sliding and opening systems may use different parclose profiles even
+    // when they share the same drawing. Keep their cutting lists separate so
+    // each one is resolved from its own active series.
+    List<double> slidingParcloseSimplePieces = [];
+    List<double> slidingParcloseDoublePieces = [];
     List<double> reducteurPieces = [];
 
     // ===== متغيرات جوانات نظام الفتح (ألمنيوم فقط) =====
@@ -4981,8 +4983,8 @@ class ComponentCalculator {
               // A reducteur is an aluminium-only profile and must never be
               // injected into their bill of materials.
               final targetParclosePieces = cellThick > 10.0
-                  ? parcloseDoublePieces
-                  : parcloseSimplePieces;
+                  ? slidingParcloseDoublePieces
+                  : slidingParcloseSimplePieces;
               for (int q = 0; q < pieceMultiplier; q++) {
                 targetParclosePieces.add(cellGw / 1000.0);
                 targetParclosePieces.add(cellGw / 1000.0);
@@ -5272,6 +5274,9 @@ class ComponentCalculator {
               window,
               cellGw,
               cellGh,
+              seriesOverride: isSlidingSystem
+                  ? window.activeSlidingSeries
+                  : window.activeSeries,
             );
             if (labelSuffix.isNotEmpty) glassName = "$labelSuffix\n$glassName";
             glassItems.add(
@@ -5496,16 +5501,9 @@ class ComponentCalculator {
 
     // --- 5. الباكيت (Parclose) ---
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
-    Map<String, dynamic>? parcloseSimple;
-    Map<String, dynamic>? parcloseDouble;
 
-    final hasPvcSlidingZone =
-        window.isSlidingPVC &&
-        window.zones.any((zone) => zone.content == ZoneContent.slidingSash);
-    final activeSeries = hasPvcSlidingZone
-        ? (window.activeSlidingSeries ?? window.activeSeries)
-        : window.activeSeries;
-    if (activeSeries != null) {
+    Map<String, dynamic>? resolveParcloseForSeries(AluminumSeries? series) {
+      if (series == null) return null;
       bool isParcloseSection(AluminumSection section) {
         final type = section.type.toLowerCase();
         final name = section.name.toLowerCase();
@@ -5517,9 +5515,7 @@ class ComponentCalculator {
       }
 
       AluminumSection? findSimpleParclose() {
-        final candidates = activeSeries.sections
-            .where(isParcloseSection)
-            .toList();
+        final candidates = series.sections.where(isParcloseSection).toList();
         for (final section in candidates) {
           if (section.code.trim() == '514') return section;
         }
@@ -5533,7 +5529,7 @@ class ComponentCalculator {
       }
 
       AluminumSection? findDoubleParclose() {
-        for (final section in activeSeries.sections) {
+        for (final section in series.sections) {
           if (isParcloseSection(section) && section.maxGlassThickness > 10) {
             return section;
           }
@@ -5556,46 +5552,72 @@ class ComponentCalculator {
         return result;
       }
 
-      if (chosenParclose != null) {
+      final chosenId = chosenParclose?['id'];
+      final chosenSeriesId = chosenParclose?['series_id'];
+      final chosenBelongsToSeries =
+          chosenParclose == null ||
+          (chosenSeriesId != null &&
+              chosenSeriesId.toString() == series.id.toString()) ||
+          (chosenId != null &&
+              series.sections.any(
+                (s) => s.id.toString() == chosenId.toString(),
+              ));
+
+      Map<String, dynamic>? simple;
+      Map<String, dynamic>? doubled;
+      if (chosenParclose != null && chosenBelongsToSeries) {
         final double maxG =
             (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
         if (maxG > 10.0) {
-          parcloseDouble = pricedOverride(chosenParclose);
-          final simple = findSimpleParclose();
-          parcloseSimple = simple == null
+          doubled = pricedOverride(chosenParclose);
+          final simpleSection = findSimpleParclose();
+          simple = simpleSection == null
               ? pricedOverride(chosenParclose)
-              : pricedMap(simple);
+              : pricedMap(simpleSection);
         } else {
-          final simple = findSimpleParclose();
-          parcloseSimple =
+          final simpleSection = findSimpleParclose();
+          simple =
               chosenParclose['code']?.toString().trim() == '514' ||
-                  simple == null
+                  simpleSection == null
               ? pricedOverride(chosenParclose)
-              : pricedMap(simple);
+              : pricedMap(simpleSection);
           final int? linkedId =
               chosenParclose['linked_parclose_double_id'] as int?;
           if (linkedId != null && linkedId > 0) {
             try {
-              final linkedSec = activeSeries.sections.firstWhere(
+              final linkedSec = series.sections.firstWhere(
                 (s) => s.id == linkedId,
               );
-              parcloseDouble = pricedMap(linkedSec);
+              doubled = pricedMap(linkedSec);
             } catch (_) {}
           }
-          if (parcloseDouble == null) {
+          if (doubled == null) {
             final doubleSection = findDoubleParclose();
-            parcloseDouble = doubleSection == null
+            doubled = doubleSection == null
                 ? pricedOverride(chosenParclose)
                 : pricedMap(doubleSection);
           }
         }
       } else {
-        final simple = findSimpleParclose();
+        final simpleSection = findSimpleParclose();
         final doubleSection = findDoubleParclose();
-        if (simple != null) parcloseSimple = pricedMap(simple);
-        if (doubleSection != null) parcloseDouble = pricedMap(doubleSection);
+        if (simpleSection != null) simple = pricedMap(simpleSection);
+        if (doubleSection != null) doubled = pricedMap(doubleSection);
       }
+
+      return {'simple': simple, 'double': doubled};
     }
+
+    final openingParclose = resolveParcloseForSeries(window.activeSeries);
+    final slidingParclose = resolveParcloseForSeries(
+      window.activeSlidingSeries,
+    );
+    final parcloseSimple = openingParclose?['simple'] as Map<String, dynamic>?;
+    final parcloseDouble = openingParclose?['double'] as Map<String, dynamic>?;
+    final slidingParcloseSimple =
+        slidingParclose?['simple'] as Map<String, dynamic>?;
+    final slidingParcloseDouble =
+        slidingParclose?['double'] as Map<String, dynamic>?;
 
     if (parcloseSimplePieces.isNotEmpty) {
       final targetOverride = parcloseSimple ?? chosenParclose;
@@ -5620,6 +5642,40 @@ class ComponentCalculator {
             'باكيت زجاج مزدوج (Parclose Double)',
             colorName,
             pieces: parcloseDoublePieces,
+            unit: 'قطاع',
+            overrideMap: targetOverride,
+          ),
+        );
+      }
+    }
+
+    if (slidingParcloseSimplePieces.isNotEmpty) {
+      final targetOverride =
+          slidingParcloseSimple ??
+          (window.activeSlidingSeries == null ? chosenParclose : null);
+      if (targetOverride != null) {
+        items.add(
+          createProfile(
+            'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)',
+            colorName,
+            pieces: slidingParcloseSimplePieces,
+            unit: 'قطاع',
+            overrideMap: targetOverride,
+          ),
+        );
+      }
+    }
+
+    if (slidingParcloseDoublePieces.isNotEmpty) {
+      final targetOverride =
+          slidingParcloseDouble ??
+          (window.activeSlidingSeries == null ? chosenParclose : null);
+      if (targetOverride != null) {
+        items.add(
+          createProfile(
+            'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)',
+            colorName,
+            pieces: slidingParcloseDoublePieces,
             unit: 'قطاع',
             overrideMap: targetOverride,
           ),
@@ -5691,7 +5747,8 @@ class ComponentCalculator {
           window.componentOverrides['ريديكتور (Réducteur)'] ??
           window.componentOverrides['مخفض الزجاج (Réducteur)'];
 
-      if (reducteurOverride == null && activeSeries != null) {
+      final reductionSeries = window.activeSlidingSeries ?? window.activeSeries;
+      if (reducteurOverride == null && reductionSeries != null) {
         bool isReducteurSection(dynamic s) {
           final n = s.name.toLowerCase();
           final t = s.type.toLowerCase();
@@ -5712,7 +5769,9 @@ class ComponentCalculator {
 
         // البحث عن قطاع reducteur صريح (كود 67114 أو reducteur) واستبعاد الباركلوز والسكة
         try {
-          final redSec = activeSeries.sections.firstWhere(isReducteurSection);
+          final redSec = reductionSeries.sections.firstWhere(
+            isReducteurSection,
+          );
           reducteurOverride = redSec.toMap();
         } catch (_) {}
       }
@@ -5903,8 +5962,9 @@ class ComponentCalculator {
     GlassSpecification glass,
     WindowModel window,
     double gw,
-    double gh,
-  ) {
+    double gh, {
+    AluminumSeries? seriesOverride,
+  }) {
     String dimText =
         'القياس (العرض × الارتفاع): ${gw.toStringAsFixed(1)} × ${gh.toStringAsFixed(1)} ملم';
     String result;
@@ -6061,7 +6121,19 @@ class ComponentCalculator {
     final isDouble = glass.structure == GlassStructure.double;
     Map<String, dynamic>? matchingParclose;
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
-    final activeSeries = window.activeSeries;
+    final activeSeries = seriesOverride ?? window.activeSeries;
+    final chosenId = chosenParclose?['id'];
+    final chosenSeriesId = chosenParclose?['series_id'];
+    final selectedParclose = chosenParclose == null || activeSeries == null
+        ? chosenParclose
+        : ((chosenSeriesId != null &&
+                  chosenSeriesId.toString() == activeSeries.id.toString()) ||
+              (chosenId != null &&
+                  activeSeries.sections.any(
+                    (s) => s.id.toString() == chosenId.toString(),
+                  )))
+        ? chosenParclose
+        : null;
 
     if (activeSeries != null) {
       // جمع كل باركلوزات السلسلة وترتيبها
@@ -6078,10 +6150,10 @@ class ComponentCalculator {
       );
 
       if (allParcloseSections.isNotEmpty) {
-        if (chosenParclose != null) {
+        if (selectedParclose != null) {
           // المستخدم اختار — نحدد هل المختار يتطابق سمك الزجاج
           final double chosenMax =
-              (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ??
+              (selectedParclose['max_glass_thickness'] as num?)?.toDouble() ??
               0.0;
           // هل المختار simple أو double بالمقارنة مع أصغر max متاح
           final double seriesMinMax =
@@ -6093,7 +6165,7 @@ class ComponentCalculator {
               : chosenIsSimple;
 
           if (chosenMatchesGlass) {
-            matchingParclose = chosenParclose;
+            matchingParclose = selectedParclose;
           } else {
             // المختار لا يتطابق — نبحث عن المناسب في السلسلة
             if (isDouble) {
@@ -6112,19 +6184,19 @@ class ComponentCalculator {
             matchingParclose = allParcloseSections.first.toMap();
           }
         }
-      } else if (chosenParclose != null) {
+      } else if (selectedParclose != null) {
         // السلسلة ليس فيها باركلوز — المختار يُستخدم
-        matchingParclose = chosenParclose;
+        matchingParclose = selectedParclose;
       }
-    } else if (chosenParclose != null) {
-      matchingParclose = chosenParclose;
+    } else if (selectedParclose != null) {
+      matchingParclose = selectedParclose;
     }
 
     // An explicitly selected parclose is the source of truth for both the
     // displayed thickness and its warning. Do not silently compare against a
     // different catalogue parclose just because it looks more suitable.
-    if (chosenParclose != null) {
-      matchingParclose = chosenParclose;
+    if (selectedParclose != null) {
+      matchingParclose = selectedParclose;
     }
 
     if (matchingParclose != null) {
