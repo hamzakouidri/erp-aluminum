@@ -43,6 +43,122 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
   }
 
+  bool _isSlidingProfileBomItem(BomItem item) {
+    if (item.category != 'profile') return false;
+    final text = '${item.originalName} ${item.name}'.toLowerCase();
+    if ([
+      'منزلق',
+      'جرار',
+      'couliss',
+      'sliding',
+      'rail',
+      'chicane',
+      'lateral',
+      'central',
+    ].any(text.contains)) {
+      return true;
+    }
+    final hasSlidingSash = widget.model.zones.any(
+      (zone) => zone.content == ZoneContent.slidingSash,
+    );
+    final hasOpeningSash = widget.model.zones.any(
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash,
+    );
+    return hasSlidingSash && !hasOpeningSash;
+  }
+
+  List<String> _overrideKeysForBomItem(String originalName) {
+    final lower = originalName.toLowerCase();
+    final wantsReinforced =
+        originalName.contains('معزز') || lower.contains('renfor');
+    if (lower.contains('lateral') || originalName.contains('جانبي')) {
+      return wantsReinforced
+          ? const [
+              'قائم جانبي معزز (Sash Lateral Renforcé)',
+              'قائم جانبي (Sash Lateral)',
+              'قائم جانبي (Lateral)',
+            ]
+          : const [
+              'قائم جانبي (Sash Lateral)',
+              'قائم جانبي (Lateral)',
+              'قائم جانبي معزز (Sash Lateral Renforcé)',
+            ];
+    }
+    if (lower.contains('central') || originalName.contains('وسطي')) {
+      return wantsReinforced
+          ? const [
+              'قائم وسطي معزز (Sash Central Renforcé)',
+              'قائم وسطي (Sash Central)',
+              'قائم وسطي (Central)',
+            ]
+          : const [
+              'قائم وسطي (Sash Central)',
+              'قائم وسطي (Central)',
+              'قائم وسطي معزز (Sash Central Renforcé)',
+            ];
+    }
+    return [originalName];
+  }
+
+  bool _profileLooksReinforced(
+    Map<String, dynamic> profile, {
+    required bool central,
+  }) {
+    final code = profile['code']?.toString() ?? '';
+    final name = profile['name']?.toString().toLowerCase() ?? '';
+    final type = profile['type']?.toString().toLowerCase() ?? '';
+    return code.endsWith(central ? '107' : '108') ||
+        name.contains('معزز') ||
+        name.contains('renforc') ||
+        type.contains('renforc');
+  }
+
+  void _saveSlidingMontantOverride({
+    required bool central,
+    required Map<String, dynamic> selected,
+  }) {
+    final isRenforce = _profileLooksReinforced(selected, central: central);
+    for (final zone in widget.model.zones) {
+      if (zone.content != ZoneContent.slidingSash) continue;
+      if (central) {
+        final sashes = zone.slidingSashesCount > 0
+            ? zone.slidingSashesCount
+            : 2;
+        final centralCount = (sashes * 2) - 2;
+        for (int index = 0; index < centralCount; index++) {
+          zone.slidingMontantReinforced['central_$index'] = isRenforce;
+        }
+      } else {
+        zone.slidingMontantReinforced['lateral_0'] = isRenforce;
+        zone.slidingMontantReinforced['lateral_1'] = isRenforce;
+      }
+    }
+    final keys = central
+        ? const [
+            'قائم وسطي معزز (Sash Central Renforcé)',
+            'قائم وسطي (Sash Central)',
+            'قائم وسطي (Central)',
+          ]
+        : const [
+            'قائم جانبي معزز (Sash Lateral Renforcé)',
+            'قائم جانبي (Sash Lateral)',
+            'قائم جانبي (Lateral)',
+          ];
+    final activeKey = central
+        ? (isRenforce
+              ? 'قائم وسطي معزز (Sash Central Renforcé)'
+              : 'قائم وسطي (Sash Central)')
+        : (isRenforce
+              ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
+              : 'قائم جانبي (Sash Lateral)');
+    for (final key in keys) {
+      widget.model.componentOverrides[key] = selected;
+    }
+    widget.model.componentOverrides[activeKey] = selected;
+  }
+
   /// The BOM tells us which sash owns each hardware row.  This must take
   /// precedence over [WindowModel.systemMode], because a mixed PVC drawing
   /// has opening and sliding components at the same time.
@@ -101,6 +217,25 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   int? _seriesIdForItem(BomItem item) {
+    if (item.category == 'profile') {
+      final hasSlidingSash = widget.model.zones.any(
+        (zone) => zone.content == ZoneContent.slidingSash,
+      );
+      final hasOpeningSash = widget.model.zones.any(
+        (zone) =>
+            zone.content == ZoneContent.singleSash ||
+            zone.content == ZoneContent.doubleSash,
+      );
+      if (_isSlidingProfileBomItem(item) ||
+          (hasSlidingSash && !hasOpeningSash)) {
+        return widget.model.activeSlidingSeries?.id ??
+            widget.model.activeSeries?.id;
+      }
+      if (hasOpeningSash && !hasSlidingSash) {
+        return widget.model.activeSeries?.id;
+      }
+    }
+
     final mode = _accessoryDrawingModeForItem(item);
     if (mode == AccessoryDrawingMode.sliding) {
       return widget.model.activeSlidingSeries?.id ??
@@ -115,6 +250,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   String _materialTypeForItem(BomItem item) {
+    if (item.category == 'profile') {
+      return _isSlidingProfileBomItem(item)
+          ? (widget.model.isSlidingPVC ? 'PVC' : 'Aluminium')
+          : (widget.model.isPVC ? 'PVC' : 'Aluminium');
+    }
     return _accessoryDrawingModeForItem(item) == AccessoryDrawingMode.sliding
         ? (widget.model.isSlidingPVC ? 'PVC' : 'Aluminium')
         : (widget.model.isPVC ? 'PVC' : 'Aluminium');
@@ -1363,12 +1503,60 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       // 3. البراغي: دالة عامة تجلب برغيًا مناسبًا حسب عمود boolean في جدول Accessories (مثل is_moteur_screw)
       Future<void> assignScrew(String key, String dbColumn) async {
+        final isShutterGlobalScrew =
+            dbColumn == 'is_kit_screw' || dbColumn == 'is_caisson_screw';
+        const screwWords = ['براغي', 'screw', 'vis'];
+        final roleWords = dbColumn == 'is_kit_screw'
+            ? const ['kit', 'كيت']
+            : const ['caisson', 'box', 'صندوق'];
+
+        String textWordsClause(List<String> words, List<dynamic> args) {
+          final clauses = <String>[];
+          for (final word in words) {
+            clauses.add(
+              "(LOWER(COALESCE(name, '')) LIKE ? OR LOWER(COALESCE(type, '')) LIKE ?)",
+            );
+            args.add('%${word.toLowerCase()}%');
+            args.add('%${word.toLowerCase()}%');
+          }
+          return '(${clauses.join(' OR ')})';
+        }
+
+        bool rowLooksLikeShutterScrew(Map<String, dynamic> row) {
+          final name = (row['name'] ?? '').toString().toLowerCase();
+          final type = (row['type'] ?? '').toString().toLowerCase();
+          final text = '$name $type';
+          final hasScrewWord = screwWords.any(text.contains);
+          final hasRoleWord = roleWords.any(text.contains);
+          return hasScrewWord && hasRoleWord;
+        }
+
         // لا يكفي أن يكون للمكوّن id: الطلبات القديمة قد تحفظ تحت مفتاح
         // البراغي إكسسواراً آخر (مثل ViroRouge). نتحقق من دوره وسلسلته قبل
         // اعتباره اختياراً صالحاً.
         Future<bool> hasValidCurrentScrew() async {
           final current = widget.model.componentOverrides[key];
           if (current is! Map || current['id'] == null) return false;
+          if (isShutterGlobalScrew) {
+            final rows = await dbInstance.query(
+              'Accessories',
+              columns: const ['id', 'name', 'type'],
+              where:
+                  'id = ? AND $dbColumn = 1 AND (is_active = 1 OR is_active IS NULL)',
+              whereArgs: [current['id']],
+              limit: 1,
+            );
+            if (rows.isNotEmpty) return true;
+            final fallbackRows = await dbInstance.query(
+              'Accessories',
+              columns: const ['id', 'name', 'type'],
+              where: 'id = ? AND (is_active = 1 OR is_active IS NULL)',
+              whereArgs: [current['id']],
+              limit: 1,
+            );
+            return fallbackRows.isNotEmpty &&
+                rowLooksLikeShutterScrew(fallbackRows.first);
+          }
           final mat = widget.model.isPVC ? 'pvc' : 'aluminium';
           final seriesFilter = _buildSeriesFilterClause();
           final rows = await dbInstance.query(
@@ -1411,15 +1599,36 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             try {
               final matType = widget.model.isPVC ? 'pvc' : 'aluminium';
               final seriesFilter = _buildSeriesFilterClause();
+              if (isShutterGlobalScrew) {
+                res = await dbInstance.query(
+                  'Accessories',
+                  where:
+                      '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL)',
+                  orderBy: 'id ASC',
+                );
+              } else {
+                res = await dbInstance.query(
+                  'Accessories',
+                  where:
+                      '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) '
+                      "AND (LOWER(material_type) = ? OR LOWER(material_type) = 'both')${seriesFilter['clause']}",
+                  whereArgs: [matType, ...seriesFilter['args']],
+                  orderBy: 'id ASC',
+                );
+              }
+            } catch (_) {} // تجاهل خطأ إذا العمود غير موجود بقاعدة بيانات قديمة
+            if (res.isEmpty && isShutterGlobalScrew) {
+              final args = <dynamic>[];
+              final screwClause = textWordsClause(screwWords, args);
+              final roleClause = textWordsClause(roleWords, args);
               res = await dbInstance.query(
                 'Accessories',
                 where:
-                    '$dbColumn = 1 AND (is_active = 1 OR is_active IS NULL) '
-                    "AND (LOWER(material_type) = ? OR LOWER(material_type) = 'both')${seriesFilter['clause']}",
-                whereArgs: [matType, ...seriesFilter['args']],
+                    '(is_active = 1 OR is_active IS NULL) AND $screwClause AND $roleClause',
+                whereArgs: args,
                 orderBy: 'id ASC',
               );
-            } catch (_) {} // تجاهل خطأ إذا العمود غير موجود بقاعدة بيانات قديمة
+            }
             // ملاحظة مهمة: لا يوجد بحث احتياطي عشوائي للبراغي حتى لا يختلط برغي بنوع خاطئ
             if (res.isNotEmpty) {
               final selectedSeriesId = widget.model.systemMode == 'sliding'
@@ -1430,6 +1639,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   .map((row) => Map<String, dynamic>.from(row))
                   .toList();
               candidates.sort((a, b) {
+                if (isShutterGlobalScrew) {
+                  return ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+                    (b['id'] as num?)?.toInt() ?? 0,
+                  );
+                }
                 int seriesPriority(Map<String, dynamic> item) {
                   if (selectedSeriesId == null) return 1;
                   if (item['series_id'] == selectedSeriesId) return 0;
@@ -1946,6 +2160,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         for (final kit in kits) {
           final kitName = kit['name'] as String? ?? '';
           final kitId = kit['id'] as int;
+          final shutterCatalogOnly = _isShutterKitBundle(kit);
           final details = await sqlDb.readKitBundleItemsWithDetails(
             kitId,
             topLevelOnly: true,
@@ -1966,6 +2181,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   colorId,
                   seriesId: kitSeriesId,
                   materialType: kitMaterialType,
+                  shutterCatalogOnly: shutterCatalogOnly,
                 );
                 // A zero-valued catalogue record must not erase the explicit
                 // price saved in the kit range (for example EKRO).
@@ -1989,6 +2205,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   colorId,
                   seriesId: kitSeriesId,
                   materialType: kitMaterialType,
+                  shutterCatalogOnly: shutterCatalogOnly,
                 );
                 if (resolvedPrice != null && resolvedPrice > 0) {
                   variantMap['price'] = resolvedPrice;
@@ -2007,6 +2224,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   colorId,
                   seriesId: kitSeriesId,
                   materialType: kitMaterialType,
+                  shutterCatalogOnly: shutterCatalogOnly,
                 );
                 if (resolvedPrice != null && resolvedPrice > 0) {
                   mutableItem['price'] = resolvedPrice;
@@ -3287,36 +3505,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final selectedCode = normalizeKitDescriptionCode(
       mutableSelected['description'],
     );
-    // Check if it is a sliding system kit
-    final bool isSliding = widget.model.systemMode == 'sliding';
-    if (isSliding) {
-      String targetKey = 'كيت 67000 (Kit 67000)';
-      if (selectedName.contains('40000')) {
-        targetKey = 'كيت 40000 (Kit 40000)';
-      } else if (selectedName.contains('67000')) {
-        targetKey = 'كيت 67000 (Kit 67000)';
-      } else {
-        final String sName =
-            widget.model.activeSlidingSeries?.name.toLowerCase() ?? '';
-        if (sName.contains('40000')) {
-          targetKey = 'كيت 40000 (Kit 40000)';
-        } else {
-          targetKey = 'كيت 67000 (Kit 67000)';
-        }
-      }
-      final slidingKeys = ['كيت 67000 (Kit 67000)', 'كيت 40000 (Kit 40000)'];
-      for (final k in slidingKeys) {
-        widget.model.componentOverrides.remove(k);
-      }
-      widget.model.componentOverrides[targetKey] = mutableSelected;
-      await _fetchDefaults();
-      if (mounted) {
-        setState(() {
-          widget.model.refreshUI();
-        });
-      }
-      return;
-    }
     String newMech; // الآلية الجديدة المستنتجة من اسم الكيت
     String
     targetKitKey; // المفتاح الصحيح لحفظ هذا الكيت تحته في componentOverrides
@@ -3383,8 +3571,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
   // ==========================================================================
   // دالة: _resolveDynamicProductPrice
-  // تبحث عن سعر منتج بالاسم في جدولي Accessories ثم ShutterComponents،
-  // مع مراعاة السعر الخاص باللون إن وُجد. تُستخدم لتحديث أسعار عناصر الكيت.
+  // تبحث عن سعر منتج بالاسم مع مراعاة السعر الخاص باللون إن وُجد.
+  // كيتات الستار لا تستعير مركباتها من الإكسسوارات؛ الاستثناء الوحيد هو
+  // البراغي، لأنها تُدار من صفحة الإكسسوارات.
   // ==========================================================================
   Future<double?> _resolveDynamicProductPrice(
     Database db,
@@ -3392,7 +3581,49 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     int? colorId, {
     int? seriesId,
     String? materialType,
+    bool shutterCatalogOnly = false,
   }) async {
+    final productText = productName.toLowerCase();
+    final isScrewProduct =
+        productText.contains('براغي') ||
+        productText.contains('screw') ||
+        productText.contains('visse') ||
+        productText.contains('vis ');
+
+    Future<double?> resolveShutterComponentPrice() async {
+      final shutRows = await db.query(
+        'ShutterComponents',
+        columns: ['id', 'price'],
+        where:
+            'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)',
+        whereArgs: [productName],
+      );
+      for (final shutterComponent in shutRows) {
+        final shutId = (shutterComponent['id'] as num?)?.toInt();
+        if (shutId == null) continue;
+        final defaultPrice = _safeDouble(shutterComponent['price']);
+        if (colorId != null) {
+          final colorPriceRes = await db.query(
+            'ShutterColorPrices',
+            columns: ['price'],
+            where: 'shutter_component_id = ? AND color_id = ?',
+            whereArgs: [shutId, colorId],
+            limit: 1,
+          );
+          if (colorPriceRes.isNotEmpty) {
+            final p = _safeDouble(colorPriceRes.first['price']);
+            if (p > 0) return p;
+          }
+        }
+        if (defaultPrice > 0) return defaultPrice;
+      }
+      return null;
+    }
+
+    if (shutterCatalogOnly && !isScrewProduct) {
+      return resolveShutterComponentPrice();
+    }
+
     final normalizedMaterial = materialType?.trim().toLowerCase();
     final seriesFilter = _buildSeriesFilterClause(seriesId: seriesId);
 
@@ -3460,36 +3691,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (defaultPrice > 0) return defaultPrice;
     }
 
-    // 2. If no usable accessory price exists, check shutter components. Do
-    // not return a zero here either: the price saved on the kit range/variant
-    // remains the final fallback.
-    final shutRows = await db.query(
-      'ShutterComponents',
-      columns: ['id', 'price'],
-      where:
-          'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [productName],
-    );
-    for (final shutterComponent in shutRows) {
-      final shutId = (shutterComponent['id'] as num?)?.toInt();
-      if (shutId == null) continue;
-      final defaultPrice = _safeDouble(shutterComponent['price']);
-      if (colorId != null) {
-        final colorPriceRes = await db.query(
-          'ShutterColorPrices',
-          columns: ['price'],
-          where: 'shutter_component_id = ? AND color_id = ?',
-          whereArgs: [shutId, colorId],
-          limit: 1,
-        );
-        if (colorPriceRes.isNotEmpty) {
-          final p = _safeDouble(colorPriceRes.first['price']);
-          if (p > 0) return p;
-        }
-      }
-      if (defaultPrice > 0) return defaultPrice;
-    }
-    return null;
+    // 2. If no usable accessory price exists, check shutter components only
+    // for non-shutter kit contexts. Shutter kits already returned above.
+    return shutterCatalogOnly ? null : resolveShutterComponentPrice();
   }
 
   // حفظ إعداد تسعير رقمي واحد في SharedPreferences (بالمفتاح المعطى)
@@ -6390,7 +6594,29 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // كل "المكونات المرافقة" (companion components) التي يجب أن تتغيّر معها
   // تلقائيًا (مثل: تغيير الشريحة يستدعي تغيير المحور، الأطاش، السيبورات...).
   // ==========================================================================
+  Map<String, dynamic>? _currentSelectorItem(BomItem item) {
+    for (final key in _overrideKeysForBomItem(item.originalName)) {
+      final saved = widget.model.componentOverrides[key];
+      if (saved is Map) return Map<String, dynamic>.from(saved);
+    }
+
+    if (item.catalogItemId == null && item.name.trim().isEmpty) return null;
+    return {
+      if (item.catalogItemId != null) 'id': item.catalogItemId,
+      if (item.profileCode?.trim().isNotEmpty == true) 'code': item.profileCode,
+      'name': item.name.split('\n').last.trim().isEmpty
+          ? item.originalName
+          : item.name.split('\n').last.trim(),
+      if (item.imagePath?.trim().isNotEmpty == true)
+        'image_path': item.imagePath,
+      'price': item.unitPrice,
+      'price_dzd': item.unitPrice,
+      'calculated_price': item.unitPrice,
+    };
+  }
+
   void _showSwapDialog(BomItem item) async {
+    final currentSelectorItem = _currentSelectorItem(item);
     String pType = item
         .originalName; // النوع المبدئي المرسل لنافذة الاختيار (سيُعاد تعيينه أدناه حسب الفئة)
     String pCategory = item.category;
@@ -6444,16 +6670,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
     // ===================== حالة: ضغطة زر الإطار =====================
     if (isFrameClicked) {
+      final itemSeriesId = _seriesIdForItem(item);
       // فتح نافذة اختيار بروفيل من نوع "frame" ضمن السلسلة النشطة والمادة الصحيحة (PVC/ألمنيوم)
       final selected = await showDialog<Map<String, dynamic>>(
         context: context,
         builder: (context) => ProfileSelectorDialog(
           profileType: 'frame',
           category: 'profile',
-          seriesId: widget.model.systemMode == 'sliding'
-              ? widget.model.activeSlidingSeries?.id
-              : widget.model.activeSeries?.id,
-          materialType: widget.model.isPVC ? 'PVC' : 'Aluminium',
+          seriesId: itemSeriesId,
+          materialType: _materialTypeForItem(item),
+          currentItem: currentSelectorItem,
         ),
       );
       if (selected != null && mounted) {
@@ -6470,11 +6696,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         mutableSelected['calculated_price'] = price;
         setState(() {
           // تحديث الإطار حسب وضع النظام (منزلق/عادي)
-          if (widget.model.systemMode == 'sliding') {
-            widget.model.slidingFrameOverride = mutableSelected;
-          } else {
-            widget.model.frameOverride = mutableSelected;
-          }
+          final useSlidingFrame = _isSlidingProfileBomItem(item);
+          widget.model.applyFrameOverride(
+            mutableSelected,
+            sliding: useSlidingFrame,
+          );
           widget.model
               .updateProfileThickness(); // إعادة حساب السماكات المرتبطة بعد تغيير الإطار
           widget.model.refreshUI();
@@ -6486,15 +6712,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
     // ===================== حالة: ضغطة زر الظلفة =====================
     if (isSashClicked) {
+      final itemSeriesId = _seriesIdForItem(item);
       final selected = await showDialog<Map<String, dynamic>>(
         context: context,
         builder: (context) => ProfileSelectorDialog(
           profileType: 'sash',
           category: 'profile',
-          seriesId: widget.model.systemMode == 'sliding'
-              ? widget.model.activeSlidingSeries?.id
-              : widget.model.activeSeries?.id,
-          materialType: widget.model.isPVC ? 'PVC' : 'Aluminium',
+          seriesId: itemSeriesId,
+          materialType: _materialTypeForItem(item),
+          currentItem: currentSelectorItem,
         ),
       );
       if (selected != null && mounted) {
@@ -6562,7 +6788,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           widget.model.componentOverrides.remove('حديد الظلفة الخاص بالمفاصل');
         }
         setState(() {
-          if (widget.model.systemMode == 'sliding') {
+          final useSlidingSash = _isSlidingProfileBomItem(item);
+          if (useSlidingSash) {
             widget.model.slidingSashOverride = mutableSelected;
           } else {
             widget.model.sashOverride = mutableSelected;
@@ -6581,10 +6808,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         builder: (context) => ProfileSelectorDialog(
           profileType: 'side_cover',
           category: 'profile',
-          seriesId: widget.model.systemMode == 'sliding'
-              ? widget.model.activeSlidingSeries?.id
-              : widget.model.activeSeries?.id,
+          seriesId: _seriesIdForItem(item),
           materialType: widget.model.isPVC ? 'PVC' : 'Aluminium',
+          currentItem: currentSelectorItem,
         ),
       );
       if (selected != null && mounted) {
@@ -6696,31 +6922,47 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       // بروفيلات: تحديد النوع الفرعي (حديد/تقسيم/بوشون باتمو/باتمو/باركلوز/راي)
     } else if (pCategory == 'profile') {
-      if (pType.toLowerCase().contains('renfort') ||
+      final lowerType = pType.toLowerCase();
+      if (lowerType.contains('frame') ||
+          lowerType.contains('cadre') ||
+          pType.contains('إطار') ||
+          pType.contains('اطار')) {
+        pType = 'frame';
+      } else if (lowerType.contains('lateral') || pType.contains('جانبي')) {
+        pType = 'lateral';
+      } else if (lowerType.contains('central') ||
+          lowerType.contains('chicane') ||
+          pType.contains('وسطي') ||
+          pType.contains('شيكان')) {
+        pType = 'central';
+      } else if (lowerType.contains('sash') ||
+          lowerType.contains('ouvrant') ||
+          pType.contains('ضلفة') ||
+          pType.contains('ضلف')) {
+        pType = 'sash';
+      } else if (lowerType.contains('renfort') ||
           pType.contains('renfore') ||
           pType.contains('الدعم') ||
           pType.contains('حديد')) {
         pType = 'renfort';
-      } else if (pType.toLowerCase().contains('traverse') ||
-          pType.contains('التقسيم')) {
-        pType = 'mullion';
-      } else if (pType.toLowerCase().contains('bouchon') ||
+      } else if (lowerType.contains('traverse') || pType.contains('التقسيم')) {
+        pType = 'traverse';
+      } else if (lowerType.contains('bouchon') ||
           pType.contains('بوشون') ||
-          pType.toLowerCase().contains('bochon')) {
+          lowerType.contains('bochon')) {
         pType = 'bouchon batmo';
-      } else if (pType.toLowerCase().contains('batmo') ||
-          pType.contains('باتمو')) {
+      } else if (lowerType.contains('batmo') || pType.contains('باتمو')) {
         pType = 'batmo';
-      } else if (pType.toLowerCase().contains('reducteur') ||
-          pType.toLowerCase().contains('réducteur') ||
+      } else if (lowerType.contains('reducteur') ||
+          lowerType.contains('réducteur') ||
           pType.contains('ريديكتور') ||
           pType.contains('مخفض')) {
         pType = '67114';
-      } else if (pType.toLowerCase().contains('parclose') ||
+      } else if (lowerType.contains('parclose') ||
           pType.contains('باكيت') ||
           pType.contains('بيركلوز')) {
         pType = 'parclose';
-      } else if (pType.toLowerCase().contains('rail') ||
+      } else if (lowerType.contains('rail') ||
           pType.contains('الري') ||
           pType.contains('سكة')) {
         pType = 'rail';
@@ -6802,6 +7044,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         selectedBladeName: selectedBladeName,
         selectedBladeIsX3d: selectedBladeIsX3d,
         motorDiameter: motorDiameter,
+        currentItem: currentSelectorItem,
       ),
     );
     if (selected != null && mounted) {
@@ -7089,59 +7332,42 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         }
         // ---- تطبيق كل التغييرات: إما مسار الكيت (معالجة خاصة) أو المسار العام لتحديث componentOverrides ----
         if (isKitItem) {
-          await _handleKitSelection(
-            mutableSelected,
-          ); // كيت: نمرر المعالجة كاملة لدالة مخصصة
+          final isSlidingSystemKit =
+              item.category == 'other' &&
+              (item.originalName.contains('67000') ||
+                  item.originalName.contains('76000') ||
+                  item.originalName.contains('40000'));
+          if (isSlidingSystemKit) {
+            setState(() {
+              widget.model.componentOverrides[item.originalName] =
+                  mutableSelected;
+              widget.model.refreshUI();
+            });
+          } else {
+            await _handleKitSelection(
+              mutableSelected,
+            ); // كيت: نمرر المعالجة كاملة لدالة مخصصة
+          }
         } else {
           setState(() {
             widget.model.componentOverrides[item.originalName] =
                 mutableSelected; // حفظ الاختيار الجديد كـ override
             // Bidirectional synchronization between B.O.M. profile selection and drawer stiles/montants checkboxes
             if (item.originalName == 'قائم جانبي (Sash Lateral)' ||
-                item.originalName == 'قائم جانبي (Lateral)') {
-              final String code = (mutableSelected['code'] ?? '').toString();
-              final String name = (mutableSelected['name'] ?? '')
-                  .toString()
-                  .toLowerCase();
-              final String type = (mutableSelected['type'] ?? '')
-                  .toString()
-                  .toLowerCase();
-              bool isRenforce =
-                  code.endsWith('108') ||
-                  name.contains('معزز') ||
-                  name.contains('renforc') ||
-                  type.contains('renforc');
-              for (var zone in widget.model.zones) {
-                if (zone.content == ZoneContent.slidingSash) {
-                  zone.slidingMontantReinforced['lateral_0'] = isRenforce;
-                  zone.slidingMontantReinforced['lateral_1'] = isRenforce;
-                }
-              }
+                item.originalName == 'قائم جانبي (Lateral)' ||
+                item.originalName ==
+                    'قائم جانبي معزز (Sash Lateral Renforcé)') {
+              _saveSlidingMontantOverride(
+                central: false,
+                selected: mutableSelected,
+              );
             } else if (item.originalName == 'قائم وسطي (Sash Central)' ||
-                item.originalName == 'قائم وسطي (Central)') {
-              final String code = (mutableSelected['code'] ?? '').toString();
-              final String name = (mutableSelected['name'] ?? '')
-                  .toString()
-                  .toLowerCase();
-              final String type = (mutableSelected['type'] ?? '')
-                  .toString()
-                  .toLowerCase();
-              bool isRenforce =
-                  code.endsWith('107') ||
-                  name.contains('معزز') ||
-                  name.contains('renforc') ||
-                  type.contains('renforc');
-              for (var zone in widget.model.zones) {
-                if (zone.content == ZoneContent.slidingSash) {
-                  final int sashes = zone.slidingSashesCount > 0
-                      ? zone.slidingSashesCount
-                      : 2;
-                  final int centralCount = (sashes * 2) - 2;
-                  for (int s = 0; s < centralCount; s++) {
-                    zone.slidingMontantReinforced['central_$s'] = isRenforce;
-                  }
-                }
-              }
+                item.originalName == 'قائم وسطي (Central)' ||
+                item.originalName == 'قائم وسطي معزز (Sash Central Renforcé)') {
+              _saveSlidingMontantOverride(
+                central: true,
+                selected: mutableSelected,
+              );
             }
             widget.model
                 .updateGlassGasket(); // تحديث جوان الزجاج (إن كان مرتبطًا بتغييرات البروفيل)

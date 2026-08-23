@@ -114,9 +114,9 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
       child: Scaffold(
         backgroundColor: Colors.grey.shade50,
         appBar: AppBar(
-          title: const Text(
-            'ربط طلبيات موجودة للمشروع',
-            style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+          title: Text(
+            Localization.translate('ربط طلبيات موجودة للمشروع', lang),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
           ),
           backgroundColor: Colors.blueGrey.shade900,
           foregroundColor: Colors.white,
@@ -132,7 +132,7 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
                       controller: _searchController,
                       onChanged: (val) => setState(() => _searchQuery = val),
                       decoration: InputDecoration(
-                        hintText: 'البحث برقم الطلبية أو اسم الزبون...',
+                        hintText: Localization.translate('البحث برقم الطلبية أو اسم الزبون...', lang),
                         hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _searchQuery.isNotEmpty
@@ -160,8 +160,8 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
                           ? Center(
                               child: Text(
                                 _searchQuery.isEmpty
-                                    ? 'لا توجد طلبيات غير مرتبطة بمشاريع حالياً.'
-                                    : 'لا توجد نتائج للبحث المكتوب.',
+                                    ? Localization.translate('لا توجد طلبيات غير مرتبطة بمشاريع حالياً.', lang)
+                                    : Localization.translate('No matching results', lang),
                                 style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Cairo'),
                               ),
                             )
@@ -195,7 +195,7 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
                                       ),
                                     ),
                                     title: Text(
-                                      'طلب #$orderId - $clientName',
+                                      '${Localization.translate('طلب', lang)} #$orderId - $clientName',
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
                                     ),
                                     subtitle: Text(
@@ -248,7 +248,7 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
                     ),
                     icon: const Icon(Icons.add_link),
                     label: Text(
-                      'ربط الطلبيات المحددة (${_selectedOrderIds.length})',
+                      '${Localization.translate('ربط الطلبيات المحددة', lang)} (${_selectedOrderIds.length})',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Cairo'),
                     ),
                     onPressed: _saveSelectedOrders,

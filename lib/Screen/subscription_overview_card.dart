@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/subscription_service.dart';
 import '../settings/app_settings.dart';
 import 'subscription_review_dialog.dart';
+import '../settings/localization.dart';
 
 class SubscriptionOverviewCard extends StatelessWidget {
   const SubscriptionOverviewCard({super.key});
@@ -33,12 +34,12 @@ class SubscriptionOverviewCard extends StatelessWidget {
         };
 
         final (statusText, statusColor) = details.isLifetime
-            ? ('دائم', Colors.purple.shade600)
+            ? (lang == AppLanguage.french ? 'Permanent' : (lang == AppLanguage.english ? 'Permanent' : 'دائم'), Colors.purple.shade600)
             : (details.isExpired
-                ? ('منتهي', Colors.red)
+                ? (lang == AppLanguage.french ? 'Expiré' : (lang == AppLanguage.english ? 'Expired' : 'منتهي'), Colors.red)
                 : (details.canRenew
-                    ? ('يقارب على الانتهاء', Colors.orange.shade800)
-                    : ('نشط', Colors.green)));
+                    ? (lang == AppLanguage.french ? 'Expire bientôt' : (lang == AppLanguage.english ? 'Expiring soon' : 'يقارب على الانتهاء'), Colors.orange.shade800)
+                    : (lang == AppLanguage.french ? 'Actif' : (lang == AppLanguage.english ? 'Active' : 'نشط'), Colors.green)));
 
         return Container(
           width: double.infinity,
@@ -180,7 +181,7 @@ class SubscriptionOverviewCard extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'المدة المتبقية:',
+                                  Localization.translate('المدة المتبقية:', lang),
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
@@ -210,7 +211,7 @@ class SubscriptionOverviewCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                '${details.daysRemaining} يوم',
+                                lang == AppLanguage.french ? '${details.daysRemaining} j' : (lang == AppLanguage.english ? '${details.daysRemaining} d' : '${details.daysRemaining} يوم'),
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -229,7 +230,7 @@ class SubscriptionOverviewCard extends StatelessWidget {
                         Expanded(
                           child: _buildDateItem(
                             icon: Icons.calendar_today_rounded,
-                            label: 'تاريخ الاشتراك:',
+                            label: Localization.translate('تاريخ الاشتراك:', lang),
                             date: details.formattedStartDate,
                             isDark: isDark,
                           ),
@@ -243,8 +244,8 @@ class SubscriptionOverviewCard extends StatelessWidget {
                         Expanded(
                           child: _buildDateItem(
                             icon: Icons.event_busy_rounded,
-                            label: 'نهاية الاشتراك:',
-                            date: details.formattedEndDate,
+                            label: Localization.translate('نهاية الاشتراك:', lang),
+                            date: details.getFormattedEndDate(lang: lang),
                             isDark: isDark,
                             dateColor: details.isLifetime
                                 ? Colors.purple.shade600
@@ -290,8 +291,8 @@ class SubscriptionOverviewCard extends StatelessWidget {
                         ),
                         label: Text(
                           details.canRenew
-                              ? 'مراجعة وتجديد الاشتراك'
-                              : 'مراجعة تفاصيل الاشتراك',
+                              ? Localization.translate('مراجعة وتجديد الاشتراك', lang)
+                              : Localization.translate('مراجعة تفاصيل الاشتراك', lang),
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         style: OutlinedButton.styleFrom(

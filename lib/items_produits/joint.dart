@@ -696,13 +696,16 @@ class _JointsScreenState extends State<JointsScreen> {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     String subtitle = "${item['type']}";
     if (thickness > 0) {
-      subtitle += " - السماكة: ${thickness.toStringAsFixed(thickness.truncateToDouble() == thickness ? 0 : 1)} مم";
+      final thickLabel = Localization.translate('السمك:', lang);
+      subtitle += " - $thickLabel ${thickness.toStringAsFixed(thickness.truncateToDouble() == thickness ? 0 : 1)} mm";
     }
     if (item['gasket_type'] != null && item['gasket_type'].toString().isNotEmpty) {
       final String translatedGasketType = Localization.translate(item['gasket_type'].toString(), lang);
-      subtitle += " - النوع: $translatedGasketType";
+      final typeLabel = Localization.translate('النوع:', lang);
+      subtitle += " - $typeLabel $translatedGasketType";
     }
-    subtitle += " - السعر: ${price.toStringAsFixed(price.truncateToDouble() == price ? 0 : 2)} دج/m";
+    final priceLabel = Localization.translate('السعر:', lang);
+    subtitle += " - $priceLabel ${price.toStringAsFixed(price.truncateToDouble() == price ? 0 : 2)} DA/m";
 
 
 

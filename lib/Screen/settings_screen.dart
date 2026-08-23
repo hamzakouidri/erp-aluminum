@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
+import '../items_produits/series_table_config_screen.dart';
 import 'workshop_profile_screen.dart';
 import 'selected_systems_screen.dart';
 import 'package:flutter/services.dart';
@@ -881,6 +882,37 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    ListTile(
+                      leading: Icon(
+                        Icons.architecture_rounded,
+                        color: Colors.green,
+                      ),
+                      title: Text(
+                        Localization.translate('مكوّنات وحسابات السلسلة', lang),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        Localization.translate(
+                          'إعدادات حسابات الضلف والمقاطع الخاصة بكل سلسلة',
+                          lang,
+                        ),
+                        style: TextStyle(fontFamily: 'Cairo'),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                SeriesTableConfigScreen(db: SqlDatabase()),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
                     ListTile(
                       leading: Icon(Icons.upload_file, color: Colors.purple),
                       title: Text(

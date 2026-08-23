@@ -3,9 +3,6 @@ import '../app_settings.dart';
 /// User-facing text introduced by the recent kit, decorated-panel, cutting
 /// and required-goods developments.
 const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
-  // Quantity/cost table catalogue labels and units. These keys are displayed
-  // directly in the required-goods table, so they must never leave Arabic in
-  // a French or English interface.
   'الصندوق (Caisson)': {
     AppLanguage.arabic: 'الصندوق (Caisson)',
     AppLanguage.french: 'Caisson',
@@ -322,23 +319,23 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
   },
   'نوع الشفرة المرتبط بالمركب': {
     AppLanguage.arabic: 'نوع الشفرة المرتبط بالمركب',
-    AppLanguage.french: 'Type de lame associé au composant',
-    AppLanguage.english: 'Blade type linked to the component',
+    AppLanguage.french: 'Type de lame lié au composant',
+    AppLanguage.english: 'Slat type linked to component',
   },
   'كل الشفرات': {
     AppLanguage.arabic: 'كل الشفرات',
     AppLanguage.french: 'Toutes les lames',
-    AppLanguage.english: 'All blades',
+    AppLanguage.english: 'All slats',
   },
   'الشفرة العادية فقط': {
     AppLanguage.arabic: 'الشفرة العادية فقط',
-    AppLanguage.french: 'Lame normale uniquement',
-    AppLanguage.english: 'Normal blade only',
+    AppLanguage.french: 'Lame standard uniquement',
+    AppLanguage.english: 'Standard slat only',
   },
   'شفرة Extrudé فقط': {
     AppLanguage.arabic: 'شفرة Extrudé فقط',
     AppLanguage.french: 'Lame extrudée uniquement',
-    AppLanguage.english: 'Extruded blade only',
+    AppLanguage.english: 'Extruded slat only',
   },
   'الوحدة ثابتة: قطعة': {
     AppLanguage.arabic: 'الوحدة ثابتة: قطعة',
@@ -906,5 +903,810 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.arabic: 'هل تريد طباعة تيكيتات القطع الآن؟',
     AppLanguage.french: 'Voulez-vous imprimer les étiquettes maintenant ?',
     AppLanguage.english: 'Do you want to print the remnant labels now?',
+  },
+  'المشاريع': {
+    AppLanguage.arabic: 'المشاريع',
+    AppLanguage.french: 'Projets',
+    AppLanguage.english: 'Projects',
+  },
+  'إضافة مشروع جديد': {
+    AppLanguage.arabic: 'إضافة مشروع جديد',
+    AppLanguage.french: 'Ajouter un nouveau projet',
+    AppLanguage.english: 'Add new project',
+  },
+  'تعديل المشروع': {
+    AppLanguage.arabic: 'تعديل المشروع',
+    AppLanguage.french: 'Modifier le projet',
+    AppLanguage.english: 'Edit project',
+  },
+  'اسم المشروع': {
+    AppLanguage.arabic: 'اسم المشروع',
+    AppLanguage.french: 'Nom du projet',
+    AppLanguage.english: 'Project name',
+  },
+  'الوصف (اختياري)': {
+    AppLanguage.arabic: 'الوصف (اختياري)',
+    AppLanguage.french: 'Description (optionnelle)',
+    AppLanguage.english: 'Description (optional)',
+  },
+  'الوصف': {
+    AppLanguage.arabic: 'الوصف',
+    AppLanguage.french: 'Description',
+    AppLanguage.english: 'Description',
+  },
+  'يرجى إدخال اسم المشروع': {
+    AppLanguage.arabic: 'يرجى إدخال اسم المشروع',
+    AppLanguage.french: 'Veuillez entrer le nom du projet',
+    AppLanguage.english: 'Please enter the project name',
+  },
+  'يرجى اختيار الزبون': {
+    AppLanguage.arabic: 'يرجى اختيار الزبون',
+    AppLanguage.french: 'Veuillez sélectionner le client',
+    AppLanguage.english: 'Please select the customer',
+  },
+  'البحث عن مشروع...': {
+    AppLanguage.arabic: 'البحث عن مشروع...',
+    AppLanguage.french: 'Rechercher un projet...',
+    AppLanguage.english: 'Search project...',
+  },
+  'لا توجد مشاريع حالية': {
+    AppLanguage.arabic: 'لا توجد مشاريع حالية',
+    AppLanguage.french: 'Aucun projet actuellement',
+    AppLanguage.english: 'No current projects',
+  },
+  'حذف المشروع': {
+    AppLanguage.arabic: 'حذف المشروع',
+    AppLanguage.french: 'Supprimer le projet',
+    AppLanguage.english: 'Delete project',
+  },
+  'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.': {
+    AppLanguage.arabic: 'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.',
+    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer ce projet ? Les commandes associées seront dissociées sans être supprimées.',
+    AppLanguage.english: 'Are you sure you want to delete this project? Associated orders will be unlinked without being deleted.',
+  },
+  'عدد الطلبيات': {
+    AppLanguage.arabic: 'عدد الطلبيات',
+    AppLanguage.french: 'Nombre de commandes',
+    AppLanguage.english: 'Number of orders',
+  },
+  'إجمالي قيمة المشروع': {
+    AppLanguage.arabic: 'إجمالي قيمة المشروع',
+    AppLanguage.french: 'Valeur totale du projet',
+    AppLanguage.english: 'Total project value',
+  },
+  'الطلبيات المرتبطة': {
+    AppLanguage.arabic: 'الطلبيات المرتبطة',
+    AppLanguage.french: 'Commandes associées',
+    AppLanguage.english: 'Linked orders',
+  },
+  'ربط طلبية موجودة': {
+    AppLanguage.arabic: 'ربط طلبية موجودة',
+    AppLanguage.french: 'Lier une commande existante',
+    AppLanguage.english: 'Link existing order',
+  },
+  'ربط طلبيات موجودة للمشروع': {
+    AppLanguage.arabic: 'ربط طلبيات موجودة للمشروع',
+    AppLanguage.french: 'Lier des commandes existantes au projet',
+    AppLanguage.english: 'Link existing orders to project',
+  },
+  'ربط الطلبيات المحددة': {
+    AppLanguage.arabic: 'ربط الطلبيات المحددة',
+    AppLanguage.french: 'Lier les commandes sélectionnées',
+    AppLanguage.english: 'Link selected orders',
+  },
+  'لا توجد طلبيات غير مرتبطة بمشاريع حالياً.': {
+    AppLanguage.arabic: 'لا توجد طلبيات غير مرتبطة بمشاريع حالياً.',
+    AppLanguage.french: 'Aucune commande non liée actuellement.',
+    AppLanguage.english: 'No unlinked orders at this time.',
+  },
+  'لا توجد طلبيات مرتبطة بهذا المشروع حالياً': {
+    AppLanguage.arabic: 'لا توجد طلبيات مرتبطة بهذا المشروع حالياً',
+    AppLanguage.french: 'Aucune commande liée à ce projet actuellement',
+    AppLanguage.english: 'No orders linked to this project currently',
+  },
+  'طلب': {
+    AppLanguage.arabic: 'طلب',
+    AppLanguage.french: 'Commande',
+    AppLanguage.english: 'Order',
+  },
+  'البحث برقم الطلبية أو اسم الزبون...': {
+    AppLanguage.arabic: 'البحث برقم الطلبية أو اسم الزبون...',
+    AppLanguage.french: 'Recherche par N° commande ou nom client...',
+    AppLanguage.english: 'Search by order # or client name...',
+  },
+  'خطأ أثناء ربط الطلبيات:': {
+    AppLanguage.arabic: 'خطأ أثناء ربط الطلبيات:',
+    AppLanguage.french: 'Erreur lors de la liaison des commandes :',
+    AppLanguage.english: 'Error linking orders:',
+  },
+  'خطأ أثناء جلب الطلبيات:': {
+    AppLanguage.arabic: 'خطأ أثناء جلب الطلبيات:',
+    AppLanguage.french: 'Erreur lors du chargement des commandes :',
+    AppLanguage.english: 'Error fetching orders:',
+  },
+  'الستار': {
+    AppLanguage.arabic: 'الستار',
+    AppLanguage.french: 'Volet',
+    AppLanguage.english: 'Shutter',
+  },
+  'الألوان': {
+    AppLanguage.arabic: 'الألوان',
+    AppLanguage.french: 'Couleurs',
+    AppLanguage.english: 'Colors',
+  },
+  'اختر': {
+    AppLanguage.arabic: 'اختر',
+    AppLanguage.french: 'Choisir',
+    AppLanguage.english: 'Choose',
+  },
+  'أكسيسوار': {
+    AppLanguage.arabic: 'أكسيسوار',
+    AppLanguage.french: 'Accessoire',
+    AppLanguage.english: 'Accessory',
+  },
+  'إكسسوار': {
+    AppLanguage.arabic: 'إكسسوار',
+    AppLanguage.french: 'Accessoire',
+    AppLanguage.english: 'Accessory',
+  },
+  'الإكسسوارات': {
+    AppLanguage.arabic: 'الإكسسوارات',
+    AppLanguage.french: 'Accessoires',
+    AppLanguage.english: 'Accessories',
+  },
+  'الرجاء اختيار الأكسيسوار': {
+    AppLanguage.arabic: 'الرجاء اختيار الأكسيسوار',
+    AppLanguage.french: 'Veuillez choisir un accessoire',
+    AppLanguage.english: 'Please choose an accessory',
+  },
+  'الرجاء اختيار إكسسوار أولاً لتخصيص ألوانه.': {
+    AppLanguage.arabic: 'الرجاء اختيار إكسسوار أولاً لتخصيص ألوانه.',
+    AppLanguage.french: 'Veuillez d\'abord choisir un accessoire pour personnaliser ses couleurs.',
+    AppLanguage.english: 'Please select an accessory first to customize its colors.',
+  },
+  'الرجاء اختيار مكون أولاً لتخصيص ألوانه.': {
+    AppLanguage.arabic: 'الرجاء اختيار مكون أولاً لتخصيص ألوانه.',
+    AppLanguage.french: 'Veuillez d\'abord choisir un composant pour personnaliser ses couleurs.',
+    AppLanguage.english: 'Please select a component first to customize its colors.',
+  },
+  'تخصيص ألواني': {
+    AppLanguage.arabic: 'تخصيص ألواني',
+    AppLanguage.french: 'Personnaliser mes couleurs',
+    AppLanguage.english: 'Customize my colors',
+  },
+  'تخصيص ألوان الزجاج': {
+    AppLanguage.arabic: 'تخصيص ألوان الزجاج',
+    AppLanguage.french: 'Personnalisation des couleurs du verre',
+    AppLanguage.english: 'Glass color customization',
+  },
+  'تخصيص ألوان البروفيلات': {
+    AppLanguage.arabic: 'تخصيص ألوان البروفيلات',
+    AppLanguage.french: 'Personnalisation des couleurs des profilés',
+    AppLanguage.english: 'Profiles color customization',
+  },
+  'تم حفظ تخصيص ألوان البروفيلات بنجاح.': {
+    AppLanguage.arabic: 'تم حفظ تخصيص ألوان البروفيلات بنجاح.',
+    AppLanguage.french: 'La personnalisation des couleurs des profilés a été enregistrée avec succès.',
+    AppLanguage.english: 'Profile color customization saved successfully.',
+  },
+  'جودة عالية': {
+    AppLanguage.arabic: 'جودة عالية',
+    AppLanguage.french: 'Haute qualité',
+    AppLanguage.english: 'High quality',
+  },
+  'مسح نوع المادة': {
+    AppLanguage.arabic: 'مسح نوع المادة',
+    AppLanguage.french: 'Effacer le type de matière',
+    AppLanguage.english: 'Clear material type',
+  },
+  'السمك': {
+    AppLanguage.arabic: 'السمك',
+    AppLanguage.french: 'Épaisseur',
+    AppLanguage.english: 'Thickness',
+  },
+  'السمك:': {
+    AppLanguage.arabic: 'السمك:',
+    AppLanguage.french: 'Épaisseur :',
+    AppLanguage.english: 'Thickness:',
+  },
+  'السماكة:': {
+    AppLanguage.arabic: 'السماكة:',
+    AppLanguage.french: 'Épaisseur :',
+    AppLanguage.english: 'Thickness:',
+  },
+  'النوع': {
+    AppLanguage.arabic: 'النوع',
+    AppLanguage.french: 'Type',
+    AppLanguage.english: 'Type',
+  },
+  'النوع:': {
+    AppLanguage.arabic: 'النوع:',
+    AppLanguage.french: 'Type :',
+    AppLanguage.english: 'Type:',
+  },
+  'السعر': {
+    AppLanguage.arabic: 'السعر',
+    AppLanguage.french: 'Prix',
+    AppLanguage.english: 'Price',
+  },
+  'السعر:': {
+    AppLanguage.arabic: 'السعر:',
+    AppLanguage.french: 'Prix :',
+    AppLanguage.english: 'Price:',
+  },
+  'وصف': {
+    AppLanguage.arabic: 'وصف',
+    AppLanguage.french: 'Description',
+    AppLanguage.english: 'Description',
+  },
+  'لا توجد مركبة': {
+    AppLanguage.arabic: 'لا توجد مركبة',
+    AppLanguage.french: 'Aucun composant',
+    AppLanguage.english: 'No component',
+  },
+  'لا توجد مركبات أو عائلات بعد': {
+    AppLanguage.arabic: 'لا توجد مركبات أو عائلات بعد',
+    AppLanguage.french: 'Aucun composant ou famille pour l\'instant',
+    AppLanguage.english: 'No components or families yet',
+  },
+  'لا توجد مركبات داخل هذه العائلة بعد': {
+    AppLanguage.arabic: 'لا توجد مركبات داخل هذه العائلة بعد',
+    AppLanguage.french: 'Aucun composant dans cette famille pour l\'instant',
+    AppLanguage.english: 'No components in this family yet',
+  },
+  'عائلة': {
+    AppLanguage.arabic: 'عائلة',
+    AppLanguage.french: 'Famille',
+    AppLanguage.english: 'Family',
+  },
+  'عائلة الكيت': {
+    AppLanguage.arabic: 'عائلة الكيت',
+    AppLanguage.french: 'Famille du Kit',
+    AppLanguage.english: 'Kit family',
+  },
+  'إضافة عائلة داخل الكيت': {
+    AppLanguage.arabic: 'إضافة عائلة داخل الكيت',
+    AppLanguage.french: 'Ajouter une famille dans le kit',
+    AppLanguage.english: 'Add family into kit',
+  },
+  'تعديل عائلة الكيت': {
+    AppLanguage.arabic: 'تعديل عائلة الكيت',
+    AppLanguage.french: 'Modifier la famille du kit',
+    AppLanguage.english: 'Edit kit family',
+  },
+  'اسم العائلة': {
+    AppLanguage.arabic: 'اسم العائلة',
+    AppLanguage.french: 'Nom de la famille',
+    AppLanguage.english: 'Family name',
+  },
+  'كل المحركات': {
+    AppLanguage.arabic: 'كل المحركات',
+    AppLanguage.french: 'Tous les moteurs',
+    AppLanguage.english: 'All motors',
+  },
+  'محرك عادي': {
+    AppLanguage.arabic: 'محرك عادي',
+    AppLanguage.french: 'Moteur standard',
+    AppLanguage.english: 'Standard motor',
+  },
+  'محرك مع مانيفال احتياطي': {
+    AppLanguage.arabic: 'محرك مع مانيفال احتياطي',
+    AppLanguage.french: 'Moteur avec manivelle de secours',
+    AppLanguage.english: 'Motor with emergency crank',
+  },
+  'محرك معمري بالاحتياطي': {
+    AppLanguage.arabic: 'محرك معمري بالاحتياطي',
+    AppLanguage.french: 'Moteur avec secours',
+    AppLanguage.english: 'Motor with backup',
+  },
+  'فلتر اختياري حسب الميكانيزم': {
+    AppLanguage.arabic: 'فلتر اختياري حسب الميكانيزم',
+    AppLanguage.french: 'Filtre optionnel selon mécanisme',
+    AppLanguage.english: 'Optional filter by mechanism',
+  },
+  'فلترة اختيارية حسب الميكانيزم:': {
+    AppLanguage.arabic: 'فلترة اختيارية حسب الميكانيزم:',
+    AppLanguage.french: 'Filtrage optionnel par mécanisme :',
+    AppLanguage.english: 'Optional filtering by mechanism:',
+  },
+  'اتركها بالاختيار': {
+    AppLanguage.arabic: 'اتركها بالاختيار',
+    AppLanguage.french: 'Laisser au choix',
+    AppLanguage.english: 'Leave optional',
+  },
+  'اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.': {
+    AppLanguage.arabic: 'اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.',
+    AppLanguage.french: 'Laissez sans sélection pour rendre la famille disponible dans une plage.',
+    AppLanguage.english: 'Leave unselected to make family available within a range.',
+  },
+  'الشفرة': {
+    AppLanguage.arabic: 'الشفرة',
+    AppLanguage.french: 'Lame',
+    AppLanguage.english: 'Slat',
+  },
+  'نوع الشفرة': {
+    AppLanguage.arabic: 'نوع الشفرة',
+    AppLanguage.french: 'Type de lame',
+    AppLanguage.english: 'Slat type',
+  },
+  'لكل ضلفة': {
+    AppLanguage.arabic: 'لكل ضلفة',
+    AppLanguage.french: 'Par vantail',
+    AppLanguage.english: 'Per sash',
+  },
+  'لكل ظرفة': {
+    AppLanguage.arabic: 'لكل ظرفة',
+    AppLanguage.french: 'Par vantail',
+    AppLanguage.english: 'Per sash',
+  },
+  'Kit لكل ضلفة': {
+    AppLanguage.arabic: 'Kit لكل ضلفة',
+    AppLanguage.french: 'Kit par vantail',
+    AppLanguage.english: 'Kit per sash',
+  },
+  'Kit منفصل لكل ضلفة': {
+    AppLanguage.arabic: 'Kit منفصل لكل ضلفة',
+    AppLanguage.french: 'Kit séparé par vantail',
+    AppLanguage.english: 'Separate kit per sash',
+  },
+  'تتكرر لكل ضلفة': {
+    AppLanguage.arabic: 'تتكرر لكل ضلفة',
+    AppLanguage.french: 'Répéter par vantail',
+    AppLanguage.english: 'Repeat per sash',
+  },
+  'اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.': {
+    AppLanguage.arabic: 'اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.',
+    AppLanguage.french: 'Laissez désactivé pour utiliser la famille une seule fois dans le kit.',
+    AppLanguage.english: 'Leave disabled to use family once per kit.',
+  },
+  'مرة واحدة داخل الكيت': {
+    AppLanguage.arabic: 'مرة واحدة داخل الكيت',
+    AppLanguage.french: 'Une seule fois par kit',
+    AppLanguage.english: 'Once per kit',
+  },
+  'محسوبة من نفس جدول الكمية والتكلفة': {
+    AppLanguage.arabic: 'محسوبة من نفس جدول الكمية والتكلفة',
+    AppLanguage.french: 'Calculé à partir du tableau des débits et coûts',
+    AppLanguage.english: 'Calculated from quantity & cost table',
+  },
+  'محسوبة من نفس جدول الكمية': {
+    AppLanguage.arabic: 'محسوبة من نفس جدول الكمية',
+    AppLanguage.french: 'Calculé à partir du tableau des débits',
+    AppLanguage.english: 'Calculated from quantity table',
+  },
+  'تسعير جديد': {
+    AppLanguage.arabic: 'تسعير جديد',
+    AppLanguage.french: 'Nouvelle tarification',
+    AppLanguage.english: 'New pricing',
+  },
+  'تسعيرة جديدة': {
+    AppLanguage.arabic: 'تسعيرة جديدة',
+    AppLanguage.french: 'Nouveau devis',
+    AppLanguage.english: 'New quote',
+  },
+  'تغيير لون العناصر': {
+    AppLanguage.arabic: 'تغيير لون العناصر',
+    AppLanguage.french: 'Changer la couleur des éléments',
+    AppLanguage.english: 'Change items color',
+  },
+  'تغيير السلسلة': {
+    AppLanguage.arabic: 'تغيير السلسلة',
+    AppLanguage.french: 'Changer la gamme',
+    AppLanguage.english: 'Change series',
+  },
+  'تغيير الزجاج': {
+    AppLanguage.arabic: 'تغيير الزجاج',
+    AppLanguage.french: 'Changer le verre',
+    AppLanguage.english: 'Change glass',
+  },
+  'تم تغيير لون العناصر لـ': {
+    AppLanguage.arabic: 'تم تغيير لون العناصر لـ',
+    AppLanguage.french: 'Couleur modifiée pour',
+    AppLanguage.english: 'Color changed for',
+  },
+  'تم تغيير السلسلة لـ': {
+    AppLanguage.arabic: 'تم تغيير السلسلة لـ',
+    AppLanguage.french: 'Gamme modifiée pour',
+    AppLanguage.english: 'Series changed for',
+  },
+  'تم تغيير الزجاج لـ': {
+    AppLanguage.arabic: 'تم تغيير الزجاج لـ',
+    AppLanguage.french: 'Verre modifié pour',
+    AppLanguage.english: 'Glass changed for',
+  },
+  'طباعة الباركود': {
+    AppLanguage.arabic: 'طباعة الباركود',
+    AppLanguage.french: 'Imprimer les codes-barres',
+    AppLanguage.english: 'Print barcodes',
+  },
+  'طباعة ملصقات الباركود': {
+    AppLanguage.arabic: 'طباعة ملصقات الباركود',
+    AppLanguage.french: 'Imprimer les étiquettes code-barres',
+    AppLanguage.english: 'Print barcode stickers',
+  },
+  'الكمية الإجمالية': {
+    AppLanguage.arabic: 'الكمية الإجمالية',
+    AppLanguage.french: 'Quantité totale',
+    AppLanguage.english: 'Total quantity',
+  },
+  'تأكيد و تفصيل القياسات': {
+    AppLanguage.arabic: 'تأكيد و تفصيل القياسات',
+    AppLanguage.french: 'Confirmation et détail des mesures',
+    AppLanguage.english: 'Confirm and detail measurements',
+  },
+  'تأكيد وطباعة': {
+    AppLanguage.arabic: 'تأكيد وطباعة',
+    AppLanguage.french: 'Confirmer et imprimer',
+    AppLanguage.english: 'Confirm and print',
+  },
+  'طباعة العنصر': {
+    AppLanguage.arabic: 'طباعة العنصر',
+    AppLanguage.french: 'Imprimer l\'élément',
+    AppLanguage.english: 'Print item',
+  },
+  'حفظ القياسات': {
+    AppLanguage.arabic: 'حفظ القياسات',
+    AppLanguage.french: 'Enregistrer les mesures',
+    AppLanguage.english: 'Save measurements',
+  },
+  'تم حفظ كل القياسات 💾': {
+    AppLanguage.arabic: 'تم حفظ كل القياسات 💾',
+    AppLanguage.french: 'Toutes les mesures sont enregistrées 💾',
+    AppLanguage.english: 'All measurements saved 💾',
+  },
+  'تيكيت صغير 50 × 30 مم': {
+    AppLanguage.arabic: 'تيكيت صغير 50 × 30 مم',
+    AppLanguage.french: 'Petite étiquette 50 × 30 mm',
+    AppLanguage.english: 'Small label 50 × 30 mm',
+  },
+  'تيكيت صغير 70 × 30 مم': {
+    AppLanguage.arabic: 'تيكيت صغير 70 × 30 مم',
+    AppLanguage.french: 'Petite étiquette 70 × 30 mm',
+    AppLanguage.english: 'Small label 70 × 30 mm',
+  },
+  'إسناد عمل جديد لعامل': {
+    AppLanguage.arabic: 'إسناد عمل جديد لعامل',
+    AppLanguage.french: 'Assigner une nouvelle tâche à un ouvrier',
+    AppLanguage.english: 'Assign new task to worker',
+  },
+  'الكمية المسندة': {
+    AppLanguage.arabic: 'الكمية المسندة',
+    AppLanguage.french: 'Quantité assignée',
+    AppLanguage.english: 'Assigned quantity',
+  },
+  'سعر تصنيع القطعة للعامل (د.ج) - اختياري': {
+    AppLanguage.arabic: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
+    AppLanguage.french: 'Tarif de fabrication / pièce (DZD) - Optionnel',
+    AppLanguage.english: 'Manufacturing rate per piece (DZD) - Optional',
+  },
+  'سعر تصنيع': {
+    AppLanguage.arabic: 'سعر تصنيع',
+    AppLanguage.french: 'Tarif de fabrication',
+    AppLanguage.english: 'Manufacturing price',
+  },
+  'يمكن إضافته لاحقاً في المحاسبة الأسبوعية': {
+    AppLanguage.arabic: 'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
+    AppLanguage.french: 'Peut être ajouté ultérieurement dans le décompte hebdomadaire',
+    AppLanguage.english: 'Can be added later in weekly settlement',
+  },
+  'إسناد': {
+    AppLanguage.arabic: 'إسناد',
+    AppLanguage.french: 'Assigner',
+    AppLanguage.english: 'Assign',
+  },
+  'العامل الصانع (مقفول)': {
+    AppLanguage.arabic: 'العامل الصانع (مقفول)',
+    AppLanguage.french: 'Ouvrier fabricant (verrouillé)',
+    AppLanguage.english: 'Fabricating worker (locked)',
+  },
+  'الكمية المصنوعة (مقفول)': {
+    AppLanguage.arabic: 'الكمية المصنوعة (مقفول)',
+    AppLanguage.french: 'Quantité fabriquée (verrouillée)',
+    AppLanguage.english: 'Fabricated quantity (locked)',
+  },
+  'هذا العامل له راتب شهري ثابت — لا يتم إدخال سعر خاص لهذا الإسناد.': {
+    AppLanguage.arabic: 'هذا العامل له راتب شهري ثابت — لا يتم إدخال سعر خاص لهذا الإسناد.',
+    AppLanguage.french: 'Cet ouvrier a un salaire fixe — aucun tarif spécifique n\'est requis.',
+    AppLanguage.english: 'This worker has a fixed salary — no specific rate needed for this task.',
+  },
+  'يرجى اختيار عامل': {
+    AppLanguage.arabic: 'يرجى اختيار عامل',
+    AppLanguage.french: 'Veuillez choisir un ouvrier',
+    AppLanguage.english: 'Please select a worker',
+  },
+  'يرجى إدخال الكمية': {
+    AppLanguage.arabic: 'يرجى إدخال الكمية',
+    AppLanguage.french: 'Veuillez saisir la quantité',
+    AppLanguage.english: 'Please enter quantity',
+  },
+  'الرجاء إدخال رقم صحيح أكبر من 0': {
+    AppLanguage.arabic: 'الرجاء إدخال رقم صحيح أكبر من 0',
+    AppLanguage.french: 'Veuillez entrer un nombre valide supérieur à 0',
+    AppLanguage.english: 'Please enter a valid integer greater than 0',
+  },
+  'جاري تجهيز جدول التقطيع...': {
+    AppLanguage.arabic: 'جاري تجهيز جدول التقطيع...',
+    AppLanguage.french: 'Préparation de la fiche de coupe en cours...',
+    AppLanguage.english: 'Preparing cutting sheet...',
+  },
+  'جاري تجهيز المستند...': {
+    AppLanguage.arabic: 'جاري تجهيز المستند...',
+    AppLanguage.french: 'Préparation du document en cours...',
+    AppLanguage.english: 'Preparing document...',
+  },
+  'تقرير النواقص الشامل': {
+    AppLanguage.arabic: 'تقرير النواقص الشامل',
+    AppLanguage.french: 'Rapport global des manques',
+    AppLanguage.english: 'Global Missing Items Report',
+  },
+  'نواقص كل الطلبيات (Aluminium, Verre, Acc)': {
+    AppLanguage.arabic: 'نواقص كل الطلبيات (Aluminium, Verre, Acc)',
+    AppLanguage.french: 'Manques de toutes les commandes (Alu, Verre, Acc)',
+    AppLanguage.english: 'Shortages for all orders (Alu, Glass, Acc)',
+  },
+  'مركز التقارير والمالية': {
+    AppLanguage.arabic: 'مركز التقارير والمالية',
+    AppLanguage.french: 'Centre des rapports et finances',
+    AppLanguage.english: 'Reports & Finance Hub',
+  },
+  'عرض رواتب العمال والمعاملات المالية': {
+    AppLanguage.arabic: 'عرض رواتب العمال والمعاملات المالية',
+    AppLanguage.french: 'Afficher les salaires et transactions des ouvriers',
+    AppLanguage.english: 'View worker salaries & financial transactions',
+  },
+  'مستحقات العمال أسبوعياً والأجور المدفوعة': {
+    AppLanguage.arabic: 'مستحقات العمال أسبوعياً والأجور المدفوعة',
+    AppLanguage.french: 'Décomptes hebdomadaires et salaires payés',
+    AppLanguage.english: 'Weekly worker dues & wages paid',
+  },
+  'تقرير المشتريات': {
+    AppLanguage.arabic: 'تقرير المشتريات',
+    AppLanguage.french: 'Rapport des achats',
+    AppLanguage.english: 'Purchases report',
+  },
+  'عرض فواتير الشراء والمرتجعات': {
+    AppLanguage.arabic: 'عرض فواتير الشراء والمرتجعات',
+    AppLanguage.french: 'Afficher les factures d\'achat et retours',
+    AppLanguage.english: 'View purchase invoices and returns',
+  },
+  'عرض الصندوق ومدفوعات الزبائن والأرباح': {
+    AppLanguage.arabic: 'عرض الصندوق ومدفوعات الزبائن والأرباح',
+    AppLanguage.french: 'Afficher la trésorerie, paiements clients et bénéfices',
+    AppLanguage.english: 'View cashbox, customer payments & profits',
+  },
+  'شراء كل النواقص': {
+    AppLanguage.arabic: 'شراء كل النواقص',
+    AppLanguage.french: 'Acheter tous les manques',
+    AppLanguage.english: 'Buy all missing items',
+  },
+  'قائمة شراء النواقص الشاملة': {
+    AppLanguage.arabic: 'قائمة شراء النواقص الشاملة',
+    AppLanguage.french: 'Liste d\'achat globale des manques',
+    AppLanguage.english: 'Global missing purchase list',
+  },
+  'لكل الطلبيات النشطة': {
+    AppLanguage.arabic: 'لكل الطلبيات النشطة',
+    AppLanguage.french: 'Pour toutes les commandes actives',
+    AppLanguage.english: 'For all active orders',
+  },
+  'قطاعات الألمنيوم (Aluminium)': {
+    AppLanguage.arabic: 'قطاعات الألمنيوم (Aluminium)',
+    AppLanguage.french: 'Profilés Aluminium',
+    AppLanguage.english: 'Aluminum Profiles',
+  },
+  'الزجاج (Verre)': {
+    AppLanguage.arabic: 'الزجاج (Verre)',
+    AppLanguage.french: 'Verre',
+    AppLanguage.english: 'Glass',
+  },
+  'الإكسسوارات (Accessoires)': {
+    AppLanguage.arabic: 'الإكسسوارات (Accessoires)',
+    AppLanguage.french: 'Accessoires',
+    AppLanguage.english: 'Accessories',
+  },
+  'لا توجد نواقص في أي طلبية نشطة!': {
+    AppLanguage.arabic: 'لا توجد نواقص في أي طلبية نشطة!',
+    AppLanguage.french: 'Aucun manque dans les commandes actives !',
+    AppLanguage.english: 'No missing items in active orders!',
+  },
+  'لا توجد نواقص لشرائها! جميع المواد متوفرة.': {
+    AppLanguage.arabic: 'لا توجد نواقص لشرائها! جميع المواد متوفرة.',
+    AppLanguage.french: 'Aucun manque à acheter ! Tous les matériaux sont disponibles.',
+    AppLanguage.english: 'No shortages to buy! All materials are available.',
+  },
+  'جاري إنشاء قائمة الشراء PDF الشاملة...': {
+    AppLanguage.arabic: 'جاري إنشاء قائمة الشراء PDF الشاملة...',
+    AppLanguage.french: 'Génération du PDF de la liste d\'achat en cours...',
+    AppLanguage.english: 'Generating global purchase list PDF...',
+  },
+  'تاريخ الاشتراك': {
+    AppLanguage.arabic: 'تاريخ الاشتراك',
+    AppLanguage.french: 'Date d\'abonnement',
+    AppLanguage.english: 'Subscription date',
+  },
+  'تاريخ الاشتراك:': {
+    AppLanguage.arabic: 'تاريخ الاشتراك:',
+    AppLanguage.french: 'Date d\'abonnement :',
+    AppLanguage.english: 'Subscription date:',
+  },
+  'نهاية الاشتراك': {
+    AppLanguage.arabic: 'نهاية الاشتراك',
+    AppLanguage.french: 'Fin d\'abonnement',
+    AppLanguage.english: 'Subscription end',
+  },
+  'نهاية الاشتراك:': {
+    AppLanguage.arabic: 'نهاية الاشتراك:',
+    AppLanguage.french: 'Fin d\'abonnement :',
+    AppLanguage.english: 'Subscription end:',
+  },
+  'تاريخ بداية الاشتراك': {
+    AppLanguage.arabic: 'تاريخ بداية الاشتراك',
+    AppLanguage.french: 'Date de début d\'abonnement',
+    AppLanguage.english: 'Subscription start date',
+  },
+  'تاريخ بداية الاشتراك:': {
+    AppLanguage.arabic: 'تاريخ بداية الاشتراك:',
+    AppLanguage.french: 'Date de début d\'abonnement :',
+    AppLanguage.english: 'Subscription start date:',
+  },
+  'تاريخ نهاية الاشتراك': {
+    AppLanguage.arabic: 'تاريخ نهاية الاشتراك',
+    AppLanguage.french: 'Date de fin d\'abonnement',
+    AppLanguage.english: 'Subscription end date',
+  },
+  'تاريخ نهاية الاشتراك:': {
+    AppLanguage.arabic: 'تاريخ نهاية الاشتراك:',
+    AppLanguage.french: 'Date de fin d\'abonnement :',
+    AppLanguage.english: 'Subscription end date:',
+  },
+  'تاريخ نهاية الاشتراك الحالي:': {
+    AppLanguage.arabic: 'تاريخ نهاية الاشتراك الحالي:',
+    AppLanguage.french: 'Date de fin de l\'abonnement actuel :',
+    AppLanguage.english: 'Current subscription end date:',
+  },
+  'المدة المتبقية': {
+    AppLanguage.arabic: 'المدة المتبقية',
+    AppLanguage.french: 'Durée restante',
+    AppLanguage.english: 'Remaining duration',
+  },
+  'المدة المتبقية:': {
+    AppLanguage.arabic: 'المدة المتبقية:',
+    AppLanguage.french: 'Durée restante :',
+    AppLanguage.english: 'Remaining duration:',
+  },
+  'مراجعة تفاصيل الاشتراك': {
+    AppLanguage.arabic: 'مراجعة تفاصيل الاشتراك',
+    AppLanguage.french: 'Détails de l\'abonnement',
+    AppLanguage.english: 'Review subscription details',
+  },
+  'مراجعة وتجديد الاشتراك': {
+    AppLanguage.arabic: 'مراجعة وتجديد الاشتراك',
+    AppLanguage.french: 'Consulter et renouveler',
+    AppLanguage.english: 'Review and renew',
+  },
+  'اشتراك مدى الحياة': {
+    AppLanguage.arabic: 'اشتراك مدى الحياة',
+    AppLanguage.french: 'Abonnement à vie',
+    AppLanguage.english: 'Lifetime subscription',
+  },
+  'مدى الحياة': {
+    AppLanguage.arabic: 'مدى الحياة',
+    AppLanguage.french: 'À vie',
+    AppLanguage.english: 'Lifetime',
+  },
+  'غير محدود (مدى الحياة)': {
+    AppLanguage.arabic: 'غير محدود (مدى الحياة)',
+    AppLanguage.french: 'Illimité (À vie)',
+    AppLanguage.english: 'Unlimited (Lifetime)',
+  },
+  'كود الورشة': {
+    AppLanguage.arabic: 'كود الورشة',
+    AppLanguage.french: 'Code atelier',
+    AppLanguage.english: 'Workshop code',
+  },
+  'كود الورشة:': {
+    AppLanguage.arabic: 'كود الورشة:',
+    AppLanguage.french: 'Code atelier :',
+    AppLanguage.english: 'Workshop code:',
+  },
+  'حسابك كمدير': {
+    AppLanguage.arabic: 'حسابك كمدير',
+    AppLanguage.french: 'Votre compte administrateur',
+    AppLanguage.english: 'Your admin account',
+  },
+  'حسابك كمدير للتطبيق يتمتع باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.': {
+    AppLanguage.arabic: 'حسابك كمدير للتطبيق يتمتع باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
+    AppLanguage.french: 'Votre compte en tant qu\'administrateur bénéficie d\'un abonnement permanent et d\'autorisations illimitées à vie sans nécessiter de renouvellement.',
+    AppLanguage.english: 'Your administrator account enjoys a lifetime subscription and unlimited permissions without requiring renewal.',
+  },
+  'إعادة تجديد الاشتراك': {
+    AppLanguage.arabic: 'إعادة تجديد الاشتراك',
+    AppLanguage.french: 'Renouveler l\'abonnement',
+    AppLanguage.english: 'Renew subscription',
+  },
+  'تجديد الاشتراك': {
+    AppLanguage.arabic: 'تجديد الاشتراك',
+    AppLanguage.french: 'Renouvellement de l\'abonnement',
+    AppLanguage.english: 'Subscription renewal',
+  },
+  'نوع المعالجة': {
+    AppLanguage.arabic: 'نوع المعالجة',
+    AppLanguage.french: 'Traitement du verre',
+    AppLanguage.english: 'Glass processing',
+  },
+  'نوع المعالجة:': {
+    AppLanguage.arabic: 'نوع المعالجة:',
+    AppLanguage.french: 'Traitement du verre :',
+    AppLanguage.english: 'Glass processing:',
+  },
+  'المظهر': {
+    AppLanguage.arabic: 'المظهر',
+    AppLanguage.french: 'Aspect',
+    AppLanguage.english: 'Appearance',
+  },
+  'المظهر:': {
+    AppLanguage.arabic: 'المظهر:',
+    AppLanguage.french: 'Aspect :',
+    AppLanguage.english: 'Appearance:',
+  },
+  'المظهر (بانو)': {
+    AppLanguage.arabic: 'المظهر (بانو)',
+    AppLanguage.french: 'Aspect (Panneau)',
+    AppLanguage.english: 'Appearance (Panel)',
+  },
+  'المظهر (بانو):': {
+    AppLanguage.arabic: 'المظهر (بانو):',
+    AppLanguage.french: 'Aspect (Panneau) :',
+    AppLanguage.english: 'Appearance (Panel):',
+  },
+  'لون الزجاج': {
+    AppLanguage.arabic: 'لون الزجاج',
+    AppLanguage.french: 'Couleur du verre',
+    AppLanguage.english: 'Glass color',
+  },
+  'لون الزجاج:': {
+    AppLanguage.arabic: 'لون الزجاج:',
+    AppLanguage.french: 'Couleur du verre :',
+    AppLanguage.english: 'Glass color:',
+  },
+  'لون الزجاج (ستوبسول)': {
+    AppLanguage.arabic: 'لون الزجاج (ستوبسول)',
+    AppLanguage.french: 'Couleur du verre (Stopsol)',
+    AppLanguage.english: 'Glass color (Stopsol)',
+  },
+  'لون الزجاج (ستوبسول):': {
+    AppLanguage.arabic: 'لون الزجاج (ستوبسول):',
+    AppLanguage.french: 'Couleur du verre (Stopsol) :',
+    AppLanguage.english: 'Glass color (Stopsol):',
+  },
+  'سمك الزجاج': {
+    AppLanguage.arabic: 'سمك الزجاج',
+    AppLanguage.french: 'Épaisseur du verre',
+    AppLanguage.english: 'Glass thickness',
+  },
+  'سمك الزجاج:': {
+    AppLanguage.arabic: 'سمك الزجاج:',
+    AppLanguage.french: 'Épaisseur du verre :',
+    AppLanguage.english: 'Glass thickness:',
+  },
+  'هيكل الزجاج': {
+    AppLanguage.arabic: 'هيكل الزجاج',
+    AppLanguage.french: 'Structure du verre',
+    AppLanguage.english: 'Glass structure',
+  },
+  'هيكل الزجاج:': {
+    AppLanguage.arabic: 'هيكل الزجاج:',
+    AppLanguage.french: 'Structure du verre :',
+    AppLanguage.english: 'Glass structure:',
+  },
+  'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء': {
+    AppLanguage.arabic: 'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
+    AppLanguage.french: 'Appuyez pour activer/désactiver, maintenez appuyé pour personnaliser le couvre-joint',
+    AppLanguage.english: 'Tap to enable/disable, long-press to customize side cover',
+  },
+  'ضغطة للتفعيل أو التعطيل، واضغط مطولا على الجهة لتخصيصها': {
+    AppLanguage.arabic: 'ضغطة للتفعيل أو التعطيل، واضغط مطولا على الجهة لتخصيصها',
+    AppLanguage.french: 'Appuyez pour activer/désactiver, maintenez appuyé sur le côté pour le personnaliser',
+    AppLanguage.english: 'Tap to enable/disable, long-press on side to customize',
   },
 };

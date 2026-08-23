@@ -55,6 +55,12 @@ String? _savedColorHex(Map<String, dynamic>? color) {
   return value.isEmpty ? null : value;
 }
 
+int? _readSavedInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '');
+}
+
 // Extension for GlassSpecification
 extension GlassSpecificationSerialization on GlassSpecification {
   Map<String, dynamic> toMap() {
@@ -148,11 +154,11 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     hasRosettes: map['hasRosettes'] as bool? ?? false,
     panneauSubtype: map['panneauSubtype']?.toString(),
     panneauColor: map['panneauColor']?.toString(),
-    decorBaguetteId: map['decorBaguetteId'] as int?,
-    decorRosetteId: map['decorRosetteId'] as int?,
+    decorBaguetteId: _readSavedInt(map['decorBaguetteId']),
+    decorRosetteId: _readSavedInt(map['decorRosetteId']),
     isVerticalBardage: map['isVerticalBardage'] as bool? ?? false,
     bardageUsesFrameColor: map['bardageUsesFrameColor'] as bool? ?? true,
-    panneauProductId: map['panneauProductId'] as int?,
+    panneauProductId: _readSavedInt(map['panneauProductId']),
     thicknessOuter: (map['thicknessOuter'] as num?)?.toDouble(),
     thicknessInner: (map['thicknessInner'] as num?)?.toDouble(),
     laminatedColorOuter:

@@ -289,7 +289,7 @@ class _CustomersState extends State<Customers> {
     _refreshData();
     _dbUpdateSubscription = CloudSyncService().dbUpdateStream.listen((_) {
       _syncRefreshDebounce?.cancel();
-      _syncRefreshDebounce = Timer(const Duration(milliseconds: 120), () {
+      _syncRefreshDebounce = Timer(const Duration(milliseconds: 80), () {
         if (mounted) _refreshData();
       });
     });

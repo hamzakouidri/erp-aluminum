@@ -1107,6 +1107,7 @@ class SqlDatabase {
         "ALTER TABLE Accessories ADD COLUMN is_kit_screw INTEGER DEFAULT 0;",
       );
     } catch (_) {}
+    await _ensureCatalogueSelectionIndexes(db);
 
     // Ensure new tables exist in case of skipped version updates
     await db.execute('''
@@ -1586,6 +1587,29 @@ class SqlDatabase {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_design_shutter_series ON SeriesShutterRules(series_id, component_role);',
     );
+  }
+
+  Future<void> _ensureCatalogueSelectionIndexes(DatabaseExecutor db) async {
+    for (final statement in const [
+      'CREATE INDEX IF NOT EXISTS idx_accessories_active_series_material ON Accessories(is_active, series_id, material_type, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_kit_screw ON Accessories(is_kit_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_caisson_screw ON Accessories(is_caisson_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_moteur_screw ON Accessories(is_moteur_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_batmo_screw ON Accessories(is_batmo_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_bouchon_batmo_screw ON Accessories(is_bouchon_batmo_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_renfort_screw ON Accessories(is_renfort_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_manivelle_screw ON Accessories(is_manivelle_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_assembly_screw ON Accessories(is_assembly_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_accessory_screw ON Accessories(is_accessory_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_accessories_installation_screw ON Accessories(is_installation_screw, is_active, id);',
+      'CREATE INDEX IF NOT EXISTS idx_shutter_components_active_type_series ON ShutterComponents(is_active, component_type, series_id, id);',
+      'CREATE INDEX IF NOT EXISTS idx_shutter_components_series_ids ON ShutterComponents(series_ids);',
+      'CREATE INDEX IF NOT EXISTS idx_kit_bundles_active_name ON KitBundles(is_active, name, id);',
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
   }
 
   Future<void> _ensureAdvancedKitCompatibilitySchema(
@@ -4265,17 +4289,20 @@ class SqlDatabase {
       if (myDb == null) return false;
       var didChange = false;
 
-      final rows = changedRows ??
+      final rows =
+          changedRows ??
           (await FirebaseFirestore.instance
                   .collection('workshops')
                   .doc(workshopId)
                   .collection('orders_status')
                   .get())
               .docs
-              .map((doc) => <String, dynamic>{
-                    '__order_status_id': doc.id,
-                    ...doc.data(),
-                  });
+              .map(
+                (doc) => <String, dynamic>{
+                  '__order_status_id': doc.id,
+                  ...doc.data(),
+                },
+              );
 
       for (final data in rows) {
         final orderId = int.tryParse(
@@ -4367,17 +4394,20 @@ class SqlDatabase {
       Database? myDb = await db;
       if (myDb == null) return;
 
-      final rows = changedRows ??
+      final rows =
+          changedRows ??
           (await FirebaseFirestore.instance
                   .collection('workshops')
                   .doc(workshopId)
                   .collection('confirmed_measurements')
                   .get())
               .docs
-              .map((doc) => <String, dynamic>{
-                    '__measurement_id': doc.id,
-                    ...doc.data(),
-                  });
+              .map(
+                (doc) => <String, dynamic>{
+                  '__measurement_id': doc.id,
+                  ...doc.data(),
+                },
+              );
 
       for (final data in rows) {
         final detailId = int.tryParse(
@@ -6688,7 +6718,7 @@ class SqlDatabase {
         where: 'worker_uid = ? AND attendance_date = ?',
         whereArgs: [workerUid, date],
       );
-      CloudSyncService().notifyChange();
+      CloudSyncService().notifyChangeImmediate();
       return;
     }
 
@@ -7198,7 +7228,7 @@ class SqlDatabase {
         createdAt: orderDate,
       );
     }
-    CloudSyncService().notifyChange();
+    CloudSyncService().notifyChangeImmediate();
     return res;
   }
 
@@ -7241,7 +7271,7 @@ class SqlDatabase {
         where: 'id = ?',
         whereArgs: [idCommande],
       );
-      CloudSyncService().notifyChange();
+      CloudSyncService().notifyChangeImmediate();
       return res;
     }
     return 0;
@@ -9417,6 +9447,16 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await myDb!.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN cap_thickness REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await myDb!.execute(
+        "ALTER TABLE ShutterComponents ADD COLUMN weight_per_sqm REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await myDb!.execute(
         "UPDATE ShutterComponents SET is_active = 1 WHERE is_active IS NULL;",
       );
     } catch (_) {}
@@ -10647,6 +10687,9 @@ class SqlDatabase {
         PRIMARY KEY (table_name, row_id)
       )
     ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_change_log_table_time ON _sync_change_log(table_name, changed_at);',
+    );
     await _ensureProfileColorsSyncIds(db);
 
     final schemaRows = await db.rawQuery('''
@@ -10790,7 +10833,9 @@ class SqlDatabase {
     }
   }
 
-  Future<PendingCloudChanges> exportPendingCloudChanges() async {
+  Future<PendingCloudChanges> exportPendingCloudChanges({
+    Set<String>? onlyTables,
+  }) async {
     final myDb = await db;
     if (myDb == null) {
       return const PendingCloudChanges(
@@ -10805,8 +10850,17 @@ class SqlDatabase {
       throw StateError('database image malformed (code 11)');
     }
 
+    final allowedTables = onlyTables
+        ?.where((table) => _isSafeSqlIdentifier(table))
+        .toSet();
     final logRows = await myDb.query(
       '_sync_change_log',
+      where: allowedTables == null || allowedTables.isEmpty
+          ? null
+          : 'table_name IN (${List.filled(allowedTables.length, '?').join(',')})',
+      whereArgs: allowedTables == null || allowedTables.isEmpty
+          ? null
+          : allowedTables.toList(growable: false),
       orderBy: 'changed_at ASC, table_name ASC, row_id ASC',
     );
     if (logRows.isEmpty) {

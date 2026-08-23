@@ -71,6 +71,21 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
   int? _selectedProfileId;
   int? _selectedSeriesId;
 
+  int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  bool _readFlag(dynamic value, {bool fallback = false}) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value.toString().trim().toLowerCase();
+    if (text.isEmpty) return fallback;
+    return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -420,11 +435,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final profiles = await widget.db.readProfile();
     if (profiles.isEmpty) return;
 
-    int? selectedSourceProfileId = profiles.first['id'] as int?;
+    int? selectedSourceProfileId = _readInt(profiles.first['id']);
+    if (selectedSourceProfileId == null) return;
     List<Map<String, dynamic>> sourceSeriesList = await widget.db
-        .readSeriesByProfile(selectedSourceProfileId!);
+        .readSeriesByProfile(selectedSourceProfileId);
     int? selectedSourceSeriesId = sourceSeriesList.isNotEmpty
-        ? sourceSeriesList.first['id'] as int?
+        ? _readInt(sourceSeriesList.first['id'])
         : null;
 
     if (!mounted) return;
@@ -454,7 +470,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     items: profiles
                         .map(
                           (p) => DropdownMenuItem<int>(
-                            value: p['id'] as int,
+                            value: _readInt(p['id']),
                             child: Text(p['name'].toString()),
                           ),
                         )
@@ -468,7 +484,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           selectedSourceProfileId = val;
                           sourceSeriesList = newSeries;
                           selectedSourceSeriesId = newSeries.isNotEmpty
-                              ? newSeries.first['id'] as int?
+                              ? _readInt(newSeries.first['id'])
                               : null;
                         });
                       }
@@ -486,7 +502,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     items: sourceSeriesList
                         .map(
                           (s) => DropdownMenuItem<int>(
-                            value: s['id'] as int,
+                            value: _readInt(s['id']),
                             child: Text(s['name'].toString()),
                           ),
                         )
@@ -1002,7 +1018,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           .where((s) => s['type'] == 'parclose')
                           .map(
                             (s) => DropdownMenuItem<int>(
-                              value: s['id'] as int,
+                              value: _readInt(s['id']),
                               child: Text('${s['code']} - ${s['name']}'),
                             ),
                           )
@@ -1175,9 +1191,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final maxGlassThicknessCtrl = TextEditingController(
       text: section['max_glass_thickness']?.toString() ?? '',
     );
-    bool allowsSideCoverVal = (section['allows_side_cover'] as int?) != 0;
-    int? selectedParcloseDoubleId =
-        section['linked_parclose_double_id'] as int?;
+    bool allowsSideCoverVal = _readFlag(
+      section['allows_side_cover'],
+      fallback: true,
+    );
+    int? selectedParcloseDoubleId = _readInt(
+      section['linked_parclose_double_id'],
+    );
     String? selectedImagePath = section['image_path']?.toString();
     String selectedType = section['type']?.toString() ?? 'frame';
     String displayedType = selectedType;
@@ -1204,7 +1224,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
         ['sash_lateral', 'sash_central', 'sash_traverse'].contains(selectedType)
         ? selectedType
         : 'sash_lateral';
-    int? selectedRenfortId = section['linked_renfort_id'] as int?;
+    int? selectedRenfortId = _readInt(section['linked_renfort_id']);
     String profileType = _profiles
         .firstWhere(
           (p) => p['id'] == _selectedProfileId,
@@ -1592,7 +1612,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           )
                           .map(
                             (s) => DropdownMenuItem<int>(
-                              value: s['id'] as int,
+                              value: _readInt(s['id']),
                               child: Text('${s['code']} - ${s['name']}'),
                             ),
                           )
@@ -1621,7 +1641,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       items: renforts
                           .map(
                             (r) => DropdownMenuItem<int>(
-                              value: r['id'] as int,
+                              value: _readInt(r['id']),
                               child: Text(r['name'].toString()),
                             ),
                           )
@@ -1698,7 +1718,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           selectedType == 'renfort' ||
                           barLengthCtrl.text.isNotEmpty)) {
                     try {
-                      await widget.db.updateSection(section['id'] as int, {
+                      final sectionId = _readInt(section['id']);
+                      if (sectionId == null) return;
+                      await widget.db.updateSection(sectionId, {
                         'code': codeCtrl.text,
                         'name': nameCtrl.text,
                         'type': selectedType,
@@ -1957,7 +1979,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     return;
                   }
 
-                  int prowinId = prowin['id'] as int;
+                  final prowinId = _readInt(prowin['id']);
+                  if (prowinId == null) return;
                   var prowinSeries = await database.query(
                     'Series',
                     where: 'profile_id = ?',
@@ -1988,8 +2011,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     return;
                   }
 
-                  int p60Id = prowin60['id'] as int;
-                  int p70Id = prowin70['id'] as int;
+                  final p60Id = _readInt(prowin60['id']);
+                  final p70Id = _readInt(prowin70['id']);
+                  if (p60Id == null || p70Id == null) return;
 
                   var secs60 = await database.query(
                     'Sections',
@@ -2003,13 +2027,15 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   );
 
                   for (var p in profiles) {
-                    if (p['id'] == prowinId) continue;
+                    if (_readInt(p['id']) == prowinId) continue;
                     var series = await database.query(
                       'Series',
                       where: 'profile_id = ?',
                       whereArgs: [p['id']],
                     );
                     for (var s in series) {
+                      final targetSeriesId = _readInt(s['id']);
+                      if (targetSeriesId == null) continue;
                       String sName = s['name'].toString();
                       List<Map<String, dynamic>> sourceSecs = [];
                       if (sName == '60') {
@@ -2026,12 +2052,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         var existingSecs = await database.query(
                           'Sections',
                           where: 'series_id = ?',
-                          whereArgs: [s['id']],
+                          whereArgs: [targetSeriesId],
                         );
                         if (existingSecs.isEmpty) {
                           for (var sec in sourceSecs) {
                             await widget.db.insertSection(
-                              seriesId: s['id'] as int,
+                              seriesId: targetSeriesId,
                               code: sec['code'].toString(),
                               name: sec['name'].toString(),
                               type: sec['type'].toString(),
@@ -2145,7 +2171,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                               final p = _profiles[index];
                               final isSelected = p['id'] == _selectedProfileId;
                               return InkWell(
-                                onTap: () => _loadSeries(p['id']),
+                                onTap: () {
+                                  final profileId = _readInt(p['id']);
+                                  if (profileId != null) {
+                                    _loadSeries(profileId);
+                                  }
+                                },
                                 child: Container(
                                   color: isSelected
                                       ? (Theme.of(context).brightness ==
@@ -2203,16 +2234,21 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                 color: Colors.blue,
                                                 size: 16,
                                               ),
-                                              onPressed: () =>
-                                                  _showEditProfileDialog(
-                                                    p['id'],
-                                                    p['name'],
-                                                    p['type'],
-                                                    (p['default_bar_length']
-                                                                as num?)
-                                                            ?.toDouble() ??
-                                                        5.8,
-                                                  ),
+                                              onPressed: () {
+                                                final profileId = _readInt(
+                                                  p['id'],
+                                                );
+                                                if (profileId == null) return;
+                                                _showEditProfileDialog(
+                                                  profileId,
+                                                  p['name'],
+                                                  p['type'],
+                                                  (p['default_bar_length']
+                                                              as num?)
+                                                          ?.toDouble() ??
+                                                      5.8,
+                                                );
+                                              },
                                             ),
                                             const SizedBox(width: 8),
                                             IconButton(
@@ -2228,8 +2264,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                 'تأكيد الحذف',
                                                 'هل أنت متأكد أنك تريد حذف هذا النظام؟',
                                                 () async {
-                                                  await widget.db.deleteProfile(
+                                                  final profileId = _readInt(
                                                     p['id'],
+                                                  );
+                                                  if (profileId == null) {
+                                                    return;
+                                                  }
+                                                  await widget.db.deleteProfile(
+                                                    profileId,
                                                   );
                                                   _loadProfiles();
                                                 },
@@ -2308,7 +2350,12 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                 final s = _currentSeries[index];
                                 final isSelected = s['id'] == _selectedSeriesId;
                                 return InkWell(
-                                  onTap: () => _loadSections(s['id']),
+                                  onTap: () {
+                                    final seriesId = _readInt(s['id']);
+                                    if (seriesId != null) {
+                                      _loadSections(seriesId);
+                                    }
+                                  },
                                   child: Container(
                                     color: isSelected
                                         ? (Theme.of(context).brightness ==
@@ -2384,8 +2431,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                                                   'تأكيد الحذف',
                                                   'هل أنت متأكد أنك تريد حذف هذه السلسلة؟',
                                                   () async {
+                                                    final seriesId = _readInt(
+                                                      s['id'],
+                                                    );
+                                                    if (seriesId == null) {
+                                                      return;
+                                                    }
                                                     await widget.db
-                                                        .deleteSeries(s['id']);
+                                                        .deleteSeries(seriesId);
                                                     _loadSeries(
                                                       _selectedProfileId!,
                                                     );

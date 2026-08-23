@@ -816,9 +816,15 @@ class ComponentCalculator {
     }
 
     Map<String, dynamic>? getSlidingFrameSection() {
-      if (window.slidingFrameOverride != null)
+      if (window.slidingFrameOverride != null) {
         return window.slidingFrameOverride;
-      final series = window.activeSlidingSeries ?? window.activeSeries;
+      }
+      final activeSeries = window.activeSeries;
+      final series =
+          window.activeSlidingSeries ??
+          (activeSeries != null && isSlidingSeriesForDrawing(activeSeries)
+              ? activeSeries
+              : null);
       if (series == null) return null;
       var slidingFrames = series.sections.where((s) {
         final name = s.name.toLowerCase();
@@ -1897,8 +1903,7 @@ class ComponentCalculator {
     // sides. Add its visible width at both ends of each frame piece, plus the
     // PVC welding allowance where applicable. A separate cover remains its
     // own profile and only its thickness shortens the plain frame.
-    final double integratedCoverCutExtension =
-        hasIntegratedSideCover
+    final double integratedCoverCutExtension = hasIntegratedSideCover
         ? integratedFrameCoverWidth * 2
         : 0.0;
     final double frameWidth =
@@ -1946,7 +1951,7 @@ class ComponentCalculator {
 
     for (final r in frameRects) {
       bool frameRectIsSlidingOnly() {
-        if (frameRects.length <= 1) return false;
+        if (frameRects.length <= 1) return window.isSlidingOnlyDrawing;
         final innerLeft = r.left + window.profileThickness - 2.0;
         final innerTop = r.top + window.profileThickness - 2.0;
         final innerRight = r.right - window.profileThickness + 2.0;
@@ -2357,8 +2362,9 @@ class ComponentCalculator {
           int sashes = zone.slidingSashesCount > 0
               ? zone.slidingSashesCount
               : 2;
-          final configuredSashDeduction =
-              window.slidingSashWidthDeduction(sashes);
+          final configuredSashDeduction = window.slidingSashWidthDeduction(
+            sashes,
+          );
           double sashW = configuredSashDeduction > 0
               ? (wForCalc - configuredSashDeduction) / sashes
               : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
@@ -2575,17 +2581,19 @@ class ComponentCalculator {
             ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
             : 'قائم جانبي (Sash Lateral)';
 
-        // Fetch user override or default normal profile
+        // A manual choice from the quantity table or drawer must win exactly.
+        // The normal/reinforced finder is only a defaulting helper.
+        final manualLateralOverride = slidingOverrideFor([
+          lateralName,
+          'قائم جانبي (Sash Lateral)',
+          'قائم جانبي (Lateral)',
+        ]);
         Map<String, dynamic>? baseLateral =
-            slidingOverrideFor([
-              lateralName,
-              'قائم جانبي (Sash Lateral)',
-              'قائم جانبي (Lateral)',
-            ]) ??
+            manualLateralOverride ??
             window.getSlidingSectionByType('sash_lateral')?.toMap() ??
             window.getSlidingSectionByType('lateral')?.toMap();
 
-        if (baseLateral != null) {
+        if (baseLateral != null && manualLateralOverride == null) {
           if (isLateralReinforced) {
             final reinforced = findReinforcedSection(
               baseLateral,
@@ -2627,17 +2635,19 @@ class ComponentCalculator {
             ? 'قائم وسطي معزز (Sash Central Renforcé)'
             : 'قائم وسطي (Sash Central)';
 
-        // Fetch user override or default normal profile
+        // A manual choice from the quantity table or drawer must win exactly.
+        // The normal/reinforced finder is only a defaulting helper.
+        final manualCentralOverride = slidingOverrideFor([
+          centralName,
+          'قائم وسطي (Sash Central)',
+          'قائم وسطي (Central)',
+        ]);
         Map<String, dynamic>? baseCentral =
-            slidingOverrideFor([
-              centralName,
-              'قائم وسطي (Sash Central)',
-              'قائم وسطي (Central)',
-            ]) ??
+            manualCentralOverride ??
             window.getSlidingSectionByType('sash_central')?.toMap() ??
             window.getSlidingSectionByType('central')?.toMap();
 
-        if (baseCentral != null) {
+        if (baseCentral != null && manualCentralOverride == null) {
           if (isCentralReinforced) {
             final reinforced = findReinforcedSection(baseCentral, true, window);
             if (reinforced != null) {
@@ -3351,13 +3361,7 @@ class ComponentCalculator {
         }
 
         slidingGlassJoints.forEach((jointName, totalLength) {
-          items.add(
-            createJoint(
-              jointName,
-              qty: totalLength,
-              unit: 'متر',
-            ),
-          );
+          items.add(createJoint(jointName, qty: totalLength, unit: 'متر'));
         });
       }
 
@@ -4617,6 +4621,8 @@ class ComponentCalculator {
         0.0; // مجموع محيطات الإطارات للفتحات ذات الظلفات (متر)
     double swingCentralFramePerim =
         0.0; // مجموع محيطات الإطارات للفتحات المزدوجة (متر)
+    double swingBourrageGlassPerim = 0.0;
+    double swingVitrageGlassPerim = 0.0;
 
     // Bardage is a profile from the active series, never a priced panel from
     // the glass catalogue. Its visible width controls the slat count and its
@@ -4788,8 +4794,9 @@ class ComponentCalculator {
             configuredSlidingSashVisibleWidth > 0
             ? configuredSlidingSashVisibleWidth
             : sw;
-        final configuredSashDeduction =
-            window.slidingSashWidthDeduction(sashes);
+        final configuredSashDeduction = window.slidingSashWidthDeduction(
+          sashes,
+        );
         final double sashCutW = configuredSashDeduction > 0
             ? (wForCalc - configuredSashDeduction) / sashes
             : (wForCalc + ((sashes - 1) * 26.0)) / sashes;
@@ -5036,9 +5043,6 @@ class ComponentCalculator {
               }
               if (remaining > 0) {
                 final bool forceTwoSides = cellGlass.jointTwoSides;
-                final double targetThick = forceTwoSides
-                    ? (remaining / 2.0)
-                    : remaining;
                 String jointName = 'جوان البوراج (Joint Bourrage)';
                 final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
                 final double qty =
@@ -5050,11 +5054,11 @@ class ComponentCalculator {
           } else {
             if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
               final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
-              final double mult = cellGlass.jointTwoSides ? 2.0 : 1.0;
-              final double gasketQty = perimeter * mult * totalPieces;
-              String gName = 'جوان زجاج (Joint Vitrage)';
-              slidingGlassJoints[gName] =
-                  (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
+              final double quantityPerim = perimeter * pieceMultiplier;
+              swingBourrageGlassPerim += quantityPerim;
+              if (cellGlass.jointTwoSides) {
+                swingVitrageGlassPerim += quantityPerim;
+              }
             }
             if (cellThick > 10.0) {
               for (int q = 0; q < pieceMultiplier; q++) {
@@ -5695,7 +5699,8 @@ class ComponentCalculator {
 
     // ===== جوانات نظام الفتح (ألمنيوم فقط) =====
     if (!window.isPVC) {
-      // حساب الكميات المشتركة بين Vitrage و Bourrage
+      // The first opening-system gasket sits below the glass and is required.
+      // The top gasket follows the drawing choice (one side / two sides).
       final double simplePerim = parcloseSimplePieces.fold(
         0.0,
         (s, p) => s + p,
@@ -5704,9 +5709,15 @@ class ComponentCalculator {
         0.0,
         (s, p) => s + p,
       ); // محيط زجاج مزدوج (×2)
-      final double vitrageQty = simplePerim * 1.0 + doublePerim * 2.0;
+      final double fallbackGlassPerim = simplePerim + doublePerim;
+      final double bourrageQty = swingBourrageGlassPerim > 0
+          ? swingBourrageGlassPerim * window.quantity
+          : fallbackGlassPerim;
+      final double vitrageQty = swingVitrageGlassPerim > 0
+          ? swingVitrageGlassPerim * window.quantity
+          : fallbackGlassPerim;
 
-      // Joint Vitrage = محيط الزجاج ×1 (مفرد) أو ×2 (مزدوج)
+      // Joint Vitrage = the optional upper side.
       if (vitrageQty > 0) {
         items.add(
           createJoint(
@@ -5717,12 +5728,12 @@ class ComponentCalculator {
         );
       }
 
-      // Joint Bourrage = نفس Joint Vitrage تماماً
-      if (vitrageQty > 0) {
+      // Joint Bourrage = the mandatory lower side.
+      if (bourrageQty > 0) {
         items.add(
           createJoint(
             'جوان البوراج (Joint Bourrage)',
-            qty: vitrageQty,
+            qty: bourrageQty,
             unit: 'متر',
           ),
         );
@@ -5732,11 +5743,7 @@ class ComponentCalculator {
       final double frappeQty = swingFrappeSashPerim + swingFrappeFramePerim;
       if (frappeQty > 0) {
         items.add(
-          createJoint(
-            'جوان الضرب (Joint Frappe)',
-            qty: frappeQty,
-            unit: 'متر',
-          ),
+          createJoint('جوان الضرب (Joint Frappe)', qty: frappeQty, unit: 'متر'),
         );
       }
 

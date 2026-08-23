@@ -326,7 +326,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                         ),
                         onPressed: _showLinkExistingOrderDialog,
                         icon: const Icon(Icons.link, size: 16),
-                        label: const Text('ربط طلبية موجودة'),
+                        label: Text(Localization.translate('ربط طلبية موجودة', lang)),
                       ),
                       ElevatedButton.icon(
                         onPressed: () {
@@ -372,7 +372,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
                         child: ListTile(
-                          title: Text('طلب #${cmd['id']}'),
+                          title: Text('${Localization.translate('طلب', lang)} #${cmd['id']}'),
                           subtitle: Text(cmd['created_at']?.toString().split('T')[0] ?? ''),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,

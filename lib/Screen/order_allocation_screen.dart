@@ -419,6 +419,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   void _showConfirmMeasurementsDialog(Map<String, dynamic> item) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final qty = (item['orig_quantity'] ?? item['quantity'] ?? 1) as int;
     final origH = (item['hauteur'] ?? 0) as int;
     final origW = (item['largeur'] ?? 0) as int;
@@ -522,7 +523,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(Localization.translate('إلغاء', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton.icon(
               onPressed: () async {
@@ -743,6 +744,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   void _showEditAssignDialog(Map<String, dynamic> alloc, Map<String, dynamic> item) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     final isManufactured = alloc['is_manufactured'] == 1;
     final detailId = item['id'] as int;
     final itemUnitIndex = item['unit_index'];
@@ -876,10 +878,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     TextFormField(
                       controller: priceCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
-                        helperText: 'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate('سعر تصنيع القطعة للعامل (د.ج) - اختياري', lang),
+                        helperText: Localization.translate('يمكن إضافته لاحقاً في المحاسبة الأسبوعية', lang),
+                        border: const OutlineInputBorder(),
                       ),
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) return null; // اختياري
@@ -896,7 +898,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(Localization.translate('إلغاء', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton(
               onPressed: () {
@@ -907,7 +909,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                   _editWorkerAllocation(alloc['id'] as int, selectedWorkerUid!, q, p);
                 }
               },
-              child: const Text('حفظ التعديل', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(Localization.translate('حفظ التعديل', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
           ],
         );
@@ -917,6 +919,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
   }
 
   void _showAssignDialog(Map<String, dynamic> item, int remainingQty) {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     String? selectedWorkerUid = _workers.isNotEmpty ? _workers.first['uid'].toString() : null;
     final qtyCtrl = TextEditingController(text: remainingQty.toString());
     final priceCtrl = TextEditingController();
@@ -935,9 +938,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
         builder: (context, setStateDialog) {
           final isFixed = _getSelectedSalaryType(selectedWorkerUid) == 'fixed';
           return AlertDialog(
-          title: const Text(
-            'إسناد عمل جديد لعامل',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+          title: Text(
+            Localization.translate('إسناد عمل جديد لعامل', lang),
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
           ),
           content: Form(
             key: formKey,
@@ -947,9 +950,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                 children: [
                   DropdownButtonFormField<String>(
                     value: selectedWorkerUid,
-                    decoration: const InputDecoration(
-                      labelText: 'اختر العامل',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: Localization.translate('اختر العامل', lang),
+                      border: const OutlineInputBorder(),
                     ),
                     items: _workers.map((w) {
                       return DropdownMenuItem<String>(
@@ -968,7 +971,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     controller: qtyCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: 'الكمية المسندة (الأقصى $remainingQty)',
+                      labelText: '${Localization.translate('الكمية المسندة', lang)} (max $remainingQty)',
                       border: const OutlineInputBorder(),
                     ),
                     validator: (val) {
@@ -1006,10 +1009,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                     TextFormField(
                       controller: priceCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'سعر تصنيع القطعة للعامل (د.ج) - اختياري',
-                        helperText: 'يمكن إضافته لاحقاً في المحاسبة الأسبوعية',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: Localization.translate('سعر تصنيع القطعة للعامل (د.ج) - اختياري', lang),
+                        helperText: Localization.translate('يمكن إضافته لاحقاً في المحاسبة الأسبوعية', lang),
+                        border: const OutlineInputBorder(),
                       ),
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) return null; // اختياري
@@ -1026,7 +1029,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(Localization.translate('إلغاء', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton(
               onPressed: () {
@@ -1046,7 +1049,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                   );
                 }
               },
-              child: const Text('إسناد', style: TextStyle(fontFamily: 'Cairo')),
+              child: Text(Localization.translate('إسناد', lang), style: const TextStyle(fontFamily: 'Cairo')),
             ),
           ],
         );

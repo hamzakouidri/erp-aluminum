@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/Systeme/consumption_manager.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/settings/localization.dart';
+import 'package:database_data/settings/app_settings.dart';
+import 'package:provider/provider.dart';
 import 'package:database_data/Commande/Systeme/cutting_calculator.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:pdf/pdf.dart';
@@ -180,12 +183,12 @@ class _GlobalConsumptionReportScreenState
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('تقرير النواقص الشامل', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(Localization.translate('تقرير النواقص الشامل', Provider.of<AppSettingsProvider>(context).language), style: const TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
           ElevatedButton.icon(
             icon: const Icon(Icons.shopping_cart, color: Colors.white),
-            label: const Text("شراء كل النواقص", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            label: Text(Localization.translate('شراء كل النواقص', Provider.of<AppSettingsProvider>(context).language), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -218,13 +221,13 @@ class _GlobalConsumptionReportScreenState
             padding: const EdgeInsets.all(16),
             children: [
               if (report.aluminumItems.isNotEmpty)
-                _buildSectionCard('قطاعات الألمنيوم (Aluminium)', Icons.straighten, Colors.blue, report.aluminumItems),
+                _buildSectionCard(Localization.translate('قطاعات الألمنيوم (Aluminium)', Provider.of<AppSettingsProvider>(context).language), Icons.straighten, Colors.blue, report.aluminumItems),
               const SizedBox(height: 16),
               if (report.glassItems.isNotEmpty)
-                _buildSectionCard('الزجاج (Verre)', Icons.window, Colors.teal, report.glassItems),
+                _buildSectionCard(Localization.translate('الزجاج (Verre)', Provider.of<AppSettingsProvider>(context).language), Icons.window, Colors.teal, report.glassItems),
               const SizedBox(height: 16),
               if (report.accessoryItems.isNotEmpty)
-                _buildSectionCard('الإكسسوارات (Accessoires)', Icons.build, Colors.orange, report.accessoryItems),
+                _buildSectionCard(Localization.translate('الإكسسوارات (Accessoires)', Provider.of<AppSettingsProvider>(context).language), Icons.build, Colors.orange, report.accessoryItems),
             ],
           );
         },

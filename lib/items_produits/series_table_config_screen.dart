@@ -4,8 +4,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
 
-/// Administrator-only definition of the main profile roles for each series.
-/// This temporary page is intentionally independent from the quantity table.
+/// Application-admin-only definition of the main profile roles for each series.
 class SeriesTableConfigScreen extends StatefulWidget {
   final SqlDatabase db;
 
@@ -149,22 +148,27 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   bool get _isArabic =>
       context.read<AppSettingsProvider>().language == AppLanguage.arabic;
   String _t(String ar, String fr) => _isArabic ? ar : fr;
+  bool get _canAccess =>
+      context.read<AppSettingsProvider>().userRole == 'admin' || isAdmin;
   int? get _seriesId => (_selectedSeries?['id'] as num?)?.toInt();
   bool get _isSlidingSeries {
-    final value = '${_selectedSeries?['type'] ?? ''} '
-        '${_selectedSeries?['name'] ?? ''}'.toLowerCase();
+    final value =
+        '${_selectedSeries?['type'] ?? ''} '
+                '${_selectedSeries?['name'] ?? ''}'
+            .toLowerCase();
     return value.contains('sliding') ||
         value.contains('couliss') ||
         value.contains('منزلق') ||
         value.contains('جرار') ||
         value.contains('كوليس');
   }
+
   bool get _isPvcProfile =>
-      (_selectedProfile?['name']?.toString().toLowerCase() ?? '')
-          .contains('pvc');
-  Iterable<_SeriesRole> get _availableRoles => _roles.where(
-    (role) => !_isPvcProfile || role.key != 'reducer',
-  );
+      (_selectedProfile?['name']?.toString().toLowerCase() ?? '').contains(
+        'pvc',
+      );
+  Iterable<_SeriesRole> get _availableRoles =>
+      _roles.where((role) => !_isPvcProfile || role.key != 'reducer');
 
   @override
   void initState() {
@@ -188,7 +192,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!context.watch<AppSettingsProvider>().isManager) {
+    final settings = context.watch<AppSettingsProvider>();
+    if (settings.userRole != 'admin' && !isAdmin) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && Navigator.canPop(context)) Navigator.pop(context);
       });
@@ -271,7 +276,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     String number(String key, {String fallback = ''}) {
       final value = config?[key];
       if (value == null) return fallback;
-      final parsed = value is num ? value.toDouble() : double.tryParse('$value');
+      final parsed = value is num
+          ? value.toDouble()
+          : double.tryParse('$value');
       if (parsed == null) return fallback;
       return parsed == parsed.roundToDouble()
           ? parsed.toInt().toString()
@@ -291,7 +298,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'sliding_rail_clearance',
       fallback: '1',
     );
-    _formulaNotesController.text = config?['custom_formula_notes']?.toString() ?? '';
+    _formulaNotesController.text =
+        config?['custom_formula_notes']?.toString() ?? '';
   }
 
   double _decimal(TextEditingController controller, {double fallback = 0}) =>
@@ -382,9 +390,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         sashWDeduction4: _decimal(_sashWidth4Controller),
         sashOverlapVal: _decimal(_sashOverlapController),
         glassWDeduction: _decimal(_glassWidthController, fallback: 10),
-        slidingChicanePiecesPerJunction: _positiveInt(
-          _chicanePiecesController,
-        ),
+        slidingChicanePiecesPerJunction: _positiveInt(_chicanePiecesController),
         slidingRailClearance: _decimal(_railClearanceController, fallback: 1),
         customFormulaNotes: _formulaNotesController.text.trim(),
       );
@@ -419,15 +425,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<AppSettingsProvider>();
-    if (!settings.isManager) return const Scaffold(body: SizedBox.shrink());
+    context.watch<AppSettingsProvider>();
+    if (!_canAccess) return const Scaffold(body: SizedBox.shrink());
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _t(
-            'مكوّنات وحسابات السلسلة',
-            'Composants et calculs de la série',
-          ),
+          _t('مكوّنات وحسابات السلسلة', 'Composants et calculs de la série'),
         ),
         actions: [
           if (_selectedSeries != null)
@@ -482,7 +485,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _profiles.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (_, index) {
               final profile = _profiles[index];
               return ChoiceChip(
@@ -561,7 +564,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             icon: Icons.table_chart_rounded,
             title: _t('مكوّنات وحسابات السلسلة', 'Composants et calculs'),
             text: _t(
-              'حدد المقاطع التي تستعملها السلسلة. عند اختيار سلسلة منزلقة تظهر هنا حسابات عرض الضلفة لكل حالتين أو ثلاث أو أربع ضلفات، وتستعمل في الرسم وحساب الكميات.',
+              'حدد المقاطع التي تستعملها السلسلة. عند اختيار سلسلة منزلقة تظهر حسابات عرض الضلفة لكل حالتين أو ثلاث أو أربع ضلفات، وتستعمل في الرسم وحساب الكميات.',
               'Définissez les profils utilisés par la série. Pour une série coulissante, les calculs de largeur pour 2, 3 ou 4 ouvrants sont utilisés par le dessin et le calcul des quantités.',
             ),
           ),
@@ -666,22 +669,22 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           const SizedBox(height: 6),
           Text(
             _t(
-              'أدخل خصم العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (العرض الداخلي − الخصم) ÷ عدد الضلفات. إذا بقيت القيمة صفرًا يستعمل النظام الحساب القديم.',
-              'Saisissez la déduction de largeur propre à cette série pour 2, 3 ou 4 ouvrants. Largeur = (largeur intérieure − déduction) ÷ nombre d’ouvrants. Zéro conserve l’ancien calcul.',
+              'أدخل تعديل العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (عرض النافذة − التعديل) ÷ عدد الضلفات. القيمة الموجبة طرح، والسالبة زيادة. إذا بقيت القيمة صفرًا يستعمل النظام الحساب القديم.',
+              'Saisissez l’ajustement de largeur propre à cette série pour 2, 3 ou 4 ouvrants. Largeur = (largeur fenêtre − ajustement) ÷ nombre d’ouvrants. Une valeur positive soustrait, une valeur négative ajoute. Zéro conserve l’ancien calcul.',
             ),
           ),
           const SizedBox(height: 12),
           _formulaField(
             _sashWidth2Controller,
-            _t('خصم عرض ضلفتين (مم)', 'Déduction largeur 2 ouvrants (mm)'),
+            _t('تعديل عرض ضلفتين (مم)', 'Ajustement largeur 2 ouvrants (mm)'),
           ),
           _formulaField(
             _sashWidth3Controller,
-            _t('خصم عرض 3 ضلفات (مم)', 'Déduction largeur 3 ouvrants (mm)'),
+            _t('تعديل عرض 3 ضلفات (مم)', 'Ajustement largeur 3 ouvrants (mm)'),
           ),
           _formulaField(
             _sashWidth4Controller,
-            _t('خصم عرض 4 ضلفات (مم)', 'Déduction largeur 4 ouvrants (mm)'),
+            _t('تعديل عرض 4 ضلفات (مم)', 'Ajustement largeur 4 ouvrants (mm)'),
           ),
           _formulaField(
             _sashOverlapController,
@@ -689,7 +692,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           ),
           _formulaField(
             _glassWidthController,
-            _t('خصم أمان عرض الزجاج (مم)', 'Jeu de sécurité largeur vitrage (mm)'),
+            _t(
+              'خصم أمان عرض الزجاج (مم)',
+              'Jeu de sécurité largeur vitrage (mm)',
+            ),
           ),
           _formulaField(
             _chicanePiecesController,
@@ -722,7 +728,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     padding: const EdgeInsets.only(bottom: 10),
     child: TextField(
       controller: controller,
-      keyboardType: TextInputType.numberWithOptions(decimal: !integer),
+      keyboardType: TextInputType.numberWithOptions(
+        decimal: !integer,
+        signed: !integer,
+      ),
       decoration: InputDecoration(labelText: label),
     ),
   );

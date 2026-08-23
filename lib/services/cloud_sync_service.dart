@@ -81,6 +81,16 @@ class CloudSyncService {
     'Client',
     'Treasury',
   ];
+  static const Set<String> _liveEventPriorityTables = <String>{
+    'Client',
+    'Projects',
+    'Commandes',
+    'Commandes_details',
+    'Commandes_deliveries',
+    'Treasury',
+    'PaymentAllocations',
+    'WorkerAllocations',
+  };
 
   factory CloudSyncService() => _instance;
 
@@ -2309,7 +2319,9 @@ class CloudSyncService {
         return;
       }
 
-      final pending = await _db.exportPendingCloudChanges();
+      final pending = await _db.exportPendingCloudChanges(
+        onlyTables: _liveEventPriorityTables,
+      );
       if (pending.isEmpty) return;
       final prefs = await SharedPreferences.getInstance();
       final uploadId = _newUploadId();

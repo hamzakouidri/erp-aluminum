@@ -116,12 +116,12 @@ class SubscriptionReviewDialog extends StatelessWidget {
             };
 
             final (statusText, statusColor) = details.isLifetime
-                ? ('دائم (مدير التطبيق)', Colors.purple.shade600)
+                ? (lang == AppLanguage.french ? 'Permanent (Admin)' : (lang == AppLanguage.english ? 'Permanent (Admin)' : 'دائم (مدير التطبيق)'), Colors.purple.shade600)
                 : (details.isExpired
-                    ? ('منتهي الصلاحية', Colors.red)
+                    ? (lang == AppLanguage.french ? 'Expiré' : (lang == AppLanguage.english ? 'Expired' : 'منتهي الصلاحية'), Colors.red)
                     : (details.canRenew
-                        ? ('يقارب على الانتهاء', Colors.amber.shade800)
-                        : ('سارٍ ونشط', Colors.green)));
+                        ? (lang == AppLanguage.french ? 'Expire bientôt' : (lang == AppLanguage.english ? 'Expiring soon' : 'يقارب على الانتهاء'), Colors.amber.shade800)
+                        : (lang == AppLanguage.french ? 'Actif' : (lang == AppLanguage.english ? 'Active' : 'سارٍ ونشط'), Colors.green)));
 
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
@@ -291,7 +291,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'المدة المتبقية:',
+                                      Localization.translate('المدة المتبقية:', lang),
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
@@ -315,7 +315,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                               ),
                               if (!details.isExpired && !details.isLifetime)
                                 Text(
-                                  '${details.daysRemaining} يوم',
+                                  lang == AppLanguage.french ? '${details.daysRemaining} j' : (lang == AppLanguage.english ? '${details.daysRemaining} d' : '${details.daysRemaining} يوم'),
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -366,15 +366,15 @@ class SubscriptionReviewDialog extends StatelessWidget {
                       children: [
                         _buildInfoRow(
                           icon: Icons.calendar_today_rounded,
-                          title: 'تاريخ بداية الاشتراك:',
+                          title: Localization.translate('تاريخ بداية الاشتراك:', lang),
                           value: details.formattedStartDate,
                           isDark: isDark,
                         ),
                         const Divider(height: 16),
                         _buildInfoRow(
                           icon: Icons.event_busy_rounded,
-                          title: 'تاريخ نهاية الاشتراك:',
-                          value: details.formattedEndDate,
+                          title: Localization.translate('تاريخ نهاية الاشتراك:', lang),
+                          value: details.getFormattedEndDate(lang: lang),
                           isDark: isDark,
                           valueColor: details.isLifetime
                               ? Colors.purple.shade600
@@ -384,7 +384,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const Divider(height: 16),
                           _buildInfoRow(
                             icon: Icons.qr_code_rounded,
-                            title: 'كود الورشة:',
+                            title: Localization.translate('كود الورشة:', lang),
                             value: details.joinCode,
                             isDark: isDark,
                           ),
@@ -411,7 +411,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'حسابك كمدير للتطبيق يتمتع باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
+                              Localization.translate('حسابك كمدير للتطبيق يتمتع باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.', lang),
                               style: TextStyle(
                                 fontSize: 13,
                                 height: 1.4,
@@ -437,12 +437,12 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
-                            children: const [
-                              Icon(Icons.autorenew_rounded, color: Colors.green, size: 22),
-                              SizedBox(width: 8),
+                            children: [
+                              const Icon(Icons.autorenew_rounded, color: Colors.green, size: 22),
+                              const SizedBox(width: 8),
                               Text(
-                                'تجديد الاشتراك متاح الآن',
-                                style: TextStyle(
+                                Localization.translate('تجديد الاشتراك متاح الآن', lang),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
                                   color: Colors.green,
@@ -510,9 +510,9 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           ElevatedButton.icon(
                             onPressed: () => _launchWhatsApp(context, details),
                             icon: const Icon(Icons.wechat_rounded, color: Colors.white, size: 22),
-                            label: const Text(
-                              'طلب تجديد الاشتراك عبر واتساب',
-                              style: TextStyle(
+                            label: Text(
+                              Localization.translate('طلب تجديد الاشتراك عبر واتساب', lang),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -546,16 +546,16 @@ class SubscriptionReviewDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            children: const [
-                              Icon(
+                            children: [
+                              const Icon(
                                 Icons.info_outline_rounded,
                                 color: Color(0xFF2563EB),
                                 size: 20,
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
-                                'تجديد الاشتراك',
-                                style: TextStyle(
+                                Localization.translate('تجديد الاشتراك', lang),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                   color: Color(0xFF2563EB),
