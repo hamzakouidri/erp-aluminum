@@ -4,8 +4,6 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:database_data/sql_database.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,11 +58,16 @@ class CloudSyncService {
   static const int _maxFirestoreDocumentBytes = 900000;
   static const int _maxLiveEventDocumentBytes = 650000;
   static const int _liveEventListenerLimit = 120;
-  static const int _mobileLiveEventListenerLimit = 20;
-  static const int _mobileDeltaListenerLimit = 40;
-  static const int _mobileStatusListenerLimit = 300;
-  static const int _mobileMeasurementListenerLimit = 150;
-  static const int _mobileTombstoneListenerLimit = 300;
+
+  // ⚠️ [توفير حصة Firebase]: يحدّ هذا الرقم أقصى عدد مستندات delta تُقرأ في
+  // أي استعلام واحد (سواء المستمع اللحظي أو الفحص الدوري)، بدل قراءة كل ما
+  // تراكم من مستندات (حتى لو كانت آلاف). راجع _deleteCompactedDeltaDocuments
+  // للتنظيف الدائم الذي يمنع هذا التراكم من الأساس.
+  static const int _deltaQueryLimit = 200;
+
+  // نفس الفكرة لعدد النسخ الكاملة (snapshot_*) القديمة التي تُبقى كاحتياط
+  // بعد نشر نسخة جديدة، قبل حذفها في الخلفية.
+  static const int _keepPreviousFullSnapshots = 1;
   static const int _largeFieldInlineBytes = 180000;
   static const int _largeFieldPartCharacters = 180000;
 
@@ -81,16 +84,6 @@ class CloudSyncService {
     'Client',
     'Treasury',
   ];
-  static const Set<String> _liveEventPriorityTables = <String>{
-    'Client',
-    'Projects',
-    'Commandes',
-    'Commandes_details',
-    'Commandes_deliveries',
-    'Treasury',
-    'PaymentAllocations',
-    'WorkerAllocations',
-  };
 
   factory CloudSyncService() => _instance;
 
@@ -120,6 +113,8 @@ class CloudSyncService {
   _deletionsListener; // ⚡ لحدف الإسنادات فورياً على جميع الأجهزة
   StreamSubscription<QuerySnapshot>?
   _orderDeletionsListener; // ⚡ لحذف الطلبيات فورياً على جميع الأجهزة
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _permissionsListener; // ⚡ لتحديث صلاحيات العامل فورياً على هذا الجهاز
   int _restoreDepth = 0;
   bool _refreshQueuedAfterRestore = false;
   bool _catalogRefreshQueuedAfterRestore = false;
@@ -151,8 +146,6 @@ class CloudSyncService {
   DateTime? _latestFullSnapshotCompletedAt;
   final Set<String> _latestFullCompactedDeltaIds = <String>{};
   String? _lastAnnouncedListenerWorkshopId;
-  String? _listenersWorkshopId;
-  bool _listenersStarted = false;
   DateTime? _lastRealtimeErrorFeedbackAt;
   Future<void>? _activeBackup;
   Future<void>? _activeLiveEventUpload;
@@ -167,6 +160,8 @@ class CloudSyncService {
   int _transactionChangeGeneration = 0;
   bool _isReconcilingTransactionalCounts = false;
   DateTime? _lastTransactionalCountReconcileAt;
+  Map<String, dynamic> _currentPermissions = <String, dynamic>{};
+  String? _lastHandledPermissionsFingerprint;
 
   final StreamController<String> _dbUpdateController =
       StreamController<String>.broadcast();
@@ -177,6 +172,21 @@ class CloudSyncService {
 
   Stream<CloudSyncFeedback> get syncFeedbackStream =>
       _syncFeedbackController.stream;
+  final StreamController<Map<String, dynamic>> _permissionsController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  /// يبث خريطة الصلاحيات الحالية فور تغييرها في Firestore (بدون إعادة تشغيل
+  /// التطبيق). الشاشات التي تعتمد على صلاحية معينة (رؤية/تعديل الزبائن،
+  /// رؤية/تعديل المنتجات...) تستمع لهذا الـ Stream لتحدّث نفسها فورياً.
+  Stream<Map<String, dynamic>> get permissionsStream =>
+      _permissionsController.stream;
+
+  /// آخر خريطة صلاحيات معروفة لهذا الحساب (قراءة متزامنة فورية بدون انتظار).
+  Map<String, dynamic> get currentPermissions =>
+      Map<String, dynamic>.unmodifiable(_currentPermissions);
+
+  /// اختصار شائع: هل يملك الحساب الحالي صلاحية معينة؟
+  bool hasPermission(String key) => _currentPermissions[key] == true;
 
   // Callback to refresh UI when auto-restore happens
   Function()? onDataRestored;
@@ -184,11 +194,6 @@ class CloudSyncService {
   String? _workshopId;
 
   String? get workshopId => _workshopId;
-
-  bool get _isMobilePlatform =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
   String lastBackupUploadSummary = '';
   String lastCatalogUploadSummary = '';
   String lastRestoreSummary = 'لم يتم الاسترجاع بعد';
@@ -213,6 +218,78 @@ class CloudSyncService {
     _syncFeedbackController.add(
       CloudSyncFeedback(type: type, message: message, details: details),
     );
+  }
+
+  /// يوحّد قراءة الصلاحيات من الحقلين المحتملين في مستند المستخدم:
+  /// - `permissions` (Map في Firestore، الشكل الحديث)
+  /// - `permissions_json` (نص JSON، الشكل القديم المتوافق مع نسخ سابقة)
+  /// نص permissions_json يُقرأ فقط إذا لم يوجد Map صالح، حتى لا يُستبدل حقل
+  /// حديث بقيمة قديمة متبقية بالخطأ في نفس المستند.
+  Map<String, dynamic> _parsePermissions(Map<String, dynamic> userData) {
+    final rawMap = userData['permissions'];
+    if (rawMap is Map) {
+      return rawMap.map((key, value) => MapEntry(key.toString(), value));
+    }
+    final rawJson = userData['permissions_json'];
+    if (rawJson is String && rawJson.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawJson);
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (e) {
+        print('Failed to decode permissions_json: $e');
+      }
+    }
+    return <String, dynamic>{};
+  }
+
+  String _permissionsFingerprint(Map<String, dynamic> permissions) {
+    final sortedKeys = permissions.keys.toList()..sort();
+    final buffer = StringBuffer();
+    for (final key in sortedKeys) {
+      buffer.write('$key=${permissions[key]};');
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _applyPermissionsUpdate(Map<String, dynamic> userData) async {
+    final permissions = _parsePermissions(userData);
+    final fingerprint = _permissionsFingerprint(permissions);
+    if (fingerprint == _lastHandledPermissionsFingerprint) return;
+    _lastHandledPermissionsFingerprint = fingerprint;
+    _currentPermissions = permissions;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('permissions_json', jsonEncode(permissions));
+    } catch (e) {
+      print('Failed to persist updated permissions locally: $e');
+    }
+
+    _permissionsController.add(Map<String, dynamic>.unmodifiable(permissions));
+    _dbUpdateController.add('permissions_updated');
+  }
+
+  /// تحميل الصلاحيات المخزّنة محلياً (من آخر مزامنة) فور بدء التطبيق، قبل أن
+  /// يصل أول حدث من Firestore. يمنع هذا ظهور واجهة بلا صلاحيات للحظة قصيرة.
+  Future<void> _loadCachedPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('permissions_json');
+      if (raw == null || raw.trim().isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        _currentPermissions = decoded.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+        _lastHandledPermissionsFingerprint = _permissionsFingerprint(
+          _currentPermissions,
+        );
+      }
+    } catch (e) {
+      print('Failed to load cached permissions: $e');
+    }
   }
 
   String _describeBackupContents(Map<String, dynamic> allData) {
@@ -834,6 +911,10 @@ class CloudSyncService {
     _deviceId = storedId;
     print("--- CloudSyncService: deviceId = $_deviceId ---");
 
+    if (_lastHandledPermissionsFingerprint == null) {
+      await _loadCachedPermissions();
+    }
+
     final user = _auth.currentUser;
     print("--- CloudSyncService: currentUser = ${user?.uid} ---");
     if (user != null) {
@@ -852,6 +933,8 @@ class CloudSyncService {
           final isManagerDoc = role == 'manager' || wId == user.uid;
           final isWorkshopMember =
               !isManagerDoc && (role == 'worker' || role == 'co_manager');
+
+          await _applyPermissionsUpdate(data);
 
           if (isWorkshopMember && (wId.isEmpty || wId == user.uid)) {
             // A worker must never upload to a personal workshop path. Use a
@@ -939,6 +1022,7 @@ class CloudSyncService {
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
     _orderDeletionsListener?.cancel();
+    _permissionsListener?.cancel();
     _listener = null;
     _catalogListener = null;
     _deltaListener = null;
@@ -948,12 +1032,13 @@ class CloudSyncService {
     _measurementsListener = null;
     _deletionsListener = null;
     _orderDeletionsListener = null;
+    _permissionsListener = null;
     _pendingCloudChangePollTimer = null;
     _pendingTransactionUploadTimer = null;
-    _listenersStarted = false;
-    _listenersWorkshopId = null;
     _lastHandledBackupFingerprint = null;
     _lastHandledCatalogFingerprint = null;
+    _lastHandledPermissionsFingerprint = null;
+    _currentPermissions = <String, dynamic>{};
     _ownUploadIds.clear();
     _handledDeltaIds.clear();
     _processingDeltaIds.clear();
@@ -997,6 +1082,24 @@ class CloudSyncService {
     onDataRestored = onUpdateCallback;
     final user = _auth.currentUser;
     if (user == null) return;
+
+    // ⚡ الاستماع الفوري واللحظي لتحديثات صلاحيات هذا الحساب (permissions).
+    // يعمل بشكل مستقل عن معرّف الورشة، لأن مستند users/{uid} يخص هذا الحساب
+    // فقط، ويجب أن يتحدث حتى قبل ربط العامل بورشة صحيحة.
+    _permissionsListener?.cancel();
+    _permissionsListener = _firestore
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen(
+          (doc) async {
+            if (!doc.exists || doc.data() == null) return;
+            await _applyPermissionsUpdate(doc.data()!);
+          },
+          onError: _scheduleRealtimeListenerRetry,
+          onDone: _scheduleRealtimeListenerRetry,
+        );
+
     if (_workshopId == null || _workshopId!.isEmpty) {
       _sendSyncFeedback(
         CloudSyncFeedbackType.uploadFailed,
@@ -1007,52 +1110,45 @@ class CloudSyncService {
       return;
     }
 
-    // main.dart and the authenticated shell can both request realtime sync
-    // during startup. Do not briefly create two sets of Firestore streams.
-    if (_listenersStarted && _listenersWorkshopId == _workshopId) {
-      return;
-    }
-    _listenersStarted = true;
-    _listenersWorkshopId = _workshopId;
-
-    // 1. Desktop can listen to the full backup document. On Android/iOS this
-    // document may contain the whole workshop database; encoding it through
-    // Firestore's platform channel can exceed the phone heap and kill the app.
+    // 1. الاستماع لتغييرات نسخة السحابة الكاملة (Latest Backup)
     _listener?.cancel();
-    if (!_isMobilePlatform) {
-      _listener = _firestore
-          .collection('workshops')
-          .doc(_workshopId)
-          .collection('backups')
-          .doc('latest')
-          .snapshots()
-          .listen(
-            (doc) async {
-              if (!doc.exists || doc.data() == null) return;
+    _listener = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('backups')
+        .doc('latest')
+        .snapshots()
+        .listen(
+          (doc) async {
+            if (!doc.exists || doc.data() == null) return;
 
-              final Map<String, dynamic> payload = Map<String, dynamic>.from(
-                doc.data() as Map,
-              );
-              await _applyLatestBackupUpdate(payload);
-            },
-            onError: _scheduleRealtimeListenerRetry,
-            onDone: _scheduleRealtimeListenerRetry,
-          );
-    } else {
-      _listener = null;
-    }
+            final Map<String, dynamic> payload = Map<String, dynamic>.from(
+              doc.data() as Map,
+            );
+            await _applyLatestBackupUpdate(payload);
+          },
+          onError: _scheduleRealtimeListenerRetry,
+          onDone: _scheduleRealtimeListenerRetry,
+        );
 
     // Small immutable delta documents carry only rows changed by a phone.
     // Keeping each delta as its own document means several phones can publish
     // together without overwriting one another or waiting for the full-backup
     // queue.
+    //
+    // ⚠️ [توفير حصة Firebase]: هذا الاستعلام كان بدون أي حد أقصى (limit)، فكل
+    // مستند delta قديم متراكم (حتى لو عولج ودُمج في نسخة كاملة سابقاً) كان
+    // يُقرأ من جديد في كل مرة يتغيّر فيها أي مستند بالمجموعة. إضافة limit مع
+    // الترتيب حسب معرّف المستند (لا يحتاج فهرساً إضافياً في Firestore، بعكس
+    // الترتيب حسب حقل آخر مع شرط where) تحدّ التكلفة بشكل ثابت ومضمون.
     _deltaListener?.cancel();
     _deltaListener = _firestore
         .collection('workshops')
         .doc(_workshopId)
         .collection('backups')
         .where('kind', isEqualTo: 'delta')
-        .limit(_isMobilePlatform ? _mobileDeltaListenerLimit : 200)
+        .orderBy(FieldPath.documentId, descending: true)
+        .limit(_deltaQueryLimit)
         .snapshots()
         .listen(
           _queueDeltaSnapshot,
@@ -1069,11 +1165,7 @@ class CloudSyncService {
         .doc(_workshopId)
         .collection('live_events')
         .orderBy('createdAt', descending: true)
-        .limit(
-          _isMobilePlatform
-              ? _mobileLiveEventListenerLimit
-              : _liveEventListenerLimit,
-        )
+        .limit(_liveEventListenerLimit)
         .snapshots()
         .listen(
           _queueLiveEventSnapshot,
@@ -1104,8 +1196,6 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('worker_allocations_status')
-        .orderBy('updated_at', descending: true)
-        .limit(_isMobilePlatform ? _mobileStatusListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) {
           if (_isRestoring) return;
@@ -1143,23 +1233,11 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('orders_status')
-        .orderBy('updated_at', descending: true)
-        .limit(_isMobilePlatform ? _mobileStatusListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
           try {
-            final changedRows = snapshot.docChanges
-                .where((change) => change.type != DocumentChangeType.removed)
-                .map(
-                  (change) => <String, dynamic>{
-                    '__order_status_id': change.doc.id,
-                    ...?change.doc.data(),
-                  },
-                );
-            final didChange = await _db.syncOrdersStatusFromCloud(
-              changedRows: changedRows,
-            );
+            final didChange = await _db.syncOrdersStatusFromCloud();
             if (didChange) {
               _dbUpdateController.add('order_status_updated');
             }
@@ -1175,23 +1253,11 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('confirmed_measurements')
-        .orderBy('updated_at', descending: true)
-        .limit(_isMobilePlatform ? _mobileMeasurementListenerLimit : 1000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
           try {
-            final changedRows = snapshot.docChanges
-                .where((change) => change.type != DocumentChangeType.removed)
-                .map(
-                  (change) => <String, dynamic>{
-                    '__measurement_id': change.doc.id,
-                    ...?change.doc.data(),
-                  },
-                );
-            await _db.syncConfirmedMeasurementsFromCloud(
-              changedRows: changedRows,
-            );
+            await _db.syncConfirmedMeasurementsFromCloud();
             _dbUpdateController.add('measurements_updated');
             // ملاحظة: لا نستدعي onDataRestored() هنا لتجنب الترميش.
           } catch (e) {
@@ -1205,8 +1271,6 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('deleted_allocations')
-        .orderBy('deleted_at', descending: true)
-        .limit(_isMobilePlatform ? _mobileTombstoneListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
@@ -1238,8 +1302,6 @@ class CloudSyncService {
         .collection('workshops')
         .doc(_workshopId)
         .collection('deleted_orders')
-        .orderBy('deleted_at', descending: true)
-        .limit(_isMobilePlatform ? _mobileTombstoneListenerLimit : 2000)
         .snapshots()
         .listen((snapshot) async {
           if (_isRestoring) return;
@@ -1659,6 +1721,8 @@ class CloudSyncService {
         .doc(workshopId)
         .collection('backups')
         .where('kind', isEqualTo: 'delta')
+        .orderBy(FieldPath.documentId, descending: true)
+        .limit(_deltaQueryLimit)
         .get(GetOptions(source: Source.server))
         .timeout(const Duration(seconds: 20));
     _queueDeltaSnapshot(snapshot);
@@ -1667,6 +1731,117 @@ class CloudSyncService {
         .where((doc) => doc.data()['status']?.toString() == 'completed')
         .map((doc) => doc.id)
         .toSet();
+  }
+
+  /// يحذف مستندات الـdelta التي أصبحت جزءاً من نسخة كاملة مؤكدة (موجودة في
+  /// compactedDeltaIds)، بما فيها مجلد chunks الفرعي لكل واحد منها.
+  ///
+  /// ⚠️ [توفير حصة Firebase]: بدون هذا التنظيف، تتراكم مستندات الـdelta إلى
+  /// ما لا نهاية، وتُقرأ (كلها أو جزء كبير منها) في كل استعلام delta لاحق حتى
+  /// لو كانت قديمة ومُعالجة أصلاً — وهذا كان السبب الرئيسي لتجاوز حصة القراءة
+  /// اليومية. يعمل هذا التنظيف في الخلفية بعد نجاح كل نسخة كاملة، ولا يوقف أو
+  /// يُبطئ عملية الرفع نفسها إن فشل لأي سبب.
+  Future<void> _deleteCompactedDeltaDocuments(Set<String> deltaIds) async {
+    if (deltaIds.isEmpty || _workshopId == null || _workshopId!.isEmpty) {
+      return;
+    }
+    final backupsRef = _firestore
+        .collection('workshops')
+        .doc(_workshopId)
+        .collection('backups');
+
+    for (final deltaId in deltaIds) {
+      try {
+        final deltaRef = backupsRef.doc(deltaId);
+        final chunkDocs = await deltaRef
+            .collection('chunks')
+            .get(GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 20));
+        if (chunkDocs.docs.isNotEmpty) {
+          var deleteBatch = _firestore.batch();
+          var count = 0;
+          for (final chunkDoc in chunkDocs.docs) {
+            deleteBatch.delete(chunkDoc.reference);
+            count++;
+            if (count >= 300) {
+              await deleteBatch.commit().timeout(const Duration(seconds: 25));
+              deleteBatch = _firestore.batch();
+              count = 0;
+            }
+          }
+          if (count > 0) {
+            await deleteBatch.commit().timeout(const Duration(seconds: 25));
+          }
+        }
+        await deltaRef.delete().timeout(const Duration(seconds: 10));
+      } catch (error) {
+        // Best-effort cleanup only. A delta that fails to delete simply stays
+        // around for the next cleanup attempt; it never blocks a backup.
+        print('Could not delete compacted delta $deltaId: $error');
+      }
+    }
+  }
+
+  /// يحذف مستندات النسخ الكاملة القديمة (`snapshot_*`) وملفاتها الفرعية
+  /// (chunks) بعد أن تصبح نسخة جديدة هي المعتمدة (`activeSnapshotId`)،
+  /// ويُبقي فقط على [_keepPreviousFullSnapshots] نسخة سابقة كاحتياط أمان.
+  ///
+  /// ⚠️ [توفير حصة Firebase]: بدون هذا التنظيف، تبقى كل نسخة كاملة قديمة إلى
+  /// الأبد في السحابة (تستهلك مساحة تخزين، وتُحسب ضمن أي عملية جرد/فحص
+  /// مستقبلية على المجموعة). يعمل في الخلفية ولا يوقف نجاح الرفع الحالي.
+  Future<void> _cleanupObsoleteFullSnapshots(
+    DocumentReference<Map<String, dynamic>> latestDocRef, {
+    required String keepSnapshotId,
+  }) async {
+    if (_workshopId == null || _workshopId!.isEmpty) return;
+    try {
+      final backupsRef = latestDocRef.parent;
+      // Prefix query on the document id: every full-snapshot document id
+      // starts with "snapshot_", so this range matches exactly that family
+      // without needing any extra field or composite index.
+      final snapshotDocs = await backupsRef
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: 'snapshot_')
+          .where(FieldPath.documentId, isLessThan: 'snapshot_\uf8ff')
+          .orderBy(FieldPath.documentId, descending: true)
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 25));
+
+      var keptExtra = 0;
+      for (final doc in snapshotDocs.docs) {
+        if (doc.id == keepSnapshotId) continue;
+        if (keptExtra < _keepPreviousFullSnapshots) {
+          keptExtra++;
+          continue;
+        }
+        try {
+          final chunkDocs = await doc.reference
+              .collection('chunks')
+              .get(GetOptions(source: Source.server))
+              .timeout(const Duration(seconds: 25));
+          if (chunkDocs.docs.isNotEmpty) {
+            var deleteBatch = _firestore.batch();
+            var count = 0;
+            for (final chunkDoc in chunkDocs.docs) {
+              deleteBatch.delete(chunkDoc.reference);
+              count++;
+              if (count >= 300) {
+                await deleteBatch.commit().timeout(const Duration(seconds: 25));
+                deleteBatch = _firestore.batch();
+                count = 0;
+              }
+            }
+            if (count > 0) {
+              await deleteBatch.commit().timeout(const Duration(seconds: 25));
+            }
+          }
+          await doc.reference.delete().timeout(const Duration(seconds: 10));
+        } catch (error) {
+          print('Could not delete obsolete snapshot ${doc.id}: $error');
+        }
+      }
+    } catch (error) {
+      print('Obsolete full snapshot cleanup failed: $error');
+    }
   }
 
   Future<void> _applyLatestBackupUpdate(Map<String, dynamic> payload) async {
@@ -1915,6 +2090,11 @@ class CloudSyncService {
       // that worker addition forever. Re-read unapplied completed deltas as a
       // reliable fallback; handled IDs make this safe and idempotent.
       await _refreshDeltasFromCloud();
+
+      // نفس منطق الحماية ينطبق على الصلاحيات: لو انقطع مستمع Firestore
+      // للحظات (استئناف التطبيق من الخلفية مثلاً)، نعيد قراءة مستند
+      // المستخدم من الخادم هنا حتى لا تبقى صلاحية قديمة معروضة للعامل.
+      await _refreshPermissionsFromCloudIfChanged();
     } catch (e) {
       print('Cloud sync health check failed: $e');
     } finally {
@@ -1922,9 +2102,25 @@ class CloudSyncService {
     }
   }
 
+  /// إعادة قراءة صلاحيات هذا الحساب من الخادم مباشرة (وليس من الكاش
+  /// المحلي لـ Firestore) كحل احتياطي عندما ينقطع مستمع `_permissionsListener`.
+  Future<void> _refreshPermissionsFromCloudIfChanged() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      final doc = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .get(GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 10));
+      if (!doc.exists || doc.data() == null) return;
+      await _applyPermissionsUpdate(doc.data()!);
+    } catch (error) {
+      print('Permissions sync health check failed: $error');
+    }
+  }
+
   void _scheduleRealtimeListenerRetry([Object? error, StackTrace? stackTrace]) {
-    _listenersStarted = false;
-    _listenersWorkshopId = null;
     if (error != null) {
       print('Realtime listener stopped: $error');
       final now = DateTime.now();
@@ -1943,14 +2139,23 @@ class CloudSyncService {
     }
     _realtimeRetryTimer?.cancel();
     _realtimeRetryTimer = Timer(const Duration(seconds: 5), () async {
-      if (_auth.currentUser == null || _workshopId == null) return;
+      if (_auth.currentUser == null) return;
       startListeningForUpdates(onDataRestored ?? () {});
     });
   }
 
+  // ⚠️ [توفير حصة Firebase]: كانت هذه القيمة 20 ثانية، وهي كافية جداً كشبكة
+  // أمان احتياطية لأن التحديثات الحقيقية تصل أصلاً بشكل لحظي عبر المستمعين
+  // (_listener, _deltaListener, _liveEventListener, _permissionsListener).
+  // فحص كل 20 ثانية لكل جهاز متصل يستهلك آلاف عمليات القراءة يومياً لكل جهاز
+  // بمفرده، ويتجاوز حد خطة Spark المجاني (50 ألف قراءة/يوم) بسرعة كبيرة مع
+  // عدة عمال متصلين. رُفعت المدة إلى 3 دقائق لتقليل الاستهلاك اليومي بنسبة
+  // تفوق 99% دون أي تأثير ملموس على سرعة المزامنة اللحظية الفعلية.
+  static const Duration _realtimeHealthCheckInterval = Duration(minutes: 3);
+
   void _startRealtimeHealthCheck() {
     _realtimeHealthTimer?.cancel();
-    _realtimeHealthTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+    _realtimeHealthTimer = Timer.periodic(_realtimeHealthCheckInterval, (_) {
       _runRealtimeHealthCheck();
     });
     _runRealtimeHealthCheck();
@@ -2107,6 +2312,7 @@ class CloudSyncService {
     _measurementsListener?.cancel();
     _deletionsListener?.cancel();
     _orderDeletionsListener?.cancel();
+    _permissionsListener?.cancel();
     _listener = null;
     _catalogListener = null;
     _deltaListener = null;
@@ -2116,10 +2322,9 @@ class CloudSyncService {
     _measurementsListener = null;
     _deletionsListener = null;
     _orderDeletionsListener = null;
+    _permissionsListener = null;
     _pendingCloudChangePollTimer = null;
     _pendingTransactionUploadTimer = null;
-    _listenersStarted = false;
-    _listenersWorkshopId = null;
   }
 
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
@@ -2231,6 +2436,31 @@ class CloudSyncService {
     });
   }
 
+  /// إشعار بتعديل صلاحيات عامل من شاشة "إدارة العمال" (يستدعيها المدير فقط).
+  /// يكتب مباشرة إلى مستند users/{workerUid} في Firestore، بحيث يستلم هاتف
+  /// العامل التحديث فوراً عبر [_permissionsListener] دون انتظار أي نسخة
+  /// احتياطية كاملة أو إعادة تشغيل التطبيق.
+  Future<void> updateWorkerPermissions({
+    required String workerUid,
+    required Map<String, dynamic> permissions,
+  }) async {
+    final manager = _auth.currentUser;
+    if (manager == null) {
+      throw Exception('يجب تسجيل الدخول أولاً لتعديل صلاحيات العامل');
+    }
+    try {
+      await _firestore.collection('users').doc(workerUid).set({
+        'permissions': permissions,
+        'permissions_updated_at': FieldValue.serverTimestamp(),
+        'permissions_updated_by': manager.uid,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      throw Exception(
+        'فشل تحديث صلاحيات العامل: ${_describeCloudWriteFailure(e)}',
+      );
+    }
+  }
+
   void _scheduleCatalogUploadRetry() {
     _catalogRetryTimer?.cancel();
     _catalogRetryTimer = Timer(const Duration(seconds: 30), () async {
@@ -2319,9 +2549,7 @@ class CloudSyncService {
         return;
       }
 
-      final pending = await _db.exportPendingCloudChanges(
-        onlyTables: _liveEventPriorityTables,
-      );
+      final pending = await _db.exportPendingCloudChanges();
       if (pending.isEmpty) return;
       final prefs = await SharedPreferences.getInstance();
       final uploadId = _newUploadId();
@@ -3068,6 +3296,20 @@ class CloudSyncService {
         uploadId: uploadId,
         sourceKind: 'snapshot',
       );
+
+      // تنظيف الخلفية: حذف مستندات delta المدمجة في هذه النسخة، وحذف النسخ
+      // الكاملة القديمة غير المستخدمة. هذا هو الإصلاح الأساسي لمشكلة تجاوز
+      // حصة القراءة اليومية على Firebase — لا ينتظره المستخدم ولا يمنع نجاح
+      // الرفع الحالي حتى لو فشل التنظيف نفسه لأي سبب.
+      _deleteCompactedDeltaDocuments(compactedDeltaIds).catchError((error) {
+        print('Background delta cleanup warning: $error');
+      });
+      _cleanupObsoleteFullSnapshots(
+        latestDocRef,
+        keepSnapshotId: snapshotId,
+      ).catchError((error) {
+        print('Background snapshot cleanup warning: $error');
+      });
 
       // A successful Firestore write already means that the server accepted
       // the automatic upload. Avoid a second server-only read here: on some

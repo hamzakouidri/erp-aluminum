@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
 
-/// Application-admin-only definition of the main profile roles for each series.
+/// Administrator-only definition of the main profile roles for each series.
+/// This temporary page is intentionally independent from the quantity table.
 class SeriesTableConfigScreen extends StatefulWidget {
   final SqlDatabase db;
 
@@ -120,6 +121,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _series = [];
   List<Map<String, dynamic>> _sections = [];
+  List<Map<String, dynamic>> _joints = [];
   Map<String, dynamic>? _selectedProfile;
   Map<String, dynamic>? _selectedSeries;
   Map<String, dynamic>? _tableConfig;
@@ -130,6 +132,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   final Map<String, int?> _defaultSectionByRole = {
     for (final role in _roles) role.key: null,
   };
+  final Map<int, Map<String, String?>> _gasketTypeBySectionPosition = {};
 
   bool _loadingProfiles = true;
   bool _loadingSeries = false;
@@ -148,8 +151,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   bool get _isArabic =>
       context.read<AppSettingsProvider>().language == AppLanguage.arabic;
   String _t(String ar, String fr) => _isArabic ? ar : fr;
-  bool get _canAccess =>
-      context.read<AppSettingsProvider>().userRole == 'admin' || isAdmin;
   int? get _seriesId => (_selectedSeries?['id'] as num?)?.toInt();
   bool get _isSlidingSeries {
     final value =
@@ -192,8 +193,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final settings = context.watch<AppSettingsProvider>();
-    if (settings.userRole != 'admin' && !isAdmin) {
+    if (!context.watch<AppSettingsProvider>().isManager) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && Navigator.canPop(context)) Navigator.pop(context);
       });
@@ -236,6 +236,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _defaultSectionByRole[role.key] = null;
     }
     _tableConfig = null;
+    _gasketTypeBySectionPosition.clear();
     _sashWidth2Controller.clear();
     _sashWidth3Controller.clear();
     _sashWidth4Controller.clear();
@@ -259,14 +260,18 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       widget.db.readSectionsBySeries(seriesId),
       widget.db.getSeriesDesignRoles(seriesId),
       widget.db.getSeriesTableConfig(seriesId),
+      widget.db.readJoints(),
+      widget.db.getSectionJointLinksForSeries(seriesId),
     ]);
     if (!mounted) return;
 
     final roles = results[1] as List<Map<String, dynamic>>;
     _restoreDefinition(roles);
     _restoreFormulaConfig(results[2] as Map<String, dynamic>?);
+    _restoreJointLinks(results[4] as List<Map<String, dynamic>>);
     setState(() {
       _sections = results[0] as List<Map<String, dynamic>>;
+      _joints = results[3] as List<Map<String, dynamic>>;
       _loadingDefinition = false;
     });
   }
@@ -322,6 +327,26 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     }
   }
 
+  void _restoreJointLinks(List<Map<String, dynamic>> links) {
+    _gasketTypeBySectionPosition.clear();
+    for (final item in links) {
+      final sectionId = (item['section_id'] as num?)?.toInt();
+      final gasketType =
+          (item['gasket_type']?.toString().trim().isNotEmpty ?? false)
+          ? item['gasket_type'].toString().trim()
+          : item['joint_gasket_type']?.toString().trim() ?? '';
+      final position = item['position_key']?.toString().trim() ?? '';
+      if (sectionId == null || gasketType.isEmpty || position.isEmpty) {
+        continue;
+      }
+      final normalizedPosition = position == 'frame_gasket'
+          ? 'frame_inner'
+          : position;
+      _gasketTypeBySectionPosition.putIfAbsent(sectionId, () => {});
+      _gasketTypeBySectionPosition[sectionId]![normalizedPosition] = gasketType;
+    }
+  }
+
   void _toggleSection(String role, int sectionId, bool selected) {
     setState(() {
       final selectedIds = _sectionIdsByRole[role]!;
@@ -330,6 +355,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         _defaultSectionByRole[role] ??= sectionId;
       } else {
         selectedIds.remove(sectionId);
+        if (role == 'frame' || role == 'sash' || role == 'glazing_bead') {
+          _gasketTypeBySectionPosition.remove(sectionId);
+        }
         if (_defaultSectionByRole[role] == sectionId) {
           _defaultSectionByRole[role] = selectedIds.isEmpty
               ? null
@@ -371,10 +399,35 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         });
       }
     }
+    final jointLinks = <Map<String, dynamic>>[];
+    final jointPositionsByRole = <String, List<String>>{
+      if (!_isSlidingSeries) 'frame': const ['frame_inner', 'frame_outer'],
+      'sash': const ['sash_inner', 'sash_outer'],
+      'glazing_bead': const ['parclose_gasket'],
+    };
+    for (final entry in jointPositionsByRole.entries) {
+      for (final sectionId in _sectionIdsByRole[entry.key] ?? const <int>{}) {
+        final links = _gasketTypeBySectionPosition[sectionId] ?? const {};
+        for (final position in entry.value) {
+          final gasketType = links[position]?.trim() ?? '';
+          if (gasketType.isEmpty) continue;
+          jointLinks.add({
+            'section_id': sectionId,
+            'gasket_type': gasketType,
+            'position_key': position,
+            'is_default': true,
+          });
+        }
+      }
+    }
 
     setState(() => _saving = true);
     try {
       await widget.db.saveSeriesDesignRoles(seriesId: seriesId, roles: roles);
+      await widget.db.saveSectionJointLinksForSeries(
+        seriesId: seriesId,
+        links: jointLinks,
+      );
       await widget.db.upsertSeriesTableConfig(
         seriesId: seriesId,
         allowedSectionTypes:
@@ -425,8 +478,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<AppSettingsProvider>();
-    if (!_canAccess) return const Scaffold(body: SizedBox.shrink());
+    final settings = context.watch<AppSettingsProvider>();
+    if (!settings.isManager) return const Scaffold(body: SizedBox.shrink());
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -564,7 +617,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             icon: Icons.table_chart_rounded,
             title: _t('مكوّنات وحسابات السلسلة', 'Composants et calculs'),
             text: _t(
-              'حدد المقاطع التي تستعملها السلسلة. عند اختيار سلسلة منزلقة تظهر حسابات عرض الضلفة لكل حالتين أو ثلاث أو أربع ضلفات، وتستعمل في الرسم وحساب الكميات.',
+              'حدد المقاطع التي تستعملها السلسلة. عند اختيار سلسلة منزلقة تظهر هنا حسابات عرض الضلفة لكل حالتين أو ثلاث أو أربع ضلفات، وتستعمل في الرسم وحساب الكميات.',
               'Définissez les profils utilisés par la série. Pour une série coulissante, les calculs de largeur pour 2, 3 ou 4 ouvrants sont utilisés par le dessin et le calcul des quantités.',
             ),
           ),
@@ -586,6 +639,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
             const SizedBox(height: 14),
           ],
           for (final role in _availableRoles) _roleCard(role),
+          _aluminumJointLinksCard(),
           const SizedBox(height: 90),
         ],
       ),
@@ -669,22 +723,22 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           const SizedBox(height: 6),
           Text(
             _t(
-              'أدخل تعديل العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (عرض النافذة − التعديل) ÷ عدد الضلفات. القيمة الموجبة طرح، والسالبة زيادة. إذا بقيت القيمة صفرًا يستعمل النظام الحساب القديم.',
-              'Saisissez l’ajustement de largeur propre à cette série pour 2, 3 ou 4 ouvrants. Largeur = (largeur fenêtre − ajustement) ÷ nombre d’ouvrants. Une valeur positive soustrait, une valeur négative ajoute. Zéro conserve l’ancien calcul.',
+              'أدخل تعديل العرض الخاص بهذه السلسلة لكل حالتين أو ثلاث أو أربع ضلفات. عرض الضلفة = (العرض الداخلي − القيمة) ÷ عدد الضلفات. الرقم الموجب يطرح، والرقم السالب يضيف، والصفر يستعمل الحساب القديم.',
+              'Saisissez l’ajustement de largeur propre à cette série pour 2, 3 ou 4 ouvrants. Largeur = (largeur intérieure − valeur) ÷ nombre d’ouvrants. Une valeur positive retire, une valeur négative ajoute, zéro conserve l’ancien calcul.',
             ),
           ),
           const SizedBox(height: 12),
           _formulaField(
             _sashWidth2Controller,
-            _t('تعديل عرض ضلفتين (مم)', 'Ajustement largeur 2 ouvrants (mm)'),
+            _t('خصم عرض ضلفتين (مم)', 'Déduction largeur 2 ouvrants (mm)'),
           ),
           _formulaField(
             _sashWidth3Controller,
-            _t('تعديل عرض 3 ضلفات (مم)', 'Ajustement largeur 3 ouvrants (mm)'),
+            _t('خصم عرض 3 ضلفات (مم)', 'Déduction largeur 3 ouvrants (mm)'),
           ),
           _formulaField(
             _sashWidth4Controller,
-            _t('تعديل عرض 4 ضلفات (مم)', 'Ajustement largeur 4 ouvrants (mm)'),
+            _t('خصم عرض 4 ضلفات (مم)', 'Déduction largeur 4 ouvrants (mm)'),
           ),
           _formulaField(
             _sashOverlapController,
@@ -729,12 +783,231 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     child: TextField(
       controller: controller,
       keyboardType: TextInputType.numberWithOptions(
+        signed: true,
         decimal: !integer,
-        signed: !integer,
       ),
       decoration: InputDecoration(labelText: label),
     ),
   );
+
+  List<Map<String, dynamic>> _selectedSectionsForRole(String role) {
+    final ids = _sectionIdsByRole[role] ?? const <int>{};
+    if (ids.isEmpty) return const [];
+    return _sections.where((section) {
+      final sectionId = (section['id'] as num?)?.toInt();
+      return sectionId != null && ids.contains(sectionId);
+    }).toList();
+  }
+
+  List<String> _availableGasketTypes() {
+    const preferredOrder = [
+      'جوان فيتراج',
+      'جوان فراب',
+      'جوان سنترال',
+      'جوان براش',
+      'جوان بوراج',
+    ];
+    final types = <String>{};
+    for (final joint in _joints) {
+      final material = joint['type']?.toString().toLowerCase() ?? '';
+      if (material.contains('pvc')) continue;
+      final canonical = _canonicalGasketType(joint);
+      if (canonical != null) {
+        types.add(canonical);
+        continue;
+      }
+      final rawType = joint['gasket_type']?.toString().trim() ?? '';
+      if (rawType.isNotEmpty) types.add(rawType);
+    }
+    final sorted = types.toList()
+      ..sort((a, b) {
+        final aIndex = preferredOrder.indexOf(a);
+        final bIndex = preferredOrder.indexOf(b);
+        if (aIndex != -1 || bIndex != -1) {
+          return (aIndex == -1 ? 999 : aIndex).compareTo(
+            bIndex == -1 ? 999 : bIndex,
+          );
+        }
+        return a.compareTo(b);
+      });
+    return sorted;
+  }
+
+  String? _canonicalGasketType(Map<String, dynamic> joint) {
+    final text = '${joint['gasket_type'] ?? ''} ${joint['name'] ?? ''}'
+        .toLowerCase();
+    if (text.contains('فيتراج') ||
+        text.contains('vitrage') ||
+        text.contains('زجاج') ||
+        text.contains('glass')) {
+      return 'جوان فيتراج';
+    }
+    if (text.contains('فراب') ||
+        text.contains('frappe') ||
+        text.contains('ضرب')) {
+      return 'جوان فراب';
+    }
+    if (text.contains('سنترال') ||
+        text.contains('central') ||
+        text.contains('وسط')) {
+      return 'جوان سنترال';
+    }
+    if (text.contains('براش') ||
+        text.contains('بروش') ||
+        text.contains('بروس') ||
+        text.contains('brosse') ||
+        text.contains('brush') ||
+        text.contains('bros')) {
+      return 'جوان براش';
+    }
+    if (text.contains('بوراج') ||
+        text.contains('bourrage') ||
+        text.contains('bouraj')) {
+      return 'جوان بوراج';
+    }
+    return null;
+  }
+
+  void _setGasketTypeLink(int sectionId, String position, String? gasketType) {
+    setState(() {
+      final links = _gasketTypeBySectionPosition.putIfAbsent(
+        sectionId,
+        () => {},
+      );
+      final normalized = gasketType?.trim() ?? '';
+      if (normalized.isEmpty) {
+        links.remove(position);
+        if (links.isEmpty) _gasketTypeBySectionPosition.remove(sectionId);
+      } else {
+        links[position] = normalized;
+      }
+    });
+  }
+
+  Widget _aluminumJointLinksCard() {
+    final frameSections = _isSlidingSeries
+        ? const <Map<String, dynamic>>[]
+        : _selectedSectionsForRole('frame');
+    final sashSections = _selectedSectionsForRole('sash');
+    final parcloseSections = _selectedSectionsForRole('glazing_bead');
+    if (frameSections.isEmpty &&
+        sashSections.isEmpty &&
+        parcloseSections.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final gasketTypes = _availableGasketTypes();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ExpansionTile(
+        leading: const Icon(Icons.linear_scale_rounded),
+        title: Text(_t('ربط أنواع الجوانات', 'Types de joints liés')),
+        subtitle: Text(
+          _t(
+            _isSlidingSeries
+                ? 'الضلفة المنزلقة لها جوان داخلي وخارجي، والباكلوز له جوان واحد. إطار المنزلق لا يحمل جوان في هذه السلاسل.'
+                : 'إطار الفتح يمكن أن يحمل جواناً أو جوانين، والضلفة لها جوانان، والباكلوز له جوان واحد. يختار الحساب السماكة المناسبة من النوع المرتبط.',
+            _isSlidingSeries
+                ? 'L’ouvrant coulissant a un joint intérieur et extérieur, et la parclose un joint. Le dormant coulissant n’a pas de joint ici.'
+                : 'Le dormant ouvrant peut avoir un ou deux joints, l’ouvrant deux joints, et la parclose un joint. Le calcul choisit l’épaisseur adaptée du type lié.',
+          ),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        children: [
+          if (gasketTypes.isEmpty)
+            Text(
+              _t(
+                'لا توجد أنواع جوانات ألمنيوم في الكتالوج.',
+                'Aucun type de joint aluminium dans le catalogue.',
+              ),
+            )
+          else ...[
+            _jointRoleSection(_t('الإطار', 'Dormant'), frameSections, const [
+              ('frame_inner', 'جوان الإطار الداخلي', 'Joint dormant intérieur'),
+              ('frame_outer', 'جوان الإطار الخارجي', 'Joint dormant extérieur'),
+            ], gasketTypes),
+            _jointRoleSection(_t('الضلفة', 'Ouvrant'), sashSections, const [
+              ('sash_inner', 'جوان الظلفة الداخلي', 'Joint ouvrant intérieur'),
+              ('sash_outer', 'جوان الظلفة الخارجي', 'Joint ouvrant extérieur'),
+            ], gasketTypes),
+            _jointRoleSection(
+              _t('الباكلوز', 'Parclose'),
+              parcloseSections,
+              const [('parclose_gasket', 'جوان الباكلوز', 'Joint parclose')],
+              gasketTypes,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _jointRoleSection(
+    String title,
+    List<Map<String, dynamic>> sections,
+    List<(String, String, String)> positions,
+    List<String> gasketTypes,
+  ) {
+    if (sections.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          for (final section in sections)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_sectionLabel(section)),
+                  const SizedBox(height: 6),
+                  for (final position in positions)
+                    _gasketTypeDropdown(
+                      section,
+                      position.$1,
+                      _t(position.$2, position.$3),
+                      gasketTypes,
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gasketTypeDropdown(
+    Map<String, dynamic> section,
+    String position,
+    String label,
+    List<String> gasketTypes,
+  ) {
+    final sectionId = (section['id'] as num?)?.toInt();
+    if (sectionId == null) return const SizedBox.shrink();
+    final selected = _gasketTypeBySectionPosition[sectionId]?[position];
+    final validSelected = selected != null && gasketTypes.contains(selected);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DropdownButtonFormField<String?>(
+        isExpanded: true,
+        initialValue: validSelected ? selected : null,
+        decoration: InputDecoration(labelText: label),
+        items: [
+          DropdownMenuItem<String?>(
+            value: null,
+            child: Text(_t('بدون ربط', 'Sans liaison')),
+          ),
+          ...gasketTypes.map(
+            (type) => DropdownMenuItem<String?>(value: type, child: Text(type)),
+          ),
+        ],
+        onChanged: (type) => _setGasketTypeLink(sectionId, position, type),
+      ),
+    );
+  }
 
   Widget _informationCard({
     required IconData icon,

@@ -21,6 +21,7 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 
 enum _FrameResizeHandle {
+  center,
   topLeft,
   top,
   topRight,
@@ -57,15 +58,25 @@ class _WindowViewState extends State<WindowView> {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   bool get isSlidingSupported {
-    if (widget.systemMode == 'mixed') return true;
-    final type = activeSeriesForSystem?.type;
-    if (type == 'Frappe' || type == 'frappe') return false;
-    return widget.systemMode == 'sliding';
+    if (widget.systemMode == 'mixed') {
+      final activeSystemId = widget.model.activeSeries?.profileId;
+      if (activeSystemId == null) return false;
+
+      for (final system in widget.model.availableSystems) {
+        if (system.id != activeSystemId) continue;
+        return system.series.any(isSlidingSeriesForDrawing);
+      }
+      return false;
+    }
+
+    if (widget.systemMode != 'sliding') return false;
+    final series = widget.model.activeSlidingSeries;
+    if (series == null) return false;
+    return isSlidingSeriesForDrawing(series);
   }
 
   AluminumSeries? get activeSeriesForSystem {
-    if (widget.systemMode == 'sliding' ||
-        (widget.systemMode == 'mixed' && widget.model.isSlidingOnlyDrawing)) {
+    if (widget.systemMode == 'sliding') {
       return widget.model.activeSlidingSeries;
     }
     if (widget.systemMode == 'mixed') {
@@ -164,6 +175,8 @@ class _WindowViewState extends State<WindowView> {
   List<Map<String, dynamic>> _shutterCaissonOptions = [];
   Map<int, String> _unavailableCaissonReasons = {};
   bool _loadingShutterOptions = false;
+  double? _lastShutterOptionsHeight;
+  int? _lastShutterOptionsBladeId;
   StreamSubscription<String>? _catalogSubscription;
   Timer? _catalogReloadDebounce;
 
@@ -171,232 +184,12 @@ class _WindowViewState extends State<WindowView> {
   List<Map<String, dynamic>> _openingFrameProfiles = [];
   List<Map<String, dynamic>> _slidingFrameProfiles = [];
   List<Map<String, dynamic>> _sashProfiles = [];
+  List<Map<String, dynamic>> _openingSashProfiles = [];
+  List<Map<String, dynamic>> _slidingSashProfiles = [];
   int? _loadedSeriesId;
   int? _loadedOpeningFrameSeriesId;
   int? _loadedSlidingFrameSeriesId;
   bool _loadingAvailableProfiles = false;
-
-  bool _readProfileFlag(Object? value, {bool fallback = false}) {
-    if (value == null) return fallback;
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    final text = value.toString().trim().toLowerCase();
-    if (text.isEmpty) return fallback;
-    return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
-  }
-
-  String _profileText(Map<String, dynamic> section) =>
-      '${section['code'] ?? ''} ${section['name'] ?? ''} ${section['type'] ?? ''}'
-          .toLowerCase()
-          .trim();
-
-  bool _profileTextContains(
-    Map<String, dynamic> section,
-    Iterable<String> terms,
-  ) {
-    final text = _profileText(section);
-    return terms.any((term) => text.contains(term));
-  }
-
-  bool _sectionMapIsFrame(Map<String, dynamic> section) {
-    if (_readProfileFlag(section['is_frame'])) return true;
-    return _profileTextContains(section, const [
-      'frame',
-      'cadre',
-      'إطار',
-      'اطار',
-      'فريم',
-    ]);
-  }
-
-  bool _sectionMapIsSash(Map<String, dynamic> section) {
-    if (_readProfileFlag(section['is_sash'])) return true;
-    return _profileTextContains(section, const [
-      'sash',
-      'ouvrant',
-      'ضلفة',
-      'ضلف',
-      'ساش',
-      'lateral',
-      'latéral',
-      'central',
-      'chicane',
-      'traverse',
-      'جانبي',
-      'وسطي',
-      'شيكان',
-    ]);
-  }
-
-  bool _sectionMapLooksSliding(Map<String, dynamic> section) {
-    return _profileTextContains(section, const [
-      'coulissant',
-      'couliss',
-      'sliding',
-      'منزلق',
-      'جرار',
-      'rail',
-      'chicane',
-      'lateral',
-      'latéral',
-      'central',
-      'جانبي',
-      'وسطي',
-      'شيكان',
-    ]);
-  }
-
-  List<Map<String, dynamic>> _profilesForDrawingMode(
-    List<Map<String, dynamic>> profiles, {
-    required bool sliding,
-  }) {
-    if (profiles.isEmpty) return profiles;
-    if (!sliding) {
-      return profiles
-          .where((profile) => !_sectionMapLooksSliding(profile))
-          .toList();
-    }
-    final slidingProfiles = profiles
-        .where((profile) => _sectionMapLooksSliding(profile))
-        .toList();
-    return slidingProfiles.isNotEmpty ? slidingProfiles : profiles;
-  }
-
-  bool _selectedZoneUsesSlidingProfiles(WindowZone? zone) {
-    return widget.systemMode == 'sliding' ||
-        widget.model.isSlidingOnlyDrawing ||
-        (widget.systemMode == 'mixed' &&
-            zone != null &&
-            zone.content == ZoneContent.slidingSash);
-  }
-
-  bool _profileLooksReinforced(
-    Map<String, dynamic> profile, {
-    required bool central,
-  }) {
-    final code = profile['code']?.toString() ?? '';
-    final text = _profileText(profile);
-    return code.endsWith(central ? '107' : '108') ||
-        text.contains('معزز') ||
-        text.contains('renforc');
-  }
-
-  Map<String, dynamic>? _findSlidingMontantProfile({
-    required bool central,
-    required bool reinforced,
-  }) {
-    final loadedSlidingProfiles = _profilesForDrawingMode(
-      _sashProfiles,
-      sliding: true,
-    );
-    final seriesSlidingProfiles =
-        (widget.model.activeSlidingSeries?.sections ??
-                const <AluminumSection>[])
-            .where((section) => _sectionMapIsSash(section.toMap()))
-            .map((section) => section.toMap())
-            .toList();
-    final source = _mergeProfileRows(
-      loadedSlidingProfiles,
-      seriesSlidingProfiles,
-    );
-
-    bool matchesKind(Map<String, dynamic> item) {
-      final text = _profileText(item);
-      final code = item['code']?.toString() ?? '';
-      if (central) {
-        return text.contains('central') ||
-            text.contains('وسطي') ||
-            code.contains('105') ||
-            code.contains('107');
-      }
-      return text.contains('lateral') ||
-          text.contains('latéral') ||
-          text.contains('جانبي') ||
-          code.contains('104') ||
-          code.contains('108');
-    }
-
-    final candidates = source
-        .where(matchesKind)
-        .where(
-          (item) =>
-              _profileLooksReinforced(item, central: central) == reinforced,
-        )
-        .toList();
-    return candidates.isEmpty
-        ? null
-        : Map<String, dynamic>.from(candidates.first);
-  }
-
-  Future<Map<String, dynamic>> _profileWithSelectedColorPrice(
-    Map<String, dynamic> item,
-  ) async {
-    double price = 0.0;
-    final rawColorId = widget.model.selectedDbColor?['id'];
-    final colorId = rawColorId is num
-        ? rawColorId.toInt()
-        : int.tryParse(rawColorId?.toString() ?? '');
-    if (colorId != null && item['id'] != null) {
-      final db = SqlDatabase();
-      price = await db.getSectionPrice(item['id'], colorId);
-    }
-    final mutableSelected = Map<String, dynamic>.from(item);
-    mutableSelected['calculated_price'] = price;
-    return mutableSelected;
-  }
-
-  void _saveSlidingMontantOverride({
-    required bool central,
-    required bool reinforced,
-    required Map<String, dynamic> selected,
-  }) {
-    final keys = central
-        ? const [
-            'قائم وسطي معزز (Sash Central Renforcé)',
-            'قائم وسطي (Sash Central)',
-            'قائم وسطي (Central)',
-          ]
-        : const [
-            'قائم جانبي معزز (Sash Lateral Renforcé)',
-            'قائم جانبي (Sash Lateral)',
-            'قائم جانبي (Lateral)',
-          ];
-    final activeKey = central
-        ? (reinforced
-              ? 'قائم وسطي معزز (Sash Central Renforcé)'
-              : 'قائم وسطي (Sash Central)')
-        : (reinforced
-              ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
-              : 'قائم جانبي (Sash Lateral)');
-    for (final key in keys) {
-      widget.model.componentOverrides[key] = selected;
-    }
-    widget.model.componentOverrides[activeKey] = selected;
-  }
-
-  List<Map<String, dynamic>> _mergeProfileRows(
-    Iterable<Map<String, dynamic>> preferred,
-    Iterable<Map<String, dynamic>> fallback,
-  ) {
-    final merged = <Map<String, dynamic>>[];
-    final seen = <String>{};
-
-    void add(Map<String, dynamic> row) {
-      final id = row['id']?.toString();
-      final key = id == null || id.isEmpty
-          ? '${row['series_id']}-${row['code']}-${row['name']}-${row['type']}'
-          : id;
-      if (seen.add(key)) merged.add(Map<String, dynamic>.from(row));
-    }
-
-    for (final row in preferred) {
-      add(row);
-    }
-    for (final row in fallback) {
-      add(row);
-    }
-    return merged;
-  }
 
   // Drawing actions can generate far more pointer events than the display can
   // render.  Keep the full controls page at one refresh per frame; the canvas
@@ -430,6 +223,8 @@ class _WindowViewState extends State<WindowView> {
           _openingFrameProfiles = [];
           _slidingFrameProfiles = [];
           _sashProfiles = [];
+          _openingSashProfiles = [];
+          _slidingSashProfiles = [];
           _loadedSeriesId = null;
           _loadedOpeningFrameSeriesId = null;
           _loadedSlidingFrameSeriesId = null;
@@ -470,6 +265,16 @@ class _WindowViewState extends State<WindowView> {
                 ? frames
                 : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId))
           : <Map<String, dynamic>>[];
+      final openingSashes = needsOpeningFrames
+          ? (openingSeriesId == seriesId
+                ? sashes
+                : await _loadSashProfilesForSeries(db, myDb, openingSeriesId))
+          : <Map<String, dynamic>>[];
+      final slidingSashes = needsSlidingFrames
+          ? (slidingSeriesId == seriesId
+                ? sashes
+                : await _loadSashProfilesForSeries(db, myDb, slidingSeriesId))
+          : <Map<String, dynamic>>[];
 
       // Ignore an old result when the user has already switched series.
       if (!mounted || activeSeriesForSystem?.id != seriesId) return;
@@ -478,6 +283,8 @@ class _WindowViewState extends State<WindowView> {
         _openingFrameProfiles = openingFrames;
         _slidingFrameProfiles = slidingFrames;
         _sashProfiles = sashes;
+        _openingSashProfiles = openingSashes;
+        _slidingSashProfiles = slidingSashes;
         _loadedSeriesId = seriesId;
         _loadedOpeningFrameSeriesId = needsOpeningFrames
             ? openingSeriesId
@@ -523,14 +330,20 @@ class _WindowViewState extends State<WindowView> {
       whereArgs: [seriesId],
     );
     final legacyFrames = allSections
-        .where((s) => _sectionMapIsFrame(Map<String, dynamic>.from(s)))
+        .where((s) {
+          final ty = s['type'].toString().toLowerCase().trim();
+          return ty.contains('frame') ||
+              ty.contains('cadre') ||
+              ty.contains('إطار') ||
+              ty.contains('فريم');
+        })
         .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
         .toList();
     final configuredFrames = await db.getDesignSectionsForRoles(
       seriesId,
       const ['frame', 'frame_extension'],
     );
-    return _mergeProfileRows(configuredFrames, legacyFrames);
+    return configuredFrames.isEmpty ? legacyFrames : configuredFrames;
   }
 
   Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
@@ -544,7 +357,23 @@ class _WindowViewState extends State<WindowView> {
       whereArgs: [seriesId],
     );
     final legacySashes = allSections
-        .where((s) => _sectionMapIsSash(Map<String, dynamic>.from(s)))
+        .where((s) {
+          final ty = s['type'].toString().toLowerCase().trim();
+          final name = s['name'].toString().toLowerCase().trim();
+          return ty.contains('sash') ||
+              ty.contains('ouvrant') ||
+              ty.contains('lateral') ||
+              ty.contains('central') ||
+              ty.contains('chicane') ||
+              ty.contains('traverse') ||
+              ty.contains('ضلفة') ||
+              ty.contains('ساش') ||
+              name.contains('lateral') ||
+              name.contains('central') ||
+              name.contains('chicane') ||
+              name.contains('جانبي') ||
+              name.contains('وسطي');
+        })
         .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
         .toList();
     final configuredSashes = await db
@@ -556,12 +385,45 @@ class _WindowViewState extends State<WindowView> {
           'sash_traverse',
           'chicane',
         ]);
-    return _mergeProfileRows(configuredSashes, legacySashes);
+    return configuredSashes.isEmpty ? legacySashes : configuredSashes;
+  }
+
+  bool _seriesIsPvc(AluminumSeries? series) {
+    if (series == null) return widget.model.isPVC;
+    for (final system in widget.model.availableSystems) {
+      if (system.id == series.profileId ||
+          system.series.any((candidate) => candidate.id == series.id)) {
+        return system.type.toLowerCase().trim() == 'pvc';
+      }
+    }
+    return false;
+  }
+
+  List<Map<String, dynamic>> _filterFrameProfilesForDrawingRules(
+    List<Map<String, dynamic>> profiles, {
+    required AluminumSeries? series,
+    AccessoryDrawingMode? drawingMode,
+  }) {
+    final seriesType = '${series?.name ?? ''} ${series?.type ?? ''}'
+        .toLowerCase()
+        .trim();
+    var filtered = profiles.where((profile) {
+      return profileSectionMatchesDrawingMode(
+        section: profile,
+        profileType: 'frame',
+        activeSeriesType: seriesType,
+        drawingMode: drawingMode,
+      );
+    }).toList();
+    if (!widget.model.hasShutter || _seriesIsPvc(series)) return filtered;
+    return filtered
+        .where((profile) => !profileHasIntegratedSideCover(profile))
+        .toList();
   }
 
   List<Map<String, dynamic>> _frameProfilesFromSeries(AluminumSeries? series) {
     if (series == null) return const <Map<String, dynamic>>[];
-    return series.sections
+    final profiles = series.sections
         .where((section) {
           final type = section.type.toLowerCase().trim();
           final name = section.name.toLowerCase().trim();
@@ -577,6 +439,7 @@ class _WindowViewState extends State<WindowView> {
         })
         .map((section) => section.toMap())
         .toList();
+    return _filterFrameProfilesForDrawingRules(profiles, series: series);
   }
 
   DecorationImage? _getWoodTextureImage(Map<String, dynamic> dbColor) {
@@ -1105,6 +968,19 @@ class _WindowViewState extends State<WindowView> {
 
   void _refreshModelDependentUi() {
     _syncDrawerGlassFromDrawing();
+    final rawBlade = widget.model.componentOverrides['الشرائح (Lames)'];
+    final rawBladeId = rawBlade is Map ? rawBlade['id'] : null;
+    final bladeId = rawBladeId is num
+        ? rawBladeId.toInt()
+        : int.tryParse(rawBladeId?.toString() ?? '');
+    if (widget.model.hasShutter &&
+        (_lastShutterOptionsHeight != widget.model.height ||
+            _lastShutterOptionsBladeId != bladeId)) {
+      _lastShutterOptionsHeight = widget.model.height;
+      _lastShutterOptionsBladeId = bladeId;
+      unawaited(_loadShutterOptions());
+    }
+
     final openingSeriesId = widget.model.activeSeries?.id;
     final slidingSeriesId = widget.model.activeSlidingSeries?.id;
     final needsOpeningFrames =
@@ -1256,6 +1132,9 @@ class _WindowViewState extends State<WindowView> {
           where: 'blade_id = ?',
           whereArgs: [bladeId],
         );
+        final fallbackMinimumSize = widget.model.height > 2400
+            ? 205.0
+            : (widget.model.height > 1600 ? 185.0 : 155.0);
         if (limits.isNotEmpty) {
           for (final caisson in configuredCaissons) {
             if (_isCaissonTunnelOption(caisson)) continue;
@@ -1275,6 +1154,17 @@ class _WindowViewState extends State<WindowView> {
             } else if (widget.model.height > maxHeight) {
               unavailableCaissonReasons[id] =
                   'الحد الأقصى لهذا الصندوق ${maxHeight.toStringAsFixed(0)} مم.';
+            }
+          }
+        } else {
+          for (final caisson in configuredCaissons) {
+            if (_isCaissonTunnelOption(caisson)) continue;
+            final id = (caisson['id'] as num?)?.toInt();
+            final size = _caissonSizeMm(caisson);
+            if (id == null || size == null) continue;
+            if (size + 0.5 < fallbackMinimumSize) {
+              unavailableCaissonReasons[id] =
+                  'هذا الصندوق أصغر من الحد المطلوب ${fallbackMinimumSize.toStringAsFixed(0)} مم.';
             }
           }
         }
@@ -1781,7 +1671,6 @@ class _WindowViewState extends State<WindowView> {
   }
 
   WindowZone? _frameAtBorder(Offset modelPosition) {
-    if (widget.model.zones.length < 2) return null;
     final thickness = widget.model.profileThickness;
     for (final zone in widget.model.zones.reversed) {
       final outer = _outerRectForFrame(zone);
@@ -1809,6 +1698,7 @@ class _WindowViewState extends State<WindowView> {
 
     final outer = _outerRectForFrame(zone);
     final handles = <_FrameResizeHandle, Offset>{
+      _FrameResizeHandle.center: outer.center,
       _FrameResizeHandle.topLeft: outer.topLeft,
       _FrameResizeHandle.top: Offset(outer.center.dx, outer.top),
       _FrameResizeHandle.topRight: outer.topRight,
@@ -2896,8 +2786,7 @@ class _WindowViewState extends State<WindowView> {
                                 // inside it.  Its eight resize handles then
                                 // become available.
                                 final frameAtBorder = _frameAtBorder(modelPos);
-                                if (widget.model.isDrawingMode &&
-                                    frameAtBorder != null) {
+                                if (frameAtBorder != null) {
                                   setState(() {
                                     _isShutterSelected = false;
                                     _isBottomPanelExpanded = true;
@@ -3003,20 +2892,13 @@ class _WindowViewState extends State<WindowView> {
                                               ),
                                         );
                                     if (!mounted || selected == null) return;
-                                    double price = 0.0;
-                                    if (widget.model.selectedDbColor != null) {
-                                      int colorId =
-                                          widget.model.selectedDbColor!['id'];
-                                      final db = SqlDatabase();
-                                      price = await db.getSectionPrice(
-                                        selected['id'],
-                                        colorId,
-                                      );
-                                    }
-                                    if (!mounted) return;
                                     final mutableSelected =
                                         Map<String, dynamic>.from(selected);
-                                    mutableSelected['calculated_price'] = price;
+                                    mutableSelected['calculated_price'] =
+                                        await _sectionPriceForSelectedColor(
+                                          mutableSelected,
+                                        );
+                                    if (!mounted) return;
 
                                     setState(() {
                                       final newOverrides =
@@ -3088,21 +2970,18 @@ class _WindowViewState extends State<WindowView> {
                                     _frameResizeHistorySaved = false;
                                   } else if (isFrameSelected &&
                                       widget.model.selection.zoneId == null &&
-                                      widget.model.isDrawingMode &&
                                       widget.model.canBeArchedOrSlanted &&
                                       (touchScreen - tlScreen).distance <
                                           hitRadius) {
                                     _isDraggingSlantLeft = true;
                                   } else if (isFrameSelected &&
                                       widget.model.selection.zoneId == null &&
-                                      widget.model.isDrawingMode &&
                                       widget.model.canBeArchedOrSlanted &&
                                       (touchScreen - trScreen).distance <
                                           hitRadius) {
                                     _isDraggingSlantRight = true;
                                   } else if (isFrameSelected &&
                                       widget.model.selection.zoneId == null &&
-                                      widget.model.isDrawingMode &&
                                       widget.model.canBeArchedOrSlanted &&
                                       (touchScreen - tcScreen).distance <
                                           hitRadius) {
@@ -3636,8 +3515,7 @@ class _WindowViewState extends State<WindowView> {
                                     widget.model.updateDrawing(modelPos);
                                   } else if (_draggedFrameResizeHandle !=
                                           null &&
-                                      _draggedFrameZoneId != null &&
-                                      widget.model.isDrawingMode) {
+                                      _draggedFrameZoneId != null) {
                                     final handle = _draggedFrameResizeHandle!;
                                     final deltaX =
                                         details.focalPointDelta.dx /
@@ -3645,35 +3523,47 @@ class _WindowViewState extends State<WindowView> {
                                     final deltaY =
                                         details.focalPointDelta.dy /
                                         (_userScale * widget.model.canvasScale);
-                                    widget.model.resizeFrameFromHandles(
-                                      _draggedFrameZoneId!,
-                                      moveLeft:
-                                          handle == _FrameResizeHandle.left ||
-                                          handle ==
-                                              _FrameResizeHandle.topLeft ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomLeft,
-                                      moveRight:
-                                          handle == _FrameResizeHandle.right ||
-                                          handle ==
-                                              _FrameResizeHandle.topRight ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomRight,
-                                      moveTop:
-                                          handle == _FrameResizeHandle.top ||
-                                          handle ==
-                                              _FrameResizeHandle.topLeft ||
-                                          handle == _FrameResizeHandle.topRight,
-                                      moveBottom:
-                                          handle == _FrameResizeHandle.bottom ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomLeft ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomRight,
-                                      deltaX: deltaX,
-                                      deltaY: deltaY,
-                                      saveHistory: !_frameResizeHistorySaved,
-                                    );
+                                    if (handle == _FrameResizeHandle.center) {
+                                      widget.model.moveFrameBy(
+                                        _draggedFrameZoneId!,
+                                        deltaX: deltaX,
+                                        deltaY: deltaY,
+                                        saveHistory: !_frameResizeHistorySaved,
+                                      );
+                                    } else {
+                                      widget.model.resizeFrameFromHandles(
+                                        _draggedFrameZoneId!,
+                                        moveLeft:
+                                            handle == _FrameResizeHandle.left ||
+                                            handle ==
+                                                _FrameResizeHandle.topLeft ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomLeft,
+                                        moveRight:
+                                            handle ==
+                                                _FrameResizeHandle.right ||
+                                            handle ==
+                                                _FrameResizeHandle.topRight ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomRight,
+                                        moveTop:
+                                            handle == _FrameResizeHandle.top ||
+                                            handle ==
+                                                _FrameResizeHandle.topLeft ||
+                                            handle ==
+                                                _FrameResizeHandle.topRight,
+                                        moveBottom:
+                                            handle ==
+                                                _FrameResizeHandle.bottom ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomLeft ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomRight,
+                                        deltaX: deltaX,
+                                        deltaY: deltaY,
+                                        saveHistory: !_frameResizeHistorySaved,
+                                      );
+                                    }
                                     _frameResizeHistorySaved = true;
                                   } else if (_isDraggingSlantLeft) {
                                     double dy =
@@ -4359,8 +4249,10 @@ class _WindowViewState extends State<WindowView> {
             }
             final suggested = widget.model
                 .suggestedIntercallThicknessForDoubleGlass(
-                  thicknessOuter: candidate.thicknessOuter ?? 5.0,
-                  thicknessInner: candidate.thicknessInner ?? 5.0,
+                  thicknessOuter:
+                      candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
+                  thicknessInner:
+                      candidate.thicknessInner ?? kDefaultGlassPaneThickness,
                   jointTwoSides: candidate.jointTwoSides,
                 );
             return suggested == null
@@ -4374,9 +4266,7 @@ class _WindowViewState extends State<WindowView> {
               return null;
             }
 
-            final total =
-                spec.totalThickness(widget.model.allGlassCache) +
-                widget.model.glassGasketAllowanceForSpec(spec);
+            final total = spec.totalThickness(widget.model.allGlassCache);
             final difference = total - maximum;
             final isExact = difference.abs() < 0.01;
             final isAbove = difference > 0;
@@ -4435,8 +4325,10 @@ class _WindowViewState extends State<WindowView> {
           );
           final requiredIntercall = structure == GlassStructure.double
               ? widget.model.suggestedIntercallThicknessForDoubleGlass(
-                  thicknessOuter: spec.thicknessOuter ?? 5.0,
-                  thicknessInner: spec.thicknessInner ?? 5.0,
+                  thicknessOuter:
+                      spec.thicknessOuter ?? kDefaultGlassPaneThickness,
+                  thicknessInner:
+                      spec.thicknessInner ?? kDefaultGlassPaneThickness,
                   jointTwoSides: spec.jointTwoSides,
                 )
               : null;
@@ -4549,14 +4441,11 @@ class _WindowViewState extends State<WindowView> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8, bottom: 4),
                   child: Text(
-                    Localization.translate('نوع المعالجة:', lang),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
+                    'نوع المعالجة:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                   ),
                 ),
                 Wrap(
@@ -4607,14 +4496,11 @@ class _WindowViewState extends State<WindowView> {
                     ),
                   ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                const Padding(
+                  padding: EdgeInsets.only(top: 12, bottom: 4),
                   child: Text(
-                    Localization.translate('المظهر:', lang),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
+                    'المظهر:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                   ),
                 ),
                 Wrap(
@@ -4686,11 +4572,11 @@ class _WindowViewState extends State<WindowView> {
                           .toList(),
                 ),
                 if (finish == GlassFinish.stopSol) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12, bottom: 4),
                     child: Text(
-                      Localization.translate('لون الزجاج (ستوبسول):', lang),
-                      style: const TextStyle(
+                      'لون الزجاج (ستوبسول):',
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 11,
                       ),
@@ -4783,15 +4669,21 @@ class _WindowViewState extends State<WindowView> {
                       finish,
                       color,
                     );
-                    final maxGlass =
-                        widget.model.selectedParcloseMaxGlassThickness;
-                    if (!widget.model.isPVC && maxGlass != null) {
+                    final isSliding67Family = widget.model.isSliding67Family;
+                    final isSliding =
+                        widget.systemMode == 'sliding' ||
+                        widget.model.systemMode == 'sliding' ||
+                        zone?.content == ZoneContent.slidingSash;
+                    if (isSliding && isSliding67Family) {
                       final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
-                      final double maxAllowed = maxGlass - minGasket;
+                      final double maxAllowed =
+                          24.0 - minGasket; // 20.0 or 22.0
                       if (spec.structure == GlassStructure.double) {
                         final double tOther = isOuter
-                            ? (spec.thicknessInner ?? 5.0)
-                            : (spec.thicknessOuter ?? 5.0);
+                            ? (spec.thicknessInner ??
+                                  kDefaultGlassPaneThickness)
+                            : (spec.thicknessOuter ??
+                                  kDefaultGlassPaneThickness);
                         final int intercall = spec.intercallThickness;
                         thicknesses = thicknesses
                             .where(
@@ -5151,9 +5043,13 @@ class _WindowViewState extends State<WindowView> {
                 const Divider(),
               ],
 
-              // ===== خيار اتجاه الجوان للنظام المنزلق فقط =====
-              if (widget.systemMode == 'sliding' ||
-                  widget.model.systemMode == 'sliding') ...[
+              // ===== خيار اتجاه الجوان للزجاج في الألمنيوم =====
+              if (!widget.model.isPVC &&
+                  (zone?.content == ZoneContent.slidingSash ||
+                      widget.model.zones.any(
+                        (candidate) =>
+                            candidate.content == ZoneContent.slidingSash,
+                      ))) ...[
                 const Divider(),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
@@ -5170,7 +5066,7 @@ class _WindowViewState extends State<WindowView> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'وضع الجوان (منزلق):',
+                              'وضع جوان الزجاج:',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
@@ -5196,8 +5092,10 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         onPressed: (idx) {
                           final twoSides = idx == 0;
-                          final double tOuter = spec.thicknessOuter ?? 5.0;
-                          final double tInner = spec.thicknessInner ?? 5.0;
+                          final double tOuter =
+                              spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+                          final double tInner =
+                              spec.thicknessInner ?? kDefaultGlassPaneThickness;
                           final int intercall = spec.intercallThickness;
                           final bool isValid =
                               spec.structure == GlassStructure.double
@@ -5220,7 +5118,7 @@ class _WindowViewState extends State<WindowView> {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'لا يمكن تطبيق هذا الاختيار لأن الزجاج مع الأنتركال والجوان يتجاوز سعة البيركلوز الحالية.',
+                                  'لا يمكن التغيير إلى جهتين لأن سمك الزجاج الحالي يتجاوز 20 مم. يرجى تقليل سمك الزجاج أو الفاصل أولاً.',
                                 ),
                                 backgroundColor: Colors.red,
                               ),
@@ -5338,23 +5236,18 @@ class _WindowViewState extends State<WindowView> {
                                 double? defaultThickOuter;
                                 double? defaultThickInner;
                                 if (s == GlassStructure.double) {
-                                  if (spec.structure != GlassStructure.double) {
-                                    defaultThickOuter = 5.0;
-                                    defaultThickInner = 5.0;
-                                  } else {
-                                    defaultThickOuter =
-                                        spec.thicknessOuter ??
-                                        widget.model.getThicknessForFinish(
-                                          spec.finishOuter,
-                                          spec.colorOuter,
-                                        );
-                                    defaultThickInner =
-                                        spec.thicknessInner ??
-                                        widget.model.getThicknessForFinish(
-                                          spec.finishInner,
-                                          spec.colorInner,
-                                        );
-                                  }
+                                  defaultThickOuter =
+                                      spec.thicknessOuter ??
+                                      widget.model.getThicknessForFinish(
+                                        spec.finishOuter,
+                                        spec.colorOuter,
+                                      );
+                                  defaultThickInner =
+                                      spec.thicknessInner ??
+                                      widget.model.getThicknessForFinish(
+                                        spec.finishInner,
+                                        spec.colorInner,
+                                      );
                                   if (defaultThickOuter == 0.0) {
                                     defaultThickOuter = 5.0;
                                   }
@@ -6425,8 +6318,10 @@ class _WindowViewState extends State<WindowView> {
                       showWarning:
                           widget.model.getPriceForIntercall(val) == 0.0,
                       onPressed: () {
-                        final double tOuter = spec.thicknessOuter ?? 5.0;
-                        final double tInner = spec.thicknessInner ?? 5.0;
+                        final double tOuter =
+                            spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+                        final double tInner =
+                            spec.thicknessInner ?? kDefaultGlassPaneThickness;
                         String? warning;
                         if (requiredIntercall == null) {
                           warning =
@@ -7031,43 +6926,15 @@ class _WindowViewState extends State<WindowView> {
               children: [
                 Checkbox(
                   value: zone.slidingMontantReinforced[key] ?? false,
-                  onChanged: (v) async {
+                  onChanged: (v) {
                     setState(() {
                       zone.slidingMontantReinforced[key] = v ?? false;
                     });
-                    final central = key.startsWith('central_');
-                    final reinforced = central
-                        ? slidingZones.any(
-                            (z) => z.slidingMontantReinforced.entries.any(
-                              (entry) =>
-                                  entry.key.startsWith('central_') &&
-                                  entry.value == true,
-                            ),
-                          )
-                        : slidingZones.any(
-                            (z) =>
-                                z.slidingMontantReinforced['lateral_0'] ==
-                                    true ||
-                                z.slidingMontantReinforced['lateral_1'] == true,
-                          );
-                    final matchedProfile = _findSlidingMontantProfile(
-                      central: central,
-                      reinforced: reinforced,
+                    unawaited(
+                      _syncSlidingMontantOverrideFromFlags(
+                        central: key.startsWith('central_'),
+                      ),
                     );
-                    if (matchedProfile != null) {
-                      final selected = await _profileWithSelectedColorPrice(
-                        matchedProfile,
-                      );
-                      if (!mounted) return;
-                      setState(() {
-                        _saveSlidingMontantOverride(
-                          central: central,
-                          reinforced: reinforced,
-                          selected: selected,
-                        );
-                      });
-                    }
-                    widget.model.refreshUI();
                   },
                   activeColor: Colors.blue,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -7843,16 +7710,13 @@ class _WindowViewState extends State<WindowView> {
               const Divider(height: 20),
 
               if (!widget.model.isPVC &&
-                  widget.model.systemMode != 'sliding' &&
+                  widget.model.canUseOpeningOnlyOptions &&
                   (widget.model.hasBottomFrame ||
                       widget.model.hasFramePlintheBottom)) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
-                    Localization.translate(
-                      'استخدام بلانت بالأسفل (للإطار)',
-                      lang,
-                    ),
+                    Localization.translate('استخدام بلانت أسفل الضلفة', lang),
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -7867,7 +7731,7 @@ class _WindowViewState extends State<WindowView> {
               ],
 
               if (widget.model.hasBottomFrame &&
-                  widget.model.systemMode != 'sliding') ...[
+                  widget.model.canUseOpeningOnlyOptions) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -7883,21 +7747,22 @@ class _WindowViewState extends State<WindowView> {
                     widget.model.toggleSystemOB(value);
                   },
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    Localization.translate('ديمي او بي (Demi OB)', lang),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                if (widget.model.canUseDemiOB)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      Localization.translate('ديمي او بي (Demi OB)', lang),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                    value: widget.model.effectiveUseDemiOB,
+                    activeThumbColor: Colors.blue,
+                    onChanged: (value) {
+                      widget.model.toggleDemiOB(value);
+                    },
                   ),
-                  value: widget.model.useDemiOB,
-                  activeThumbColor: Colors.blue,
-                  onChanged: (value) {
-                    widget.model.toggleDemiOB(value);
-                  },
-                ),
                 if (widget.model.zones.any(
                   (z) => z.content == ZoneContent.doubleSash,
                 ))
@@ -7937,16 +7802,19 @@ class _WindowViewState extends State<WindowView> {
 
               Builder(
                 builder: (context) {
-                  // 1. تحديد السلاسل التي تدعم هذه الخاصية
-                  final String seriesName =
-                      activeSeriesForSystem?.name.toLowerCase() ?? '';
-                  final bool isSupported =
-                      seriesName.contains('67000') ||
-                      seriesName.contains('h36') ||
-                      seriesName.contains('h30') ||
-                      seriesName.contains('hps');
+                  final montantProfiles = <Map<String, dynamic>>[
+                    ..._sashProfiles,
+                    ...?widget.model.activeSlidingSeries?.sections.map(
+                      (section) => section.toMap(),
+                    ),
+                  ];
+                  final bool isSupported = montantProfiles.any(
+                    (item) =>
+                        _isSlidingMontantCandidate(item, central: false) ||
+                        _isSlidingMontantCandidate(item, central: true),
+                  );
 
-                  // 2. إذا كانت السلسلة مدعومة ويوجد نظام منزلق
+                  // 2. إذا كانت السلسلة فيها مونطو منزلق ويوجد نظام منزلق
                   if (isSupported && firstSlidingZone != null) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -8662,14 +8530,7 @@ class _WindowViewState extends State<WindowView> {
     Map<String, dynamic> frame,
   ) async {
     final mutable = Map<String, dynamic>.from(frame);
-    var price = 0.0;
-    final colorId = widget.model.selectedDbColor?['id'];
-    final frameId = mutable['id'];
-    if (colorId != null && frameId != null) {
-      final db = SqlDatabase();
-      price = await db.getSectionPrice(frameId, colorId);
-    }
-    mutable['calculated_price'] = price;
+    mutable['calculated_price'] = await _sectionPriceForSelectedColor(mutable);
     if (!mounted) return;
     setState(() {
       widget.model.setMullionFrameSection(type, mutable);
@@ -9409,6 +9270,7 @@ class _WindowViewState extends State<WindowView> {
         }
       }
       if (widget.model.activeSlidingSeries != null &&
+          widget.model.activeSlidingSeries!.profileId == activeSystemId &&
           !list.any((s) => s.id == widget.model.activeSlidingSeries!.id)) {
         list.add(widget.model.activeSlidingSeries!);
       }
@@ -9504,7 +9366,9 @@ class _WindowViewState extends State<WindowView> {
                   },
                 ),
               ),
-              if (widget.systemMode == 'mixed' && isSlidingSupported) ...[
+              if (widget.systemMode == 'mixed' &&
+                  isSlidingSupported &&
+                  slidingItemsList.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Container(
                   constraints: const BoxConstraints(maxWidth: 160),
@@ -10289,27 +10153,6 @@ class _WindowViewState extends State<WindowView> {
     String slidingSeriesName = widget.model.activeSlidingSeries != null
         ? widget.model.activeSlidingSeries!.name.toLowerCase()
         : seriesName;
-    final bool selectedZoneUsesSlidingProfiles =
-        _selectedZoneUsesSlidingProfiles(zone);
-    final activeProfileSeries = selectedZoneUsesSlidingProfiles
-        ? (widget.model.activeSlidingSeries ?? activeSeriesForSystem)
-        : (widget.model.activeSeries ?? activeSeriesForSystem);
-    final profileMaterialType = selectedZoneUsesSlidingProfiles
-        ? (widget.model.isSlidingPVC ? 'PVC' : 'Aluminium')
-        : (widget.model.isPVC ? 'PVC' : 'Aluminium');
-    final selectedFrameOverride = selectedZoneUsesSlidingProfiles
-        ? widget.model.slidingFrameOverride
-        : widget.model.frameOverride;
-    final selectedSashOverride = selectedZoneUsesSlidingProfiles
-        ? widget.model.slidingSashOverride
-        : widget.model.sashOverride;
-
-    int? readSelectedColorId() {
-      final raw = widget.model.selectedDbColor?['id'];
-      if (raw is int) return raw;
-      if (raw is num) return raw.toInt();
-      return int.tryParse(raw?.toString() ?? '');
-    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -10345,42 +10188,58 @@ class _WindowViewState extends State<WindowView> {
               child: Row(
                 children: [
                   _ContentButton(
-                    label: selectedFrameOverride != null
-                        ? '${selectedFrameOverride['name']}'
+                    label:
+                        ((zone.content == ZoneContent.slidingSash ||
+                                    widget.systemMode == 'sliding')
+                                ? widget.model.slidingFrameOverride
+                                : widget.model.frameOverride) !=
+                            null
+                        ? '${((zone.content == ZoneContent.slidingSash || widget.systemMode == 'sliding') ? widget.model.slidingFrameOverride : widget.model.frameOverride)!['name']}'
                         : Localization.translate('اختر الإطار (Cadre)', lang),
                     icon: Icons.border_outer_rounded,
-                    selected: selectedFrameOverride != null,
+                    selected:
+                        ((zone.content == ZoneContent.slidingSash ||
+                                widget.systemMode == 'sliding')
+                            ? widget.model.slidingFrameOverride
+                            : widget.model.frameOverride) !=
+                        null,
                     onPressed: () async {
+                      final useSlidingProfiles =
+                          zone.content == ZoneContent.slidingSash ||
+                          widget.systemMode == 'sliding';
                       final selected = await showDialog<Map<String, dynamic>>(
                         context: context,
                         builder: (context) => ProfileSelectorDialog(
-                          profileType: 'frame',
-                          seriesId: activeProfileSeries?.id,
-                          materialType: profileMaterialType,
-                          currentItem: selectedFrameOverride,
+                          profileType: 'Frame',
+                          seriesId: useSlidingProfiles
+                              ? widget.model.activeSlidingSeries?.id
+                              : widget.model.activeSeries?.id,
+                          materialType: useSlidingProfiles
+                              ? (widget.model.isSlidingPVC
+                                    ? 'PVC'
+                                    : 'Aluminium')
+                              : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
+                          hasShutter: widget.model.hasShutter,
+                          accessoryDrawingMode: useSlidingProfiles
+                              ? AccessoryDrawingMode.sliding
+                              : AccessoryDrawingMode.opening,
                         ),
                       );
                       if (selected != null) {
-                        double price = 0.0;
-                        final colorId = readSelectedColorId();
-                        if (colorId != null) {
-                          final db = SqlDatabase();
-                          price = await db.getSectionPrice(
-                            selected['id'],
-                            colorId,
-                          );
-                        }
                         final mutableSelected = Map<String, dynamic>.from(
                           selected,
                         );
-                        mutableSelected['calculated_price'] = price;
+                        mutableSelected['calculated_price'] =
+                            await _sectionPriceForSelectedColor(
+                              mutableSelected,
+                            );
 
                         setState(() {
                           widget.model.applyFrameOverride(
                             mutableSelected,
-                            sliding: selectedZoneUsesSlidingProfiles,
+                            sliding: useSlidingProfiles,
+                            manualSelection: true,
                           );
-                          widget.model.updateProfileThickness();
                           widget.model.refreshUI();
                         });
                       }
@@ -10392,44 +10251,58 @@ class _WindowViewState extends State<WindowView> {
                       zone.content == ZoneContent.slidingSash) ...[
                     const SizedBox(width: 8),
                     _ContentButton(
-                      label: selectedSashOverride != null
-                          ? '${selectedSashOverride['name']}'
+                      label:
+                          ((zone.content == ZoneContent.slidingSash ||
+                                      widget.systemMode == 'sliding')
+                                  ? widget.model.slidingSashOverride
+                                  : widget.model.sashOverride) !=
+                              null
+                          ? '${((zone.content == ZoneContent.slidingSash || widget.systemMode == 'sliding') ? widget.model.slidingSashOverride : widget.model.sashOverride)!['name']}'
                           : Localization.translate('اختر الظلفة (Sash)', lang),
                       icon: Icons.format_paint_rounded,
-                      selected: selectedSashOverride != null,
+                      selected:
+                          ((zone.content == ZoneContent.slidingSash ||
+                                  widget.systemMode == 'sliding')
+                              ? widget.model.slidingSashOverride
+                              : widget.model.sashOverride) !=
+                          null,
                       onPressed: () async {
+                        final useSlidingProfiles =
+                            zone.content == ZoneContent.slidingSash ||
+                            widget.systemMode == 'sliding';
                         final selected = await showDialog<Map<String, dynamic>>(
                           context: context,
                           builder: (context) => ProfileSelectorDialog(
                             profileType: 'sash',
-                            seriesId: activeProfileSeries?.id,
-                            materialType: profileMaterialType,
-                            currentItem: selectedSashOverride,
+                            seriesId: useSlidingProfiles
+                                ? widget.model.activeSlidingSeries?.id
+                                : widget.model.activeSeries?.id,
+                            materialType: useSlidingProfiles
+                                ? (widget.model.isSlidingPVC
+                                      ? 'PVC'
+                                      : 'Aluminium')
+                                : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
+                            accessoryDrawingMode: useSlidingProfiles
+                                ? AccessoryDrawingMode.sliding
+                                : AccessoryDrawingMode.opening,
                           ),
                         );
                         if (selected != null) {
-                          double price = 0.0;
-                          final colorId = readSelectedColorId();
-                          if (colorId != null) {
-                            final db = SqlDatabase();
-                            price = await db.getSectionPrice(
-                              selected['id'],
-                              colorId,
-                            );
-                          }
                           final mutableSelected = Map<String, dynamic>.from(
                             selected,
                           );
-                          mutableSelected['calculated_price'] = price;
+                          mutableSelected['calculated_price'] =
+                              await _sectionPriceForSelectedColor(
+                                mutableSelected,
+                              );
 
                           setState(() {
-                            if (selectedZoneUsesSlidingProfiles) {
-                              widget.model.slidingSashOverride =
-                                  mutableSelected;
-                            } else {
-                              widget.model.sashOverride = mutableSelected;
-                            }
-                            widget.model.updateAllSashThicknesses();
+                            widget.model.applySashOverride(
+                              mutableSelected,
+                              sliding: useSlidingProfiles,
+                              manualSelection: true,
+                            );
+                            widget.model.refreshUI();
                           });
                         }
                       },
@@ -11060,6 +10933,160 @@ class _WindowViewState extends State<WindowView> {
     return Localization.translate(name, lang);
   }
 
+  int? _selectedProfileColorId() {
+    final rawId = widget.model.selectedDbColor?['id'];
+    return rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
+  }
+
+  int? _catalogRowId(Map<String, dynamic> item) {
+    final rawId = item['id'];
+    return rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
+  }
+
+  Future<double> _sectionPriceForSelectedColor(
+    Map<String, dynamic> item,
+  ) async {
+    final sectionId = _catalogRowId(item);
+    final colorId = _selectedProfileColorId();
+    if (sectionId == null || colorId == null) return 0.0;
+    try {
+      return await SqlDatabase().getSectionPrice(sectionId, colorId);
+    } catch (error) {
+      debugPrint('Failed to resolve section price for drawing button: $error');
+      return 0.0;
+    }
+  }
+
+  bool _isReinforcedMontant(
+    Map<String, dynamic> item, {
+    required bool central,
+  }) {
+    final code = (item['code'] ?? '').toString().trim().toLowerCase();
+    final name = (item['name'] ?? '').toString().toLowerCase();
+    final type = (item['type'] ?? '').toString().toLowerCase();
+    return code.endsWith(central ? '107' : '108') ||
+        name.contains('معزز') ||
+        name.contains('renforc') ||
+        type.contains('renforc');
+  }
+
+  bool _isSlidingMontantCandidate(
+    Map<String, dynamic> item, {
+    required bool central,
+  }) {
+    final code = (item['code'] ?? '').toString().trim().toLowerCase();
+    final name = (item['name'] ?? '').toString().toLowerCase();
+    final type = (item['type'] ?? '').toString().toLowerCase();
+    if (central) {
+      return type.contains('central') ||
+          type.contains('وسطي') ||
+          name.contains('central') ||
+          name.contains('وسطي') ||
+          code.endsWith('105') ||
+          code.endsWith('107');
+    }
+    return type.contains('lateral') ||
+        type.contains('latéral') ||
+        type.contains('جانبي') ||
+        name.contains('lateral') ||
+        name.contains('latéral') ||
+        name.contains('جانبي') ||
+        code.endsWith('104') ||
+        code.endsWith('108');
+  }
+
+  Future<void> _syncSlidingMontantOverrideFromFlags({
+    required bool central,
+  }) async {
+    final reinforced = central
+        ? widget.model.zones.any(
+            (zone) => zone.slidingMontantReinforced.entries.any(
+              (entry) => entry.key.startsWith('central_') && entry.value,
+            ),
+          )
+        : widget.model.zones.any(
+            (zone) =>
+                zone.slidingMontantReinforced['lateral_0'] == true ||
+                zone.slidingMontantReinforced['lateral_1'] == true,
+          );
+
+    final candidates =
+        <Map<String, dynamic>>[
+              ..._sashProfiles,
+              ...?widget.model.activeSlidingSeries?.sections.map(
+                (s) => s.toMap(),
+              ),
+            ]
+            .where((item) => _isSlidingMontantCandidate(item, central: central))
+            .where(
+              (item) =>
+                  _isReinforcedMontant(item, central: central) == reinforced,
+            )
+            .toList();
+    if (candidates.isEmpty) return;
+
+    final selected = Map<String, dynamic>.from(candidates.first);
+    selected['calculated_price'] = await _sectionPriceForSelectedColor(
+      selected,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      if (central) {
+        widget.model.applySlidingMontantOverride(
+          selected,
+          central: true,
+          reinforced: reinforced,
+          manualSelection: true,
+        );
+      } else {
+        widget.model.applySlidingMontantOverride(
+          selected,
+          central: false,
+          reinforced: reinforced,
+          manualSelection: true,
+        );
+      }
+      widget.model.refreshUI();
+    });
+  }
+
+  List<Widget> _arrangeInTwoRows(List<Widget> rawItems) {
+    // Filter out SizedBox widgets that were used as spacers in the single-row layout
+    final items = rawItems.where((w) => w is! SizedBox).toList();
+    if (items.isEmpty) return [];
+
+    List<Widget> row1 = [];
+    List<Widget> row2 = [];
+
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      if (row1.length <= row2.length) {
+        if (row1.isNotEmpty) {
+          row1.add(const SizedBox(width: 8));
+        }
+        row1.add(item);
+      } else {
+        if (row2.isNotEmpty) {
+          row2.add(const SizedBox(width: 8));
+        }
+        row2.add(item);
+      }
+    }
+
+    return [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(mainAxisSize: MainAxisSize.min, children: row1),
+          const SizedBox(height: 8),
+          Row(mainAxisSize: MainAxisSize.min, children: row2),
+        ],
+      ),
+    ];
+  }
+
   Widget _buildInteractiveBottomPanel(BuildContext context) {
     final hasSelection = widget.model.selectedZone != null;
     final isMullionSelected =
@@ -11154,9 +11181,9 @@ class _WindowViewState extends State<WindowView> {
                 // Tier 1: Horizontal Scrollable Tabs (شائع | إطار | ورقة | عامود | زجاج / حشوات)
                 _buildTier1TabBar(isMullionSelected),
                 const Divider(height: 1, thickness: 0.5),
-                // Tier 2: Horizontal Scrollable Action Options
+                // Tier 2: Horizontal Scrollable Action Options (Two rows grid)
                 Container(
-                  height: 60,
+                  height: 110,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
@@ -11166,9 +11193,8 @@ class _WindowViewState extends State<WindowView> {
                       controller: controller,
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: _buildTier2Options(
-                          context,
-                          isMullionSelected,
+                        children: _arrangeInTwoRows(
+                          _buildTier2Options(context, isMullionSelected),
                         ),
                       ),
                     ),
@@ -11318,7 +11344,7 @@ class _WindowViewState extends State<WindowView> {
             const Divider(height: 1, thickness: 0.5),
             // ── محتوى التبويب (Tier 2) ──
             SizedBox(
-              height: 60,
+              height: 110,
               child: _loadingShutterOptions
                   ? const Center(
                       child: SizedBox(
@@ -11559,6 +11585,7 @@ class _WindowViewState extends State<WindowView> {
               mutable['calculated_price'] = rawPrice is num
                   ? rawPrice.toDouble()
                   : double.tryParse(rawPrice.toString()) ?? 0.0;
+              mutable['manual_selection'] = true;
               // A normal caisson must always leave tunnel mode first; otherwise
               // `shutterBoxHeight` is locked to the tunnel height and the
               // drawing keeps showing the old large box.
@@ -12185,42 +12212,59 @@ class _WindowViewState extends State<WindowView> {
         break;
 
       case 1: // إطار (Frame settings)
-        final bool selectedZoneUsesSlidingProfiles =
-            _selectedZoneUsesSlidingProfiles(zone);
-        final openingSource = widget.systemMode == 'mixed'
-            ? (_openingFrameProfiles.isNotEmpty
-                  ? _openingFrameProfiles
-                  : _frameProfilesFromSeries(widget.model.activeSeries))
-            : (widget.systemMode == 'sliding'
-                  ? <Map<String, dynamic>>[]
-                  : _frameProfiles);
-        final slidingSource =
-            (widget.systemMode == 'mixed' || widget.systemMode == 'sliding')
+        final bool selectedZoneUsesSlidingFrame =
+            zone.content == ZoneContent.slidingSash ||
+            widget.systemMode == 'sliding';
+        final bool selectedZoneUsesOpeningFrame =
+            !selectedZoneUsesSlidingFrame &&
+            (zone.content == ZoneContent.singleSash ||
+                zone.content == ZoneContent.doubleSash ||
+                zone.content == ZoneContent.fixedGlass ||
+                zone.content == ZoneContent.empty);
+        final bool hasSlidingFrameInDrawing =
+            widget.systemMode == 'sliding' ||
+            (widget.systemMode == 'mixed' &&
+                widget.model.zones.any(
+                  (z) => z.content == ZoneContent.slidingSash,
+                ));
+        final rawOpeningProfiles =
+            selectedZoneUsesOpeningFrame && widget.systemMode != 'sliding'
+            ? (widget.systemMode == 'mixed'
+                  ? (_openingFrameProfiles.isNotEmpty
+                        ? _openingFrameProfiles
+                        : _frameProfilesFromSeries(widget.model.activeSeries))
+                  : _frameProfiles)
+            : <Map<String, dynamic>>[];
+        final openingProfiles = _filterFrameProfilesForDrawingRules(
+          rawOpeningProfiles,
+          series: widget.model.activeSeries,
+          drawingMode: AccessoryDrawingMode.opening,
+        );
+        final rawSlidingProfiles =
+            selectedZoneUsesSlidingFrame && hasSlidingFrameInDrawing
             ? (_slidingFrameProfiles.isNotEmpty
                   ? _slidingFrameProfiles
                   : _frameProfilesFromSeries(widget.model.activeSlidingSeries))
             : <Map<String, dynamic>>[];
-        final openingProfiles = selectedZoneUsesSlidingProfiles
-            ? <Map<String, dynamic>>[]
-            : _profilesForDrawingMode(openingSource, sliding: false);
-        final slidingProfiles = selectedZoneUsesSlidingProfiles
-            ? _profilesForDrawingMode(slidingSource, sliding: true)
-            : <Map<String, dynamic>>[];
+        final slidingProfiles = _filterFrameProfilesForDrawingRules(
+          rawSlidingProfiles,
+          series: widget.model.activeSlidingSeries,
+          drawingMode: AccessoryDrawingMode.sliding,
+        );
 
         Future<void> selectFrameProfile(
           Map<String, dynamic> item, {
           required bool sliding,
         }) async {
-          double price = 0.0;
-          if (widget.model.selectedDbColor != null) {
-            int colorId = widget.model.selectedDbColor!['id'];
-            final db = SqlDatabase();
-            price = await db.getSectionPrice(item['id'], colorId);
-          }
           final mutableSelected = Map<String, dynamic>.from(item);
-          mutableSelected['calculated_price'] = price;
+          mutableSelected['calculated_price'] =
+              await _sectionPriceForSelectedColor(mutableSelected);
           setState(() {
-            widget.model.applyFrameOverride(mutableSelected, sliding: sliding);
+            widget.model.applyFrameOverride(
+              mutableSelected,
+              sliding: sliding,
+              manualSelection: true,
+            );
             widget.model.updateProfileThickness();
             widget.model.refreshUI();
           });
@@ -12295,8 +12339,8 @@ class _WindowViewState extends State<WindowView> {
 
         // زر الغطاء الجانبي (Side Cover toggle)
         children.add(const SizedBox(width: 8));
-        final bool isNestedSlidingFrame =
-            zone != null && widget.model.isSlidingZoneNestedInSingleFrame(zone);
+        final bool isNestedSlidingFrame = widget.model
+            .isSlidingZoneNestedInSingleFrame(zone);
         if (isNestedSlidingFrame) {
           children.add(
             _ContentButton(
@@ -12316,6 +12360,8 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else {
+          final canToggleSideCover =
+              widget.model.hasSideCovers || widget.model.isSideCoverAllowed;
           children.add(
             _ContentButton(
               label: widget.model.hasSideCovers
@@ -12325,7 +12371,20 @@ class _WindowViewState extends State<WindowView> {
                   ? Icons.border_clear_rounded
                   : Icons.border_outer_rounded,
               selected: widget.model.hasSideCovers,
+              showWarning: !canToggleSideCover,
               onPressed: () async {
+                if (!canToggleSideCover) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'الإطار المختار لا يسمح بتركيب الكوفرجوا.',
+                        textDirection: TextDirection.rtl,
+                      ),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
                 await widget.model.toggleSideCovers(
                   !widget.model.hasSideCovers,
                 );
@@ -12340,8 +12399,21 @@ class _WindowViewState extends State<WindowView> {
         final bool isSliding =
             widget.systemMode == 'sliding' ||
             (widget.systemMode == 'mixed' &&
-                zone != null &&
                 zone.content == ZoneContent.slidingSash);
+        final expectedSashSeriesId = isSliding
+            ? widget.model.activeSlidingSeries?.id
+            : widget.model.activeSeries?.id;
+        final sashProfiles = isSliding
+            ? (_slidingSashProfiles.isNotEmpty
+                  ? _slidingSashProfiles
+                  : (_loadedSeriesId == expectedSashSeriesId
+                        ? _sashProfiles
+                        : const <Map<String, dynamic>>[]))
+            : (_openingSashProfiles.isNotEmpty
+                  ? _openingSashProfiles
+                  : (_loadedSeriesId == expectedSashSeriesId
+                        ? _sashProfiles
+                        : const <Map<String, dynamic>>[]));
         if (!isSliding) {
           children.add(
             _ContentButton(
@@ -12368,12 +12440,7 @@ class _WindowViewState extends State<WindowView> {
           children.add(const SizedBox(width: 8));
         }
 
-        final sashProfilesForMode = _profilesForDrawingMode(
-          _sashProfiles,
-          sliding: isSliding,
-        );
-
-        if (sashProfilesForMode.isEmpty) {
+        if (sashProfiles.isEmpty) {
           children.add(
             Text(
               Localization.translate('لا توجد درف متوفرة لهذه السلسلة', lang),
@@ -12381,7 +12448,7 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else if (isSliding) {
-          final lateralProfiles = sashProfilesForMode.where((s) {
+          final lateralProfiles = sashProfiles.where((s) {
             final name = s['name'].toString().toLowerCase();
             final type = s['type'].toString().toLowerCase();
             final code = s['code'].toString().toLowerCase();
@@ -12393,7 +12460,7 @@ class _WindowViewState extends State<WindowView> {
                 code.contains('108');
           }).toList();
 
-          final centralProfiles = sashProfilesForMode.where((s) {
+          final centralProfiles = sashProfiles.where((s) {
             final name = s['name'].toString().toLowerCase();
             final type = s['type'].toString().toLowerCase();
             final code = s['code'].toString().toLowerCase();
@@ -12406,6 +12473,16 @@ class _WindowViewState extends State<WindowView> {
           }).toList();
 
           bool isLateralSelected(Map<String, dynamic> item) {
+            final current =
+                widget
+                    .model
+                    .componentOverrides['قائم جانبي معزز (Sash Lateral Renforcé)'] ??
+                widget.model.componentOverrides['قائم جانبي (Sash Lateral)'] ??
+                widget.model.componentOverrides['قائم جانبي (Lateral)'];
+            if (current is Map &&
+                current['id']?.toString() == '${item['id']}') {
+              return true;
+            }
             bool isLateralReinforced = widget.model.zones.any(
               (z) =>
                   z.slidingMontantReinforced['lateral_0'] == true ||
@@ -12423,6 +12500,16 @@ class _WindowViewState extends State<WindowView> {
           }
 
           bool isCentralSelected(Map<String, dynamic> item) {
+            final current =
+                widget
+                    .model
+                    .componentOverrides['قائم وسطي معزز (Sash Central Renforcé)'] ??
+                widget.model.componentOverrides['قائم وسطي (Sash Central)'] ??
+                widget.model.componentOverrides['قائم وسطي (Central)'];
+            if (current is Map &&
+                current['id']?.toString() == '${item['id']}') {
+              return true;
+            }
             bool isCentralReinforced = widget.model.zones.any(
               (z) => z.slidingMontantReinforced.entries.any(
                 (e) => e.key.startsWith('central_') && e.value == true,
@@ -12440,82 +12527,31 @@ class _WindowViewState extends State<WindowView> {
           }
 
           void selectLateral(Map<String, dynamic> item) async {
-            final String code = item['code']?.toString() ?? '';
-            final String name = item['name']?.toString().toLowerCase() ?? '';
-            final String type = item['type']?.toString().toLowerCase() ?? '';
-            bool isRenforce =
-                code.endsWith('108') ||
-                name.contains('معزز') ||
-                name.contains('renforc') ||
-                type.contains('renforc');
-
-            double price = 0.0;
-            if (widget.model.selectedDbColor != null) {
-              int colorId = widget.model.selectedDbColor!['id'];
-              final db = SqlDatabase();
-              price = await db.getSectionPrice(item['id'], colorId);
-            }
             final mutableSelected = Map<String, dynamic>.from(item);
-            mutableSelected['calculated_price'] = price;
+            mutableSelected['calculated_price'] =
+                await _sectionPriceForSelectedColor(mutableSelected);
 
             setState(() {
-              for (var z in widget.model.zones) {
-                if (z.content == ZoneContent.slidingSash) {
-                  z.slidingMontantReinforced['lateral_0'] = isRenforce;
-                  z.slidingMontantReinforced['lateral_1'] = isRenforce;
-                }
-              }
-              final lateralKey = isRenforce
-                  ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
-                  : 'قائم جانبي (Sash Lateral)';
-              widget.model.componentOverrides[lateralKey] = mutableSelected;
-              widget.model.componentOverrides['قائم جانبي (Sash Lateral)'] =
-                  mutableSelected;
-              widget.model.componentOverrides['قائم جانبي (Lateral)'] =
-                  mutableSelected;
+              widget.model.applySlidingMontantOverride(
+                mutableSelected,
+                central: false,
+                manualSelection: true,
+              );
               widget.model.refreshUI();
             });
           }
 
           void selectCentral(Map<String, dynamic> item) async {
-            final String code = item['code']?.toString() ?? '';
-            final String name = item['name']?.toString().toLowerCase() ?? '';
-            final String type = item['type']?.toString().toLowerCase() ?? '';
-            bool isRenforce =
-                code.endsWith('107') ||
-                name.contains('معزز') ||
-                name.contains('renforc') ||
-                type.contains('renforc');
-
-            double price = 0.0;
-            if (widget.model.selectedDbColor != null) {
-              int colorId = widget.model.selectedDbColor!['id'];
-              final db = SqlDatabase();
-              price = await db.getSectionPrice(item['id'], colorId);
-            }
             final mutableSelected = Map<String, dynamic>.from(item);
-            mutableSelected['calculated_price'] = price;
+            mutableSelected['calculated_price'] =
+                await _sectionPriceForSelectedColor(mutableSelected);
 
             setState(() {
-              for (var z in widget.model.zones) {
-                if (z.content == ZoneContent.slidingSash) {
-                  final int sashes = z.slidingSashesCount > 0
-                      ? z.slidingSashesCount
-                      : 2;
-                  final int centralCount = (sashes * 2) - 2;
-                  for (int s = 0; s < centralCount; s++) {
-                    z.slidingMontantReinforced['central_$s'] = isRenforce;
-                  }
-                }
-              }
-              final centralKey = isRenforce
-                  ? 'قائم وسطي معزز (Sash Central Renforcé)'
-                  : 'قائم وسطي (Sash Central)';
-              widget.model.componentOverrides[centralKey] = mutableSelected;
-              widget.model.componentOverrides['قائم وسطي (Sash Central)'] =
-                  mutableSelected;
-              widget.model.componentOverrides['قائم وسطي (Central)'] =
-                  mutableSelected;
+              widget.model.applySlidingMontantOverride(
+                mutableSelected,
+                central: true,
+                manualSelection: true,
+              );
               widget.model.refreshUI();
             });
           }
@@ -12598,7 +12634,7 @@ class _WindowViewState extends State<WindowView> {
             );
           }
         } else {
-          for (var item in sashProfilesForMode) {
+          for (var item in sashProfiles) {
             final codeStr =
                 (item['code'] != null && item['code'].toString().isNotEmpty)
                 ? '${item['code']} - '
@@ -12618,17 +12654,15 @@ class _WindowViewState extends State<WindowView> {
                   imagePath: item['image_path']?.toString(),
                   selected: isSelected,
                   onPressed: () async {
-                    double price = 0.0;
-                    if (widget.model.selectedDbColor != null) {
-                      int colorId = widget.model.selectedDbColor!['id'];
-                      final db = SqlDatabase();
-                      price = await db.getSectionPrice(item['id'], colorId);
-                    }
                     final mutableSelected = Map<String, dynamic>.from(item);
-                    mutableSelected['calculated_price'] = price;
+                    mutableSelected['calculated_price'] =
+                        await _sectionPriceForSelectedColor(mutableSelected);
                     setState(() {
-                      widget.model.sashOverride = mutableSelected;
-                      widget.model.updateAllSashThicknesses();
+                      widget.model.applySashOverride(
+                        mutableSelected,
+                        sliding: false,
+                        manualSelection: true,
+                      );
                       widget.model.refreshUI();
                     });
                   },
@@ -13077,9 +13111,11 @@ class _WindowViewState extends State<WindowView> {
           }
 
           if (spec.structure == GlassStructure.double) {
-            final double tOuter = spec.thicknessOuter ?? 5.0;
+            final double tOuter =
+                spec.thicknessOuter ?? kDefaultGlassPaneThickness;
             final int intercall = spec.intercallThickness;
-            final double tInner = spec.thicknessInner ?? 5.0;
+            final double tInner =
+                spec.thicknessInner ?? kDefaultGlassPaneThickness;
             structName += ' (${tOuter.toInt()}-${intercall}-${tInner.toInt()})';
           }
 
@@ -13743,22 +13779,41 @@ class _WindowViewState extends State<WindowView> {
                             // of truth. Do not replace it merely because side
                             // covers are enabled: a standalone cover is valid
                             // with a non-integrated frame.
-                            final activeFrame =
-                                widget.model.activeFrameOverride;
-                            if (activeFrame != null &&
-                                widget.model.selectedDbColor != null) {
-                              int cId = widget.model.selectedDbColor!['id'];
-                              final rawFrameId = activeFrame['id'];
-                              final sId = rawFrameId is num
-                                  ? rawFrameId.toInt()
-                                  : int.tryParse(rawFrameId?.toString() ?? '');
-                              if (sId == null) return;
-                              final db = SqlDatabase();
-                              double updatedPrice = await db.getSectionPrice(
-                                sId,
-                                cId,
+                            try {
+                              final activeFrame =
+                                  widget.model.activeFrameOverride;
+                              final cId = _selectedProfileColorId();
+                              if (activeFrame != null && cId != null) {
+                                final rawFrameId = activeFrame['id'];
+                                final sId = rawFrameId is num
+                                    ? rawFrameId.toInt()
+                                    : int.tryParse(
+                                        rawFrameId?.toString() ?? '',
+                                      );
+                                if (sId != null) {
+                                  final db = SqlDatabase();
+                                  double updatedPrice = await db
+                                      .getSectionPrice(sId, cId);
+                                  final pricedFrame = Map<String, dynamic>.from(
+                                    activeFrame,
+                                  );
+                                  pricedFrame['calculated_price'] =
+                                      updatedPrice;
+                                  if (widget.model.usesSlidingPrimaryProfiles) {
+                                    widget.model.slidingFrameOverride =
+                                        pricedFrame;
+                                  } else {
+                                    widget.model.frameOverride = pricedFrame;
+                                    widget.model.selectedFrameCode =
+                                        pricedFrame['code']?.toString();
+                                  }
+                                  widget.model.updateProfileThickness();
+                                }
+                              }
+                            } catch (error) {
+                              debugPrint(
+                                'Failed to refresh frame price before material table: $error',
                               );
-                              activeFrame['calculated_price'] = updatedPrice;
                             }
                             if (!context.mounted) return;
                             Navigator.push(
@@ -13824,7 +13879,8 @@ class _WindowViewState extends State<WindowView> {
     void considerGlass(GlassSpecification glass) {
       if (glass.structure != GlassStructure.double) return;
       final panes =
-          (glass.thicknessOuter ?? 4.0) + (glass.thicknessInner ?? 4.0);
+          (glass.thicknessOuter ?? kDefaultGlassPaneThickness) +
+          (glass.thicknessInner ?? kDefaultGlassPaneThickness);
       if (panes > doublePaneThickness) doublePaneThickness = panes;
     }
 
@@ -13992,7 +14048,8 @@ class _HorizontalWheelScrollAreaState
         child: Scrollbar(
           controller: _controller,
           interactive: true,
-          thumbVisibility: false,
+          thumbVisibility:
+              !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
           child: widget.builder(context, _controller),
         ),
       ),
@@ -14330,7 +14387,7 @@ class AppWorkspacePainter extends CustomPainter {
       final selectedFrameId = model.selection.type == SelectionType.frame
           ? model.selection.zoneId
           : null;
-      if (model.isDrawingMode && selectedFrameId != null) {
+      if (selectedFrameId != null) {
         WindowZone? selectedFrame;
         for (final zone in model.zones) {
           if (zone.id == selectedFrameId) {
@@ -14348,11 +14405,11 @@ class AppWorkspacePainter extends CustomPainter {
           );
           final side = 18.0 / (model.canvasScale * userScale);
           final outline = Paint()
-            ..color = Colors.blue.shade700
+            ..color = Colors.green.shade700
             ..style = PaintingStyle.stroke
             ..strokeWidth = 3.0 / (model.canvasScale * userScale);
           final fill = Paint()
-            ..color = Colors.blue.shade600
+            ..color = Colors.green.shade600
             ..style = PaintingStyle.fill;
           final border = Paint()
             ..color = Colors.white
@@ -14361,6 +14418,7 @@ class AppWorkspacePainter extends CustomPainter {
 
           canvas.drawRect(frameRect, outline);
           final handles = <Offset>[
+            frameRect.center,
             frameRect.topLeft,
             Offset(frameRect.center.dx, frameRect.top),
             frameRect.topRight,
@@ -14382,13 +14440,12 @@ class AppWorkspacePainter extends CustomPainter {
         }
       }
 
-      if (model.isDrawingMode &&
-          model.canBeArchedOrSlanted &&
+      if (model.canBeArchedOrSlanted &&
           model.selection.type == SelectionType.frame &&
           model.selection.zoneId == null) {
         final double side = 18.0 / (model.canvasScale * userScale);
         final fillPaint = Paint()
-          ..color = Colors.orangeAccent
+          ..color = Colors.greenAccent.shade700
           ..style = PaintingStyle.fill;
         final borderPaint = Paint()
           ..color = Colors.white
@@ -15130,6 +15187,7 @@ class _ProfileButton extends StatelessWidget {
     );
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onPressed,
       child: Builder(
         builder: (context) {
@@ -15177,18 +15235,22 @@ class _ProfileButton extends StatelessWidget {
   }
 }
 
-// Helper validation functions for aluminium glass/gasket thickness constraints.
+// Helper validation functions for sliding system glass/gasket thickness constraints (e.g. TPR 67000)
 bool isGlassThicknessValid(
   double thickVal,
   GlassSpecification spec,
   WindowModel model,
   String systemMode,
 ) {
-  if (model.isPVC) return true;
-  final maximum = model.selectedParcloseMaxGlassThickness;
-  if (maximum == null) return true;
-  final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
-  if (thickVal + minGasket > maximum) return false;
+  final isSliding =
+      systemMode == 'sliding' ||
+      model.systemMode == 'sliding' ||
+      model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+  if (isSliding && model.isSliding67Family) {
+    final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
+    final double maxAllowed = 24.0 - minGasket; // 20.0 or 22.0
+    if (thickVal > maxAllowed) return false;
+  }
   return true;
 }
 
@@ -15200,10 +15262,14 @@ bool isDoubleGlassValid(
   WindowModel model,
   String systemMode,
 ) {
-  if (model.isPVC) return true;
-  final maximum = model.selectedParcloseMaxGlassThickness;
-  if (maximum == null) return true;
-  final double minGasket = jointTwoSides ? 4.0 : 2.0;
-  if (thickOuter + intercall + thickInner + minGasket > maximum) return false;
+  final isSliding =
+      systemMode == 'sliding' ||
+      model.systemMode == 'sliding' ||
+      model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+  if (isSliding && model.isSliding67Family) {
+    final double minGasket = jointTwoSides ? 4.0 : 2.0;
+    final double maxAllowed = 24.0 - minGasket; // 20.0 or 22.0
+    if ((thickOuter + intercall + thickInner) > maxAllowed) return false;
+  }
   return true;
 }

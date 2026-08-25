@@ -816,15 +816,9 @@ class ComponentCalculator {
     }
 
     Map<String, dynamic>? getSlidingFrameSection() {
-      if (window.slidingFrameOverride != null) {
+      if (window.slidingFrameOverride != null)
         return window.slidingFrameOverride;
-      }
-      final activeSeries = window.activeSeries;
-      final series =
-          window.activeSlidingSeries ??
-          (activeSeries != null && isSlidingSeriesForDrawing(activeSeries)
-              ? activeSeries
-              : null);
+      final series = window.activeSlidingSeries ?? window.activeSeries;
       if (series == null) return null;
       var slidingFrames = series.sections.where((s) {
         final name = s.name.toLowerCase();
@@ -1019,8 +1013,8 @@ class ComponentCalculator {
         qty: qty * window.quantity,
         length: length,
         pieces: multipliedPieces,
-        overrideMap: overrideMap,
-        preferOverrideMap: preferOverrideMap,
+        overrideMap: selectedOverride,
+        preferOverrideMap: selectedOverride != null,
         priceByWholeBar: priceByWholeBar,
         catalogItemId: catalogueId(selectedOverride),
         colorId: catalogueColorId(color),
@@ -1103,34 +1097,50 @@ class ComponentCalculator {
       String logicalKey,
       String bundleName, {
       required double qty,
-    }) => BomItem(
-      category: 'shutter',
-      originalName: logicalKey,
-      name: bundleName,
-      quantity: qty * window.quantity,
-      unit: 'kit',
-      unitPrice: kitBundlePrices[bundleName] ?? 0,
-      isInteractive: true,
-      isActive: true,
-      exclusionGroup: bundleName,
-      kitGroupName: bundleName,
-    );
+    }) {
+      final savedOverride = window.componentOverrides[logicalKey];
+      final metadata = kitBundleMetadata[bundleName];
+      return BomItem(
+        category: 'shutter',
+        originalName: logicalKey,
+        name: bundleName,
+        quantity: qty * window.quantity,
+        unit: 'kit',
+        unitPrice: kitBundlePrices[bundleName] ?? 0,
+        isInteractive: true,
+        isActive: true,
+        exclusionGroup: bundleName,
+        kitGroupName: bundleName,
+        catalogItemId: catalogueId(savedOverride) ?? catalogueId(metadata),
+        inventoryItemType: 'KitBundle',
+      );
+    }
 
     BomItem createJoint(
       String originalName, {
       String? color,
       double qty = 0,
       String unit = 'بارة',
-    }) => _createJoint(
-      window.componentOverrides,
-      originalName,
-      color: color,
-      // Joint lengths are physical metre quantities. Keep the table stable
-      // and readable across devices by rounding only at the final BOM step.
-      qty: ((qty * window.quantity) * 100).round() / 100.0,
-      unit: unit,
-      catalogItemId: catalogueId(window.componentOverrides[originalName]),
-    );
+    }) {
+      final exactQty = ((qty * window.quantity) * 100).round() / 100.0;
+      final normalizedUnit = unit.toLowerCase().trim();
+      final purchaseQty =
+          (normalizedUnit.contains('متر') ||
+              normalizedUnit.contains('meter') ||
+              normalizedUnit == 'm' ||
+              normalizedUnit == 'ml')
+          ? (exactQty <= 0 ? 0.0 : exactQty.ceilToDouble())
+          : exactQty;
+      return _createJoint(
+        window.componentOverrides,
+        originalName,
+        color: color,
+        qty: purchaseQty,
+        unit: unit,
+        exactQuantity: exactQty,
+        catalogItemId: catalogueId(window.componentOverrides[originalName]),
+      );
+    }
 
     BomItem createOther(
       String originalName, {
@@ -1229,9 +1239,6 @@ class ComponentCalculator {
           ? window.shutterBoxHeight
           : 0.0,
       hasBottomFrame: window.hasBottomFrame,
-      bottomPlintheHeight: window.hasFramePlintheBottom
-          ? window.plintheHeight
-          : 0.0,
     );
 
     // تحديد نوع الغطاء الجانبي:
@@ -1578,7 +1585,7 @@ class ComponentCalculator {
         );
 
         int sashesWithHinges = sashes;
-        if (window.useSystemOB || window.useDemiOB) {
+        if (window.effectiveUseSystemOB || window.effectiveUseDemiOB) {
           if (zone.content == ZoneContent.singleSash) {
             sashesWithHinges = 0;
           } else if (zone.content == ZoneContent.doubleSash) {
@@ -1939,7 +1946,6 @@ class ComponentCalculator {
         : frameRects.map((rect) => rect.bottom).reduce(math.max);
     List<double> framePieces = [];
     List<double> slidingOuterFramePieces = [];
-    List<double> framePlinthePieces = [];
     List<double> renfortFramePieces = [];
 
     double renfortFrameDeduction = 140.0;
@@ -1951,7 +1957,7 @@ class ComponentCalculator {
 
     for (final r in frameRects) {
       bool frameRectIsSlidingOnly() {
-        if (frameRects.length <= 1) return window.isSlidingOnlyDrawing;
+        if (frameRects.length <= 1) return false;
         final innerLeft = r.left + window.profileThickness - 2.0;
         final innerTop = r.top + window.profileThickness - 2.0;
         final innerRight = r.right - window.profileThickness + 2.0;
@@ -2004,22 +2010,10 @@ class ComponentCalculator {
           ? slidingOuterFramePieces
           : framePieces;
 
-      if (window.hasBottomFrame && !window.hasFramePlintheBottom) {
+      if (window.hasBottomFrame) {
         targetFramePieces.addAll([wPiece, wPiece, hPiece, hPiece]);
       } else {
         targetFramePieces.addAll([wPiece, hPiece, hPiece]);
-        if (window.hasFramePlintheBottom) {
-          double fThickness = window.profileThickness;
-          if (outerFrameOverride != null) {
-            fThickness =
-                ((outerFrameOverride['visible_width'] ??
-                            outerFrameOverride['thickness'])
-                        as num?)
-                    ?.toDouble() ??
-                window.profileThickness;
-          }
-          framePlinthePieces.add((fWidth - (2 * fThickness)) / 1000.0);
-        }
       }
 
       if (isOuterFramePvc) {
@@ -2038,6 +2032,32 @@ class ComponentCalculator {
         } else {
           renfortFramePieces.addAll([rw / 1000.0, rh / 1000.0, rh / 1000.0]);
         }
+      }
+    }
+
+    if (!window.hasBottomFrame) {
+      for (final zone in window.zones) {
+        final isBottomBound =
+            (zone.boundary.bottom - (window.height - window.profileThickness))
+                    .abs() <
+                5.0 ||
+            zone.boundary.bottom >= window.height - window.profileThickness;
+        final isFixed =
+            zone.content == ZoneContent.fixedGlass ||
+            zone.content == ZoneContent.empty;
+        if (!isBottomBound || !isFixed) continue;
+        final segLeft =
+            (zone.boundary.left - window.profileThickness).abs() < 5.0
+            ? 0.0
+            : zone.boundary.left;
+        final segRight =
+            (zone.boundary.right - (window.width - window.profileThickness))
+                    .abs() <
+                5.0
+            ? window.width
+            : zone.boundary.right;
+        final length = math.max(0.0, segRight - segLeft);
+        if (length > 0) framePieces.add(length / 1000.0);
       }
     }
 
@@ -2065,20 +2085,6 @@ class ComponentCalculator {
           unit: 'قطاع',
           overrideMap: getSlidingFrameSection(),
           preferOverrideMap: true,
-        ),
-      );
-    }
-
-    if (framePlinthePieces.isNotEmpty) {
-      items.add(
-        createProfile(
-          'بلانت الإطار (Plinthe Frame)',
-          colorName,
-          pieces: framePlinthePieces,
-          unit: 'قطاع',
-          overrideMap:
-              window.componentOverrides['بلانت (Plinthe)'] ??
-              window.getSectionByType('plinthe')?.toMap(),
         ),
       );
     }
@@ -2581,32 +2587,38 @@ class ComponentCalculator {
             ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
             : 'قائم جانبي (Sash Lateral)';
 
-        // A manual choice from the quantity table or drawer must win exactly.
-        // The normal/reinforced finder is only a defaulting helper.
-        final manualLateralOverride = slidingOverrideFor([
-          lateralName,
-          'قائم جانبي (Sash Lateral)',
-          'قائم جانبي (Lateral)',
-        ]);
+        // Fetch user override or default normal profile
         Map<String, dynamic>? baseLateral =
-            manualLateralOverride ??
+            slidingOverrideFor([
+              lateralName,
+              'قائم جانبي (Sash Lateral)',
+              'قائم جانبي (Lateral)',
+            ]) ??
             window.getSlidingSectionByType('sash_lateral')?.toMap() ??
             window.getSlidingSectionByType('lateral')?.toMap();
 
-        if (baseLateral != null && manualLateralOverride == null) {
+        if (baseLateral != null) {
+          final baseIsReinforced = window.isSlidingMontantReinforced(
+            baseLateral,
+            central: false,
+          );
           if (isLateralReinforced) {
-            final reinforced = findReinforcedSection(
-              baseLateral,
-              false,
-              window,
-            );
-            if (reinforced != null) {
-              baseLateral = reinforced;
+            if (!baseIsReinforced) {
+              final reinforced = findReinforcedSection(
+                baseLateral,
+                false,
+                window,
+              );
+              if (reinforced != null) {
+                baseLateral = reinforced;
+              }
             }
           } else {
-            final normal = findNormalSection(baseLateral, false, window);
-            if (normal != null) {
-              baseLateral = normal;
+            if (baseIsReinforced) {
+              final normal = findNormalSection(baseLateral, false, window);
+              if (normal != null) {
+                baseLateral = normal;
+              }
             }
           }
         }
@@ -2635,28 +2647,38 @@ class ComponentCalculator {
             ? 'قائم وسطي معزز (Sash Central Renforcé)'
             : 'قائم وسطي (Sash Central)';
 
-        // A manual choice from the quantity table or drawer must win exactly.
-        // The normal/reinforced finder is only a defaulting helper.
-        final manualCentralOverride = slidingOverrideFor([
-          centralName,
-          'قائم وسطي (Sash Central)',
-          'قائم وسطي (Central)',
-        ]);
+        // Fetch user override or default normal profile
         Map<String, dynamic>? baseCentral =
-            manualCentralOverride ??
+            slidingOverrideFor([
+              centralName,
+              'قائم وسطي (Sash Central)',
+              'قائم وسطي (Central)',
+            ]) ??
             window.getSlidingSectionByType('sash_central')?.toMap() ??
             window.getSlidingSectionByType('central')?.toMap();
 
-        if (baseCentral != null && manualCentralOverride == null) {
+        if (baseCentral != null) {
+          final baseIsReinforced = window.isSlidingMontantReinforced(
+            baseCentral,
+            central: true,
+          );
           if (isCentralReinforced) {
-            final reinforced = findReinforcedSection(baseCentral, true, window);
-            if (reinforced != null) {
-              baseCentral = reinforced;
+            if (!baseIsReinforced) {
+              final reinforced = findReinforcedSection(
+                baseCentral,
+                true,
+                window,
+              );
+              if (reinforced != null) {
+                baseCentral = reinforced;
+              }
             }
           } else {
-            final normal = findNormalSection(baseCentral, true, window);
-            if (normal != null) {
-              baseCentral = normal;
+            if (baseIsReinforced) {
+              final normal = findNormalSection(baseCentral, true, window);
+              if (normal != null) {
+                baseCentral = normal;
+              }
             }
           }
         }
@@ -2694,16 +2716,18 @@ class ComponentCalculator {
         final railOverride =
             slidingOverrideFor(['الري (Rail)']) ??
             window.getSlidingSectionByType('rail')?.toMap();
-        items.add(
-          createProfile(
-            'الري (Rail)',
-            colorName,
-            pieces: slidingRailPieces,
-            unit: 'قطاع',
-            overrideMap: railOverride,
-            preferOverrideMap: true,
-          ),
-        );
+        if (railOverride != null) {
+          items.add(
+            createProfile(
+              'الري (Rail)',
+              colorName,
+              pieces: slidingRailPieces,
+              unit: 'قطاع',
+              overrideMap: railOverride,
+              preferOverrideMap: true,
+            ),
+          );
+        }
       }
 
       if (internalSlidingSideCoverPieces.isNotEmpty) {
@@ -2888,9 +2912,15 @@ class ComponentCalculator {
 
     // --- 2. الإكسسوارات (Accessories) ---
     bool isVerrouCentralActive =
-        activeVariants['Verrou Central'] ?? window.useVerrouCentral;
-    bool isSystemObActive = activeVariants['System OB'] ?? window.useSystemOB;
-    bool isDemiObActive = activeVariants['Demi System OB'] ?? window.useDemiOB;
+        window.canUseOpeningOnlyOptions &&
+        (activeVariants['Verrou Central'] ?? window.useVerrouCentral);
+    bool isSystemObActive =
+        window.canUseOpeningOnlyOptions &&
+        (activeVariants['System OB'] ?? window.effectiveUseSystemOB);
+    final bool canUseDemiOb = window.canUseDemiOB;
+    bool isDemiObActive =
+        canUseDemiOb &&
+        (activeVariants['Demi System OB'] ?? window.effectiveUseDemiOB);
 
     if (hasDoubleSash) {
       items.add(
@@ -3039,49 +3069,51 @@ class ComponentCalculator {
         );
       }
 
-      // Demi System OB — إما تفجير Kit أو عنصر واحد
-      final demiObKey = getKitKey('Demi System OB');
-      if (demiObKey != null &&
-          (kitBundleData[demiObKey]?.isNotEmpty ?? false)) {
-        items.add(
-          createInteractiveAccessory(
-            'Demi System OB',
-            'ob_group',
-            isActive: isDemiObActive,
-            qty: 1,
-            kitGroupName: 'Demi System OB',
-          ),
-        );
-        final leafH = window.height.toDouble();
-        final leafW = (hasSingleSash && !hasDoubleSash)
-            ? window.width.toDouble()
-            : (window.width / 2.0);
-        final String windowVariant = hasDoubleSash ? 'double' : 'simple';
-        final bool perLeaf = kitPerLeafMap[demiObKey] ?? false;
-        final int leafCount = perLeaf
-            ? ((doubleSashCount * 2) + singleSashCount)
-            : 1;
-        items.addAll(
-          expandKitBundle(
-            'Demi System OB',
-            kitBundleData[demiObKey]!,
-            leafHeightMm: leafH,
-            leafWidthMm: leafW,
-            isActive: isDemiObActive,
-            leafCount: leafCount,
-            variantValue: windowVariant,
-          ),
-        );
-      } else {
-        items.add(
-          createInteractiveAccessory(
-            'Demi System OB',
-            'ob_group',
-            isActive: isDemiObActive,
-            qty: 1,
-            kitGroupName: 'Demi System OB',
-          ),
-        );
+      if (canUseDemiOb) {
+        // Demi System OB — إما تفجير Kit أو عنصر واحد
+        final demiObKey = getKitKey('Demi System OB');
+        if (demiObKey != null &&
+            (kitBundleData[demiObKey]?.isNotEmpty ?? false)) {
+          items.add(
+            createInteractiveAccessory(
+              'Demi System OB',
+              'ob_group',
+              isActive: isDemiObActive,
+              qty: 1,
+              kitGroupName: 'Demi System OB',
+            ),
+          );
+          final leafH = window.height.toDouble();
+          final leafW = (hasSingleSash && !hasDoubleSash)
+              ? window.width.toDouble()
+              : (window.width / 2.0);
+          final String windowVariant = hasDoubleSash ? 'double' : 'simple';
+          final bool perLeaf = kitPerLeafMap[demiObKey] ?? false;
+          final int leafCount = perLeaf
+              ? ((doubleSashCount * 2) + singleSashCount)
+              : 1;
+          items.addAll(
+            expandKitBundle(
+              'Demi System OB',
+              kitBundleData[demiObKey]!,
+              leafHeightMm: leafH,
+              leafWidthMm: leafW,
+              isActive: isDemiObActive,
+              leafCount: leafCount,
+              variantValue: windowVariant,
+            ),
+          );
+        } else {
+          items.add(
+            createInteractiveAccessory(
+              'Demi System OB',
+              'ob_group',
+              isActive: isDemiObActive,
+              qty: 1,
+              kitGroupName: 'Demi System OB',
+            ),
+          );
+        }
       }
 
       if (useCremone && cremoneQty > 0) {
@@ -3788,14 +3820,18 @@ class ComponentCalculator {
         );
 
         // ===== 6. أغطية الشفرات (Bouchons Lames) =====
-        // الكمية = عدد قطع الشفرات (نفس numBladesShutter تماماً)
+        // الكمية يجب أن تكون زوجية دائماً: إذا كان عدد اللامات فردياً
+        // نأخذ العدد الزوجي الأدنى (31 -> 30).
         // End caps are automatic and are shown only in the quantity/cost table.
         // They are never a blade choice or a user-toggleable variant.
         if (isBouchonLameActive) {
+          final int bladeEndCapQty = numBladesShutter.isOdd
+              ? numBladesShutter - 1
+              : numBladesShutter;
           items.add(
             createShutter(
               'أغطية الشفرات (Bouchons Lames)',
-              qty: numBladesShutter * 1.0,
+              qty: math.max(0, bladeEndCapQty).toDouble(),
               unit: 'حبة',
             ),
           );
@@ -4611,6 +4647,7 @@ class ComponentCalculator {
     List<double> slidingParcloseSimplePieces = [];
     List<double> slidingParcloseDoublePieces = [];
     List<double> reducteurPieces = [];
+    bool hasSimpleGlassReducerPieces = false;
 
     // ===== متغيرات جوانات نظام الفتح (ألمنيوم فقط) =====
     // Vitrage  = Bourrage = parcloseSimple×1 + parcloseDouble×2 (يُحسب في لحظة الإخراج)
@@ -4621,8 +4658,6 @@ class ComponentCalculator {
         0.0; // مجموع محيطات الإطارات للفتحات ذات الظلفات (متر)
     double swingCentralFramePerim =
         0.0; // مجموع محيطات الإطارات للفتحات المزدوجة (متر)
-    double swingBourrageGlassPerim = 0.0;
-    double swingVitrageGlassPerim = 0.0;
 
     // Bardage is a profile from the active series, never a priced panel from
     // the glass catalogue. Its visible width controls the slat count and its
@@ -4713,6 +4748,16 @@ class ComponentCalculator {
         final double sashCutH = clearH + totalOverlap;
         baseGw = sashCutW - sashGlassDeduction;
         baseGh = sashCutH - sashGlassDeduction;
+        if (window.canUseOpeningOnlyOptions && zone.hasSashPlintheBottom) {
+          double plintheW =
+              window.componentOverrides.containsKey('بلانت (Plinthe)')
+              ? (window.componentOverrides['بلانت (Plinthe)']['visible_width'] ??
+                        40.0)
+                    .toDouble()
+              : 40.0;
+          baseGh += sw;
+          baseGh -= plintheW;
+        }
 
         // جوانات نظام الفتح — ظلفة مفردة
         // Frappe = محيط الظلفة + محيط الإطار
@@ -4734,7 +4779,7 @@ class ComponentCalculator {
         baseGwLeft = sashCutWLeft - sashGlassDeduction;
         baseGwRight = sashCutWRight - sashGlassDeduction;
         baseGh = sashCutH - sashGlassDeduction;
-        if (zone.hasSashPlintheBottom) {
+        if (window.canUseOpeningOnlyOptions && zone.hasSashPlintheBottom) {
           double plintheW =
               window.componentOverrides.containsKey('بلانت (Plinthe)')
               ? (window.componentOverrides['بلانت (Plinthe)']['visible_width'] ??
@@ -4970,13 +5015,51 @@ class ComponentCalculator {
               isSlidingSystem && window.isSlidingPVC;
           final String slidingSeriesLabel =
               '${window.activeSlidingSeries?.name ?? ''} '
-                      '${window.activeSlidingSeries?.type ?? ''}'
+                      '${window.activeSlidingSeries?.type ?? ''} '
+                      '${window.activeSeries?.name ?? ''} '
+                      '${window.activeSeries?.type ?? ''} '
+                      '${window.system?.name ?? ''}'
                   .toLowerCase();
-          final bool isTprSlidingSystem =
+          final slidingFamily = window.slidingSeriesFamily(
+            series: window.activeSlidingSeries ?? window.activeSeries,
+          );
+          final bool isTprLikeSlidingSystem =
               isSlidingSystem &&
               !isPvcSlidingSystem &&
               (slidingSeriesLabel.contains('tpr') ||
-                  slidingSeriesLabel.contains('67000'));
+                  slidingSeriesLabel.contains('atpr') ||
+                  slidingSeriesLabel.contains('tpi') ||
+                  slidingFamily != null);
+          final AluminumSeries? reducerSeries =
+              window.activeSlidingSeries ?? window.activeSeries;
+          final bool reducerConfigured = window.seriesUsesReducer(
+            reducerSeries,
+          );
+          final bool reducerConfigExists = window.seriesHasConfiguredRoles(
+            reducerSeries,
+          );
+          final bool reducerAllowed =
+              reducerConfigured ||
+              (!reducerConfigExists && isSlidingSystem && !isPvcSlidingSystem);
+
+          void addReducteurPieces(int multiplier) {
+            hasSimpleGlassReducerPieces = true;
+            for (int q = 0; q < multiplier; q++) {
+              reducteurPieces.add(cellGw / 1000.0);
+              reducteurPieces.add(cellGw / 1000.0);
+              reducteurPieces.add(cellGh / 1000.0);
+              reducteurPieces.add(cellGh / 1000.0);
+            }
+          }
+
+          void addSlidingVitrageJoint() {
+            final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
+            final double sides = cellGlass.jointTwoSides ? 2.0 : 1.0;
+            final double qty = perimeter * sides * totalPieces;
+            const jointName = 'جوان الزجاج (Joint Vitrage)';
+            slidingGlassJoints[jointName] =
+                (slidingGlassJoints[jointName] ?? 0.0) + qty;
+          }
 
           if (isSlidingSystem) {
             if (isPvcSlidingSystem) {
@@ -4993,7 +5076,7 @@ class ComponentCalculator {
                 targetParclosePieces.add(cellGh / 1000.0);
               }
             }
-            if (isTprSlidingSystem &&
+            if (isTprLikeSlidingSystem &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
               // TPR parclose is cut in the catalogue's order: two pieces are
@@ -5009,18 +5092,21 @@ class ComponentCalculator {
                 targetParclosePieces.add(tprWidth / 1000.0);
                 targetParclosePieces.add(tprWidth / 1000.0);
               }
+              if (reducerAllowed &&
+                  cellGlass.structure == GlassStructure.simple) {
+                addReducteurPieces(pieceMultiplier);
+              }
+              addSlidingVitrageJoint();
             } else if (!isPvcSlidingSystem &&
                 !isPanneau &&
                 cellGlass.structure != GlassStructure.closed) {
               final double reducteurThick =
-                  (cellGlass.structure == GlassStructure.simple) ? 15.0 : 0.0;
+                  (reducerAllowed &&
+                      cellGlass.structure == GlassStructure.simple)
+                  ? 15.0
+                  : 0.0;
               if (reducteurThick > 0) {
-                for (int q = 0; q < totalPieces; q++) {
-                  reducteurPieces.add(cellGw / 1000.0);
-                  reducteurPieces.add(cellGw / 1000.0);
-                  reducteurPieces.add(cellGh / 1000.0);
-                  reducteurPieces.add(cellGh / 1000.0);
-                }
+                addReducteurPieces(pieceMultiplier);
               }
               double maxGlass = 24.0;
               final sashMap =
@@ -5041,24 +5127,16 @@ class ComponentCalculator {
                 remaining =
                     2.0; // fallback to ensure glass gasket is calculated
               }
-              if (remaining > 0) {
-                final bool forceTwoSides = cellGlass.jointTwoSides;
-                String jointName = 'جوان البوراج (Joint Bourrage)';
-                final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
-                final double qty =
-                    perimeter * (forceTwoSides ? 2 : 1) * totalPieces;
-                slidingGlassJoints[jointName] =
-                    (slidingGlassJoints[jointName] ?? 0.0) + qty;
-              }
+              if (remaining > 0) addSlidingVitrageJoint();
             }
           } else {
             if (!isPanneau && cellGlass.structure != GlassStructure.closed) {
               final double perimeter = (cellGw * 2 + cellGh * 2) / 1000.0;
-              final double quantityPerim = perimeter * pieceMultiplier;
-              swingBourrageGlassPerim += quantityPerim;
-              if (cellGlass.jointTwoSides) {
-                swingVitrageGlassPerim += quantityPerim;
-              }
+              final double mult = cellGlass.jointTwoSides ? 2.0 : 1.0;
+              final double gasketQty = perimeter * mult * totalPieces;
+              String gName = 'جوان البوراج (Joint Bourrage)';
+              slidingGlassJoints[gName] =
+                  (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
             }
             if (cellThick > 10.0) {
               for (int q = 0; q < pieceMultiplier; q++) {
@@ -5699,8 +5777,7 @@ class ComponentCalculator {
 
     // ===== جوانات نظام الفتح (ألمنيوم فقط) =====
     if (!window.isPVC) {
-      // The first opening-system gasket sits below the glass and is required.
-      // The top gasket follows the drawing choice (one side / two sides).
+      // حساب الكميات المشتركة بين Vitrage و Bourrage
       final double simplePerim = parcloseSimplePieces.fold(
         0.0,
         (s, p) => s + p,
@@ -5709,31 +5786,16 @@ class ComponentCalculator {
         0.0,
         (s, p) => s + p,
       ); // محيط زجاج مزدوج (×2)
-      final double fallbackGlassPerim = simplePerim + doublePerim;
-      final double bourrageQty = swingBourrageGlassPerim > 0
-          ? swingBourrageGlassPerim * window.quantity
-          : fallbackGlassPerim;
-      final double vitrageQty = swingVitrageGlassPerim > 0
-          ? swingVitrageGlassPerim * window.quantity
-          : fallbackGlassPerim;
+      final double vitrageQty = simplePerim * 1.0 + doublePerim * 2.0;
 
-      // Joint Vitrage = the optional upper side.
+      // Joint Bourrage = كمية تثبيت الزجاج الفعلية. لا نعرض Joint Vitrage
+      // كسطر منفصل لأن اتجاه الجوان (جهة/جهتين) خيار في الرسم وليس قطعة
+      // يمين/يسار مستقلة داخل جدول الجوان.
       if (vitrageQty > 0) {
         items.add(
           createJoint(
-            'جوان الزجاج (Joint Vitrage)',
-            qty: vitrageQty,
-            unit: 'متر',
-          ),
-        );
-      }
-
-      // Joint Bourrage = the mandatory lower side.
-      if (bourrageQty > 0) {
-        items.add(
-          createJoint(
             'جوان البوراج (Joint Bourrage)',
-            qty: bourrageQty,
+            qty: vitrageQty,
             unit: 'متر',
           ),
         );
@@ -5759,13 +5821,18 @@ class ComponentCalculator {
       }
     }
 
-    if (reducteurPieces.isNotEmpty) {
+    if (reducteurPieces.isNotEmpty && hasSimpleGlassReducerPieces) {
       Map<String, dynamic>? reducteurOverride =
           window.componentOverrides['ريديكتور (Réducteur)'] ??
           window.componentOverrides['مخفض الزجاج (Réducteur)'];
 
       final reductionSeries = window.activeSlidingSeries ?? window.activeSeries;
-      if (reducteurOverride == null && reductionSeries != null) {
+      final bool reducerAllowedForSeries =
+          window.seriesUsesReducer(reductionSeries) ||
+          !window.seriesHasConfiguredRoles(reductionSeries);
+      if (reducerAllowedForSeries &&
+          reducteurOverride == null &&
+          reductionSeries != null) {
         bool isReducteurSection(dynamic s) {
           final n = s.name.toLowerCase();
           final t = s.type.toLowerCase();
@@ -5793,15 +5860,17 @@ class ComponentCalculator {
         } catch (_) {}
       }
 
-      items.add(
-        createProfile(
-          'ريديكتور (Réducteur)',
-          colorName,
-          pieces: reducteurPieces,
-          unit: 'قطاع',
-          overrideMap: reducteurOverride,
-        ),
-      );
+      if (reducerAllowedForSeries) {
+        items.add(
+          createProfile(
+            'ريديكتور (Réducteur)',
+            colorName,
+            pieces: reducteurPieces,
+            unit: 'قطاع',
+            overrideMap: reducteurOverride,
+          ),
+        );
+      }
     }
 
     // =========================================================================
@@ -6530,6 +6599,7 @@ class ComponentCalculator {
     String? color,
     double qty = 0,
     String unit = 'متر',
+    double? exactQuantity,
     int? catalogItemId,
   }) {
     bool isLinked = overrides.containsKey(originalName);
@@ -6547,6 +6617,15 @@ class ComponentCalculator {
       name = '$originalName\n$details';
       price = (ov['price_per_meter'] ?? ov['calculated_price'] ?? 0.0)
           .toDouble();
+    }
+    final normalizedUnit = unit.toLowerCase().trim();
+    final exactQty = exactQuantity ?? qty;
+    if (exactQty > 0 &&
+        (normalizedUnit.contains('متر') ||
+            normalizedUnit.contains('meter') ||
+            normalizedUnit == 'm' ||
+            normalizedUnit == 'ml')) {
+      name = '$name\n(المطلوب الفعلي: ${exactQty.toStringAsFixed(2)} $unit)';
     }
     final linkedCatalogueId =
         catalogItemId ??
@@ -6567,6 +6646,7 @@ class ComponentCalculator {
       unitPrice: price,
       isMissing: !isLinked,
       isActive: true,
+      exactQuantity: exactQty,
       catalogItemId: linkedCatalogueId,
       inventoryItemType: 'Joints',
     );
@@ -6591,6 +6671,7 @@ class ComponentCalculator {
     double price = 0.0;
     double finalQty = qty;
     double? finalLength;
+    double? finalExactQuantity;
     String? cuttingListText;
     String? profileCode;
     String? imagePath;
@@ -6688,6 +6769,31 @@ class ComponentCalculator {
           (ov['bar_length'] as num?)?.toDouble() ??
           5.8;
     }
+    final lowerOriginal = originalName.toLowerCase();
+    final lowerName = name.toLowerCase();
+    final isMeterJoint =
+        finalUnit.toLowerCase().contains('متر') &&
+        (lowerOriginal.contains('joint') ||
+            lowerOriginal.contains('جوان') ||
+            lowerOriginal.contains('brosse') ||
+            lowerName.contains('joint') ||
+            lowerName.contains('جوان') ||
+            lowerName.contains('brosse'));
+    if (isMeterJoint && finalQty > 0) {
+      finalExactQuantity = ((finalQty * 100).round()) / 100.0;
+      finalQty = finalExactQuantity.ceilToDouble();
+      name =
+          '$name\n(المطلوب الفعلي: ${finalExactQuantity.toStringAsFixed(2)} $finalUnit)';
+    }
+    final linkedOverride = isLinked ? overrides[originalName] : null;
+    final isAccessoryOverride =
+        linkedOverride is Map &&
+        (linkedOverride.containsKey('material_type') ||
+            linkedOverride.containsKey('screw_count') ||
+            linkedOverride.containsKey('is_kit_screw') ||
+            linkedOverride.containsKey('is_caisson_screw') ||
+            linkedOverride.containsKey('is_moteur_screw')) &&
+        !linkedOverride.containsKey('component_type');
 
     return BomItem(
       category: 'shutter',
@@ -6704,8 +6810,9 @@ class ComponentCalculator {
       pieces: pieces,
       cuttingList: cuttingListText,
       kitGroupName: kitGroupName,
+      exactQuantity: finalExactQuantity,
       catalogItemId: linkedCatalogueId,
-      inventoryItemType: 'ShutterComponent',
+      inventoryItemType: isAccessoryOverride ? 'Accessory' : 'ShutterComponent',
       colorId: colorId,
     );
   }

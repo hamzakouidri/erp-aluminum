@@ -119,6 +119,17 @@ class WindowPainter extends CustomPainter {
       ? model.shutterBoxHeight
       : 0.0;
 
+  bool get _hasDrawableIntegratedSideCover =>
+      model.isIntegratedFrame && model.integratedFrameSideCoverWidth > 0;
+
+  bool get _hasDrawableStandaloneSideCover =>
+      model.hasSideCovers &&
+      model.sideCoverWidth > 0 &&
+      model.isSideCoverAllowed;
+
+  bool get _shouldDrawSideCovers =>
+      _hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover;
+
   @override
   void paint(Canvas canvas, Size size) {
     final w = model.width;
@@ -282,45 +293,8 @@ class WindowPainter extends CustomPainter {
 
         _drawOuterFrames(canvas, w, h, t, topOffset);
 
-        if (model.hasFramePlintheBottom) {
-          double plintheHeight = model.plintheHeight;
-          double yBottom = h;
-
-          final plintheRect = Rect.fromLTRB(
-            t,
-            yBottom - plintheHeight,
-            w - t,
-            yBottom,
-          );
-
-          final pPaint = Paint();
-          if (_isWoodColor() && TextureCache.woodTexture != null) {
-            _applyWoodShader(pPaint, plintheRect);
-          } else {
-            pPaint.color = _fc[1];
-          }
-          canvas.drawRect(plintheRect, pPaint);
-
-          final bPaint = Paint()
-            ..color = _fb
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.0;
-          canvas.drawRect(plintheRect, bPaint);
-        }
-
         // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم دائماً عند تفعيله)
-        {
-          final bool hasBuiltInCoverBand =
-              model.isIntegratedFrame &&
-              model.integratedFrameSideCoverWidth > 0;
-          if (hasBuiltInCoverBand || model.hasDrawableStandaloneSideCover) {
-            if (model.useCustomSideCoverLayout) {
-              _drawCustomSideCovers(canvas, w, h, 0.0);
-            } else {
-              _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
-            }
-          }
-        }
+        _drawConfiguredSideCovers(canvas, w, h, 0.0);
 
         canvas.save();
         canvas.clipPath(innerPath);
@@ -345,6 +319,7 @@ class WindowPainter extends CustomPainter {
           }
         }
         canvas.restore();
+        _drawFixedBottomFrameSegments(canvas, w, h, t);
         _drawMainZoneHinges(canvas, h, t);
         // Draw Octo handles OUTSIDE the clip so the keeper (on frame side) is visible
         for (final zone in model.zones) {
@@ -391,18 +366,8 @@ class WindowPainter extends CustomPainter {
         _drawOuterFrames(canvas, w, h, t, topOffset);
 
         // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم في الوجه الخارجي أيضاً عند تفعيله)
-        {
-          final bool hasBuiltInCoverBand =
-              model.isIntegratedFrame &&
-              model.integratedFrameSideCoverWidth > 0;
-          if ((hasBuiltInCoverBand || model.hasDrawableStandaloneSideCover) &&
-              !model.showWall) {
-            if (model.useCustomSideCoverLayout) {
-              _drawCustomSideCovers(canvas, w, h, 0.0);
-            } else {
-              _drawSideCovers(canvas, w, h, 0.0, model.sideCoverWidth);
-            }
-          }
+        if (!model.showWall) {
+          _drawConfiguredSideCovers(canvas, w, h, 0.0);
         }
       }
 
@@ -446,6 +411,7 @@ class WindowPainter extends CustomPainter {
           }
         }
         canvas.restore();
+        _drawFixedBottomFrameSegments(canvas, w, h, t);
         _drawMainZoneHinges(canvas, h, t);
         // Draw Octo handles OUTSIDE the clip so the keeper (on frame side) is visible
         for (final zone in model.zones) {
@@ -1400,9 +1366,7 @@ class WindowPainter extends CustomPainter {
   }
 
   Rect _getEffectiveZoneRect(Rect original, double h, double t) {
-    if (!model.hasBottomFrame &&
-        !model.hasFramePlintheBottom &&
-        (original.bottom - (h - t)).abs() < 1.0) {
+    if (!model.hasBottomFrame && (original.bottom - (h - t)).abs() < 1.0) {
       final matchingZone = model.zones.firstWhere(
         (z) =>
             (z.boundary.left - original.left).abs() < 2.0 &&
@@ -1499,9 +1463,7 @@ class WindowPainter extends CustomPainter {
   }
 
   Path _buildInnerShapePath(double w, double h, double t, double topY) {
-    double bottomOffset = model.hasFramePlintheBottom
-        ? model.plintheHeight
-        : (model.hasBottomFrame ? t : 0.0);
+    double bottomOffset = model.hasBottomFrame ? t : 0.0;
 
     if (model.archHeight == 0 &&
         model.topSlantLeftY == 0 &&
@@ -1766,38 +1728,7 @@ class WindowPainter extends CustomPainter {
         bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
       );
 
-      // رسم الإطار السفلي تحت الأجزاء الثابتة فقط عند نزع الإطار السفلي للضلفة
-      if (!model.hasBottomFrame) {
-        for (final zone in model.zones) {
-          final r = zone.boundary;
-          bool isBottomBound =
-              (r.bottom - (h - t)).abs() < 2.0 || r.bottom >= h - t;
-          bool isFixed =
-              zone.content == ZoneContent.fixedGlass ||
-              zone.content == ZoneContent.empty;
-
-          if (isBottomBound && isFixed) {
-            final double segLeft = (r.left - t).abs() < 2.0 ? 0.0 : r.left;
-            final double segRight = (r.right - (w - t)).abs() < 2.0
-                ? w
-                : r.right;
-            final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
-            canvas.drawRect(segRect, _buildPaint(outerRect));
-            canvas.drawRect(segRect, bp);
-            canvas.drawLine(
-              Offset(segLeft, h - t),
-              Offset(segRight, h - t),
-              bp,
-            );
-            if (segLeft > 0.1) {
-              canvas.drawLine(Offset(segLeft, h - t), Offset(segLeft, h), bp);
-            }
-            if (segRight < w - 0.1) {
-              canvas.drawLine(Offset(segRight, h - t), Offset(segRight, h), bp);
-            }
-          }
-        }
-      }
+      _drawFixedBottomFrameSegments(canvas, w, h, t);
     }
 
     _drawMiterCorners(
@@ -1823,12 +1754,57 @@ class WindowPainter extends CustomPainter {
     }
   }
 
+  void _drawFixedBottomFrameSegments(
+    Canvas canvas,
+    double w,
+    double h,
+    double t,
+  ) {
+    if (model.hasBottomFrame) return;
+
+    final outerRect = Rect.fromLTRB(0, 0, w, h);
+    final fill = _buildPaint(outerRect);
+    final border = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    for (final zone in model.zones) {
+      final r = zone.boundary;
+      final isBottomBound =
+          (r.bottom - (h - t)).abs() < 2.0 || r.bottom >= h - t;
+      final isFixed =
+          zone.content == ZoneContent.fixedGlass ||
+          zone.content == ZoneContent.empty;
+      if (!isBottomBound || !isFixed) continue;
+
+      final touchesLeftFrame = (r.left - t).abs() < 2.0 || r.left <= t;
+      final touchesRightFrame =
+          (r.right - (w - t)).abs() < 2.0 || r.right >= w - t;
+      final segLeft = touchesLeftFrame ? t : r.left;
+      final segRight = touchesRightFrame ? w - t : r.right;
+      if (segRight <= segLeft) continue;
+
+      final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
+      canvas.drawRect(segRect, fill);
+      canvas.drawRect(segRect, border);
+      canvas.drawLine(Offset(segLeft, h - t), Offset(segRight, h - t), border);
+      if (touchesLeftFrame) {
+        canvas.drawLine(Offset(0, h), Offset(t, h - t), border);
+      } else if (segLeft > 0.1) {
+        canvas.drawLine(Offset(segLeft, h - t), Offset(segLeft, h), border);
+      }
+      if (touchesRightFrame) {
+        canvas.drawLine(Offset(w, h), Offset(w - t, h - t), border);
+      } else if (segRight < w - 0.1) {
+        canvas.drawLine(Offset(segRight, h - t), Offset(segRight, h), border);
+      }
+    }
+  }
+
   void _drawCustomSideCovers(Canvas canvas, double w, double h, double topY) {
     final segments = model.effectiveSideCoverSegments;
-    if (!model.hasSideCovers ||
-        !model.hasDrawableStandaloneSideCover ||
-        segments.isEmpty)
-      return;
+    if (!_shouldDrawSideCovers || segments.isEmpty) return;
 
     final paint = Paint();
     if (_isWoodColor() && TextureCache.woodTexture != null) {
@@ -1998,6 +1974,32 @@ class WindowPainter extends CustomPainter {
       canvas.drawPath(path, paint);
       canvas.drawPath(path, borderPaint);
     }
+  }
+
+  void _drawConfiguredSideCovers(
+    Canvas canvas,
+    double w,
+    double h,
+    double topY,
+  ) {
+    if (!_shouldDrawSideCovers) return;
+    final coverWidth = model.sideCoverWidth;
+    if (coverWidth <= 0) return;
+
+    if (model.useCustomSideCoverLayout) {
+      final segments = model.effectiveSideCoverSegments;
+      if (segments.isNotEmpty) {
+        _drawCustomSideCovers(canvas, w, h, topY);
+        return;
+      }
+
+      // Old/restored drawings can keep the custom flag without any stored
+      // segment. In that state the user has enabled a standalone cover, so
+      // render the normal full surround instead of silently drawing nothing.
+      if (model.hiddenSideCoverSegments.isNotEmpty) return;
+    }
+
+    _drawSideCovers(canvas, w, h, topY, coverWidth);
   }
 
   void _drawSideCovers(
@@ -2938,9 +2940,7 @@ class WindowPainter extends CustomPainter {
     if (model.width > 2 * t) {
       factor = ((x - t) / (model.width - 2 * t)).clamp(0.0, 1.0);
     }
-    double bottomOffset = model.hasFramePlintheBottom
-        ? model.plintheHeight
-        : (model.hasBottomFrame ? t : 0.0);
+    double bottomOffset = model.hasBottomFrame ? t : 0.0;
     double yL = model.height - model.bottomSlantLeftY - bottomOffset;
     double yR = model.height - model.bottomSlantRightY - bottomOffset;
     return yL + factor * (yR - yL);

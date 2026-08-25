@@ -278,12 +278,6 @@ class _CommandePageState extends State<CommandePage> {
     });
   }
 
-  int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
-
   // حفظ آخر خصائص مستخدمة داخل نفس الطلبية
   Map<String, dynamic>? _lastUsedSettings;
 
@@ -1341,6 +1335,7 @@ class _CommandePageState extends State<CommandePage> {
         value['calculated_price'] ??
         value['price_dzd'] ??
         value['price_per_meter'] ??
+        value['price_per_sqm'] ??
         value['price'];
     return raw is num
         ? raw.toDouble()
@@ -1350,9 +1345,11 @@ class _CommandePageState extends State<CommandePage> {
   Future<double> _readSeriesLinearMeterPrice(WindowModel product) async {
     final database = await widget.db.db;
     if (database == null) return 0.0;
-    final series = product.usesSlidingPrimaryProfiles
-        ? product.activeSlidingSeries
-        : product.activeSeries;
+    final series =
+        product.activeFrameSeries ??
+        (product.usesSlidingPrimaryProfiles
+            ? product.activeSlidingSeries
+            : product.activeSeries);
     if (series == null) return 0.0;
     final rawColorId = product.selectedDbColor?['id'];
     final colorId = rawColorId is num
@@ -1366,6 +1363,16 @@ class _CommandePageState extends State<CommandePage> {
         'Series',
         columns: const ['price_per_meter'],
         where: 'id = ?',
+        whereArgs: [series.id],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) price = _readMapPrice(rows.first);
+    }
+    if (price <= 0) {
+      final rows = await database.query(
+        'SeriesColorPrices',
+        columns: const ['price'],
+        where: 'series_id = ? AND price > 0',
         whereArgs: [series.id],
         limit: 1,
       );
@@ -1393,6 +1400,16 @@ class _CommandePageState extends State<CommandePage> {
     );
     if (price <= 0 && bladeName.trim().isNotEmpty) {
       final rows = await database.query(
+        'ShutterSqmPrices',
+        columns: const ['price_per_sqm'],
+        where: 'LOWER(TRIM(blade_type)) = ? AND price_per_sqm > 0',
+        whereArgs: [bladeName.trim().toLowerCase()],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) price = _readMapPrice(rows.first);
+    }
+    if (price <= 0 && bladeName.trim().isNotEmpty) {
+      final rows = await database.query(
         'ShutterComponents',
         columns: const ['price'],
         where: 'LOWER(name) = ?',
@@ -1412,7 +1429,7 @@ class _CommandePageState extends State<CommandePage> {
     return {
       'Verrou Central': product.useVerrouCentral,
       'System OB': product.useSystemOB,
-      'Demi System OB': product.useDemiOB,
+      'Demi System OB': product.effectiveUseDemiOB,
       'كيت فولي موتور (Kit Volet Moteur)': isMotor,
       'كيت فولي مانيفر (Kit Volet Manivelle)': isCrank,
       'كيت مانيفر (Kit Manivelle)': isCrank,
@@ -2173,10 +2190,6 @@ class _CommandePageState extends State<CommandePage> {
   // ==============================================================================
 
   Widget _buildBulkActionsPanel({required bool isDark}) {
-    final lang = Provider.of<AppSettingsProvider>(
-      context,
-      listen: false,
-    ).language;
     final products = _bulkEditableProducts();
     if (products.isEmpty) return const SizedBox.shrink();
     final allSelected =
@@ -2189,8 +2202,8 @@ class _CommandePageState extends State<CommandePage> {
           gradientColors: const [Colors.deepPurple, Colors.purpleAccent],
           onPressed: _isApplyingBulkChange ? null : _showApplyBulkColorDialog,
           icon: const Icon(Icons.palette_outlined, color: Colors.white),
-          label: Text(
-            Localization.translate('تغيير لون العناصر', lang),
+          label: const Text(
+            'تغيير لون العناصر',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
@@ -2200,8 +2213,8 @@ class _CommandePageState extends State<CommandePage> {
           gradientColors: const [Colors.indigo, Colors.blueAccent],
           onPressed: _isApplyingBulkChange ? null : _showBulkSeriesDialog,
           icon: const Icon(Icons.layers_outlined, color: Colors.white),
-          label: Text(
-            Localization.translate('تغيير السلسلة', lang),
+          label: const Text(
+            'تغيير السلسلة',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
@@ -2211,8 +2224,8 @@ class _CommandePageState extends State<CommandePage> {
           gradientColors: const [Colors.teal, Colors.green],
           onPressed: _isApplyingBulkChange ? null : _showBulkGlassDialog,
           icon: const Icon(Icons.window_outlined, color: Colors.white),
-          label: Text(
-            Localization.translate('تغيير الزجاج', lang),
+          label: const Text(
+            'تغيير الزجاج',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
@@ -2380,13 +2393,11 @@ class _CommandePageState extends State<CommandePage> {
                         );
                         return;
                       }
-                      final clientId = _readInt(selectedClient!['id']);
-                      if (clientId == null) return;
                       final result = await showDialog(
                         context: context,
                         builder: (context) => ProjectDropdownDialog(
                           db: widget.db,
-                          clientId: clientId,
+                          clientId: selectedClient!['id'] as int,
                         ),
                       );
 
@@ -3441,18 +3452,16 @@ class _CommandePageState extends State<CommandePage> {
                                         result is Map<String, dynamic> &&
                                         mounted) {
                                       final int cBars =
-                                          _readInt(
-                                            result['grandTotalCaissonBars'],
-                                          ) ??
-                                          0;
+                                          (result['grandTotalCaissonBars']
+                                              as int? ??
+                                          0);
                                       final int bBars =
-                                          _readInt(
-                                            result['grandTotalBottomCoverBars'],
-                                          ) ??
-                                          0;
+                                          (result['grandTotalBottomCoverBars']
+                                              as int? ??
+                                          0);
                                       final int pairs =
-                                          _readInt(result['grandTotalPairs']) ??
-                                          0;
+                                          (result['grandTotalPairs'] as int? ??
+                                          0);
 
                                       // Compute suggested price from DB prices
                                       double suggestedPrice = 0.0;

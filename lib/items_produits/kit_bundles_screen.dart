@@ -512,7 +512,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
           actionsOverflowAlignment: OverflowBarAlignment.end,
           actionsOverflowButtonSpacing: 8,
           title: Text(
-            family == null ? Localization.translate('إضافة عائلة داخل الكيت', lang) : Localization.translate('تعديل عائلة الكيت', lang),
+            family == null ? 'إضافة عائلة داخل الكيت' : 'تعديل عائلة الكيت',
           ),
           content: ConstrainedBox(
             constraints: BoxConstraints(
@@ -529,17 +529,17 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                 children: [
                   TextField(
                     controller: nameCtrl,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate('اسم العائلة', lang),
+                    decoration: const InputDecoration(
+                      labelText: 'اسم العائلة',
                       hintText: 'مثال: Embout + Support Roulement',
-                      border: const OutlineInputBorder(),
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(Localization.translate('فلترة اختيارية حسب الميكانيزم:', lang)),
-                  Text(
-                    Localization.translate('اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.', lang),
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  const Text('فلترة اختيارية حسب الميكانيزم:'),
+                  const Text(
+                    'اتركها بلا اختيار لتكون العائلة متاحة عند اختيارها داخل نطاق.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                   for (final option in _mechanismOptions)
                     CheckboxListTile(
@@ -558,19 +558,19 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
                     initialValue: bladeScope,
-                    decoration: InputDecoration(
-                      labelText: Localization.translate('نوع الشفرة', lang),
-                      border: const OutlineInputBorder(),
+                    decoration: const InputDecoration(
+                      labelText: 'نوع الشفرة',
+                      border: OutlineInputBorder(),
                     ),
-                    items: [
-                      DropdownMenuItem(value: 'all', child: Text(Localization.translate('كل الشفرات', lang))),
+                    items: const [
+                      DropdownMenuItem(value: 'all', child: Text('كل الشفرات')),
                       DropdownMenuItem(
                         value: 'normal',
-                        child: Text(Localization.translate('الشفرة العادية فقط', lang)),
+                        child: Text('الشفرة العادية فقط'),
                       ),
                       DropdownMenuItem(
                         value: 'extruded',
-                        child: Text(Localization.translate('شفرة Extrudé فقط', lang)),
+                        child: Text('شفرة Extrudé فقط'),
                       ),
                     ],
                     onChanged: (value) =>
@@ -579,9 +579,9 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                   const SizedBox(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(Localization.translate('تتكرر لكل ضلفة', lang)),
-                    subtitle: Text(
-                      Localization.translate('اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.', lang),
+                    title: const Text('تتكرر لكل ضلفة'),
+                    subtitle: const Text(
+                      'اتركها مغلقة لاستعمال العائلة مرة واحدة داخل الكيت.',
                     ),
                     value: perLeaf,
                     onChanged: (value) => setDialogState(() => perLeaf = value),
@@ -938,7 +938,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
             ),
           if (isAdmin && widget.family == null)
             IconButton(
-              tooltip: Localization.translate('إضافة عائلة داخل الكيت', lang),
+              tooltip: 'إضافة عائلة داخل الكيت',
               icon: const Icon(Icons.account_tree_outlined),
               onPressed: () => _showAddEditFamilyDialog(),
             ),
@@ -955,8 +955,8 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
           ? Center(
               child: Text(
                 widget.family == null
-                    ? Localization.translate('لا توجد مركبات أو عائلات بعد', lang)
-                    : Localization.translate('لا توجد مركبات داخل هذه العائلة بعد', lang),
+                    ? 'لا توجد مركبات أو عائلات بعد'
+                    : 'لا توجد مركبات داخل هذه العائلة بعد',
               ),
             )
           : ListView.builder(
@@ -978,8 +978,8 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                       ? Localization.translate('شفرة Extrudé', lang)
                       : Localization.translate('كل الشفرات', lang);
                   final onceLabel = (family['per_leaf'] as num?)?.toInt() == 1
-                      ? Localization.translate('لكل ضلفة', lang)
-                      : Localization.translate('مرة واحدة داخل الكيت', lang);
+                      ? 'لكل ضلفة'
+                      : 'مرة واحدة داخل الكيت';
                   return Card(
                     color: Theme.of(context).colorScheme.secondaryContainer,
                     margin: const EdgeInsets.only(bottom: 10),

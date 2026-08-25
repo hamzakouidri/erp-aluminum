@@ -194,7 +194,7 @@ class _CommandeState extends State<Commande> {
 
   void _scheduleCloudRefresh() {
     _syncRefreshDebounce?.cancel();
-    _syncRefreshDebounce = Timer(const Duration(milliseconds: 80), () {
+    _syncRefreshDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       _fetchCommandes();
     });

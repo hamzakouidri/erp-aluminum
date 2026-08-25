@@ -14,119 +14,6 @@ String _accessorySearchText(Map<String, dynamic> accessory) =>
 bool _containsAny(String value, Iterable<String> terms) =>
     terms.any((term) => value.contains(term));
 
-bool _readProfileFlag(Object? value, {bool fallback = false}) {
-  if (value == null) return fallback;
-  if (value is bool) return value;
-  if (value is num) return value != 0;
-  final text = value.toString().trim().toLowerCase();
-  if (text.isEmpty) return fallback;
-  return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
-}
-
-String _sectionText(Map<String, dynamic> section) =>
-    '${section['code'] ?? ''} ${section['name'] ?? ''} ${section['type'] ?? ''}'
-        .toLowerCase()
-        .trim();
-
-bool _sectionMatchesAny(Map<String, dynamic> section, Iterable<String> terms) =>
-    _containsAny(_sectionText(section), terms);
-
-bool _sectionIsFrame(Map<String, dynamic> section) {
-  if (_readProfileFlag(section['is_frame'])) return true;
-  return _sectionMatchesAny(section, const [
-    'frame',
-    'cadre',
-    'إطار',
-    'اطار',
-    'فريم',
-  ]);
-}
-
-bool _sectionIsSash(Map<String, dynamic> section) {
-  if (_readProfileFlag(section['is_sash'])) return true;
-  return _sectionMatchesAny(section, const [
-    'sash',
-    'ouvrant',
-    'ضلفة',
-    'ضلف',
-    'ساش',
-  ]);
-}
-
-bool _sectionIsLateral(Map<String, dynamic> section) {
-  final text = _sectionText(section);
-  final code = (section['code'] ?? '').toString().toLowerCase();
-  return (code.endsWith('104') ||
-          code.endsWith('108') ||
-          text.contains('lateral') ||
-          text.contains('latéral') ||
-          text.contains('جانبي')) &&
-      !text.contains('central') &&
-      !text.contains('وسطي') &&
-      !text.contains('chicane') &&
-      !code.endsWith('105') &&
-      !code.endsWith('107');
-}
-
-bool _sectionIsCentral(Map<String, dynamic> section) {
-  final text = _sectionText(section);
-  final code = (section['code'] ?? '').toString().toLowerCase();
-  return (code.endsWith('105') ||
-          code.endsWith('107') ||
-          text.contains('central') ||
-          text.contains('وسطي') ||
-          text.contains('chicane') ||
-          text.contains('شيكان')) &&
-      !text.contains('lateral') &&
-      !text.contains('latéral') &&
-      !text.contains('جانبي') &&
-      !code.endsWith('104') &&
-      !code.endsWith('108');
-}
-
-bool _sectionIsTraverse(Map<String, dynamic> section) => _sectionMatchesAny(
-  section,
-  const ['sash_traverse', 'traverse', 'mullion', 'ترافيرس', 'عارضة', 'تقسيم'],
-);
-
-bool _sectionIsReducer(Map<String, dynamic> section) {
-  final text = _sectionText(section);
-  return (text.contains('reduct') ||
-          text.contains('réduct') ||
-          text.contains('ريديكتور') ||
-          text.contains('مخفض') ||
-          text.contains('67114')) &&
-      !text.contains('rail') &&
-      !text.contains('سكة') &&
-      !text.contains('cadre') &&
-      !text.contains('frame') &&
-      !text.contains('إطار') &&
-      !text.contains('اطار');
-}
-
-List<Map<String, dynamic>> _mergeProfileRows(
-  Iterable<Map<String, dynamic>> preferred,
-  Iterable<Map<String, dynamic>> fallback,
-) {
-  final merged = <Map<String, dynamic>>[];
-  final seen = <String>{};
-  void add(Map<String, dynamic> row) {
-    final id = row['id']?.toString();
-    final key = id == null || id.isEmpty
-        ? '${row['series_id']}-${row['code']}-${row['name']}-${row['type']}'
-        : id;
-    if (seen.add(key)) merged.add(Map<String, dynamic>.from(row));
-  }
-
-  for (final row in preferred) {
-    add(row);
-  }
-  for (final row in fallback) {
-    add(row);
-  }
-  return merged;
-}
-
 /// A catalogue item is linked to a series only through [series_id] or
 /// [series_ids]. Text in its name/type must never make it appear in another
 /// series.
@@ -140,14 +27,24 @@ bool catalogItemMatchesSeries(Map<String, dynamic> item, int seriesId) {
       .where((id) => id > 0)
       .toSet();
 
-  final hasExplicitSeries = (directId ?? 0) > 0 || linkedIds.isNotEmpty;
-  if (hasExplicitSeries) {
-    return directId == seriesId || linkedIds.contains(seriesId);
-  }
+  return directId == seriesId || linkedIds.contains(seriesId);
+}
 
-  // A malformed "Unique" record without an assigned series is not global.
-  // Hiding it is safer than leaking it into every selector.
-  return (item['scope'] ?? '').toString().trim().toLowerCase() != 'unique';
+bool catalogItemHasSeriesScope(Map<String, dynamic> item) {
+  final directId = int.tryParse((item['series_id'] ?? '').toString().trim());
+  final linkedIds = (item['series_ids'] ?? '')
+      .toString()
+      .split(',')
+      .map((value) => int.tryParse(value.trim()))
+      .whereType<int>()
+      .where((id) => id > 0)
+      .toSet();
+  return (directId != null && directId > 0) || linkedIds.isNotEmpty;
+}
+
+bool catalogItemMatchesSeriesOrGlobal(Map<String, dynamic> item, int seriesId) {
+  if (!catalogItemHasSeriesScope(item)) return true;
+  return catalogItemMatchesSeries(item, seriesId);
 }
 
 bool isEspagnoletteAccessory(Map<String, dynamic> accessory) => _containsAny(
@@ -277,6 +174,70 @@ bool accessoryMatchesDrawingMode(
   return drawingMode != AccessoryDrawingMode.sliding || !isOpeningOnly;
 }
 
+String _sectionSearchText(Map<String, dynamic> section) =>
+    '${section['code'] ?? ''} ${section['name'] ?? ''} ${section['type'] ?? ''}'
+        .toLowerCase();
+
+bool isSlidingProfileSection(Map<String, dynamic> section) {
+  final text = _sectionSearchText(section);
+  return _containsAny(text, const [
+    'couliss',
+    'sliding',
+    '2rail',
+    '3rail',
+    '2 rail',
+    '3 rail',
+    'monorail',
+    'galandage',
+    'rail',
+    'chicane',
+    'sash lateral',
+    'sash central',
+    'sash traverse',
+    'منزلق',
+    'جرار',
+    'كوليس',
+    'جانبي',
+    'وسطي',
+    'سكة',
+    'ريديكتور',
+  ]);
+}
+
+bool profileSectionMatchesDrawingMode({
+  required Map<String, dynamic> section,
+  required String profileType,
+  required String activeSeriesType,
+  required AccessoryDrawingMode? drawingMode,
+}) {
+  if (drawingMode == null) return true;
+  final t = profileType.toLowerCase().trim();
+  final isSideCover =
+      t.contains('couvre') ||
+      t.contains('side cover') ||
+      t.contains('غطاء') ||
+      t.contains('كافر');
+  if (isSideCover) return true;
+
+  final seriesLooksSliding = _containsAny(activeSeriesType, const [
+    'couliss',
+    'sliding',
+    'منزلق',
+    'جرار',
+  ]);
+  final sectionLooksSliding = isSlidingProfileSection(section);
+
+  if (drawingMode == AccessoryDrawingMode.sliding) {
+    // A sliding selector must never show ordinary opening sections from a
+    // foreign/opening series. If the selected series is itself marked
+    // sliding, its configured rows are accepted even when their label is
+    // short; otherwise the section must carry a sliding marker such as 2Rail.
+    return seriesLooksSliding || sectionLooksSliding;
+  }
+
+  return !sectionLooksSliding;
+}
+
 bool _isX3dShutterComponent(Map<String, dynamic> component) {
   final text =
       '${component['name'] ?? ''} ${component['shutter_subtype'] ?? ''}'
@@ -285,6 +246,21 @@ bool _isX3dShutterComponent(Map<String, dynamic> component) {
       text.contains('extrud') ||
       text.contains('إكسترودي') ||
       text.contains('اكسترودي');
+}
+
+bool profileHasIntegratedSideCover(Map<String, dynamic> item) {
+  final name = (item['name'] ?? '').toString().toLowerCase();
+  final type = (item['type'] ?? '').toString().toLowerCase();
+  final rawWidth = item['couvre_joint_width'];
+  final width = rawWidth is num
+      ? rawWidth.toDouble()
+      : double.tryParse('${rawWidth ?? ''}') ?? 0.0;
+  return width > 0 ||
+      name.contains('مدمج') ||
+      name.contains('intégré') ||
+      name.contains('integre') ||
+      name.contains('monobloc') ||
+      type.contains('monobloc');
 }
 
 /// Axes created before the dedicated diameter field was available often keep
@@ -306,6 +282,7 @@ class ProfileSelectorDialog extends StatefulWidget {
   final String category; // 'profile', 'accessory', 'shutter'
   final int? seriesId;
   final String? materialType;
+  final bool hasShutter;
   final double? windowHeight;
   final double? targetSize;
   final String? kitDescriptionCode;
@@ -326,7 +303,6 @@ class ProfileSelectorDialog extends StatefulWidget {
 
   /// A selected motor cannot fit inside an axis with a smaller diameter.
   final double? motorDiameter;
-  final Map<String, dynamic>? currentItem;
 
   const ProfileSelectorDialog({
     super.key,
@@ -334,6 +310,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.category = 'profile',
     this.seriesId,
     this.materialType,
+    this.hasShutter = false,
     this.windowHeight,
     this.targetSize,
     this.kitDescriptionCode,
@@ -343,7 +320,6 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.selectedBladeName,
     this.selectedBladeIsX3d,
     this.motorDiameter,
-    this.currentItem,
   });
 
   @override
@@ -397,32 +373,31 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           String customWhere,
           List<dynamic> baseArgs,
         ) async {
-          final isShutterGlobalScrewSelector =
-              widget.profileType == 'is_kit_screw' ||
-              widget.profileType == 'is_caisson_screw';
           // A selector without a selected series must not become a catalogue
           // wide selector.  Showing unrelated parts is worse than showing an
           // empty list and prompting the user to choose a series first.
-          if (widget.seriesId == null && !isShutterGlobalScrewSelector) {
+          if (widget.seriesId == null) {
             return const <Map<String, dynamic>>[];
           }
 
           List<dynamic> args = List.from(baseArgs);
           String where = customWhere;
 
-          if (!isShutterGlobalScrewSelector) {
-            // يظهر إذا كان مرتبطاً بالسلسلة مباشرة أو ضمن قائمة سلاسلها.
-            // REPLACE handles old catalogues that stored "12, 13" with spaces.
-            const seriesConstraint =
-                "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
-            const globalConstraint =
-                "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')";
-            where += ' AND ($seriesConstraint OR ($globalConstraint))';
-            args.add(widget.seriesId);
-            args.add('%,' + widget.seriesId.toString() + ',%');
-          }
+          // يظهر إذا كان مرتبطاً بالسلسلة مباشرة أو ضمن قائمة سلاسلها.
+          // REPLACE handles old catalogues that stored "12, 13" with spaces.
+          final allowGlobalAccessories = widget.profileType
+              .toLowerCase()
+              .contains('_screw');
+          const linkedSeriesConstraint =
+              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
+          final seriesConstraint = allowGlobalAccessories
+              ? "$linkedSeriesConstraint OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))"
+              : linkedSeriesConstraint;
+          where += ' AND ($seriesConstraint)';
+          args.add(widget.seriesId);
+          args.add('%,' + widget.seriesId.toString() + ',%');
 
-          if (widget.materialType != null && !isShutterGlobalScrewSelector) {
+          if (widget.materialType != null) {
             final mat = widget.materialType!.toLowerCase().trim();
             if (mat == 'pvc') {
               // PVC: يظهر فقط ما هو pvc أو both. الـ NULL/فارغ = ألمنيوم بالافتراضي → لا يظهر في PVC
@@ -436,9 +411,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           }
 
           String? orderBy;
-          if (isShutterGlobalScrewSelector) {
-            orderBy = 'id ASC';
-          } else if (widget.seriesId != null) {
+          if (widget.seriesId != null) {
             final sid = widget.seriesId;
             orderBy =
                 'CASE WHEN series_id = $sid OR (series_ids IS NOT NULL AND TRIM(series_ids) != \'\' AND \',\' || REPLACE(series_ids, \' \', \'\') || \',\' LIKE \'%,$sid,%\') THEN 0 ELSE 1 END ASC, id ASC';
@@ -452,11 +425,23 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           );
 
           return rawRows.where((a) {
-            if (isShutterGlobalScrewSelector) return true;
-            if (!catalogItemMatchesSeries(a, widget.seriesId!)) return false;
+            if (allowGlobalAccessories) {
+              if (!catalogItemMatchesSeriesOrGlobal(a, widget.seriesId!)) {
+                return false;
+              }
+            } else if (!catalogItemMatchesSeries(a, widget.seriesId!)) {
+              return false;
+            }
 
             final n = a['name'].toString().toLowerCase();
             final ty = (a['type'] ?? '').toString().toLowerCase();
+            final profileTypeLower = widget.profileType.toLowerCase();
+            final isClampLookup =
+                profileTypeLower.contains('clamp') ||
+                profileTypeLower.contains('clam') ||
+                widget.profileType.contains('كلامب') ||
+                widget.profileType.contains('كلام') ||
+                widget.profileType.contains('كلان');
 
             final drawingMode =
                 widget.accessoryDrawingMode ??
@@ -485,12 +470,13 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
               // Aluminium
               if (n.contains('pvc') ||
                   ty.contains('pvc') ||
-                  n.contains('clan') ||
-                  ty.contains('clan') ||
-                  n.contains('clane') ||
-                  ty.contains('clane') ||
-                  n.contains('كلان') ||
-                  ty.contains('كلان')) {
+                  (!isClampLookup &&
+                      (n.contains('clan') ||
+                          ty.contains('clan') ||
+                          n.contains('clane') ||
+                          ty.contains('clane') ||
+                          n.contains('كلان') ||
+                          ty.contains('كلان')))) {
                 return false;
               }
             }
@@ -559,15 +545,15 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             }
 
             // 4. Kit Clamp/Clan Exclusions (Exclude clamp from kit matching, and vice versa)
+            final isScrewQuery =
+                profileTypeLower.contains('_screw') ||
+                profileTypeLower.contains('screw') ||
+                widget.profileType.contains('براغي');
             final isKitQuery =
-                widget.profileType.toLowerCase().contains('kit') ||
-                widget.profileType.contains('كيت');
-            final isClampQuery =
-                widget.profileType.toLowerCase().contains('clamp') ||
-                widget.profileType.toLowerCase().contains('clam') ||
-                widget.profileType.contains('كلامب') ||
-                widget.profileType.contains('كلام') ||
-                widget.profileType.contains('كلان');
+                !isScrewQuery &&
+                (profileTypeLower.contains('kit') ||
+                    widget.profileType.contains('كيت'));
+            final isClampQuery = isClampLookup;
 
             final hasKitName =
                 n.contains('kit') ||
@@ -593,245 +579,6 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
             return true;
           }).toList();
-        }
-
-        String textSearchClause(List<List<String>> groups, List<dynamic> args) {
-          final groupClauses = <String>[];
-          for (final group in groups) {
-            final terms = group
-                .map((term) => term.trim().toLowerCase())
-                .where((term) => term.isNotEmpty)
-                .toSet()
-                .toList();
-            if (terms.isEmpty) continue;
-            final termClauses = <String>[];
-            for (final term in terms) {
-              termClauses.add(
-                "(LOWER(COALESCE(name, '')) LIKE ? OR LOWER(COALESCE(type, '')) LIKE ?)",
-              );
-              args.add('%$term%');
-              args.add('%$term%');
-            }
-            groupClauses.add('(${termClauses.join(' OR ')})');
-          }
-          return groupClauses.join(' AND ');
-        }
-
-        Future<List<Map<String, dynamic>>> queryAccessoriesByTextGroups(
-          List<List<String>> groups,
-        ) {
-          final args = <dynamic>[];
-          final textWhere = textSearchClause(groups, args);
-          final where = textWhere.isEmpty
-              ? 'is_active = 1 OR is_active IS NULL'
-              : '(is_active = 1 OR is_active IS NULL) AND $textWhere';
-          return queryAccessories(where, args);
-        }
-
-        List<List<String>> fallbackGroupsForFlag(
-          String profileType,
-          String kw,
-        ) {
-          switch (profileType) {
-            case 'is_batmo_screw':
-              return const [
-                ['batmo', 'باتمو'],
-                ['screw', 'براغي', 'vis'],
-              ];
-            case 'is_bouchon_batmo_screw':
-              return const [
-                ['bouchon', 'بوشون', 'bochon'],
-                ['screw', 'براغي', 'vis'],
-              ];
-            case 'is_renfort_screw':
-              return const [
-                ['renfort', 'حديد', 'رنفور'],
-                ['screw', 'براغي', 'vis'],
-              ];
-            case 'is_kit_screw':
-              return const [
-                ['kit', 'كيت'],
-                ['screw', 'براغي', 'vis'],
-              ];
-            case 'is_caisson_screw':
-              return const [
-                ['caisson', 'box', 'صندوق'],
-                ['screw', 'براغي', 'vis'],
-              ];
-            case 'is_gache_simple':
-            case 'is_gache_porte':
-              return const [
-                ['gache', 'gâche', 'gage', 'قاش', 'كاش'],
-              ];
-            case 'is_lock':
-              return const [
-                ['serrure', 'lock', 'قفل'],
-              ];
-            case 'is_lock_clef':
-              return const [
-                ['serrure', 'lock', 'قفل'],
-                ['clef', 'clé', 'مفتاح'],
-              ];
-            case 'is_lock_condamnation':
-              return const [
-                ['serrure', 'lock', 'قفل'],
-                ['condamnation', 'حمام', 'بدون مفتاح'],
-              ];
-            case 'is_canon':
-              return const [
-                ['canon', 'cylinder', 'أسطوانة', 'اسطوانة', 'barillet'],
-              ];
-            case 'is_poign_clef':
-              return const [
-                ['poignée', 'مقبض', 'handle'],
-                ['clef', 'clé', 'مفتاح'],
-              ];
-            case 'is_poign_condamnation':
-              return const [
-                ['poignée', 'مقبض', 'handle'],
-                ['condamnation', 'حمام', 'بدون مفتاح'],
-              ];
-            default:
-              final term = kw.trim();
-              return term.isEmpty
-                  ? const <List<String>>[]
-                  : [
-                      [term],
-                    ];
-          }
-        }
-
-        List<List<String>> prefilterGroupsForAccessorySearch(String tLower) {
-          if (tLower == 'is_window_handle') {
-            return const [
-              ['poignée', 'poignee', 'handle', 'مقبض', 'بواني', 'بوانيي'],
-            ];
-          }
-          if (tLower == 'فيرو' || tLower == 'verrou' || tLower == 'viro') {
-            return const [
-              ['verrou', 'verro', 'viro', 'فيرو'],
-            ];
-          }
-          if (tLower == 'اسبانيوليت' ||
-              tLower == 'espagnolette' ||
-              tLower.contains('اسبانيول') ||
-              tLower.contains('إسبانيول')) {
-            return const [
-              ['espagnol', 'اسبانيول', 'سبانيول'],
-            ];
-          }
-          if (tLower == 'kit' || tLower.contains('كيت')) {
-            return const [
-              ['kit', 'كيت'],
-            ];
-          }
-          if (tLower == 'كاش كوليسون' ||
-              tLower == 'gache coulisse' ||
-              tLower == 'gâche coulisse' ||
-              tLower == 'gache coulissante' ||
-              tLower == 'gâche coulissante' ||
-              tLower == 'gache coulissant' ||
-              tLower == 'gâche coulissant') {
-            return const [
-              ['couliss', 'كاش', 'gache', 'gâche'],
-            ];
-          }
-          if (tLower == 'tasso') {
-            return const [
-              ['tasso', 'tasseau', 'طاسو', 'طاصو'],
-            ];
-          }
-          if (tLower == 'batmo') {
-            return const [
-              ['batmo'],
-            ];
-          }
-          if (tLower == 'bouchon batmo' ||
-              tLower == 'bouchon' ||
-              tLower == 'bochon batment' ||
-              tLower == 'bochon') {
-            return const [
-              ['bouchon', 'bochon', 'batment'],
-            ];
-          }
-          if (tLower == 'system ob') {
-            return const [
-              ['system ob', 'سيستم أو بي', 'سيستم او بي'],
-            ];
-          }
-          if (tLower == 'entrematique') {
-            return const [
-              ['entrematique', 'أونتروماتيك', 'انتراميتيك', 'intra'],
-            ];
-          }
-          if (tLower == 'demi system ob' || tLower == 'demi ob') {
-            return const [
-              ['demi', 'ديمي'],
-            ];
-          }
-          if (tLower == 'verrou central') {
-            return const [
-              [
-                'verrou central',
-                'فيرو سنترال',
-                'فيرو سونترال',
-                'central',
-                'سنترال',
-                'سونترال',
-              ],
-            ];
-          }
-          if (tLower == 'مفاصل' ||
-              tLower == 'hinges' ||
-              tLower == 'paumelle' ||
-              tLower == 'paumelles') {
-            return const [
-              ['hinge', 'paumelle', 'paumelles', 'مفصل', 'مفاصل'],
-            ];
-          }
-          if (tLower == 'مقبض' ||
-              tLower == 'handle' ||
-              tLower == 'poignée' ||
-              tLower == 'poignée fenêtre' ||
-              tLower == 'poignee fenetre' ||
-              tLower == 'poignée tpr' ||
-              tLower == 'poignee tpr' ||
-              tLower == 'poignee') {
-            return const [
-              ['poignée', 'poignee', 'handle', 'مقبض', 'بواني', 'بوانيي'],
-            ];
-          }
-          if (tLower == 'serrure' || tLower == 'lock' || tLower == 'قفل') {
-            return const [
-              ['serrure', 'lock', 'قفل'],
-            ];
-          }
-          if (tLower == 'canon' ||
-              tLower == 'cylinder' ||
-              tLower == 'الأسطوانة' ||
-              tLower == 'الاسطوانة' ||
-              tLower == 'اسطوانة' ||
-              tLower == 'أسطوانة') {
-            return const [
-              ['canon', 'cylinder', 'اسطوانة', 'أسطوانة'],
-            ];
-          }
-          if (tLower == 'cache porte' ||
-              tLower == 'gache porte' ||
-              tLower == 'كاش بورت' ||
-              tLower == 'كاش بورت (cache porte)') {
-            return const [
-              ['cache', 'gache', 'كاش'],
-            ];
-          }
-          if (tLower == 'roulette' ||
-              tLower == 'roulettes' ||
-              tLower == 'عجلات') {
-            return const [
-              ['roulette', 'رول', 'عجل'],
-            ];
-          }
-          return const <List<String>>[];
         }
 
         // Column-based filtering for Gache/Lock types
@@ -893,8 +640,9 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             else if (kw.contains('screw'))
               kw = 'براغي';
 
-            final allAcc = await queryAccessoriesByTextGroups(
-              fallbackGroupsForFlag(t, kw),
+            final allAcc = await queryAccessories(
+              'is_active = 1 OR is_active IS NULL',
+              [],
             );
 
             data = allAcc.where((a) {
@@ -925,28 +673,26 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
               }
               if (t == 'is_kit_screw') {
                 return (n.contains('kit') ||
-                        n.contains('كيت') ||
                         ty.contains('kit') ||
+                        n.contains('كيت') ||
                         ty.contains('كيت')) &&
                     (n.contains('screw') ||
-                        n.contains('براغي') ||
-                        n.contains('vis') ||
                         ty.contains('screw') ||
+                        n.contains('براغي') ||
                         ty.contains('براغي') ||
+                        n.contains('vis') ||
                         ty.contains('vis'));
               }
               if (t == 'is_caisson_screw') {
                 return (n.contains('caisson') ||
-                        n.contains('box') ||
-                        n.contains('صندوق') ||
                         ty.contains('caisson') ||
-                        ty.contains('box') ||
+                        n.contains('صندوق') ||
                         ty.contains('صندوق')) &&
                     (n.contains('screw') ||
-                        n.contains('براغي') ||
-                        n.contains('vis') ||
                         ty.contains('screw') ||
+                        n.contains('براغي') ||
                         ty.contains('براغي') ||
+                        n.contains('vis') ||
                         ty.contains('vis'));
               }
               if (t == 'is_gache_simple') {
@@ -1117,11 +863,11 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           }
         } else {
           // Fall back to name/type text matching
+          final allAcc = await queryAccessories(
+            'is_active = 1 OR is_active IS NULL',
+            [],
+          );
           final tLower = t.toLowerCase();
-          final prefilterGroups = prefilterGroupsForAccessorySearch(tLower);
-          final allAcc = prefilterGroups.isEmpty
-              ? await queryAccessories('is_active = 1 OR is_active IS NULL', [])
-              : await queryAccessoriesByTextGroups(prefilterGroups);
           data = allAcc.where((a) {
             final n = a['name'].toString().toLowerCase();
             final ty = (a['type'] ?? '').toString().toLowerCase();
@@ -1167,6 +913,32 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
               // القيم بلا طول صريح لا تعد بديلاً آمناً لإسبانيوليت محسوب.
               return length != null && length <= maxLength;
             }
+            if (tLower == 'clamp' ||
+                tLower.contains('clamp') ||
+                tLower.contains('clam') ||
+                tLower.contains('كلامب') ||
+                tLower.contains('كلام') ||
+                tLower.contains('كلان')) {
+              final isClamp =
+                  n.contains('clamp') ||
+                  n.contains('clam') ||
+                  ty.contains('clamp') ||
+                  ty.contains('clam') ||
+                  n.contains('كلامب') ||
+                  n.contains('كلام') ||
+                  n.contains('كلان') ||
+                  ty.contains('كلامب') ||
+                  ty.contains('كلام') ||
+                  ty.contains('كلان') ||
+                  n.contains('clan') ||
+                  ty.contains('clan');
+              final isKit =
+                  n.contains('kit') ||
+                  ty.contains('kit') ||
+                  n.contains('كيت') ||
+                  ty.contains('كيت');
+              return isClamp && !isKit;
+            }
             if (tLower == 'kit' || tLower.contains('كيت')) {
               final isKit =
                   n.contains('kit') ||
@@ -1203,6 +975,29 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                   ty.contains('gache') ||
                   n.contains('gâche') ||
                   ty.contains('gâche');
+            }
+            if (tLower == 'poignee coulissante' ||
+                tLower == 'poignée coulissante' ||
+                tLower == 'مقبض منزلق') {
+              final isHandle =
+                  n.contains('poignée') ||
+                  ty.contains('poignée') ||
+                  n.contains('poignee') ||
+                  ty.contains('poignee') ||
+                  n.contains('handle') ||
+                  ty.contains('handle') ||
+                  n.contains('مقبض') ||
+                  ty.contains('مقبض');
+              final isSliding =
+                  n.contains('couliss') ||
+                  ty.contains('couliss') ||
+                  n.contains('sliding') ||
+                  ty.contains('sliding') ||
+                  n.contains('منزلق') ||
+                  ty.contains('منزلق') ||
+                  n.contains('جرار') ||
+                  ty.contains('جرار');
+              return isHandle && isSliding;
             }
             if (tLower == 'tasso') {
               return n.contains('tasso') ||
@@ -1342,6 +1137,32 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                   n.contains('عجل') ||
                   ty.contains('عجل');
             }
+            if (tLower == 'clamp' ||
+                tLower.contains('clamp') ||
+                tLower.contains('clam') ||
+                tLower.contains('كلامب') ||
+                tLower.contains('كلام') ||
+                tLower.contains('كلان')) {
+              final isClamp =
+                  n.contains('clamp') ||
+                  n.contains('clam') ||
+                  ty.contains('clamp') ||
+                  ty.contains('clam') ||
+                  n.contains('كلامب') ||
+                  n.contains('كلام') ||
+                  n.contains('كلان') ||
+                  ty.contains('كلامب') ||
+                  ty.contains('كلام') ||
+                  ty.contains('كلان') ||
+                  n.contains('clan') ||
+                  ty.contains('clan');
+              final isKit =
+                  n.contains('kit') ||
+                  ty.contains('kit') ||
+                  n.contains('كيت') ||
+                  ty.contains('كيت');
+              return isClamp && !isKit;
+            }
             if (tLower == 'kit' || tLower.contains('كيت')) {
               final isKit =
                   n.contains('kit') ||
@@ -1443,16 +1264,13 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
         if (widget.seriesId != null) {
           final isPvc = widget.materialType?.trim().toLowerCase() == 'pvc';
           const seriesConstraint =
-              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
-          const globalConstraint =
-              "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')";
+              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))";
           final materialConstraint = isPvc
               ? "TRIM(LOWER(type)) = 'pvc' OR TRIM(LOWER(type)) = 'both'"
               : "TRIM(LOWER(type)) = 'aluminium' OR TRIM(LOWER(type)) = 'aluminum' OR TRIM(LOWER(type)) = 'both' OR type IS NULL OR TRIM(type) = '' OR TRIM(LOWER(type)) = 'global'";
           final allJoints = await myDb.query(
             'Joints',
-            where:
-                '($seriesConstraint OR ($globalConstraint)) AND ($materialConstraint)',
+            where: '($seriesConstraint) AND ($materialConstraint)',
             whereArgs: [widget.seriesId, '%,${widget.seriesId},%'],
           );
           final t = widget.profileType.toLowerCase();
@@ -1460,7 +1278,9 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           final isBrushGasket = t.contains('brosse') || t.contains('بروس');
 
           data = allJoints.where((a) {
-            if (!catalogItemMatchesSeries(a, widget.seriesId!)) return false;
+            if (!catalogItemMatchesSeriesOrGlobal(a, widget.seriesId!)) {
+              return false;
+            }
 
             final n = a['name'].toString().toLowerCase();
             final ty = a['type'].toString().toLowerCase();
@@ -2056,23 +1876,69 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
         final t = widget.profileType.toLowerCase().trim();
         data = allSections.where((s) {
-          final section = Map<String, dynamic>.from(s);
+          if (!profileSectionMatchesDrawingMode(
+            section: s,
+            profileType: widget.profileType,
+            activeSeriesType: activeSeriesType,
+            drawingMode: widget.accessoryDrawingMode,
+          )) {
+            return false;
+          }
           final ty = s['type'].toString().toLowerCase().trim();
           final name = s['name'].toString().toLowerCase().trim();
 
           if (t == 'frame' || t == 'cadre' || t == 'إطار') {
-            return _sectionIsFrame(section);
+            return ty.contains('frame') ||
+                ty.contains('cadre') ||
+                ty.contains('إطار') ||
+                ty.contains('فريم');
           } else if (t == 'sash' || t == 'ouvrant' || t == 'ضلفة') {
-            return _sectionIsSash(section) &&
-                !_sectionIsLateral(section) &&
-                !_sectionIsCentral(section) &&
-                !section['type'].toString().toLowerCase().contains('traverse');
+            return ty.contains('sash') ||
+                ty.contains('ouvrant') ||
+                ty.contains('ضلفة') ||
+                ty.contains('ساش');
           } else if (t.contains('lateral') || t.contains('جانبي')) {
-            return _sectionIsLateral(section);
+            final lowerName = name.toLowerCase();
+            final lowerType = ty.toLowerCase();
+            final code = (s['code'] ?? '').toString().toLowerCase();
+            return (code.contains('67108') ||
+                    code.contains('67104') ||
+                    code.endsWith('108') ||
+                    code.endsWith('104') ||
+                    lowerType.contains('lateral') ||
+                    lowerName.contains('latéral') ||
+                    lowerName.contains('lateral') ||
+                    lowerName.contains('جانبي')) &&
+                !lowerName.contains('central') &&
+                !lowerName.contains('وسطي') &&
+                !lowerName.contains('chicane') &&
+                !code.contains('105') &&
+                !code.contains('107');
           } else if (t.contains('central') ||
               t.contains('وسطي') ||
               t.contains('chicane')) {
-            return _sectionIsCentral(section);
+            final lowerName = name.toLowerCase();
+            final lowerType = ty.toLowerCase();
+            final code = (s['code'] ?? '').toString().toLowerCase();
+            return (code.contains('67107') ||
+                    code.contains('67105') ||
+                    code.endsWith('107') ||
+                    code.endsWith('105') ||
+                    lowerType.contains('central') ||
+                    lowerName.contains('central') ||
+                    lowerName.contains('وسطي') ||
+                    lowerName.contains('chicane')) &&
+                !lowerName.contains('latéral') &&
+                !lowerName.contains('lateral') &&
+                !lowerName.contains('جانبي') &&
+                !code.contains('104') &&
+                !code.contains('108');
+          } else if (t.contains('sash_traverse') ||
+              t.contains('sash traverse')) {
+            return ty.contains('traverse') ||
+                name.contains('traverse') ||
+                ty.contains('عرضي') ||
+                name.contains('عرضي');
           } else if (t.contains('couvre') ||
               t.contains('side cover') ||
               t.contains('غطاء جانبي') ||
@@ -2096,7 +1962,10 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           } else if (t == 'parclose') {
             return ty.contains('parclose') || ty.contains('باركلوز');
           } else if (t == 'mullion' || t == 'traverse') {
-            return _sectionIsTraverse(section);
+            return ty.contains('mullion') ||
+                ty.contains('traverse') ||
+                ty.contains('موليان') ||
+                ty.contains('ترافيرس');
           } else if (t == 'bouchon batmo' ||
               t == 'bouchon batment' ||
               t == 'bouchon') {
@@ -2113,11 +1982,21 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                 !name.contains('سكة');
           }
           if (t.contains('reduct') ||
-              t.contains('réduct') ||
               t.contains('67114') ||
               t.contains('ريديك') ||
               t.contains('مخفض')) {
-            return _sectionIsReducer(section);
+            return (ty.contains('reduct') ||
+                    name.contains('reduct') ||
+                    name.contains('مخفض') ||
+                    name.contains('ريديكتور') ||
+                    code.contains('67114')) &&
+                !ty.contains('rail') &&
+                !ty.contains('cadre') &&
+                !ty.contains('frame') &&
+                !name.contains('rail') &&
+                !name.contains('سكة') &&
+                !name.contains('cadre') &&
+                !name.contains('إطار');
           }
           if (t == 'rail' ||
               t.contains('rail') ||
@@ -2142,45 +2021,55 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
         // "Définition intelligente de la série".  Name and code matching
         // above remains a fallback for older, not-yet-configured series.
         final roleKeys = <String>[];
-        if (t == 'frame' || t == 'cadre' || t == 'إطار') {
+        if (t == 'frame' || t == 'cadre' || t == 'Ø¥Ø·Ø§Ø±') {
           roleKeys.addAll(const ['frame', 'frame_extension']);
-        } else if (t == 'sash' || t == 'ouvrant' || t == 'ضلفة') {
+        } else if (t == 'sash' || t == 'ouvrant' || t == 'Ø¶Ù„ÙØ©') {
           roleKeys.addAll(const ['sash', 'sash_extension']);
         } else if (t == 'parclose') {
           roleKeys.add('glazing_bead');
+        } else if (t.contains('sash_traverse') || t.contains('sash traverse')) {
+          roleKeys.addAll(const ['sash_traverse', 'traverse']);
         } else if (t == 'mullion' || t == 'traverse') {
-          roleKeys.addAll(const ['mullion', 'sash_traverse']);
+          roleKeys.add('mullion');
         } else if (t.contains('couvre') || t.contains('side cover')) {
           roleKeys.add('side_cover');
         } else if (t == 'rail' || t.contains('rail')) {
           roleKeys.add('rail');
         } else if (t.contains('central') || t.contains('chicane')) {
-          roleKeys.addAll(const ['chicane', 'sash_central']);
+          roleKeys.addAll(const ['sash_central', 'central', 'chicane']);
         } else if (t.contains('lateral') || t.contains('جانبي')) {
-          roleKeys.add('sash_lateral');
-        } else if (t.contains('reduct') ||
-            t.contains('réduct') ||
-            t.contains('ريديك') ||
-            t.contains('مخفض')) {
-          roleKeys.add('reducer');
+          roleKeys.addAll(const ['sash_lateral', 'lateral']);
         }
         if (widget.seriesId != null && roleKeys.isNotEmpty) {
-          final configured = await db.getDesignSectionsForRoles(
-            widget.seriesId!,
-            roleKeys,
-          );
-          if (configured.isNotEmpty) {
-            data = _mergeProfileRows(configured, data);
-          }
+          final configured =
+              (await db.getDesignSectionsForRoles(
+                widget.seriesId!,
+                roleKeys,
+              )).where((section) {
+                return profileSectionMatchesDrawingMode(
+                  section: section,
+                  profileType: widget.profileType,
+                  activeSeriesType: activeSeriesType,
+                  drawingMode: widget.accessoryDrawingMode,
+                );
+              }).toList();
+          if (configured.isNotEmpty) data = configured;
+        }
+        final isFrameSelector = t == 'frame' || t == 'cadre' || t == 'إطار';
+        final material = (widget.materialType ?? '').toLowerCase().trim();
+        final isAluminium =
+            material.isEmpty ||
+            material == 'aluminium' ||
+            material == 'aluminum' ||
+            material == 'alu';
+        if (widget.hasShutter && isAluminium && isFrameSelector) {
+          data = data
+              .where((item) => !profileHasIntegratedSideCover(item))
+              .toList();
         }
       } else {
         data = [];
       }
-    }
-
-    final currentItem = widget.currentItem;
-    if (data.isEmpty && currentItem != null && currentItem.isNotEmpty) {
-      data = [Map<String, dynamic>.from(currentItem)];
     }
 
     setState(() {

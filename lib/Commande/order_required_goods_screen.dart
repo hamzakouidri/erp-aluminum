@@ -1634,9 +1634,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         model.shutterMechanism == 'مانيفر';
 
     return {
-      'Verrou Central': model.useVerrouCentral,
-      'System OB': model.useSystemOB,
-      'Demi System OB': model.useDemiOB,
+      'Verrou Central':
+          model.canUseOpeningOnlyOptions && model.useVerrouCentral,
+      'System OB': model.effectiveUseSystemOB,
+      'Demi System OB': model.effectiveUseDemiOB,
       'كيت (Kit)': false,
       'طانديم (Tandem)': isTunnel,
       'الامبو (Embout)': isMotor,
@@ -3826,6 +3827,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   /// الوحدات المستمرة تبقى عشرية، أما وحدات الشراء العددية فتعرض أعدادًا كاملة.
   String _roundQuantity(double qty, String unit) {
     final unitLower = unit.toLowerCase();
+    if (qty == qty.roundToDouble()) return qty.round().toString();
     if (unitLower == 'ml' ||
         unitLower == 'م' ||
         unitLower == 'm²' ||

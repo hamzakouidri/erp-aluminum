@@ -8,25 +8,14 @@ import 'package:database_data/settings/app_settings.dart';
 
 import 'package:provider/provider.dart';
 
-
-
 class JointsScreen extends StatefulWidget {
-
   final SqlDatabase db;
-
-
 
   const JointsScreen({super.key, required this.db});
 
-
-
   @override
-
   State<JointsScreen> createState() => _JointsScreenState();
-
 }
-
-
 
 class _JointsScreenState extends State<JointsScreen> {
   String searchQuery = '';
@@ -35,22 +24,14 @@ class _JointsScreenState extends State<JointsScreen> {
 
   List<Map<String, dynamic>> _series = [];
 
-
-
   @override
-
   void initState() {
-
     super.initState();
 
     _loadItems();
-
   }
 
-
-
   Future<void> _loadItems() async {
-
     final items = await widget.db.readJoints();
 
     final dbInstance = await widget.db.db;
@@ -66,16 +47,11 @@ class _JointsScreenState extends State<JointsScreen> {
       ''');
 
     setState(() {
-
       _items = items;
 
       _series = series;
-
     });
-
   }
-
-
 
   void _showAddDialog() {
     final nameCtrl = TextEditingController();
@@ -140,13 +116,23 @@ class _JointsScreenState extends State<JointsScreen> {
                 DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: selectedGasketType,
-                  items: ['جوان بوراج', 'جوان فيتراج', 'جوان فراب', 'جوان سنترال', 'جوان دو بروس'].map((String value) {
-                    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(Localization.translate(value, lang)),
-                    );
-                  }).toList(),
+                  items:
+                      [
+                        'جوان بوراج',
+                        'جوان فيتراج',
+                        'جوان فراب',
+                        'جوان سنترال',
+                        'جوان براش',
+                      ].map((String value) {
+                        final lang = Provider.of<AppSettingsProvider>(
+                          context,
+                          listen: false,
+                        ).language;
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(Localization.translate(value, lang)),
+                        );
+                      }).toList(),
                   onChanged: (newValue) {
                     setStateDialog(() {
                       selectedGasketType = newValue!;
@@ -202,26 +188,33 @@ class _JointsScreenState extends State<JointsScreen> {
                         ),
                         const SizedBox(height: 5),
                         Column(
-                          children: _series.where((s) {
-                            final mat = s['material_type']?.toString() ?? '';
-                            return mat == 'Aluminium' || mat.isEmpty;
-                          }).map((s) {
-                            final sId = int.tryParse(s['id'].toString()) ?? -1;
-                            if (sId == -1) return const SizedBox.shrink();
-                            return CheckboxListTile(
-                              title: Text("${s['profile_name'] ?? ''} - ${s['name']}"),
-                              value: selectedSeriesIds.contains(sId),
-                              onChanged: (bool? checked) {
-                                setStateDialog(() {
-                                  if (checked == true) {
-                                    selectedSeriesIds.add(sId);
-                                  } else {
-                                    selectedSeriesIds.remove(sId);
-                                  }
-                                });
-                              },
-                            );
-                          }).toList(),
+                          children: _series
+                              .where((s) {
+                                final mat =
+                                    s['material_type']?.toString() ?? '';
+                                return mat == 'Aluminium' || mat.isEmpty;
+                              })
+                              .map((s) {
+                                final sId =
+                                    int.tryParse(s['id'].toString()) ?? -1;
+                                if (sId == -1) return const SizedBox.shrink();
+                                return CheckboxListTile(
+                                  title: Text(
+                                    "${s['profile_name'] ?? ''} - ${s['name']}",
+                                  ),
+                                  value: selectedSeriesIds.contains(sId),
+                                  onChanged: (bool? checked) {
+                                    setStateDialog(() {
+                                      if (checked == true) {
+                                        selectedSeriesIds.add(sId);
+                                      } else {
+                                        selectedSeriesIds.remove(sId);
+                                      }
+                                    });
+                                  },
+                                );
+                              })
+                              .toList(),
                         ),
                       ],
                     ),
@@ -265,7 +258,9 @@ class _JointsScreenState extends State<JointsScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
-                  if (materialType == 'Aluminium' && scope == 'Unique' && selectedSeriesIds.isEmpty) {
+                  if (materialType == 'Aluminium' &&
+                      scope == 'Unique' &&
+                      selectedSeriesIds.isEmpty) {
                     ScaffoldMessenger.of(dialogContext).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -280,10 +275,12 @@ class _JointsScreenState extends State<JointsScreen> {
                   }
                   try {
                     final dbInstance = await widget.db.db;
-                    final seriesIdsStr = (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
+                    final seriesIdsStr =
+                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
                         ? ',${selectedSeriesIds.join(',')},'
                         : null;
-                    final seriesIdVal = (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
+                    final seriesIdVal =
+                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
                         ? selectedSeriesIds.first
                         : null;
 
@@ -335,7 +332,14 @@ class _JointsScreenState extends State<JointsScreen> {
         ? 'PVC'
         : 'Aluminium';
     String scope = item['scope']?.toString() == 'Unique' ? 'Unique' : 'Global';
-    String selectedGasketType = item['gasket_type']?.toString() ?? 'جوان فيتراج';
+    String selectedGasketType =
+        item['gasket_type']?.toString() ?? 'جوان فيتراج';
+    if (selectedGasketType.contains('بروس') ||
+        selectedGasketType.contains('براش') ||
+        selectedGasketType.toLowerCase().contains('brosse') ||
+        selectedGasketType.toLowerCase().contains('brush')) {
+      selectedGasketType = 'جوان براش';
+    }
 
     List<int> selectedSeriesIds = [];
     if (item['series_ids'] != null &&
@@ -407,13 +411,23 @@ class _JointsScreenState extends State<JointsScreen> {
                 DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: selectedGasketType,
-                  items: ['جوان بوراج', 'جوان فيتراج', 'جوان فراب', 'جوان سنترال', 'جوان دو بروس'].map((String value) {
-                    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(Localization.translate(value, lang)),
-                    );
-                  }).toList(),
+                  items:
+                      [
+                        'جوان بوراج',
+                        'جوان فيتراج',
+                        'جوان فراب',
+                        'جوان سنترال',
+                        'جوان براش',
+                      ].map((String value) {
+                        final lang = Provider.of<AppSettingsProvider>(
+                          context,
+                          listen: false,
+                        ).language;
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(Localization.translate(value, lang)),
+                        );
+                      }).toList(),
                   onChanged: !isUserAdmin
                       ? null
                       : (newValue) {
@@ -473,28 +487,35 @@ class _JointsScreenState extends State<JointsScreen> {
                         ),
                         const SizedBox(height: 5),
                         Column(
-                          children: _series.where((s) {
-                            final mat = s['material_type']?.toString() ?? '';
-                            return mat == 'Aluminium' || mat.isEmpty;
-                          }).map((s) {
-                            final sId = int.tryParse(s['id'].toString()) ?? -1;
-                            if (sId == -1) return const SizedBox.shrink();
-                            return CheckboxListTile(
-                              title: Text("${s['profile_name'] ?? ''} - ${s['name']}"),
-                              value: selectedSeriesIds.contains(sId),
-                              onChanged: !isUserAdmin
-                                  ? null
-                                  : (bool? checked) {
-                                      setStateDialog(() {
-                                        if (checked == true) {
-                                          selectedSeriesIds.add(sId);
-                                        } else {
-                                          selectedSeriesIds.remove(sId);
-                                        }
-                                      });
-                                    },
-                            );
-                          }).toList(),
+                          children: _series
+                              .where((s) {
+                                final mat =
+                                    s['material_type']?.toString() ?? '';
+                                return mat == 'Aluminium' || mat.isEmpty;
+                              })
+                              .map((s) {
+                                final sId =
+                                    int.tryParse(s['id'].toString()) ?? -1;
+                                if (sId == -1) return const SizedBox.shrink();
+                                return CheckboxListTile(
+                                  title: Text(
+                                    "${s['profile_name'] ?? ''} - ${s['name']}",
+                                  ),
+                                  value: selectedSeriesIds.contains(sId),
+                                  onChanged: !isUserAdmin
+                                      ? null
+                                      : (bool? checked) {
+                                          setStateDialog(() {
+                                            if (checked == true) {
+                                              selectedSeriesIds.add(sId);
+                                            } else {
+                                              selectedSeriesIds.remove(sId);
+                                            }
+                                          });
+                                        },
+                                );
+                              })
+                              .toList(),
                         ),
                       ],
                     ),
@@ -537,7 +558,9 @@ class _JointsScreenState extends State<JointsScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
               onPressed: () async {
                 if (nameCtrl.text.isNotEmpty) {
-                  if (materialType == 'Aluminium' && scope == 'Unique' && selectedSeriesIds.isEmpty) {
+                  if (materialType == 'Aluminium' &&
+                      scope == 'Unique' &&
+                      selectedSeriesIds.isEmpty) {
                     ScaffoldMessenger.of(dialogContext).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -552,10 +575,12 @@ class _JointsScreenState extends State<JointsScreen> {
                   }
                   try {
                     final dbInstance = await widget.db.db;
-                    final seriesIdsStr = (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
+                    final seriesIdsStr =
+                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
                         ? ',${selectedSeriesIds.join(',')},'
                         : null;
-                    final seriesIdVal = (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
+                    final seriesIdVal =
+                        (scope == 'Unique' && selectedSeriesIds.isNotEmpty)
                         ? selectedSeriesIds.first
                         : null;
 
@@ -601,170 +626,121 @@ class _JointsScreenState extends State<JointsScreen> {
     );
   }
 
-
-
   void _showDeleteDialog(Map<String, dynamic> item) {
-
     showDialog(
-
       context: context,
 
       builder: (dialogContext) => AlertDialog(
-
         title: const Text(
-
           'تأكيد الحذف',
 
-          style: TextStyle(
-
-            fontWeight: FontWeight.bold,
-
-            color: Colors.red,
-
-          ),
-
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
         ),
 
         content: const Text(
-
           'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
 
           style: TextStyle(fontSize: 14),
-
         ),
 
         actions: [
-
           TextButton(
-
             onPressed: () => Navigator.pop(dialogContext),
 
             child: const Text('إلغاء'),
-
           ),
 
           ElevatedButton(
-
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
 
             onPressed: () async {
-
               await widget.db.deleteJoint(item['id']);
 
               _loadItems();
 
               if (context.mounted) Navigator.pop(dialogContext);
-
             },
 
             child: const Text(
-
               'موافق، قم بالأرشفة',
 
               style: TextStyle(color: Colors.white),
-
             ),
-
           ),
-
         ],
-
       ),
-
     );
-
   }
 
-
-
-  Widget _buildGasketCard(Map<String, dynamic> item, Color sectionColor, bool isUserAdmin) {
-
+  Widget _buildGasketCard(
+    Map<String, dynamic> item,
+    Color sectionColor,
+    bool isUserAdmin,
+  ) {
     final double thickness = (item['thickness'] ?? 0.0) is num
-
         ? (item['thickness'] as num).toDouble()
-
         : double.tryParse(item['thickness'].toString()) ?? 0.0;
 
     final double price = (item['price_per_meter'] ?? 0.0) is num
-
         ? (item['price_per_meter'] as num).toDouble()
-
         : double.tryParse(item['price_per_meter'].toString()) ?? 0.0;
 
-    
-
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     String subtitle = "${item['type']}";
     if (thickness > 0) {
-      final thickLabel = Localization.translate('السمك:', lang);
-      subtitle += " - $thickLabel ${thickness.toStringAsFixed(thickness.truncateToDouble() == thickness ? 0 : 1)} mm";
+      subtitle +=
+          " - السماكة: ${thickness.toStringAsFixed(thickness.truncateToDouble() == thickness ? 0 : 1)} مم";
     }
-    if (item['gasket_type'] != null && item['gasket_type'].toString().isNotEmpty) {
-      final String translatedGasketType = Localization.translate(item['gasket_type'].toString(), lang);
-      final typeLabel = Localization.translate('النوع:', lang);
-      subtitle += " - $typeLabel $translatedGasketType";
+    if (item['gasket_type'] != null &&
+        item['gasket_type'].toString().isNotEmpty) {
+      final String translatedGasketType = Localization.translate(
+        item['gasket_type'].toString(),
+        lang,
+      );
+      subtitle += " - النوع: $translatedGasketType";
     }
-    final priceLabel = Localization.translate('السعر:', lang);
-    subtitle += " - $priceLabel ${price.toStringAsFixed(price.truncateToDouble() == price ? 0 : 2)} DA/m";
-
-
+    subtitle +=
+        " - السعر: ${price.toStringAsFixed(price.truncateToDouble() == price ? 0 : 2)} دج/m";
 
     return Card(
-
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
 
       child: ListTile(
-
         title: Text(
-
           item['name'].toString(),
 
           style: TextStyle(fontWeight: FontWeight.bold, color: sectionColor),
-
         ),
 
         subtitle: Text(subtitle),
 
         trailing: isUserAdmin
-
             ? Row(
-
                 mainAxisSize: MainAxisSize.min,
 
                 children: [
-
                   IconButton(
-
                     icon: const Icon(Icons.edit, color: Colors.blue),
 
                     onPressed: () => _showEditDialog(item, isUserAdmin),
-
                   ),
 
                   IconButton(
-
                     icon: const Icon(Icons.delete, color: Colors.red),
 
                     onPressed: () => _showDeleteDialog(item),
-
                   ),
-
                 ],
-
               )
-
             : null,
-
       ),
-
     );
-
   }
 
-
-
   @override
-
   Widget build(BuildContext context) {
     final bool isUserAdmin = isAdmin;
 
@@ -785,7 +761,8 @@ class _JointsScreenState extends State<JointsScreen> {
       final scope = joint['scope']?.toString() ?? 'Global';
       if (scope == 'Unique') {
         List<int> sIds = [];
-        if (joint['series_ids'] != null && joint['series_ids'].toString().isNotEmpty) {
+        if (joint['series_ids'] != null &&
+            joint['series_ids'].toString().isNotEmpty) {
           sIds = joint['series_ids']
               .toString()
               .split(',')
@@ -804,7 +781,7 @@ class _JointsScreenState extends State<JointsScreen> {
     final List<Map<String, dynamic>> seriesWithGaskets = _series
         .where((s) => uniqueGasketsBySeries.containsKey(s['id']))
         .toList();
-    
+
     // Sort series alphabetically by profile name, then series name
     seriesWithGaskets.sort((a, b) {
       final aProfile = a['profile_name']?.toString() ?? '';
@@ -856,7 +833,10 @@ class _JointsScreenState extends State<JointsScreen> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Divider(color: listSectionColor.withValues(alpha: 0.4), thickness: 1.5),
+              child: Divider(
+                color: listSectionColor.withValues(alpha: 0.4),
+                thickness: 1.5,
+              ),
             ),
             const SizedBox(width: 8),
             Container(
@@ -919,7 +899,10 @@ class _JointsScreenState extends State<JointsScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Divider(color: sectionColor.withValues(alpha: 0.4), thickness: 1.5),
+                child: Divider(
+                  color: sectionColor.withValues(alpha: 0.4),
+                  thickness: 1.5,
+                ),
               ),
               const SizedBox(width: 8),
               Container(
@@ -963,12 +946,18 @@ class _JointsScreenState extends State<JointsScreen> {
             padding: const EdgeInsets.all(12.0),
             child: TextField(
               decoration: InputDecoration(
-                hintText: Localization.translate('بحث...', Provider.of<AppSettingsProvider>(context).language),
+                hintText: Localization.translate(
+                  'بحث...',
+                  Provider.of<AppSettingsProvider>(context).language,
+                ),
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
               onChanged: (val) {
                 setState(() {
@@ -988,15 +977,15 @@ class _JointsScreenState extends State<JointsScreen> {
                     ),
                   )
                 : filteredItems.isEmpty
-                    ? Center(
-                        child: Text(
-                          Localization.translate(
-                            'لا توجد نتائج مطابقة',
-                            Provider.of<AppSettingsProvider>(context).language,
-                          ),
-                        ),
-                      )
-                    : ListView(children: sections),
+                ? Center(
+                    child: Text(
+                      Localization.translate(
+                        'لا توجد نتائج مطابقة',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
+                    ),
+                  )
+                : ListView(children: sections),
           ),
         ],
       ),
@@ -1008,6 +997,4 @@ class _JointsScreenState extends State<JointsScreen> {
             ),
     );
   }
-
 }
-

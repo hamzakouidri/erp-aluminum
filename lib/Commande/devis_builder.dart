@@ -2491,7 +2491,7 @@ class DevisBuilder {
         value = isPVC ? 'poignée espagnole' : 'entrematique';
       }
     }
-    final kits = _closureKitLabels(map);
+    final kits = _closureKitLabels(map, canUseDemiOB: isPVC);
     if (kits.isNotEmpty) {
       value = '$value - ${kits.join(' - ')}';
     }
@@ -2502,12 +2502,15 @@ class DevisBuilder {
     };
   }
 
-  static List<String> _closureKitLabels(Map<String, dynamic> map) {
+  static List<String> _closureKitLabels(
+    Map<String, dynamic> map, {
+    required bool canUseDemiOB,
+  }) {
     final labels = <String>[];
     if (_truthy(map['useSystemOB'])) {
       labels.add('système OB');
     }
-    if (_truthy(map['useDemiOB'])) {
+    if (canUseDemiOB && _truthy(map['useDemiOB'])) {
       labels.add('système demi-OB');
     }
     if (_truthy(map['useVerrouCentral'])) {

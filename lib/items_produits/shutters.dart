@@ -31,19 +31,6 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
     return normalized == 'true' || normalized == '1' || normalized == 'yes';
   }
 
-  int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString().trim() ?? '');
-  }
-
-  double _readDouble(dynamic value, {double fallback = 0.0}) {
-    if (value is num) return value.toDouble();
-    final text = value?.toString().trim().replaceAll(',', '.') ?? '';
-    if (text.isEmpty || text.toLowerCase() == 'null') return fallback;
-    return double.tryParse(text) ?? fallback;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -65,20 +52,13 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
   }
 
   Future<void> _loadItems() async {
-    try {
-      final items = await widget.db.readShutterComponents(
-        includeInactive: _showArchived,
-      );
-      if (!mounted) return;
-      setState(() {
-        _items = items;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _items = const [];
-      });
-    }
+    final items = await widget.db.readShutterComponents(
+      includeInactive: _showArchived,
+    );
+    if (!mounted) return;
+    setState(() {
+      _items = items;
+    });
   }
 
   void _showAddDialog() {
@@ -498,7 +478,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           : 0.0,
                     );
                     if (context.mounted) Navigator.pop(context);
-                    if (mounted) unawaited(_loadItems());
+                    _loadItems();
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(
@@ -931,10 +911,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                     return;
                   }
                   try {
-                    final itemId = _readInt(item['id']);
-                    if (itemId == null) return;
                     await widget.db.updateShutterComponent(
-                      itemId,
+                      item['id'],
                       nameCtrl.text,
                       selectedType,
                       double.tryParse(item['price']?.toString() ?? '0') ?? 0.0,
@@ -968,7 +946,7 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                           : 0.0,
                     );
                     if (context.mounted) Navigator.pop(context);
-                    if (mounted) unawaited(_loadItems());
+                    _loadItems();
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(
@@ -1030,10 +1008,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               onPressed: () async {
-                final itemId = _readInt(item['id']);
-                if (itemId == null) return;
-                await widget.db.restoreShutterComponent(itemId);
-                if (mounted) unawaited(_loadItems());
+                await widget.db.restoreShutterComponent(item['id']);
+                _loadItems();
                 if (context.mounted) Navigator.pop(dialogContext);
               },
               child: Text(
@@ -1048,10 +1024,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () async {
-                final itemId = _readInt(item['id']);
-                if (itemId == null) return;
-                await widget.db.deleteShutterComponent(itemId);
-                if (mounted) unawaited(_loadItems());
+                await widget.db.deleteShutterComponent(item['id']);
+                _loadItems();
                 if (context.mounted) Navigator.pop(dialogContext);
               },
               child: Text(
@@ -1065,10 +1039,8 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              final itemId = _readInt(item['id']);
-              if (itemId == null) return;
-              await widget.db.deleteShutterComponentPermanently(itemId);
-              if (mounted) unawaited(_loadItems());
+              await widget.db.deleteShutterComponentPermanently(item['id']);
+              _loadItems();
               if (context.mounted) Navigator.pop(dialogContext);
             },
             child: Text(
@@ -1284,9 +1256,11 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
         String unitAr = item['unit'] == 'bar'
             ? Localization.translate('بالبارة', lang)
             : Localization.translate('بالقطعة', lang);
-        final barLengthM = _readDouble(item['bar_length_m']);
-        String barLenStr = (item['unit'] == 'bar' && barLengthM > 0)
-            ? ' - ${Localization.translate("طول البارة:", lang)} $barLengthM ${Localization.translate('م', lang)}'
+        String barLenStr =
+            (item['unit'] == 'bar' &&
+                item['bar_length_m'] != null &&
+                item['bar_length_m'] > 0)
+            ? ' - ${Localization.translate("طول البارة:", lang)} ${item['bar_length_m']} ${Localization.translate('م', lang)}'
             : '';
         final mVal = item['measurement']?.toString().trim();
         String measStr = '';
@@ -1326,7 +1300,9 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
             ? ' - ${Localization.translate("مانيفيل احتياطي", lang)}: ${Localization.translate("نعم", lang)}'
             : '';
 
-        final capTh = _readDouble(item['cap_thickness']);
+        final capTh = item['cap_thickness'] != null
+            ? (item['cap_thickness'] as num).toDouble()
+            : 0.0;
         String capStr = '';
         if (capTh > 0 &&
             [
@@ -1368,10 +1344,10 @@ class _ShuttersScreenState extends State<ShuttersScreen> {
                             icon: Icon(Icons.restore, color: Colors.green),
                             tooltip: Localization.translate('استعادة', lang),
                             onPressed: () async {
-                              final itemId = _readInt(item['id']);
-                              if (itemId == null) return;
-                              await widget.db.restoreShutterComponent(itemId);
-                              if (mounted) unawaited(_loadItems());
+                              await widget.db.restoreShutterComponent(
+                                item['id'],
+                              );
+                              _loadItems();
                             },
                           ),
                           IconButton(

@@ -173,19 +173,8 @@ class SubscriptionDetails {
 
   String get formattedStartDate => formatDate(startDate);
   String get formattedEndDate => isLifetime ? 'مدى الحياة' : formatDate(endDate);
-  String getFormattedEndDate({AppLanguage lang = AppLanguage.arabic}) =>
-      isLifetime
-          ? (lang == AppLanguage.french
-              ? 'À vie'
-              : (lang == AppLanguage.english ? 'Lifetime' : 'مدى الحياة'))
-          : formatDate(endDate);
-  String getFormattedRenewalAvailableDate({AppLanguage lang = AppLanguage.arabic}) =>
-      isLifetime
-          ? (lang == AppLanguage.french
-              ? 'Illimité'
-              : (lang == AppLanguage.english ? 'Unlimited' : 'غير محدود'))
-          : formatDate(renewalAvailableFromDate);
-  String get formattedRenewalAvailableDate => getFormattedRenewalAvailableDate();
+  String get formattedRenewalAvailableDate =>
+      isLifetime ? 'غير محدود' : formatDate(renewalAvailableFromDate);
 }
 
 class SubscriptionService {

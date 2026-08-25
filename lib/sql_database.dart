@@ -198,6 +198,7 @@ class SqlDatabase {
     'Sections',
     'SeriesDesignConfig',
     'SeriesDesignRoles',
+    'SectionJointLinks',
     'SeriesShutterRules',
     'Colors',
     'Accessories',
@@ -1107,7 +1108,6 @@ class SqlDatabase {
         "ALTER TABLE Accessories ADD COLUMN is_kit_screw INTEGER DEFAULT 0;",
       );
     } catch (_) {}
-    await _ensureCatalogueSelectionIndexes(db);
 
     // Ensure new tables exist in case of skipped version updates
     await db.execute('''
@@ -1564,6 +1564,25 @@ class SqlDatabase {
       )
     ''');
     await db.execute('''
+      CREATE TABLE IF NOT EXISTS SectionJointLinks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        series_id INTEGER NOT NULL,
+        section_id INTEGER NOT NULL,
+        joint_id INTEGER,
+        gasket_type TEXT NOT NULL DEFAULT '',
+        position_key TEXT NOT NULL DEFAULT 'sash_inner',
+        is_default INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(series_id, section_id, position_key, gasket_type)
+      )
+    ''');
+    try {
+      await db.execute(
+        "ALTER TABLE SectionJointLinks ADD COLUMN gasket_type TEXT NOT NULL DEFAULT '';",
+      );
+    } catch (_) {}
+    await db.execute('''
       CREATE TABLE IF NOT EXISTS SeriesShutterRules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         series_id INTEGER NOT NULL,
@@ -1585,31 +1604,14 @@ class SqlDatabase {
       'CREATE INDEX IF NOT EXISTS idx_design_roles_series ON SeriesDesignRoles(series_id, role_key);',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_section_joint_links_series ON SectionJointLinks(series_id, section_id, position_key);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_section_joint_links_joint ON SectionJointLinks(joint_id);',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_design_shutter_series ON SeriesShutterRules(series_id, component_role);',
     );
-  }
-
-  Future<void> _ensureCatalogueSelectionIndexes(DatabaseExecutor db) async {
-    for (final statement in const [
-      'CREATE INDEX IF NOT EXISTS idx_accessories_active_series_material ON Accessories(is_active, series_id, material_type, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_kit_screw ON Accessories(is_kit_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_caisson_screw ON Accessories(is_caisson_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_moteur_screw ON Accessories(is_moteur_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_batmo_screw ON Accessories(is_batmo_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_bouchon_batmo_screw ON Accessories(is_bouchon_batmo_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_renfort_screw ON Accessories(is_renfort_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_manivelle_screw ON Accessories(is_manivelle_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_assembly_screw ON Accessories(is_assembly_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_accessory_screw ON Accessories(is_accessory_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_accessories_installation_screw ON Accessories(is_installation_screw, is_active, id);',
-      'CREATE INDEX IF NOT EXISTS idx_shutter_components_active_type_series ON ShutterComponents(is_active, component_type, series_id, id);',
-      'CREATE INDEX IF NOT EXISTS idx_shutter_components_series_ids ON ShutterComponents(series_ids);',
-      'CREATE INDEX IF NOT EXISTS idx_kit_bundles_active_name ON KitBundles(is_active, name, id);',
-    ]) {
-      try {
-        await db.execute(statement);
-      } catch (_) {}
-    }
   }
 
   Future<void> _ensureAdvancedKitCompatibilitySchema(
@@ -6718,7 +6720,7 @@ class SqlDatabase {
         where: 'worker_uid = ? AND attendance_date = ?',
         whereArgs: [workerUid, date],
       );
-      CloudSyncService().notifyChangeImmediate();
+      CloudSyncService().notifyChange();
       return;
     }
 
@@ -7228,7 +7230,7 @@ class SqlDatabase {
         createdAt: orderDate,
       );
     }
-    CloudSyncService().notifyChangeImmediate();
+    CloudSyncService().notifyChange();
     return res;
   }
 
@@ -7271,7 +7273,7 @@ class SqlDatabase {
         where: 'id = ?',
         whereArgs: [idCommande],
       );
-      CloudSyncService().notifyChangeImmediate();
+      CloudSyncService().notifyChange();
       return res;
     }
     return 0;
@@ -9447,16 +9449,6 @@ class SqlDatabase {
     } catch (_) {}
     try {
       await myDb!.execute(
-        "ALTER TABLE ShutterComponents ADD COLUMN cap_thickness REAL NOT NULL DEFAULT 0.0;",
-      );
-    } catch (_) {}
-    try {
-      await myDb!.execute(
-        "ALTER TABLE ShutterComponents ADD COLUMN weight_per_sqm REAL NOT NULL DEFAULT 0.0;",
-      );
-    } catch (_) {}
-    try {
-      await myDb!.execute(
         "UPDATE ShutterComponents SET is_active = 1 WHERE is_active IS NULL;",
       );
     } catch (_) {}
@@ -10687,9 +10679,6 @@ class SqlDatabase {
         PRIMARY KEY (table_name, row_id)
       )
     ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_sync_change_log_table_time ON _sync_change_log(table_name, changed_at);',
-    );
     await _ensureProfileColorsSyncIds(db);
 
     final schemaRows = await db.rawQuery('''
@@ -10833,9 +10822,7 @@ class SqlDatabase {
     }
   }
 
-  Future<PendingCloudChanges> exportPendingCloudChanges({
-    Set<String>? onlyTables,
-  }) async {
+  Future<PendingCloudChanges> exportPendingCloudChanges() async {
     final myDb = await db;
     if (myDb == null) {
       return const PendingCloudChanges(
@@ -10850,17 +10837,8 @@ class SqlDatabase {
       throw StateError('database image malformed (code 11)');
     }
 
-    final allowedTables = onlyTables
-        ?.where((table) => _isSafeSqlIdentifier(table))
-        .toSet();
     final logRows = await myDb.query(
       '_sync_change_log',
-      where: allowedTables == null || allowedTables.isEmpty
-          ? null
-          : 'table_name IN (${List.filled(allowedTables.length, '?').join(',')})',
-      whereArgs: allowedTables == null || allowedTables.isEmpty
-          ? null
-          : allowedTables.toList(growable: false),
       orderBy: 'changed_at ASC, table_name ASC, row_id ASC',
     );
     if (logRows.isEmpty) {
@@ -11737,6 +11715,7 @@ class SqlDatabase {
       'SeriesTableConfig',
       'SeriesDesignConfig',
       'SeriesDesignRoles',
+      'SectionJointLinks',
       'SeriesShutterRules',
       'ClientCodeSequence',
       'Client',
@@ -14474,6 +14453,189 @@ class SqlDatabase {
       }
     });
     CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<List<Map<String, dynamic>>> getSectionJointLinksForSeries(
+    int seriesId,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    return myDb.rawQuery(
+      '''
+      SELECT l.*, j.name AS joint_name, j.thickness AS joint_thickness,
+             j.price_per_meter AS joint_price_per_meter,
+             j.gasket_type AS joint_gasket_type
+      FROM SectionJointLinks l
+      LEFT JOIN Joints j ON j.id = l.joint_id
+      WHERE l.series_id = ?
+      ORDER BY l.section_id ASC, l.position_key ASC,
+               l.is_default DESC, l.sort_order ASC, l.id ASC
+    ''',
+      [seriesId],
+    );
+  }
+
+  Future<void> saveSectionJointLinksForSeries({
+    required int seriesId,
+    required List<Map<String, dynamic>> links,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final now = DateTime.now().toIso8601String();
+    await myDb.transaction((txn) async {
+      await txn.delete(
+        'SectionJointLinks',
+        where: 'series_id = ?',
+        whereArgs: [seriesId],
+      );
+      for (var index = 0; index < links.length; index++) {
+        final link = links[index];
+        final sectionId = (link['section_id'] as num?)?.toInt();
+        final jointId = (link['joint_id'] as num?)?.toInt();
+        final gasketType = link['gasket_type']?.toString().trim() ?? '';
+        final positionKey = link['position_key']?.toString().trim() ?? '';
+        if (sectionId == null ||
+            (jointId == null && gasketType.isEmpty) ||
+            positionKey.isEmpty) {
+          continue;
+        }
+        await txn.insert('SectionJointLinks', {
+          'series_id': seriesId,
+          'section_id': sectionId,
+          'joint_id': jointId ?? 0,
+          'gasket_type': gasketType,
+          'position_key': positionKey,
+          'is_default': link['is_default'] == false || link['is_default'] == 0
+              ? 0
+              : 1,
+          'sort_order': index,
+          'updated_at': now,
+        });
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
+  Future<List<Map<String, dynamic>>> getDefaultJointsForSection({
+    required int seriesId,
+    required int sectionId,
+    Iterable<String> positionKeys = const [],
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    final positions = positionKeys
+        .map((key) => key.trim())
+        .where((key) => key.isNotEmpty)
+        .toList();
+    final positionWhere = positions.isEmpty
+        ? ''
+        : 'AND l.position_key IN (${List.filled(positions.length, '?').join(',')})';
+    return myDb.rawQuery(
+      '''
+      SELECT j.*, l.position_key, l.is_default AS link_is_default,
+             l.sort_order AS link_sort_order
+      FROM SectionJointLinks l
+      INNER JOIN Joints j ON (
+        (l.joint_id IS NOT NULL AND l.joint_id > 0 AND j.id = l.joint_id)
+        OR (
+          TRIM(l.gasket_type) != ''
+          AND (
+            j.gasket_type = l.gasket_type
+            OR LOWER(j.gasket_type) = LOWER(l.gasket_type)
+            OR (
+              l.gasket_type LIKE '%فيتراج%'
+              AND (
+                j.gasket_type LIKE '%فيتراج%'
+                OR j.gasket_type LIKE '%زجاج%'
+                OR LOWER(j.gasket_type) LIKE '%vitrage%'
+                OR LOWER(j.gasket_type) LIKE '%glass%'
+                OR j.name LIKE '%فيتراج%'
+                OR j.name LIKE '%زجاج%'
+                OR LOWER(j.name) LIKE '%vitrage%'
+                OR LOWER(j.name) LIKE '%glass%'
+              )
+            )
+            OR (
+              l.gasket_type LIKE '%فراب%'
+              AND (
+                j.gasket_type LIKE '%فراب%'
+                OR j.gasket_type LIKE '%ضرب%'
+                OR LOWER(j.gasket_type) LIKE '%frappe%'
+                OR j.name LIKE '%فراب%'
+                OR j.name LIKE '%ضرب%'
+                OR LOWER(j.name) LIKE '%frappe%'
+              )
+            )
+            OR (
+              l.gasket_type LIKE '%سنترال%'
+              AND (
+                j.gasket_type LIKE '%سنترال%'
+                OR j.gasket_type LIKE '%وسط%'
+                OR LOWER(j.gasket_type) LIKE '%central%'
+                OR j.name LIKE '%سنترال%'
+                OR j.name LIKE '%وسط%'
+                OR LOWER(j.name) LIKE '%central%'
+              )
+            )
+            OR (
+              (l.gasket_type LIKE '%براش%' OR l.gasket_type LIKE '%بروس%')
+              AND (
+                j.gasket_type LIKE '%براش%'
+                OR j.gasket_type LIKE '%بروش%'
+                OR j.gasket_type LIKE '%بروس%'
+                OR LOWER(j.gasket_type) LIKE '%brosse%'
+                OR LOWER(j.gasket_type) LIKE '%brush%'
+                OR LOWER(j.gasket_type) LIKE '%bros%'
+                OR j.name LIKE '%براش%'
+                OR j.name LIKE '%بروش%'
+                OR j.name LIKE '%بروس%'
+                OR LOWER(j.name) LIKE '%brosse%'
+                OR LOWER(j.name) LIKE '%brush%'
+                OR LOWER(j.name) LIKE '%bros%'
+              )
+            )
+            OR (
+              l.gasket_type LIKE '%بوراج%'
+              AND (
+                j.gasket_type LIKE '%بوراج%'
+                OR LOWER(j.gasket_type) LIKE '%bourrage%'
+                OR LOWER(j.gasket_type) LIKE '%bouraj%'
+                OR j.name LIKE '%بوراج%'
+                OR LOWER(j.name) LIKE '%bourrage%'
+                OR LOWER(j.name) LIKE '%bouraj%'
+              )
+            )
+          )
+        )
+      )
+      WHERE l.series_id = ?
+        AND l.section_id = ?
+        $positionWhere
+        AND (j.is_active = 1 OR j.is_active IS NULL)
+        AND (
+          j.type IS NULL
+          OR TRIM(j.type) = ''
+          OR LOWER(j.type) LIKE '%aluminium%'
+          OR LOWER(j.type) LIKE '%aluminum%'
+        )
+        AND (
+          j.scope IS NULL
+          OR TRIM(j.scope) = ''
+          OR LOWER(j.scope) != 'unique'
+          OR j.series_id = l.series_id
+          OR (
+            j.series_ids IS NOT NULL
+            AND TRIM(j.series_ids) != ''
+            AND ',' || REPLACE(j.series_ids, ' ', '') || ',' LIKE '%,' || l.series_id || ',%'
+          )
+        )
+      ORDER BY l.is_default DESC, l.sort_order ASC, l.id ASC
+    ''',
+      [seriesId, sectionId, ...positions],
+    );
   }
 
   Future<List<Map<String, dynamic>>> getSeriesShutterRules(int seriesId) async {

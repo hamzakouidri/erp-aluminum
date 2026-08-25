@@ -108,7 +108,9 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       WindowZone.globalDefaultGlass = const GlassSpecification();
     }
 
-    m.frameColor = FrameColor.white;
+    if (m.selectedDbColor == null) {
+      m.frameColor = FrameColor.white;
+    }
     return m;
   }
 

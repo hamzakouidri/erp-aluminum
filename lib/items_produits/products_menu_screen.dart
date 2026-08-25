@@ -13,6 +13,7 @@ import 'joint.dart';
 import 'kit_bundles_screen.dart';
 import 'catalogue_manager.dart';
 import 'series_accessories_screen.dart';
+import 'series_table_config_screen.dart';
 
 class ProductsMenuScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -175,6 +176,26 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+              // Keep this administrator setup close to the catalogue entry so
+              // it is visible immediately in the desktop products screen.
+              if (settings.isManager) ...[
+                _buildMenuCard(
+                  context,
+                  title: _seriesDesignTitle(lang),
+                  icon: Icons.architecture_rounded,
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            SeriesTableConfigScreen(db: widget.db),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
               if (settings.canViewGlass()) ...[
                 _buildMenuCard(
                   context,
@@ -311,6 +332,12 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
       ),
     );
   }
+
+  String _seriesDesignTitle(AppLanguage language) => switch (language) {
+    AppLanguage.arabic => 'مكوّنات وحسابات السلسلة',
+    AppLanguage.french => 'Composants et calculs de la série',
+    AppLanguage.english => 'Series components and calculations',
+  };
 
   Widget _buildMenuCard(
     BuildContext context, {
