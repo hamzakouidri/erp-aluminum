@@ -343,6 +343,21 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return tokens.any((token) => lower.contains(token.toLowerCase()));
   }
 
+  bool _isScrewBomName(String name) {
+    final lower = name.toLowerCase();
+    return name.contains('براغي') ||
+        name.contains('برغي') ||
+        lower.contains('screw') ||
+        lower.contains('vis');
+  }
+
+  bool _isShutterScrewColumn(String dbColumn) {
+    return dbColumn == 'is_kit_screw' ||
+        dbColumn == 'is_caisson_screw' ||
+        dbColumn == 'is_moteur_screw' ||
+        dbColumn == 'is_manivelle_screw';
+  }
+
   bool _matchesDisplayedOverride(String text, Map<String, dynamic>? override) {
     if (override == null) return false;
     var display = '${override['code'] ?? ''} - ${override['name'] ?? ''}'
@@ -833,6 +848,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     String? materialType,
     AccessoryDrawingMode? drawingMode,
     bool allowGlobal = false,
+    bool applyMaterialFilter = true,
+    bool applyDrawingModeFilter = true,
   }) async {
     final seriesFilter = _buildSeriesFilterClause(
       seriesId: seriesId,
@@ -842,9 +859,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         (materialType ?? (widget.model.isPVC ? 'pvc' : 'aluminium'))
             .toLowerCase()
             .trim();
-    final materialClause = normalizedMaterial == 'pvc'
-        ? " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
-        : " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
+    final materialClause = !applyMaterialFilter
+        ? ''
+        : (normalizedMaterial == 'pvc'
+              ? " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
+              : " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')");
 
     final rows = await database.query(
       'Accessories',
@@ -858,6 +877,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         .where(matches)
         .where(
           (row) =>
+              !applyDrawingModeFilter ||
               drawingMode == null ||
               accessoryMatchesDrawingMode(row, drawingMode),
         )
@@ -2148,9 +2168,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         Future<bool> hasValidCurrentScrew() async {
           final current = widget.model.componentOverrides[key];
           if (current is! Map || current['id'] == null) return false;
-          final materialClause = widget.model.isPVC
-              ? "AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
-              : "AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
+          final materialClause = _isShutterScrewColumn(dbColumn)
+              ? ''
+              : (widget.model.isPVC
+                    ? "AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
+                    : "AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')");
           final seriesFilter = _buildSeriesFilterClause(allowGlobal: true);
           final rows = await dbInstance.query(
             'Accessories',
@@ -2191,9 +2213,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           try {
             List<Map<String, dynamic>> res = [];
             try {
-              final materialClause = widget.model.isPVC
-                  ? "AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
-                  : "AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
+              final materialClause = _isShutterScrewColumn(dbColumn)
+                  ? ''
+                  : (widget.model.isPVC
+                        ? "AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
+                        : "AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')");
               final seriesFilter = _buildSeriesFilterClause(allowGlobal: true);
               res = await dbInstance.query(
                 'Accessories',
@@ -2213,6 +2237,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     : widget.model.activeSeries?.id,
                 materialType: widget.model.isPVC ? 'pvc' : 'aluminium',
                 allowGlobal: true,
+                applyMaterialFilter: !_isShutterScrewColumn(dbColumn),
+                applyDrawingModeFilter: !_isShutterScrewColumn(dbColumn),
                 matches: screwMatchesRole,
               );
               if (selected != null) {
@@ -2261,11 +2287,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               final mutableItem = Map<String, dynamic>.from(selected);
               mutableItem['calculated_price'] = price;
               widget.model.componentOverrides[key] = mutableItem;
-              if (mounted) {
-                setState(
-                  () {},
-                ); // إجبار الخانة على الظهور فورًا بدون تدخل المستخدم
-              }
             }
           } catch (e) {
             print(
@@ -3070,6 +3091,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               continue;
             }
             if (item.category == 'shutter') {
+              if (_isScrewBomName(item.originalName)) {
+                continue;
+              }
               table = 'ShutterComponents';
               // سلسلة شروط تحدد الكلمة المفتاحية المناسبة حسب اسم العنصر الناقص
               if (item.originalName.contains('Lames') ||
@@ -3674,10 +3698,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     widget.model.systemMode == 'sliding'
                     ? widget.model.activeSlidingSeries?.id
                     : widget.model.activeSeries?.id;
-                if (item.originalName.contains('Caisson') ||
-                    item.originalName.contains('الصندوق') ||
-                    item.originalName.contains('Kit') ||
-                    item.originalName.contains('كيت')) {
+                if (!_isScrewBomName(item.originalName) &&
+                    (item.originalName.contains('Caisson') ||
+                        item.originalName.contains('الصندوق') ||
+                        item.originalName.contains('Kit') ||
+                        item.originalName.contains('كيت'))) {
                   // بناء صيغ متعددة لنفس المقاس (نقطة/فاصلة/مختصر) لزيادة فرصة التطابق النصي
                   String size = widget.model.shutterBoxHeight
                       .toInt()
@@ -3936,7 +3961,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 mutableItem['calculated_price'] = price;
                 widget.model.componentOverrides[item.originalName] =
                     mutableItem;
-                if (mounted) setState(() {}); // إجبار الخانة على الظهور فورًا
               }
             }
           } catch (e) {} // تجاهل أي خطأ في معالجة عنصر ناقص واحد، وتابع البقية
@@ -3965,7 +3989,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _shutterSqmPriceController = TextEditingController();
     _torqueFactorController = TextEditingController();
     _loadCostSettings(); // تحميل إعدادات التسعير المحفوظة محليًا
-    _loadPricesFromDb(); // تحميل الأسعار من قاعدة البيانات
     // تحديد الحالة الابتدائية للآلية (محرك/مانيفيل/حزام) والتونيل
     // The BOM is calculated synchronously, so refresh the glass catalogue as
     // this page opens. This prevents a recently saved tempering price from
@@ -7896,8 +7919,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         mutableSelected['user_selected'] = true;
         if (price > 0) mutableSelected['calculated_price'] = price;
         final isKitItem =
-            item.originalName.contains('Kit') ||
-            item.originalName.contains('كيت');
+            !_isScrewBomName(item.originalName) &&
+            (item.originalName.contains('Kit') ||
+                item.originalName.contains('كيت'));
         final isCaisson = item.originalName == 'الصندوق (Caisson)';
         // إذا كان العنصر المُبدَّل هو "الصندوق"، حدد وضع التونيل حسب id خاص (-999 يعني تونيل)
         if (isCaisson) {

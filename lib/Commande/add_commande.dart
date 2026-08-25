@@ -26,6 +26,7 @@ import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
 import 'package:database_data/Screen/tempered_glass_work_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 class CommandePage extends StatefulWidget {
   final SqlDatabase db;
@@ -1001,6 +1002,7 @@ class _CommandePageState extends State<CommandePage> {
 
   Future<void> _saveCommande() async {
     if (_isSaving) return;
+    if (mounted) setState(() => _isSaving = true);
 
     // 🟢 Auto-resolve client if typed in text field but selectedClient map is null
     if (selectedClient == null && clientController.text.trim().isNotEmpty) {
@@ -1038,6 +1040,7 @@ class _CommandePageState extends State<CommandePage> {
       }
     }
 
+    if (!mounted) return;
     if (selectedClient == null || selectedClient!['id'] == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1050,6 +1053,7 @@ class _CommandePageState extends State<CommandePage> {
           backgroundColor: Colors.orange,
         ),
       );
+      if (mounted) setState(() => _isSaving = false);
       return;
     }
 
@@ -1065,12 +1069,12 @@ class _CommandePageState extends State<CommandePage> {
           backgroundColor: Colors.orange,
         ),
       );
+      if (mounted) setState(() => _isSaving = false);
       return;
     }
 
     final clientId = selectedClient!['id'];
 
-    setState(() => _isSaving = true);
     bool dialogShown = false;
 
     showDialog(
@@ -1113,25 +1117,37 @@ class _CommandePageState extends State<CommandePage> {
         if (detailId != null) existingDetailsById[detailId] = detail;
       }
 
-      final imagePaths = await Future.wait(
-        addedProducts.asMap().entries.map((entry) async {
-          final index = entry.key;
-          final p = entry.value;
-          final previous = index < existingDetails.length
-              ? existingDetails[index]
-              : null;
-          final selectedGlassImagePath =
-              p.glassWorkPayload?['imagePath']?.toString() ?? '';
-          final mustKeepSyncedGlassImage =
-              p.isGlassWork &&
-              selectedGlassImagePath.isNotEmpty &&
-              !File(selectedGlassImagePath).existsSync() &&
-              (previous?['drawing_image_base64']?.toString().isNotEmpty ??
-                  false);
-          if (mustKeepSyncedGlassImage) return '';
-          return saveWindowImageToDisk(p, maxSide: 600);
-        }),
-      );
+      final imagePaths = <String>[];
+      final imageMaxSide = (Platform.isAndroid || Platform.isIOS) ? 420 : 600;
+      for (var index = 0; index < addedProducts.length; index++) {
+        final p = addedProducts[index];
+        final previous = index < existingDetails.length
+            ? existingDetails[index]
+            : null;
+        final selectedGlassImagePath =
+            p.glassWorkPayload?['imagePath']?.toString() ?? '';
+        final mustKeepSyncedGlassImage =
+            p.isGlassWork &&
+            selectedGlassImagePath.isNotEmpty &&
+            !File(selectedGlassImagePath).existsSync() &&
+            (previous?['drawing_image_base64']?.toString().isNotEmpty ?? false);
+        if (mustKeepSyncedGlassImage) {
+          imagePaths.add('');
+          continue;
+        }
+        try {
+          imagePaths.add(
+            await saveWindowImageToDisk(
+              p,
+              maxSide: imageMaxSide,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => ''),
+          );
+        } catch (error) {
+          debugPrint('Skipping order preview image: $error');
+          imagePaths.add('');
+        }
+        await Future.delayed(Duration.zero);
+      }
 
       final preparedDetails = <Map<String, dynamic>>[];
       for (var index = 0; index < addedProducts.length; index++) {
@@ -1251,6 +1267,24 @@ class _CommandePageState extends State<CommandePage> {
       syncService.endLocalWrite();
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  void _handleSavePressed() {
+    if (_isSaving) return;
+    if (_isLoadingEditProducts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _editProductsTotal > 0
+                ? 'انتظر اكتمال تحميل عناصر الطلبية: $_editProductsLoaded / $_editProductsTotal'
+                : 'انتظر اكتمال تحميل عناصر الطلبية.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    unawaited(_saveCommande());
   }
 
   List<WindowModel> _bulkEditableProducts() {
@@ -2320,9 +2354,7 @@ class _CommandePageState extends State<CommandePage> {
             ),
           IconButton(
             icon: const Icon(Icons.check, size: 28, color: Colors.teal),
-            onPressed: (_isSaving || _isLoadingEditProducts)
-                ? null
-                : _saveCommande,
+            onPressed: _handleSavePressed,
             tooltip: Localization.translate(
               "Save",
               Provider.of<AppSettingsProvider>(context).language,
@@ -2913,9 +2945,7 @@ class _CommandePageState extends State<CommandePage> {
             const SizedBox(height: 30),
             ElegantAnimatedButton(
               gradientColors: const [Colors.green, Colors.teal],
-              onPressed: (_isSaving || _isLoadingEditProducts)
-                  ? null
-                  : _saveCommande,
+              onPressed: _handleSavePressed,
               icon: const Icon(Icons.save, color: Colors.white),
               label: Text(
                 Localization.translate(

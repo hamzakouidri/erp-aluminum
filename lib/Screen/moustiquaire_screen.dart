@@ -472,10 +472,8 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                                     decimal: true,
                                   ),
                               decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  'العرض (${_selectedUnit == InputUnit.mm ? 'مم' : 'سم'})',
-                                  lang,
-                                ),
+                                labelText:
+                                    '${Localization.translate('العرض', lang)} (${Localization.translate(_selectedUnit == InputUnit.mm ? 'مم' : 'سم', lang)})',
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -494,10 +492,8 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                                     decimal: true,
                                   ),
                               decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  'الارتفاع (${_selectedUnit == InputUnit.mm ? 'مم' : 'سم'})',
-                                  lang,
-                                ),
+                                labelText:
+                                    '${Localization.translate('الارتفاع', lang)} (${Localization.translate(_selectedUnit == InputUnit.mm ? 'مم' : 'سم', lang)})',
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),

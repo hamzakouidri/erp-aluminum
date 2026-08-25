@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -977,6 +978,14 @@ class CloudSyncService {
           }
           await prefs.setString('workshop_code', _workshopId!);
           await prefs.setString('user_role', role);
+          final workshopName = data['workshopName']?.toString().trim() ?? '';
+          final displayName = data['displayName']?.toString().trim() ?? '';
+          if (workshopName.isNotEmpty) {
+            await prefs.setString('workshop_name', workshopName);
+          }
+          if (displayName.isNotEmpty) {
+            await prefs.setString('user_display_name', displayName);
+          }
         } else {
           _workshopId = prefs.getString('workshop_code') ?? user.uid;
           if (_workshopId == user.uid) {
@@ -1004,6 +1013,7 @@ class CloudSyncService {
   }
 
   void reset() {
+    SupabaseWorkshopSyncService().stop();
     _workshopId = null;
     _debounceTimer?.cancel();
     _backupRetryTimer?.cancel();
@@ -1080,6 +1090,7 @@ class CloudSyncService {
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
   void startListeningForUpdates(Function() onUpdateCallback) {
     onDataRestored = onUpdateCallback;
+    SupabaseWorkshopSyncService().start(onDataChanged: onUpdateCallback);
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -2330,6 +2341,7 @@ class CloudSyncService {
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
   void notifyChange() async {
     _dbUpdateController.add('');
+    SupabaseWorkshopSyncService().notifyLocalChange();
     _backupRetryTimer?.cancel();
     _queueImmediateLiveEventUpload();
 
@@ -2372,6 +2384,7 @@ class CloudSyncService {
   /// إشعار بوجود تغيير عاجل محلياً (كعمليات الصندوق والمعاملات المالية) والرفع الفوري للسحابة بدون انتظار
   void notifyChangeImmediate() async {
     _dbUpdateController.add('');
+    SupabaseWorkshopSyncService().notifyLocalChange(immediate: true);
     _backupRetryTimer?.cancel();
     _queueImmediateLiveEventUpload();
 

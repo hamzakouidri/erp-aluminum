@@ -3,13 +3,116 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/supabase_catalog_sync_service.dart';
+import '../services/supabase_workshop_sync_service.dart';
 import 'workshop_profile_screen.dart';
 import 'selected_systems_screen.dart';
 import 'package:flutter/services.dart';
 import '../sql_database.dart';
 
+class _SupabaseCredentials {
+  const _SupabaseCredentials({
+    required this.email,
+    required this.password,
+    required this.createAccount,
+  });
+
+  final String email;
+  final String password;
+  final bool createAccount;
+}
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  Future<bool> _ensureSupabaseCatalogLogin(BuildContext context) async {
+    final service = SupabaseCatalogSyncService();
+    if (service.isSignedIn) return true;
+
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    try {
+      final credentials = await showDialog<_SupabaseCredentials>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              'تسجيل دخول Supabase',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'البريد'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'كلمة المرور'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('إلغاء'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(
+                    dialogContext,
+                    _SupabaseCredentials(
+                      email: emailController.text,
+                      password: passwordController.text,
+                      createAccount: true,
+                    ),
+                  );
+                },
+                child: const Text('إنشاء حساب'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(
+                    dialogContext,
+                    _SupabaseCredentials(
+                      email: emailController.text,
+                      password: passwordController.text,
+                      createAccount: false,
+                    ),
+                  );
+                },
+                child: const Text('دخول'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (credentials == null) return false;
+      if (credentials.createAccount) {
+        await service.signUpWithPassword(
+          email: credentials.email,
+          password: credentials.password,
+        );
+      } else {
+        await service.signInWithPassword(
+          email: credentials.email,
+          password: credentials.password,
+        );
+      }
+      return true;
+    } finally {
+      emailController.dispose();
+      passwordController.dispose();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +126,9 @@ class SettingsScreen extends StatelessWidget {
     }
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final showLegacyFirebaseCloudSync = bool.fromEnvironment(
+      'SHOW_LEGACY_FIREBASE_SYNC',
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -126,7 +232,8 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 10),
 
           // Cloud Sync Backup/Restore
-          if (settings.isManager || settings.canBackupToCloud()) ...[
+          if (showLegacyFirebaseCloudSync &&
+              (settings.isManager || settings.canBackupToCloud())) ...[
             Card(
               elevation: 2,
               child: Padding(
@@ -413,6 +520,244 @@ class SettingsScreen extends StatelessWidget {
                                         );
                                       }
                                     }
+                                  }
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          if (settings.isManager || settings.canBackupToCloud()) ...[
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      leading: const Icon(
+                        Icons.sync_alt_rounded,
+                        color: Colors.deepPurple,
+                      ),
+                      title: Text(
+                        Localization.translate('مزامنة Supabase السريعة', lang),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                      subtitle: Text(
+                        Localization.translate(
+                          'ارفع بيانات الورشة كاملة أول مرة، وبعدها يتم رفع وتنزيل التغييرات فقط بشكل خفيف.',
+                          lang,
+                        ),
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
+                    ),
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0,
+                          vertical: 8.0,
+                        ),
+                        child: Wrap(
+                          spacing: 16,
+                          runSpacing: 12,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark
+                                    ? Colors.black
+                                    : Colors.deepPurple,
+                                foregroundColor: Colors.white,
+                                side: isDark
+                                    ? const BorderSide(
+                                        color: Colors.white,
+                                        width: 1.5,
+                                      )
+                                    : BorderSide.none,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                              ),
+                              icon: const Icon(Icons.cloud_upload_rounded),
+                              label: const Text(
+                                'رفع بيانات الورشة كاملة',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 13,
+                                ),
+                              ),
+                              onPressed: () async {
+                                try {
+                                  final ready =
+                                      await _ensureSupabaseCatalogLogin(
+                                        context,
+                                      );
+                                  if (!ready || !context.mounted) return;
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'تعذر تسجيل دخول Supabase: ${e.toString().replaceAll('Exception: ', '')}',
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                        ),
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                showDialog(
+                                  context: context,
+                                  useRootNavigator: true,
+                                  barrierDismissible: false,
+                                  builder: (_) => const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                                bool success = false;
+                                String errorMsg = '';
+                                try {
+                                  await SupabaseWorkshopSyncService()
+                                      .uploadFullWorkshopData();
+                                  SupabaseWorkshopSyncService().start();
+                                  success = true;
+                                } catch (e) {
+                                  errorMsg = e.toString().replaceAll(
+                                    'Exception: ',
+                                    '',
+                                  );
+                                } finally {
+                                  if (context.mounted) {
+                                    Navigator.of(
+                                      context,
+                                      rootNavigator: true,
+                                    ).pop();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          success
+                                              ? SupabaseWorkshopSyncService()
+                                                    .lastUploadSummary
+                                              : 'فشل رفع بيانات الورشة: $errorMsg',
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                        backgroundColor: success
+                                            ? Colors.green
+                                            : Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark
+                                    ? Colors.black
+                                    : Colors.indigo,
+                                foregroundColor: Colors.white,
+                                side: isDark
+                                    ? const BorderSide(
+                                        color: Colors.white,
+                                        width: 1.5,
+                                      )
+                                    : BorderSide.none,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                              ),
+                              icon: const Icon(Icons.cloud_download_rounded),
+                              label: const Text(
+                                'تنزيل بيانات الورشة',
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 13,
+                                ),
+                              ),
+                              onPressed: () async {
+                                try {
+                                  final ready =
+                                      await _ensureSupabaseCatalogLogin(
+                                        context,
+                                      );
+                                  if (!ready || !context.mounted) return;
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'تعذر تسجيل دخول Supabase: ${e.toString().replaceAll('Exception: ', '')}',
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                        ),
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                showDialog(
+                                  context: context,
+                                  useRootNavigator: true,
+                                  barrierDismissible: false,
+                                  builder: (_) => const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                                bool success = false;
+                                String errorMsg = '';
+                                try {
+                                  await SupabaseWorkshopSyncService()
+                                      .downloadWorkshopData(full: true);
+                                  SupabaseWorkshopSyncService().start();
+                                  success = true;
+                                } catch (e) {
+                                  errorMsg = e.toString().replaceAll(
+                                    'Exception: ',
+                                    '',
+                                  );
+                                } finally {
+                                  if (context.mounted) {
+                                    Navigator.of(
+                                      context,
+                                      rootNavigator: true,
+                                    ).pop();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          success
+                                              ? SupabaseWorkshopSyncService()
+                                                    .lastDownloadSummary
+                                              : 'فشل تنزيل بيانات الورشة: $errorMsg',
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                        backgroundColor: success
+                                            ? Colors.green
+                                            : Colors.red,
+                                      ),
+                                    );
                                   }
                                 }
                               },
@@ -815,6 +1160,25 @@ class SettingsScreen extends StatelessWidget {
                           style: TextStyle(fontFamily: 'Cairo'),
                         ),
                         onPressed: () async {
+                          try {
+                            final ready = await _ensureSupabaseCatalogLogin(
+                              context,
+                            );
+                            if (!ready || !context.mounted) return;
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'تعذر تسجيل دخول Supabase: $e',
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+
                           showDialog(
                             context: context,
                             useRootNavigator: true,
@@ -930,6 +1294,25 @@ class SettingsScreen extends StatelessWidget {
                           ),
                         ),
                         onPressed: () async {
+                          bool ready = false;
+                          try {
+                            ready = await _ensureSupabaseCatalogLogin(context);
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'تعذر تسجيل دخول Supabase: ${e.toString().replaceAll('Exception: ', '')}',
+                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          if (!ready || !context.mounted) return;
+
                           showDialog(
                             context: context,
                             useRootNavigator: true,
@@ -941,7 +1324,8 @@ class SettingsScreen extends StatelessWidget {
                           bool success = false;
                           String errorMsg = '';
                           try {
-                            await CloudSyncService().backupGlobalCatalog();
+                            await SupabaseCatalogSyncService()
+                                .uploadGlobalCatalog();
                             success = true;
                           } catch (e) {
                             errorMsg = e.toString();
@@ -950,7 +1334,8 @@ class SettingsScreen extends StatelessWidget {
                               Navigator.of(context, rootNavigator: true).pop();
                               if (success) {
                                 final catalogSummary =
-                                    CloudSyncService().lastCatalogUploadSummary;
+                                    SupabaseCatalogSyncService()
+                                        .lastCatalogUploadSummary;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(

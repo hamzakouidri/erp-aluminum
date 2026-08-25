@@ -7,6 +7,7 @@ import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
+import 'package:database_data/utils/real_color_resolver.dart';
 
 class ColorsScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -84,224 +85,15 @@ class _ColorsScreenState extends State<ColorsScreen> {
   }
 
   DecorationImage? _getDecorationImageFromName(String name) {
-    name = name.toLowerCase();
-
-    if (name.contains('desert') ||
-        name.contains('oak') ||
-        name.contains('ديزر') ||
-        name.contains('ديزير')) {
-      return const DecorationImage(
-        image: AssetImage('assets/images/wood_texture_d0.png'),
-        fit: BoxFit.cover,
-      );
-    }
-
-    if (name.contains('أنتيك') ||
-        name.contains('antique') ||
-        name.contains('انتيك')) {
-      return const DecorationImage(
-        image: AssetImage('assets/images/wood_texture_antique.png'),
-        fit: BoxFit.cover,
-      );
-    }
-
-    if (name.contains('فوبوا كلير') ||
-        name.contains('clair') ||
-        name.contains('خشبي فاتح')) {
-      return const DecorationImage(
-        image: AssetImage('assets/images/wood_texture_d0.png'),
-        fit: BoxFit.cover,
-      );
-    }
-
-    if (name.contains('خشبي داكن') ||
-        name.contains('foncé') ||
-        name.contains('dark')) {
-      return const DecorationImage(
-        image: AssetImage('assets/images/wood_texture_dark.png'),
-        fit: BoxFit.cover,
-      );
-    }
-
-    if (name.contains('خشبي') ||
-        name.contains('bois') ||
-        name.contains('wood') ||
-        name.contains('فوبوا')) {
-      return const DecorationImage(
-        image: AssetImage('assets/images/wood_texture.png'),
-        fit: BoxFit.cover,
-      );
-    }
-
-    return null;
+    return realColorTextureImage({'name': name});
   }
 
   LinearGradient _getGradientFromName(String name, [String? hexCode]) {
-    name = name.toLowerCase();
-
-    if (name.contains('9007')) {
-      return const LinearGradient(
-        colors: [Color(0xFFB8C0C8), Color(0xFF8A939E), Color(0xFF606A75)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-
-    // Check standard colors first to preserve their beautiful, handcrafted gradients
-    if (name.contains('خام') || name.contains('brut') || name.contains('raw')) {
-      return LinearGradient(
-        colors: [Colors.grey.shade300, Colors.grey.shade500],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('أبيض') ||
-        name.contains('blanc') ||
-        name.contains('white')) {
-      return LinearGradient(
-        colors: [Colors.white, Colors.grey.shade300],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('أسود') ||
-        name.contains('noir') ||
-        name.contains('black')) {
-      return LinearGradient(
-        colors: [Colors.grey.shade800, Colors.black],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('أصفر') ||
-        name.contains('jaune') ||
-        name.contains('yellow')) {
-      return LinearGradient(
-        colors: [Colors.orange.shade100, Colors.orange.shade300],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('بني') ||
-        name.contains('marron') ||
-        name.contains('brown')) {
-      return LinearGradient(
-        colors: [Colors.brown.shade400, Colors.brown.shade800],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('رمادي') ||
-        name.contains('gris') ||
-        name.contains('gray')) {
-      return LinearGradient(
-        colors: [Colors.grey.shade500, Colors.grey.shade800],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('بيج') || name.contains('beige')) {
-      return const LinearGradient(
-        colors: [Color(0xFFF5F5DC), Color(0xFFDCDCB4)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('أزرق') ||
-        name.contains('ازرق') ||
-        name.contains('bleu') ||
-        name.contains('blue')) {
-      return LinearGradient(
-        colors: [Colors.blue.shade400, Colors.blue.shade800],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('أخضر') ||
-        name.contains('اخضر') ||
-        name.contains('vert') ||
-        name.contains('green')) {
-      return LinearGradient(
-        colors: [Colors.green.shade400, Colors.green.shade800],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('أحمر') ||
-        name.contains('احمر') ||
-        name.contains('rouge') ||
-        name.contains('red')) {
-      return LinearGradient(
-        colors: [Colors.red.shade400, Colors.red.shade800],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('ذهبي') ||
-        name.contains('doré') ||
-        name.contains('gold')) {
-      return const LinearGradient(
-        colors: [Color(0xFFF1D675), Color(0xFFD4AF37), Color(0xFF9C7616)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('فضي') ||
-        name.contains('argent') ||
-        name.contains('silver')) {
-      return const LinearGradient(
-        colors: [Color(0xFFC0C0C0), Color(0xFF808080)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('شامبانيا') ||
-        name.contains('شامبان') ||
-        name.contains('شمبان') ||
-        name.contains('champagne')) {
-      return const LinearGradient(
-        colors: [Color(0xFFFFF4DF), Color(0xFFF7E7CE), Color(0xFFC9AE86)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (name.contains('خشبي') ||
-        name.contains('bois') ||
-        name.contains('wood')) {
-      // For "Wood", a deeper gradient of browns.
-      return LinearGradient(
-        colors: [Colors.brown.shade300, Colors.brown.shade800],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-
-    // Dynamic gradient calculation for custom colors added to the database
-    if (hexCode != null && hexCode.trim().isNotEmpty) {
-      String cleanHex = hexCode.trim().replaceAll('#', '');
-      if (cleanHex.length == 6) {
-        cleanHex = 'FF$cleanHex';
-      }
-      final intVal = int.tryParse(cleanHex, radix: 16);
-      if (intVal != null) {
-        final color = Color(intVal);
-        final hsl = HSLColor.fromColor(color);
-        final double lightnessDiff = 0.15;
-        final light = hsl
-            .withLightness((hsl.lightness + lightnessDiff).clamp(0.0, 1.0))
-            .toColor();
-        final dark = hsl
-            .withLightness((hsl.lightness - lightnessDiff).clamp(0.0, 1.0))
-            .toColor();
-        return LinearGradient(
-          colors: [light, dark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      }
-    }
-
-    return LinearGradient(colors: [Colors.grey.shade200, Colors.grey.shade300]);
+    return LinearGradient(
+      colors: realGradientColors({'name': name, 'hex_code': hexCode}),
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
   }
 
   void _showAddDialog() {
@@ -431,6 +223,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
   }
 
   void _showCustomizeDialog() {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     int? selectedProfileId = _profiles.isNotEmpty
         ? _profiles.first['id'] as int
         : null;
@@ -447,7 +243,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
           title: Text(
             Localization.translate(
               'تخصيص الألوان حسب البروفيلات',
-              Provider.of<AppSettingsProvider>(context).language,
+              lang,
             ),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
@@ -460,7 +256,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: Text(
-                    'اختر الألوان الخاصة بكل بروفيل ثم اضغط حفظ وإغلاق.',
+                    Localization.translate(
+                      'اختر الألوان الخاصة بكل بروفيل ثم اضغط حفظ وإغلاق.',
+                      lang,
+                    ),
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).textTheme.bodySmall?.color,
@@ -474,7 +273,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
                     decoration: InputDecoration(
                       labelText: Localization.translate(
                         'اختر البروفيل',
-                        Provider.of<AppSettingsProvider>(context).language,
+                        lang,
                       ),
                       border: const OutlineInputBorder(),
                     ),
@@ -555,15 +354,12 @@ class _ColorsScreenState extends State<ColorsScreen> {
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                Localization.translate(
-                  'إلغاء',
-                  Provider.of<AppSettingsProvider>(context).language,
-                ),
+                Localization.translate('إلغاء', lang),
               ),
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.save_rounded, size: 18),
-              label: const Text('حفظ وإغلاق'),
+              label: Text(Localization.translate('حفظ وإغلاق', lang)),
               onPressed: () async {
                 final navigator = Navigator.of(dialogContext);
                 final messenger = ScaffoldMessenger.of(context);
@@ -596,15 +392,22 @@ class _ColorsScreenState extends State<ColorsScreen> {
                   if (!mounted) return;
                   navigator.pop();
                   messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('تم حفظ تخصيص ألوان البروفيلات بنجاح.'),
+                    SnackBar(
+                      content: Text(
+                        Localization.translate(
+                          'تم حفظ تخصيص ألوان البروفيلات بنجاح.',
+                          lang,
+                        ),
+                      ),
                     ),
                   );
                 } catch (error) {
                   if (!mounted) return;
                   messenger.showSnackBar(
                     SnackBar(
-                      content: Text('تعذر حفظ تخصيص الألوان: $error'),
+                      content: Text(
+                        '${Localization.translate('تعذر حفظ تخصيص الألوان', lang)}: $error',
+                      ),
                       backgroundColor: Colors.red,
                     ),
                   );
@@ -618,6 +421,10 @@ class _ColorsScreenState extends State<ColorsScreen> {
   }
 
   void _showCustomizeGlassDialog() async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final glasses = await widget.db.readGlass();
 
     if (!mounted) return;
@@ -630,7 +437,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
             title: Text(
               Localization.translate(
                 'تخصيص ألوان الزجاج',
-                Provider.of<AppSettingsProvider>(context).language,
+                lang,
               ),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
@@ -692,7 +499,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
                         builder: (subContext) => StatefulBuilder(
                           builder: (context, setStateSub) {
                             return AlertDialog(
-                              title: Text('ألوان $gName'),
+                              title: Text(
+                                '${Localization.translate('ألوان', lang)} $gName',
+                              ),
                               content: SizedBox(
                                 width: double.maxFinite,
                                 child: ListView.builder(
@@ -738,9 +547,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(subContext),
-                                  child: const Text(
-                                    'إلغاء',
-                                    style: TextStyle(color: Colors.grey),
+                                  child: Text(
+                                    Localization.translate('إلغاء', lang),
+                                    style: const TextStyle(color: Colors.grey),
                                   ),
                                 ),
                                 ElevatedButton(
@@ -1232,24 +1041,31 @@ class _ColorsScreenState extends State<ColorsScreen> {
   }
 
   void _showDeleteDialog(Map<String, dynamic> item) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          'تأكيد الحذف',
+          Localization.translate('تأكيد الحذف', lang),
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.red,
           ),
         ),
         content: Text(
-          'سيتم أرشفة هذا اللون (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
+          Localization.translate(
+            'سيتم أرشفة هذا اللون (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
+            lang,
+          ),
           style: const TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
+            child: Text(Localization.translate('إلغاء', lang)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -1258,9 +1074,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
               _loadItems();
               if (context.mounted) Navigator.pop(dialogContext);
             },
-            child: const Text(
-              'موافق، قم بالأرشفة',
-              style: TextStyle(color: Colors.white),
+            child: Text(
+              Localization.translate('موافق، قم بالأرشفة', lang),
+              style: const TextStyle(color: Colors.white),
             ),
           ),
         ],

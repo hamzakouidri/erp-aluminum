@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
 bool get isAdmin {
   final user = FirebaseAuth.instance.currentUser;
@@ -36,11 +37,13 @@ class AppSettingsProvider extends ChangeNotifier {
   String _userDisplayName = 'مدير الورشة';
   Map<String, dynamic> _workerPermissions = {};
   StreamSubscription<DocumentSnapshot>? _permSubscription;
+  StreamSubscription<Map<String, dynamic>>? _supabasePermSubscription;
   String? _permissionListenerUid;
 
   @override
   void dispose() {
     _permSubscription?.cancel();
+    _supabasePermSubscription?.cancel();
     super.dispose();
   }
 
@@ -146,10 +149,35 @@ class AppSettingsProvider extends ChangeNotifier {
         });
   }
 
+  void _startSupabasePermissionListener() {
+    _supabasePermSubscription ??= SupabaseWorkshopSyncService()
+        .permissionsStream
+        .listen((payload) {
+          final role = payload['role']?.toString() ?? '';
+          final rawPermissions = payload['permissions'];
+          if (!isAdmin && role.isNotEmpty) {
+            _userRole = role;
+          }
+          if (rawPermissions is Map) {
+            _workerPermissions = Map<String, dynamic>.from(rawPermissions);
+          }
+          notifyListeners();
+        });
+
+    unawaited(
+      SupabaseWorkshopSyncService().refreshCurrentPermissions().catchError(
+        (_) {},
+      ),
+    );
+  }
+
   Future<void> reloadPermissions() async {
     final prefs = await SharedPreferences.getInstance();
     _workshopCode = prefs.getString('workshop_code') ?? '';
     _userDisplayName = prefs.getString('user_display_name') ?? 'مدير الورشة';
+    _workerPermissions = _decodeCachedPermissions(
+      prefs.getString('permissions_json'),
+    );
 
     User? user;
     try {
@@ -161,7 +189,6 @@ class AppSettingsProvider extends ChangeNotifier {
       _permSubscription = null;
       _permissionListenerUid = null;
       _userRole = prefs.getString('user_role') ?? 'worker';
-      _workerPermissions = {};
     } else {
       if (isApplicationAdminEmail(user.email)) {
         // Keep the application administrator distinct from workshop managers.
@@ -176,8 +203,20 @@ class AppSettingsProvider extends ChangeNotifier {
       try {
         _startPermissionListener(user, prefs);
       } catch (_) {}
+      _startSupabasePermissionListener();
     }
     notifyListeners();
+  }
+
+  Map<String, dynamic> _decodeCachedPermissions(String? rawJson) {
+    if (rawJson == null || rawJson.trim().isEmpty) return {};
+    try {
+      final decoded = jsonDecode(rawJson);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return {};
   }
 
   bool _isPermissionTrue(dynamic val) {

@@ -7,6 +7,7 @@ import 'package:database_data/app_theme.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/supabase_config.dart';
 import 'package:database_data/login_screen.dart';
 import 'package:database_data/widgets/desktop_window_frame.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
@@ -17,6 +18,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
 import 'package:database_data/Commande/texture_cache.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 
 import 'package:window_manager/window_manager.dart';
 
@@ -99,6 +101,7 @@ void main() async {
   }
 
   String? firebaseError;
+  String? supabaseError;
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
@@ -118,21 +121,34 @@ void main() async {
     }
   }
 
+  try {
+    if (SupabaseConfig.isConfigured) {
+      await supabase.Supabase.initialize(
+        url: SupabaseConfig.url,
+        publishableKey: SupabaseConfig.publishableKey,
+      );
+    }
+  } catch (e) {
+    debugPrint("Supabase Initialization Error: $e");
+    supabaseError = e.toString();
+  }
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
         ChangeNotifierProvider(create: (_) => WorkspaceController()),
       ],
-      child: MyApp(firebaseError: firebaseError),
+      child: MyApp(firebaseError: firebaseError, supabaseError: supabaseError),
     ),
   );
 }
 
 class MyApp extends StatefulWidget {
   final String? firebaseError;
+  final String? supabaseError;
 
-  const MyApp({super.key, this.firebaseError});
+  const MyApp({super.key, this.firebaseError, this.supabaseError});
 
   @override
   State<MyApp> createState() => _MyAppState();

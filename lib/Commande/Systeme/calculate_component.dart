@@ -4220,16 +4220,13 @@ class ComponentCalculator {
             for (int h = 0; h < hPositions.length; h++) {
               double pieceStart = -1;
               for (int c = 0; c < cols; c++) {
-                bool segActive =
-                    zone.disabledHorizontalDivisions["${c}_$h"] != true;
+                bool segActive = true;
                 double leftRatio = c == 0 ? 0.0 : vPositions[c - 1];
                 double rightRatio = c == cols - 1 ? 1.0 : vPositions[c];
 
                 if (segActive) {
                   if (pieceStart < 0) pieceStart = leftRatio;
-                  bool endPiece =
-                      (c == cols - 1) ||
-                      (zone.disabledHorizontalDivisions["${c + 1}_$h"] == true);
+                  bool endPiece = c == cols - 1;
                   if (endPiece) {
                     double len = (rightRatio - pieceStart) * leftSashW;
                     if (len > 0) {
@@ -4257,20 +4254,11 @@ class ComponentCalculator {
 
                   // Subtract thickness where it meets active horizontal divisions
                   if (r > 0) {
-                    bool hasHAbove =
-                        zone.disabledHorizontalDivisions["${v}_${r - 1}"] !=
-                            true ||
-                        (v < vPositions.length &&
-                            zone.disabledHorizontalDivisions["${v + 1}_${r - 1}"] !=
-                                true);
+                    bool hasHAbove = true;
                     if (hasHAbove) len -= dividerThicknessMm / 2;
                   }
                   if (r < rows - 1) {
-                    bool hasHBelow =
-                        zone.disabledHorizontalDivisions["${v}_$r"] != true ||
-                        (v < vPositions.length &&
-                            zone.disabledHorizontalDivisions["${v + 1}_$r"] !=
-                                true);
+                    bool hasHBelow = true;
                     if (hasHBelow) len -= dividerThicknessMm / 2;
                   }
 
@@ -4290,16 +4278,13 @@ class ComponentCalculator {
             for (int v = 0; v < vPositions.length; v++) {
               double pieceTop = -1;
               for (int r = 0; r < rows; r++) {
-                bool segActive =
-                    zone.disabledVerticalDivisions["${r}_$v"] != true;
+                bool segActive = true;
                 double topRatio = r == 0 ? 0.0 : hPositions[r - 1];
                 double bottomRatio = r == rows - 1 ? 1.0 : hPositions[r];
 
                 if (segActive) {
                   if (pieceTop < 0) pieceTop = topRatio;
-                  bool endPiece =
-                      (r == rows - 1) ||
-                      (zone.disabledVerticalDivisions["${r + 1}_$v"] == true);
+                  bool endPiece = r == rows - 1;
                   if (endPiece) {
                     double len = (bottomRatio - pieceTop) * verticalLenLeft;
                     if (len > 0) {
@@ -4327,20 +4312,11 @@ class ComponentCalculator {
 
                   // Subtract thickness where it meets active vertical divisions
                   if (c > 0) {
-                    bool hasVLeft =
-                        zone.disabledVerticalDivisions["${h}_${c - 1}"] !=
-                            true ||
-                        (h < hPositions.length &&
-                            zone.disabledVerticalDivisions["${h + 1}_${c - 1}"] !=
-                                true);
+                    bool hasVLeft = true;
                     if (hasVLeft) len -= dividerThicknessMm / 2;
                   }
                   if (c < cols - 1) {
-                    bool hasVRight =
-                        zone.disabledVerticalDivisions["${h}_$c"] != true ||
-                        (h < hPositions.length &&
-                            zone.disabledVerticalDivisions["${h + 1}_$c"] !=
-                                true);
+                    bool hasVRight = true;
                     if (hasVRight) len -= dividerThicknessMm / 2;
                   }
 
@@ -4392,17 +4368,13 @@ class ComponentCalculator {
             for (int h = 0; h < hPositions.length; h++) {
               double pieceStart = -1;
               for (int c = 0; c < cols; c++) {
-                bool segActive =
-                    zone.disabledHorizontalDivisions["right_${c}_$h"] != true;
+                bool segActive = true;
                 double leftRatio = c == 0 ? 0.0 : vPositions[c - 1];
                 double rightRatio = c == cols - 1 ? 1.0 : vPositions[c];
 
                 if (segActive) {
                   if (pieceStart < 0) pieceStart = leftRatio;
-                  bool endPiece =
-                      (c == cols - 1) ||
-                      (zone.disabledHorizontalDivisions["right_${c + 1}_$h"] ==
-                          true);
+                  bool endPiece = c == cols - 1;
                   if (endPiece) {
                     double len = (rightRatio - pieceStart) * rightSashW;
                     if (len > 0) {
@@ -4430,21 +4402,11 @@ class ComponentCalculator {
 
                   // Subtract thickness where it meets active horizontal divisions
                   if (r > 0) {
-                    bool hasHAbove =
-                        zone.disabledHorizontalDivisions["right_${v}_${r - 1}"] !=
-                            true ||
-                        (v < vPositions.length &&
-                            zone.disabledHorizontalDivisions["right_${v + 1}_${r - 1}"] !=
-                                true);
+                    bool hasHAbove = true;
                     if (hasHAbove) len -= dividerThicknessMm / 2;
                   }
                   if (r < rows - 1) {
-                    bool hasHBelow =
-                        zone.disabledHorizontalDivisions["right_${v}_$r"] !=
-                            true ||
-                        (v < vPositions.length &&
-                            zone.disabledHorizontalDivisions["right_${v + 1}_$r"] !=
-                                true);
+                    bool hasHBelow = true;
                     if (hasHBelow) len -= dividerThicknessMm / 2;
                   }
 
@@ -4464,17 +4426,13 @@ class ComponentCalculator {
             for (int v = 0; v < vPositions.length; v++) {
               double pieceTop = -1;
               for (int r = 0; r < rows; r++) {
-                bool segActive =
-                    zone.disabledVerticalDivisions["right_${r}_$v"] != true;
+                bool segActive = true;
                 double topRatio = r == 0 ? 0.0 : hPositions[r - 1];
                 double bottomRatio = r == rows - 1 ? 1.0 : hPositions[r];
 
                 if (segActive) {
                   if (pieceTop < 0) pieceTop = topRatio;
-                  bool endPiece =
-                      (r == rows - 1) ||
-                      (zone.disabledVerticalDivisions["right_${r + 1}_$v"] ==
-                          true);
+                  bool endPiece = r == rows - 1;
                   if (endPiece) {
                     double len = (bottomRatio - pieceTop) * verticalLenRight;
                     if (len > 0) {
@@ -4502,21 +4460,11 @@ class ComponentCalculator {
 
                   // Subtract thickness where it meets active vertical divisions
                   if (c > 0) {
-                    bool hasVLeft =
-                        zone.disabledVerticalDivisions["right_${h}_${c - 1}"] !=
-                            true ||
-                        (h < hPositions.length &&
-                            zone.disabledVerticalDivisions["right_${h + 1}_${c - 1}"] !=
-                                true);
+                    bool hasVLeft = true;
                     if (hasVLeft) len -= dividerThicknessMm / 2;
                   }
                   if (c < cols - 1) {
-                    bool hasVRight =
-                        zone.disabledVerticalDivisions["right_${h}_$c"] !=
-                            true ||
-                        (h < hPositions.length &&
-                            zone.disabledVerticalDivisions["right_${h + 1}_$c"] !=
-                                true);
+                    bool hasVRight = true;
                     if (hasVRight) len -= dividerThicknessMm / 2;
                   }
 
@@ -4641,11 +4589,13 @@ class ComponentCalculator {
     final Map<String, Map<String, dynamic>?> bardageColorData = {};
     List<double> parcloseSimplePieces = [];
     List<double> parcloseDoublePieces = [];
+    double requiredOpeningParcloseDoubleThickness = 0.0;
     // Sliding and opening systems may use different parclose profiles even
     // when they share the same drawing. Keep their cutting lists separate so
     // each one is resolved from its own active series.
     List<double> slidingParcloseSimplePieces = [];
     List<double> slidingParcloseDoublePieces = [];
+    double requiredSlidingParcloseDoubleThickness = 0.0;
     List<double> reducteurPieces = [];
     bool hasSimpleGlassReducerPieces = false;
 
@@ -4973,6 +4923,12 @@ class ComponentCalculator {
             final targetParclosePieces = getBardageThickness() > 10.0
                 ? parcloseDoublePieces
                 : parcloseSimplePieces;
+            if (getBardageThickness() > 10.0) {
+              requiredOpeningParcloseDoubleThickness = math.max(
+                requiredOpeningParcloseDoubleThickness,
+                getBardageThickness(),
+              );
+            }
             for (int q = 0; q < pieceMultiplier; q++) {
               targetParclosePieces.add(cellGw / 1000.0);
               targetParclosePieces.add(cellGw / 1000.0);
@@ -5069,6 +5025,12 @@ class ComponentCalculator {
               final targetParclosePieces = cellThick > 10.0
                   ? slidingParcloseDoublePieces
                   : slidingParcloseSimplePieces;
+              if (cellThick > 10.0) {
+                requiredSlidingParcloseDoubleThickness = math.max(
+                  requiredSlidingParcloseDoubleThickness,
+                  cellThick,
+                );
+              }
               for (int q = 0; q < pieceMultiplier; q++) {
                 targetParclosePieces.add(cellGw / 1000.0);
                 targetParclosePieces.add(cellGw / 1000.0);
@@ -5085,6 +5047,12 @@ class ComponentCalculator {
               final targetParclosePieces = cellThick > 10.0
                   ? slidingParcloseDoublePieces
                   : slidingParcloseSimplePieces;
+              if (cellThick > 10.0) {
+                requiredSlidingParcloseDoubleThickness = math.max(
+                  requiredSlidingParcloseDoubleThickness,
+                  cellThick,
+                );
+              }
               final double tprWidth = math.max(0.0, cellGw - 40.0);
               for (int q = 0; q < pieceMultiplier; q++) {
                 targetParclosePieces.add(cellGh / 1000.0);
@@ -5139,6 +5107,10 @@ class ComponentCalculator {
                   (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
             }
             if (cellThick > 10.0) {
+              requiredOpeningParcloseDoubleThickness = math.max(
+                requiredOpeningParcloseDoubleThickness,
+                cellThick,
+              );
               for (int q = 0; q < pieceMultiplier; q++) {
                 parcloseDoublePieces.add(cellGw / 1000.0);
                 parcloseDoublePieces.add(cellGw / 1000.0);
@@ -5594,7 +5566,10 @@ class ComponentCalculator {
     // --- 5. الباكيت (Parclose) ---
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
 
-    Map<String, dynamic>? resolveParcloseForSeries(AluminumSeries? series) {
+    Map<String, dynamic>? resolveParcloseForSeries(
+      AluminumSeries? series, {
+      required double requiredDoubleThickness,
+    }) {
       if (series == null) return null;
       bool isParcloseSection(AluminumSection section) {
         final type = section.type.toLowerCase();
@@ -5621,12 +5596,32 @@ class ComponentCalculator {
       }
 
       AluminumSection? findDoubleParclose() {
-        for (final section in series.sections) {
-          if (isParcloseSection(section) && section.maxGlassThickness > 10) {
-            return section;
-          }
-        }
-        return null;
+        final minimumCapacity = math.max(10.0, requiredDoubleThickness);
+        final candidates =
+            series.sections
+                .where(
+                  (section) =>
+                      isParcloseSection(section) &&
+                      section.maxGlassThickness >= minimumCapacity,
+                )
+                .toList()
+              ..sort(
+                (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
+              );
+        if (candidates.isNotEmpty) return candidates.first;
+
+        final fallback =
+            series.sections
+                .where(
+                  (section) =>
+                      isParcloseSection(section) &&
+                      section.maxGlassThickness > 10,
+                )
+                .toList()
+              ..sort(
+                (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
+              );
+        return fallback.isEmpty ? null : fallback.last;
       }
 
       Map<String, dynamic> pricedMap(AluminumSection section) =>
@@ -5660,7 +5655,7 @@ class ComponentCalculator {
       if (chosenParclose != null && chosenBelongsToSeries) {
         final double maxG =
             (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
-        if (maxG > 10.0) {
+        if (maxG > 10.0 && maxG >= requiredDoubleThickness) {
           doubled = pricedOverride(chosenParclose);
           final simpleSection = findSimpleParclose();
           simple = simpleSection == null
@@ -5680,7 +5675,9 @@ class ComponentCalculator {
               final linkedSec = series.sections.firstWhere(
                 (s) => s.id == linkedId,
               );
-              doubled = pricedMap(linkedSec);
+              if (linkedSec.maxGlassThickness >= requiredDoubleThickness) {
+                doubled = pricedMap(linkedSec);
+              }
             } catch (_) {}
           }
           if (doubled == null) {
@@ -5700,9 +5697,13 @@ class ComponentCalculator {
       return {'simple': simple, 'double': doubled};
     }
 
-    final openingParclose = resolveParcloseForSeries(window.activeSeries);
+    final openingParclose = resolveParcloseForSeries(
+      window.activeSeries,
+      requiredDoubleThickness: requiredOpeningParcloseDoubleThickness,
+    );
     final slidingParclose = resolveParcloseForSeries(
       window.activeSlidingSeries,
+      requiredDoubleThickness: requiredSlidingParcloseDoubleThickness,
     );
     final parcloseSimple = openingParclose?['simple'] as Map<String, dynamic>?;
     final parcloseDouble = openingParclose?['double'] as Map<String, dynamic>?;
@@ -6204,7 +6205,6 @@ class ComponentCalculator {
     final totalT = glass.totalThickness(window.allGlassCache);
     // مطابقة سمك الزجاج مع الباكيت المناسب
     // نستخدم max_glass_thickness من DB مباشرة دون عتبة ثابتة.
-    final isDouble = glass.structure == GlassStructure.double;
     Map<String, dynamic>? matchingParclose;
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
     final activeSeries = seriesOverride ?? window.activeSeries;
@@ -6236,39 +6236,34 @@ class ComponentCalculator {
       );
 
       if (allParcloseSections.isNotEmpty) {
+        Map<String, dynamic>? firstCapacityAtLeast(double required) {
+          for (final section in allParcloseSections) {
+            if (section.maxGlassThickness >= required) {
+              return section.toMap();
+            }
+          }
+          return null;
+        }
+
         if (selectedParclose != null) {
-          // المستخدم اختار — نحدد هل المختار يتطابق سمك الزجاج
+          // المستخدم اختار — نحتفظ به فقط إذا كان يتحمل سمك الزجاج فعليًا.
           final double chosenMax =
               (selectedParclose['max_glass_thickness'] as num?)?.toDouble() ??
               0.0;
-          // هل المختار simple أو double بالمقارنة مع أصغر max متاح
-          final double seriesMinMax =
-              allParcloseSections.first.maxGlassThickness;
-          final bool chosenIsSimple =
-              (chosenMax <= seriesMinMax) || allParcloseSections.length == 1;
-          final bool chosenMatchesGlass = isDouble
-              ? !chosenIsSimple
-              : chosenIsSimple;
+          final bool chosenMatchesGlass = chosenMax >= totalT;
 
           if (chosenMatchesGlass) {
             matchingParclose = selectedParclose;
           } else {
-            // المختار لا يتطابق — نبحث عن المناسب في السلسلة
-            if (isDouble) {
-              // نحتاج double — آخر واحد بأكبر max
-              matchingParclose = allParcloseSections.last.toMap();
-            } else {
-              // نحتاج simple — أول واحد بأصغر max
-              matchingParclose = allParcloseSections.first.toMap();
-            }
+            // المختار صغير — ننتقل إلى أقرب سماكة أكبر داخل نفس السلسلة.
+            matchingParclose =
+                firstCapacityAtLeast(totalT) ??
+                allParcloseSections.last.toMap();
           }
         } else {
-          // لم يختر — بحث تلقائي
-          if (isDouble) {
-            matchingParclose = allParcloseSections.last.toMap();
-          } else {
-            matchingParclose = allParcloseSections.first.toMap();
-          }
+          // لم يختر — بحث تلقائي حسب السمك الفعلي.
+          matchingParclose =
+              firstCapacityAtLeast(totalT) ?? allParcloseSections.first.toMap();
         }
       } else if (selectedParclose != null) {
         // السلسلة ليس فيها باركلوز — المختار يُستخدم
@@ -6278,10 +6273,10 @@ class ComponentCalculator {
       matchingParclose = selectedParclose;
     }
 
-    // An explicitly selected parclose is the source of truth for both the
-    // displayed thickness and its warning. Do not silently compare against a
-    // different catalogue parclose just because it looks more suitable.
-    if (selectedParclose != null) {
+    // Use an explicitly selected parclose only when it is still compatible
+    // with the current glass. If the drawing changed to double glazing, the
+    // catalogue double parclose must become the warning/description target.
+    if (selectedParclose != null && matchingParclose == null) {
       matchingParclose = selectedParclose;
     }
 

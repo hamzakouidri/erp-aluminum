@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/supabase_workshop_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
 
@@ -103,6 +104,8 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
         await _repairWorkerWorkshopLinks(data, workshopId);
       }
 
+      data = await _applySupabaseMembershipFilter(data);
+
       setState(() {
         _workers = data;
       });
@@ -144,9 +147,128 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
     }
   }
 
+  Future<List<Map<String, dynamic>>> _applySupabaseMembershipFilter(
+    List<Map<String, dynamic>> localWorkers,
+  ) async {
+    final service = SupabaseWorkshopSyncService();
+    if (!service.isSignedIn) return localWorkers;
+
+    List<Map<String, dynamic>> members;
+    try {
+      members = await service.fetchWorkshopMembers();
+    } catch (error) {
+      debugPrint('Unable to load Supabase workshop members: $error');
+      return localWorkers;
+    }
+    if (members.isEmpty) return localWorkers;
+
+    await _upsertSupabaseMembersIntoLocal(members, localWorkers);
+    final refreshed = List<Map<String, dynamic>>.from(
+      await widget.db.readEmployees(),
+    );
+
+    final allowedEmails = members
+        .map((member) => member['email']?.toString().trim().toLowerCase() ?? '')
+        .where((email) => email.isNotEmpty && email != 'no email')
+        .toSet();
+    final allowedGeneratedUids = members
+        .map((member) {
+          final email = member['email']?.toString().trim().toLowerCase() ?? '';
+          return _uidForSupabaseMember(member, email);
+        })
+        .where((uid) => uid.isNotEmpty)
+        .toSet();
+
+    refreshed.removeWhere((worker) {
+      final uid = worker['uid']?.toString() ?? '';
+      final email = worker['email']?.toString().trim().toLowerCase() ?? '';
+      return uid.startsWith('local_worker_') ||
+          email.isEmpty ||
+          email == 'no email' ||
+          email == 'no_email' ||
+          (!allowedEmails.contains(email) &&
+              !allowedGeneratedUids.contains(uid));
+    });
+
+    return refreshed;
+  }
+
+  Future<void> _upsertSupabaseMembersIntoLocal(
+    List<Map<String, dynamic>> members,
+    List<Map<String, dynamic>> existingWorkers,
+  ) async {
+    final byEmail = <String, Map<String, dynamic>>{};
+    final byUid = <String, Map<String, dynamic>>{};
+    for (final worker in existingWorkers) {
+      final uid = worker['uid']?.toString() ?? '';
+      final email = worker['email']?.toString().trim().toLowerCase() ?? '';
+      if (uid.isNotEmpty) byUid[uid] = worker;
+      if (email.isNotEmpty) byEmail[email] = worker;
+    }
+
+    for (final member in members) {
+      final email = member['email']?.toString().trim().toLowerCase() ?? '';
+      if (email.isEmpty) continue;
+      final uid = _uidForSupabaseMember(member, email);
+      if (uid.isEmpty) continue;
+
+      final permissions = member['permissions'] is Map
+          ? Map<String, dynamic>.from(member['permissions'])
+          : <String, dynamic>{};
+      if (member['blocked'] == true) {
+        permissions['isBlocked'] = true;
+      }
+      final permissionsJson = jsonEncode(permissions);
+      final existing = byEmail[email] ?? byUid[uid];
+
+      if (existing == null) {
+        final name = email.split('@').first.trim();
+        await widget.db.insertEmployee(
+          uid,
+          email,
+          name.isEmpty ? 'عامل جديد' : name,
+          permissionsJson,
+        );
+      } else {
+        await widget.db.updateEmployeePermissions(
+          existing['uid'].toString(),
+          permissionsJson,
+        );
+      }
+    }
+  }
+
+  String _uidForSupabaseMember(Map<String, dynamic> member, String email) {
+    final userId = member['user_id']?.toString().trim() ?? '';
+    if (userId.isNotEmpty) return 'supabase_$userId';
+    if (email.isEmpty) return '';
+    final key = base64Url.encode(utf8.encode(email)).replaceAll('=', '');
+    return 'pending_supabase_$key';
+  }
+
   Future<void> _fetchWorkersFromCloud() async {
     setState(() => _isLoading = true);
     try {
+      final service = SupabaseWorkshopSyncService();
+      if (service.isSignedIn) {
+        final localWorkers = List<Map<String, dynamic>>.from(
+          await widget.db.readEmployees(),
+        );
+        final workers = await _applySupabaseMembershipFilter(localWorkers);
+        if (mounted) {
+          setState(() {
+            _workers = workers;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم تحديث العمال من Supabase بنجاح'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
@@ -558,11 +680,39 @@ class _WorkerCardState extends State<WorkerCard> {
       _isPermissionEnabled(perms['full_manager_permissions']) ||
       _isPermissionEnabled(perms['co_manager']);
 
+  String _roleForPermissions(Map<String, dynamic> permissions) {
+    return _isPermissionEnabled(permissions['full_manager_permissions']) ||
+            _isPermissionEnabled(permissions['co_manager'])
+        ? 'co_manager'
+        : 'worker';
+  }
+
+  Future<void> _syncSupabaseWorkerPermissions(
+    Map<String, dynamic> permissions, {
+    String? role,
+  }) async {
+    final email = widget.worker['email']?.toString().trim() ?? '';
+    if (email.isEmpty) return;
+
+    try {
+      await SupabaseWorkshopSyncService().updateMemberPermissionsByEmail(
+        email: email,
+        role: role ?? _roleForPermissions(permissions),
+        permissions: permissions,
+      );
+    } catch (error) {
+      debugPrint('Supabase worker permissions sync skipped: $error');
+    }
+  }
+
   Future<void> _updatePermission(String key, bool val) async {
     final workerUid = widget.worker['uid'].toString();
-    final workerRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(workerUid);
+    final isFirebaseWorker =
+        !workerUid.startsWith('supabase_') &&
+        !workerUid.startsWith('pending_supabase_');
+    final workerRef = isFirebaseWorker
+        ? FirebaseFirestore.instance.collection('users').doc(workerUid)
+        : null;
 
     final previousPerms = Map<String, dynamic>.from(perms);
     final updatedPerms = Map<String, dynamic>.from(perms)..[key] = val;
@@ -585,17 +735,20 @@ class _WorkerCardState extends State<WorkerCard> {
     });
 
     try {
-      await workerRef.set({
-        'isBlocked': updatedPerms['isBlocked'] ?? false,
-        'permissions': updatedPerms,
-        'permissions_json': jsonEncode(updatedPerms),
-        'permissions_updated_at': FieldValue.serverTimestamp(),
-        if (workshopId.isNotEmpty) 'workshopId': workshopId,
-      }, SetOptions(merge: true));
+      if (workerRef != null) {
+        await workerRef.set({
+          'isBlocked': updatedPerms['isBlocked'] ?? false,
+          'permissions': updatedPerms,
+          'permissions_json': jsonEncode(updatedPerms),
+          'permissions_updated_at': FieldValue.serverTimestamp(),
+          if (workshopId.isNotEmpty) 'workshopId': workshopId,
+        }, SetOptions(merge: true));
+      }
       await widget.db.updateEmployeePermissions(
         workerUid,
         jsonEncode(updatedPerms),
       );
+      await _syncSupabaseWorkerPermissions(updatedPerms);
     } catch (e) {
       debugPrint('Error updating permissions in Firebase: $e');
       if (mounted) {
@@ -639,6 +792,8 @@ class _WorkerCardState extends State<WorkerCard> {
     });
 
     final uid = widget.worker['uid'].toString();
+    final isFirebaseWorker =
+        !uid.startsWith('supabase_') && !uid.startsWith('pending_supabase_');
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code') ?? '';
     final currentJobRole = widget.worker['job_role']?.toString().trim() ?? '';
@@ -647,14 +802,16 @@ class _WorkerCardState extends State<WorkerCard> {
         : (currentJobRole == _fullManagerJobRole ? '' : currentJobRole);
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'role': grant ? 'co_manager' : 'worker',
-        'permissions': updatedPerms,
-        'permissions_json': jsonEncode(updatedPerms),
-        'permissions_updated_at': FieldValue.serverTimestamp(),
-        'job_role': nextJobRole,
-        if (workshopId.isNotEmpty) 'workshopId': workshopId,
-      }, SetOptions(merge: true));
+      if (isFirebaseWorker) {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'role': grant ? 'co_manager' : 'worker',
+          'permissions': updatedPerms,
+          'permissions_json': jsonEncode(updatedPerms),
+          'permissions_updated_at': FieldValue.serverTimestamp(),
+          'job_role': nextJobRole,
+          if (workshopId.isNotEmpty) 'workshopId': workshopId,
+        }, SetOptions(merge: true));
+      }
       await widget.db.updateEmployeePermissions(uid, jsonEncode(updatedPerms));
       await widget.db.updateEmployeeFullInfo(
         uid,
@@ -663,6 +820,10 @@ class _WorkerCardState extends State<WorkerCard> {
         phone: widget.worker['phone']?.toString() ?? '',
         address: widget.worker['address']?.toString() ?? '',
         jobRole: nextJobRole,
+      );
+      await _syncSupabaseWorkerPermissions(
+        updatedPerms,
+        role: grant ? 'co_manager' : 'worker',
       );
     } catch (e) {
       debugPrint('Error updating co_manager in Firebase: $e');

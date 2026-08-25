@@ -6,8 +6,9 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:database_data/Screen/subscription_checker.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/supabase_catalog_sync_service.dart';
+import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/services/windows_google_sign_in.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
@@ -96,13 +97,15 @@ class _LoginScreenState extends State<LoginScreen>
           msg.contains('invalid login credentials')) {
         return 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.';
       }
-      if (code == 'email-already-in-use' || msg.contains('email already in use')) {
+      if (code == 'email-already-in-use' ||
+          msg.contains('email already in use')) {
         return 'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.';
       }
       if (code == 'weak-password' || msg.contains('weak password')) {
         return 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.';
       }
-      if (code == 'operation-not-allowed' || msg.contains('operation not allowed')) {
+      if (code == 'operation-not-allowed' ||
+          msg.contains('operation not allowed')) {
         return 'طريقة تسجيل الدخول بالبريد غير مفعلة في Firebase Console. يرجى الذهاب إلى Authentication وتفعيل Email/Password.';
       }
       if (code == 'network-request-failed' || msg.contains('network')) {
@@ -168,6 +171,34 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  Future<void> _syncSupabasePasswordSession() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    if (email.isEmpty || password.isEmpty) return;
+
+    try {
+      await SupabaseCatalogSyncService().signInWithPassword(
+        email: email,
+        password: password,
+      );
+    } catch (signInError) {
+      try {
+        await SupabaseCatalogSyncService().signUpWithPassword(
+          email: email,
+          password: password,
+        );
+      } catch (signUpError) {
+        debugPrint(
+          'Supabase password session was not opened: '
+          '$signInError / $signUpError',
+        );
+        return;
+      }
+    }
+
+    SupabaseWorkshopSyncService().start();
+  }
+
   Future<void> _login() async {
     setState(() {
       _isLoading = true;
@@ -213,6 +244,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
       }
       await CloudSyncService().init();
+      await _syncSupabasePasswordSession();
 
       debugPrint(
         'LOGIN SYNC: uid=${userCredential.user!.uid}, '
@@ -523,6 +555,9 @@ class _LoginScreenState extends State<LoginScreen>
         }
       }
 
+      await CloudSyncService().init();
+      await _syncSupabasePasswordSession();
+
       // Firebase auth state changes will handle transitioning the screen automatically
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -613,8 +648,7 @@ class _LoginScreenState extends State<LoginScreen>
           idToken: tokens.idToken,
         );
       } else {
-        final GoogleSignInAccount? googleUser =
-            await GoogleSignIn().signIn();
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
         if (googleUser == null) {
           // User cancelled the sign-in.
           setState(() {

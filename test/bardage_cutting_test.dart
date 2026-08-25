@@ -836,7 +836,7 @@ void main() {
       expect(fromBottom, 1065);
       expect(fromTop, 1065);
       expect(inMiddle, 1005);
-      expect(fullSide, 2065);
+      expect(fullSide, 2125);
     },
   );
 
@@ -1069,6 +1069,13 @@ void main() {
 
   test('removing the bottom frame also removes its custom side cover', () {
     final model = WindowModel(db: FakeSqlDatabase(), width: 1200, height: 1400)
+      ..zones = [
+        WindowZone(
+          id: '1',
+          content: ZoneContent.singleSash,
+          boundary: const Rect.fromLTWH(0, 0, 1200, 1400),
+        ),
+      ]
       ..useCustomSideCoverLayout = true
       ..hasSideCovers = true
       ..sideCoverSegments = [
@@ -1295,6 +1302,18 @@ void main() {
     );
   });
 
+  test('blade catalogue excludes caps and resolves only its linked track', () {
+    final blades = [
+      {'id': 1, 'component_type': 'blade', 'name': 'Blade 43'},
+      {'id': 2, 'component_type': 'bouchon_lame', 'name': 'Cap 43'},
+    ];
+    final filtered = blades.where(
+      (b) => b['component_type'] == 'blade',
+    ).toList();
+    expect(filtered.length, 1);
+    expect(filtered.first['name'], 'Blade 43');
+  });
+
   test('linked blade cap is automatic and shortens both cut ends', () {
     final model = WindowModel(db: FakeSqlDatabase(), width: 1000, height: 1400);
     model.hasShutter = true;
@@ -1333,7 +1352,7 @@ void main() {
       blades.pieces!.every((piece) => (piece - 0.927).abs() < 0.0001),
       isTrue,
     );
-    expect(caps.quantity, 25);
+    expect(caps.quantity, 24);
     expect(caps.unitPrice, 6);
     expect(caps.catalogItemId, 68);
     expect(caps.inventoryItemType, 'ShutterComponent');

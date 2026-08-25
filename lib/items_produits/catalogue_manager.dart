@@ -18,6 +18,13 @@ class CatalogManagerScreen extends StatefulWidget {
 }
 
 class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
+  AppLanguage get _lang => Provider.of<AppSettingsProvider>(
+    context,
+    listen: false,
+  ).language;
+
+  String _tr(String key) => Localization.translate(key, _lang);
+
   Future<void> _confirmDelete(
     String title,
     String content,
@@ -27,24 +34,20 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          'تأكيد الحذف',
+          _tr('تأكيد الحذف'),
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
         ),
         content: Text(
-          'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
+          _tr(
+            'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
+          ),
           style: TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(
-              Localization.translate(
-                'إلغاء',
-                Provider.of<AppSettingsProvider>(
-                  context,
-                  listen: false,
-                ).language,
-              ),
+              _tr('إلغاء'),
               style: TextStyle(color: Colors.grey),
             ),
           ),
@@ -55,7 +58,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
               onConfirm();
             },
             child: Text(
-              'موافق، قم بالأرشفة',
+              _tr('موافق، قم بالأرشفة'),
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -243,7 +246,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                 TextField(
                   controller: nameCtrl,
                   decoration: InputDecoration(
-                    labelText: 'اسم السلسلة (مثال: سلسلة 45)',
+                    labelText: _tr('اسم السلسلة (مثال: سلسلة 45)'),
                   ),
                 ),
                 SizedBox(height: 10),
@@ -264,8 +267,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   SizedBox(height: 10),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      'دعم ضلفة 3 قطع (Lateral/Central/Traverse)',
+                    title: Text(
+                      _tr('دعم ضلفة 3 قطع (Lateral/Central/Traverse)'),
                     ),
                     value: hasThreePieceSash,
                     onChanged: (val) =>
@@ -341,7 +344,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                 TextField(
                   controller: nameCtrl,
                   decoration: InputDecoration(
-                    labelText: 'اسم السلسلة (مثال: سلسلة 45)',
+                    labelText: _tr('اسم السلسلة (مثال: سلسلة 45)'),
                   ),
                 ),
                 SizedBox(height: 10),
@@ -681,14 +684,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   TextField(
                     controller: codeCtrl,
                     decoration: InputDecoration(
-                      labelText: 'الكود التجاري (مثال: P400)',
+                      labelText: _tr('الكود التجاري (مثال: P400)'),
                     ),
                   ),
                   SizedBox(height: 12),
                   TextField(
                     controller: nameCtrl,
                     decoration: InputDecoration(
-                      labelText: 'اسم المقطع (مثال: حلق 45)',
+                      labelText: _tr('اسم المقطع (مثال: حلق 45)'),
                     ),
                   ),
                   SizedBox(height: 12),
@@ -749,26 +752,26 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       DropdownMenuItem(
                         value: 'side_cover',
-                        child: Text('غطاء جانبي / Couvre-joint'),
+                        child: Text(_tr('غطاء جانبي / Couvre-joint')),
                       ),
                       DropdownMenuItem(
                         value: 'bardage',
-                        child: Text('بارداش (Bardage Profile)'),
+                        child: Text(_tr('بارداش (Bardage Profile)')),
                       ),
                       DropdownMenuItem(
                         value: 'panneau',
-                        child: Text('بانو / برداج (قديم)'),
+                        child: Text(_tr('بانو / برداج (قديم)')),
                       ),
                       if (seriesType != 'Coulissant' &&
                           seriesType != 'منزلق' &&
                           seriesType != 'جرار') ...[
                         DropdownMenuItem(
                           value: 'batmo',
-                          child: Text('باتمو (Batmo)'),
+                          child: Text(_tr('باتمو (Batmo)')),
                         ),
                         DropdownMenuItem(
                           value: 'bouchon_batmo',
-                          child: Text('غطاء باتمو (Bouchon Batmo)'),
+                          child: Text(_tr('غطاء باتمو (Bouchon Batmo)')),
                         ),
                       ],
                       if (seriesType == 'Coulissant' ||
@@ -776,13 +779,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           seriesType == 'جرار') ...[
                         DropdownMenuItem(
                           value: 'rail',
-                          child: Text('ري / سكة (Rail)'),
+                          child: Text(_tr('ري / سكة (Rail)')),
                         ),
                       ],
                       if (profileType == 'PVC')
                         DropdownMenuItem(
                           value: 'renfort',
-                          child: Text('حديد دعم (Renfort)'),
+                          child: Text(_tr('حديد دعم (Renfort)')),
                         ),
                     ],
                     onChanged: (val) {
@@ -809,30 +812,30 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
-                    style: TextStyle(
+                  Text(
+                    _tr('وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)'),
+                    style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('يُستعمل كإطار (Frame)'),
+                    title: Text(_tr('يُستعمل كإطار (Frame)')),
                     value: isFrameRole,
                     onChanged: (value) =>
                         setDialogState(() => isFrameRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('يُستعمل كظلفة (Sash)'),
+                    title: Text(_tr('يُستعمل كظلفة (Sash)')),
                     value: isSashRole,
                     onChanged: (value) =>
                         setDialogState(() => isSashRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('يُستعمل كتقسيم (Mullion)'),
+                    title: Text(_tr('يُستعمل كتقسيم (Mullion)')),
                     value: isMullionRole,
                     onChanged: (value) =>
                         setDialogState(() => isMullionRole = value ?? false),
@@ -853,18 +856,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           ].contains(selectedType)
                           ? selectedType
                           : 'sash_lateral',
-                      items: const [
+                      items: [
                         DropdownMenuItem(
                           value: 'sash_lateral',
-                          child: Text('Montant Lateral'),
+                          child: Text(_tr('Montant Lateral')),
                         ),
                         DropdownMenuItem(
                           value: 'sash_central',
-                          child: Text(' Montant Central'),
+                          child: Text(_tr('Montant Central')),
                         ),
                         DropdownMenuItem(
                           value: 'sash_traverse',
-                          child: Text(' Traverse Haut et Bas'),
+                          child: Text(_tr('Traverse Haut et Bas')),
                         ),
                       ],
                       onChanged: (val) {
@@ -873,8 +876,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           selectedType = val!;
                         });
                       },
-                      decoration: const InputDecoration(
-                        labelText: 'نوع الضلفة المنزلقة / Sash Sub-type',
+                      decoration: InputDecoration(
+                        labelText: _tr('نوع الضلفة المنزلقة / Sash Sub-type'),
                       ),
                     ),
                   ],
@@ -886,7 +889,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         decimal: true,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'طول البار (متر) / Bar Length (m)',
+                        labelText: _tr('طول البار (متر) / Bar Length (m)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -906,7 +909,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: glassDedCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'ركوب الزجاج / Glass Deduction (mm)',
+                        labelText: _tr('ركوب الزجاج / Glass Deduction (mm)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -915,7 +918,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     controller: weightCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: 'الوزن للمتر (Kg/m)',
+                      labelText: _tr('الوزن للمتر (Kg/m)'),
                     ),
                   ),
                   SizedBox(height: 12),
@@ -926,8 +929,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: selectedType == 'side_cover'
-                            ? 'عرض الكوفرجوا (الاتجاه الأول) (mm)'
-                            : 'عرض الكوفرجوا / Couvre-joint Width (mm)',
+                            ? _tr('عرض الكوفرجوا (الاتجاه الأول) (mm)')
+                            : _tr('عرض الكوفرجوا / Couvre-joint Width (mm)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -935,8 +938,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: couvreJointThicknessCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText:
-                            'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
+                        labelText: _tr(
+                          'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
+                        ),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -946,8 +950,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: cuttingDedCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText:
-                            'خصم التقطيع الإضافي / Cutting Deduction (mm)',
+                        labelText: _tr(
+                          'خصم التقطيع الإضافي / Cutting Deduction (mm)',
+                        ),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -963,8 +968,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: selectedType == 'side_cover'
-                            ? 'العرض الظاهر (الاتجاه الثاني) (mm)'
-                            : 'العرض الظاهر / Visible Width (mm)',
+                            ? _tr('العرض الظاهر (الاتجاه الثاني) (mm)')
+                            : _tr('العرض الظاهر / Visible Width (mm)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -974,8 +979,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: sashOverlapCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText:
-                            'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
+                        labelText: _tr(
+                          'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
+                        ),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -986,16 +992,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(
-                        labelText:
-                            'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      decoration: const InputDecoration(
-                        labelText:
-                            'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                        ),
                       ),
                       value: selectedParcloseDoubleId,
                       items: _currentSections
@@ -1237,14 +1245,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   TextField(
                     controller: codeCtrl,
                     decoration: InputDecoration(
-                      labelText: 'الكود التجاري (مثال: P400)',
+                      labelText: _tr('الكود التجاري (مثال: P400)'),
                     ),
                   ),
                   SizedBox(height: 12),
                   TextField(
                     controller: nameCtrl,
                     decoration: InputDecoration(
-                      labelText: 'اسم المقطع (مثال: حلق 45)',
+                      labelText: _tr('اسم المقطع (مثال: حلق 45)'),
                     ),
                   ),
                   SizedBox(height: 12),
@@ -1305,26 +1313,26 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       DropdownMenuItem(
                         value: 'side_cover',
-                        child: Text('غطاء جانبي / Couvre-joint'),
+                        child: Text(_tr('غطاء جانبي / Couvre-joint')),
                       ),
                       DropdownMenuItem(
                         value: 'bardage',
-                        child: Text('بارداش (Bardage Profile)'),
+                        child: Text(_tr('بارداش (Bardage Profile)')),
                       ),
                       DropdownMenuItem(
                         value: 'panneau',
-                        child: Text('بانو / برداج (قديم)'),
+                        child: Text(_tr('بانو / برداج (قديم)')),
                       ),
                       if (seriesType != 'Coulissant' &&
                           seriesType != 'منزلق' &&
                           seriesType != 'جرار') ...[
                         DropdownMenuItem(
                           value: 'batmo',
-                          child: Text('باتمو (Batmo)'),
+                          child: Text(_tr('باتمو (Batmo)')),
                         ),
                         DropdownMenuItem(
                           value: 'bouchon_batmo',
-                          child: Text('غطاء باتمو (Bouchon Batmo)'),
+                          child: Text(_tr('غطاء باتمو (Bouchon Batmo)')),
                         ),
                       ],
                       if (seriesType == 'Coulissant' ||
@@ -1332,13 +1340,13 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           seriesType == 'جرار') ...[
                         DropdownMenuItem(
                           value: 'rail',
-                          child: Text('ري / سكة (Rail)'),
+                          child: Text(_tr('ري / سكة (Rail)')),
                         ),
                       ],
                       if (profileType == 'PVC')
                         DropdownMenuItem(
                           value: 'renfort',
-                          child: Text('حديد دعم (Renfort)'),
+                          child: Text(_tr('حديد دعم (Renfort)')),
                         ),
                     ],
                     onChanged: (val) {
@@ -1366,30 +1374,30 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
-                    style: TextStyle(
+                  Text(
+                    _tr('وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)'),
+                    style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('يُستعمل كإطار (Frame)'),
+                    title: Text(_tr('يُستعمل كإطار (Frame)')),
                     value: isFrameRole,
                     onChanged: (value) =>
                         setDialogState(() => isFrameRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('يُستعمل كظلفة (Sash)'),
+                    title: Text(_tr('يُستعمل كظلفة (Sash)')),
                     value: isSashRole,
                     onChanged: (value) =>
                         setDialogState(() => isSashRole = value ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('يُستعمل كتقسيم (Mullion)'),
+                    title: Text(_tr('يُستعمل كتقسيم (Mullion)')),
                     value: isMullionRole,
                     onChanged: (value) =>
                         setDialogState(() => isMullionRole = value ?? false),
@@ -1410,18 +1418,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           ].contains(selectedType)
                           ? selectedType
                           : 'sash_lateral',
-                      items: const [
+                      items: [
                         DropdownMenuItem(
                           value: 'sash_lateral',
-                          child: Text('Montant Lateral'),
+                          child: Text(_tr('Montant Lateral')),
                         ),
                         DropdownMenuItem(
                           value: 'sash_central',
-                          child: Text('Montant Central'),
+                          child: Text(_tr('Montant Central')),
                         ),
                         DropdownMenuItem(
                           value: 'sash_traverse',
-                          child: Text('Traverse Haut et Bas'),
+                          child: Text(_tr('Traverse Haut et Bas')),
                         ),
                       ],
                       onChanged: (val) {
@@ -1430,8 +1438,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           selectedType = val!;
                         });
                       },
-                      decoration: const InputDecoration(
-                        labelText: 'نوع الضلفة المنزلقة / Sash Sub-type',
+                      decoration: InputDecoration(
+                        labelText: _tr('نوع الضلفة المنزلقة / Sash Sub-type'),
                       ),
                     ),
                   ],
@@ -1443,7 +1451,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         decimal: true,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'طول البار (متر) / Bar Length (m)',
+                        labelText: _tr('طول البار (متر) / Bar Length (m)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1463,7 +1471,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: glassDedCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: 'ركوب الزجاج / Glass Deduction (mm)',
+                        labelText: _tr('ركوب الزجاج / Glass Deduction (mm)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1472,7 +1480,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     controller: weightCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: 'الوزن للمتر (Kg/m)',
+                      labelText: _tr('الوزن للمتر (Kg/m)'),
                     ),
                   ),
                   SizedBox(height: 12),
@@ -1483,8 +1491,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: selectedType == 'side_cover'
-                            ? 'عرض الكوفرجوا (الاتجاه الأول) (mm)'
-                            : 'عرض الكوفرجوا / Couvre-joint Width (mm)',
+                            ? _tr('عرض الكوفرجوا (الاتجاه الأول) (mm)')
+                            : _tr('عرض الكوفرجوا / Couvre-joint Width (mm)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1492,8 +1500,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: couvreJointThicknessCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText:
-                            'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
+                        labelText: _tr(
+                          'سمك الكوفرجوا / Couvre-joint Thickness (mm)',
+                        ),
                       ),
                     ),
                     if (selectedType == 'frame' &&
@@ -1501,17 +1510,19 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                             0) ...[
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'يسمح بركوب غطاء جانبي منفصل (Couvre-joint)',
-                          style: TextStyle(
+                        title: Text(
+                          _tr('يسمح بركوب غطاء جانبي منفصل (Couvre-joint)'),
+                          style: const TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        subtitle: const Text(
-                          'قم بإلغاء التحديد إذا كان هذا الإطار لا يركب عليه غطاء جانبي منفصل مطلقاً',
-                          style: TextStyle(
+                        subtitle: Text(
+                          _tr(
+                            'قم بإلغاء التحديد إذا كان هذا الإطار لا يركب عليه غطاء جانبي منفصل مطلقاً',
+                          ),
+                          style: const TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 11,
                             color: Colors.grey,
@@ -1532,8 +1543,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: cuttingDedCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText:
-                            'خصم التقطيع الإضافي / Cutting Deduction (mm)',
+                        labelText: _tr(
+                          'خصم التقطيع الإضافي / Cutting Deduction (mm)',
+                        ),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1549,8 +1561,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: selectedType == 'side_cover'
-                            ? 'العرض الظاهر (الاتجاه الثاني) (mm)'
-                            : 'العرض الظاهر / Visible Width (mm)',
+                            ? _tr('العرض الظاهر (الاتجاه الثاني) (mm)')
+                            : _tr('العرض الظاهر / Visible Width (mm)'),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1560,8 +1572,9 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       controller: sashOverlapCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText:
-                            'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
+                        labelText: _tr(
+                          'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)',
+                        ),
                       ),
                     ),
                     SizedBox(height: 12),
@@ -1572,16 +1585,18 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(
-                        labelText:
-                            'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'السمك الأقصى للزجاج / Max Glass Thickness (mm)',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      decoration: const InputDecoration(
-                        labelText:
-                            'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'البيركلوز المزدوج المرتبط / Linked Double Parclose',
+                        ),
                       ),
                       value: selectedParcloseDoubleId,
                       items: _currentSections
@@ -1612,7 +1627,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     SizedBox(height: 10),
                     DropdownButtonFormField<int>(
                       decoration: InputDecoration(
-                        labelText: 'حديد الدعم المرتبط (Renfort)',
+                        labelText: _tr('حديد الدعم المرتبط (Renfort)'),
                       ),
                       initialValue:
                           renforts.any((r) => r['id'] == selectedRenfortId)
@@ -1638,7 +1653,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         controller: renfortDeductionCtrl,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: 'خصم اللحام (mm) (مثال: 140)',
+                          labelText: _tr('خصم اللحام (mm) (مثال: 140)'),
                         ),
                       ),
                     ],
@@ -1660,8 +1675,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     icon: const Icon(Icons.image),
                     label: Text(
                       selectedImagePath == null
-                          ? 'اختيار صورة للمقطع (اختياري)'
-                          : 'تغيير صورة المقطع',
+                          ? _tr('اختيار صورة للمقطع (اختياري)')
+                          : _tr('تغيير صورة المقطع'),
                     ),
                   ),
                   if (selectedImagePath != null)
@@ -1900,13 +1915,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isUserAdmin = isAdmin;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           Localization.translate(
             'إدارة الكتالوج (Profiles & Sections)',
-            Provider.of<AppSettingsProvider>(context).language,
+            lang,
           ),
         ),
         backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -1917,23 +1933,31 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
           if (isUserAdmin)
             IconButton(
               icon: Icon(Icons.copy_all, color: Colors.white),
-              tooltip: 'نسخ المقاطع من ProWin إلى باقي السلاسل',
+              tooltip: Localization.translate(
+                'نسخ المقاطع من ProWin إلى باقي السلاسل',
+                lang,
+              ),
               onPressed: () async {
                 bool? confirm = await showDialog(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: Text("تأكيد النسخ"),
+                    title: Text(Localization.translate('تأكيد النسخ', lang)),
                     content: Text(
-                      "هل أنت متأكد أنك تريد نسخ مقاطع ProWin 60 و 70 وتطبيقها على باقي بروفيلات الـ PVC والألمنيوم؟",
+                      Localization.translate(
+                        'هل أنت متأكد أنك تريد نسخ مقاطع ProWin 60 و 70 وتطبيقها على باقي بروفيلات الـ PVC والألمنيوم؟',
+                        lang,
+                      ),
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
-                        child: Text("إلغاء"),
+                        child: Text(Localization.translate('إلغاء', lang)),
                       ),
                       ElevatedButton(
                         onPressed: () => Navigator.pop(ctx, true),
-                        child: Text("نعم، انسخ"),
+                        child: Text(
+                          Localization.translate('نعم، انسخ', lang),
+                        ),
                       ),
                     ],
                   ),
@@ -1951,7 +1975,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   if (prowin.isEmpty) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('بروفيل ProWin غير موجود!')),
+                        SnackBar(
+                          content: Text(
+                            Localization.translate(
+                              'بروفيل ProWin غير موجود!',
+                              lang,
+                            ),
+                          ),
+                        ),
                       );
                     }
                     return;
@@ -1980,7 +2011,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'السلسلة 60 أو 70/72 غير موجودة داخل ProWin!',
+                            Localization.translate(
+                              'السلسلة 60 أو 70/72 غير موجودة داخل ProWin!',
+                              lang,
+                            ),
                           ),
                         ),
                       );
@@ -2090,14 +2124,25 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                   }
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('تم نسخ المقاطع بنجاح!')),
+                      SnackBar(
+                        content: Text(
+                          Localization.translate(
+                            'تم نسخ المقاطع بنجاح!',
+                            lang,
+                          ),
+                        ),
+                      ),
                     );
                   }
                   _loadProfiles();
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('حدث خطأ أثناء النسخ: $e')),
+                      SnackBar(
+                        content: Text(
+                          '${Localization.translate('حدث خطأ أثناء النسخ', lang)}: $e',
+                        ),
+                      ),
                     );
                   }
                 }

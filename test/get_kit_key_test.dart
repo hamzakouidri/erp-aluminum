@@ -19,6 +19,7 @@ void main() {
   test('getKitKey matches robust names like System Kit OB, Kit OB, Demi OB, and Verrou Central', () {
     final fakeDb = FakeSqlDatabase();
     final model = WindowModel(db: fakeDb, width: 1000, height: 1000);
+    model.activeSeries = AluminumSeries(id: 1, profileId: 1, name: 'PVC Series', type: 'PVC');
     model.useSystemOB = true;
     model.useDemiOB = true;
     model.useVerrouCentral = true;

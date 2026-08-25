@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 
 import 'package:database_data/Commande/Systeme/model.dart';
 
+part 'window_painter_helpers.dart';
+
 class WindowPainter extends CustomPainter {
   final WindowModel model;
   final bool? overrideIsInternalView;
@@ -129,6 +131,8 @@ class WindowPainter extends CustomPainter {
 
   bool get _shouldDrawSideCovers =>
       _hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover;
+
+  bool get _hasEffectiveBottomFrame => model.effectiveHasBottomFrame;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -366,9 +370,7 @@ class WindowPainter extends CustomPainter {
         _drawOuterFrames(canvas, w, h, t, topOffset);
 
         // 🟢 الغطاء الجانبي يأخذ عرضه من القاعدة (يرسم في الوجه الخارجي أيضاً عند تفعيله)
-        if (!model.showWall) {
-          _drawConfiguredSideCovers(canvas, w, h, 0.0);
-        }
+        _drawConfiguredSideCovers(canvas, w, h, 0.0);
       }
 
       if (!model.isShutterOnly) {
@@ -377,7 +379,7 @@ class WindowPainter extends CustomPainter {
         _drawMullions(canvas, w, h, t);
         canvas.restore();
 
-        if (model.hasBottomFrame) {
+        if (_hasEffectiveBottomFrame) {
           _drawWeepHolesMultiple(canvas, w, h, t, topOffset);
         }
 
@@ -1366,7 +1368,7 @@ class WindowPainter extends CustomPainter {
   }
 
   Rect _getEffectiveZoneRect(Rect original, double h, double t) {
-    if (!model.hasBottomFrame && (original.bottom - (h - t)).abs() < 1.0) {
+    if (!_hasEffectiveBottomFrame && (original.bottom - (h - t)).abs() < 1.0) {
       final matchingZone = model.zones.firstWhere(
         (z) =>
             (z.boundary.left - original.left).abs() < 2.0 &&
@@ -1463,7 +1465,7 @@ class WindowPainter extends CustomPainter {
   }
 
   Path _buildInnerShapePath(double w, double h, double t, double topY) {
-    double bottomOffset = model.hasBottomFrame ? t : 0.0;
+    double bottomOffset = _hasEffectiveBottomFrame ? t : 0.0;
 
     if (model.archHeight == 0 &&
         model.topSlantLeftY == 0 &&
@@ -1673,7 +1675,7 @@ class WindowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = isWholeDrawingFrameSelected ? 3.0 : 1.5;
 
-    if (model.hasBottomFrame) {
+    if (_hasEffectiveBottomFrame) {
       canvas.drawPath(outerPath, bp);
       canvas.drawPath(
         innerPath,
@@ -1748,7 +1750,7 @@ class WindowPainter extends CustomPainter {
     // 45-degree miter joints (outer frame is always 45 degrees, even for 90-degree sliding sashes)
     canvas.drawLine(outer.topLeft, inner.topLeft, p);
     canvas.drawLine(outer.topRight, inner.topRight, p);
-    if (model.hasBottomFrame) {
+    if (_hasEffectiveBottomFrame) {
       canvas.drawLine(outer.bottomLeft, inner.bottomLeft, p);
       canvas.drawLine(outer.bottomRight, inner.bottomRight, p);
     }
@@ -1760,7 +1762,7 @@ class WindowPainter extends CustomPainter {
     double h,
     double t,
   ) {
-    if (model.hasBottomFrame) return;
+    if (_hasEffectiveBottomFrame) return;
 
     final outerRect = Rect.fromLTRB(0, 0, w, h);
     final fill = _buildPaint(outerRect);
@@ -1858,9 +1860,11 @@ class WindowPainter extends CustomPainter {
     final joinTopLeft = reachesStart('top') && reachesStart('left');
     final joinTopRight = reachesEnd('top') && reachesStart('right');
     final joinBottomLeft =
-        model.hasBottomFrame && reachesStart('bottom') && reachesEnd('left');
+        _hasEffectiveBottomFrame &&
+        reachesStart('bottom') &&
+        reachesEnd('left');
     final joinBottomRight =
-        model.hasBottomFrame && reachesEnd('bottom') && reachesEnd('right');
+        _hasEffectiveBottomFrame && reachesEnd('bottom') && reachesEnd('right');
 
     // Where two covers meet with different visible widths, only the common
     // part is welded at 45°.  The excess of the wider profile is cut square
@@ -1947,7 +1951,7 @@ class WindowPainter extends CustomPainter {
             ..close();
           break;
         case 'bottom':
-          if (!model.hasBottomFrame) continue;
+          if (!_hasEffectiveBottomFrame) continue;
           final leftSpan = bottomLeftSpan;
           final rightSpan = bottomRightSpan;
           path = Path()
@@ -2030,7 +2034,8 @@ class WindowPainter extends CustomPainter {
         : !model.removedShutterSides.contains('left');
     final hasT = !model.removedShutterSides.contains('top');
     final hasB =
-        !model.removedShutterSides.contains('bottom') && model.hasBottomFrame;
+        !model.removedShutterSides.contains('bottom') &&
+        _hasEffectiveBottomFrame;
 
     double yTopL =
         topY + (isInternal ? model.topSlantLeftY : model.topSlantRightY);
@@ -2372,8 +2377,17 @@ class WindowPainter extends CustomPainter {
                 center + frameWidth / 2,
                 mullion.rect.bottom,
               );
-        canvas.drawRect(frame, paint);
-        canvas.drawRect(frame, border);
+        _drawGroovedMullionProfile(
+          canvas,
+          frame,
+          isHorizontal: mullion.isHorizontal,
+          fill: paint,
+          border: border,
+          cavityOnPositiveSide: model.isGroovedMullionCavityOnPositiveSide(
+            mullion.isHorizontal,
+            mullion.position,
+          ),
+        );
         continue;
       }
 
@@ -2386,9 +2400,8 @@ class WindowPainter extends CustomPainter {
         continue;
       }
 
-      // A "Cadre double" is two full frame profiles, not one wide mullion
-      // with a cover profile. Keep the cavity of each profile on the outside
-      // of the pair (left/right or top/bottom), as on the real assembly.
+      // A "Cadre double" is two frame-140 style profiles coupled together.
+      // Draw both cavities toward the joint so it reads as one coherent pair.
       final frameWidth = _frameProfileWidthAt(
         mullion.isHorizontal,
         mullion.position,
@@ -2424,8 +2437,22 @@ class WindowPainter extends CustomPainter {
             );
 
       final combined = first.expandToInclude(second);
-      canvas.drawRect(combined, paint);
-      canvas.drawRect(combined, border);
+      _drawGroovedMullionProfile(
+        canvas,
+        first,
+        isHorizontal: mullion.isHorizontal,
+        fill: paint,
+        border: border,
+        cavityOnPositiveSide: true,
+      );
+      _drawGroovedMullionProfile(
+        canvas,
+        second,
+        isHorizontal: mullion.isHorizontal,
+        fill: paint,
+        border: border,
+        cavityOnPositiveSide: false,
+      );
       final separatorPaint = Paint()
         ..color = Colors.black.withValues(alpha: 0.75)
         ..style = PaintingStyle.stroke
@@ -2492,6 +2519,111 @@ class WindowPainter extends CustomPainter {
       if (width != null && width > 0) return width;
     }
     return model.profileThickness;
+  }
+
+  void _drawGroovedMullionProfile(
+    Canvas canvas,
+    Rect rect, {
+    required bool isHorizontal,
+    required Paint fill,
+    required Paint border,
+    required bool cavityOnPositiveSide,
+  }) {
+    if (rect.isEmpty) return;
+
+    canvas.drawRect(rect, fill);
+    canvas.drawRect(rect, border);
+
+    final profileWidth = isHorizontal ? rect.height : rect.width;
+    if (profileWidth <= 4.0) return;
+
+    final grooveWidth = math.min(
+      profileWidth * 0.34,
+      math.max(4.0, profileWidth * 0.24),
+    );
+    final highlightInset = math.min(
+      profileWidth * 0.18,
+      math.max(2.0, profileWidth * 0.10),
+    );
+    final groovePaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.10)
+      ..style = PaintingStyle.fill;
+    final shadowLine = Paint()
+      ..color = Colors.black.withValues(alpha: 0.42)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.8, profileWidth * 0.018);
+    final highlightLine = Paint()
+      ..color = Colors.white.withValues(alpha: 0.34)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.7, profileWidth * 0.014);
+
+    if (isHorizontal) {
+      final groove = cavityOnPositiveSide
+          ? Rect.fromLTRB(
+              rect.left,
+              rect.bottom - grooveWidth,
+              rect.right,
+              rect.bottom,
+            )
+          : Rect.fromLTRB(
+              rect.left,
+              rect.top,
+              rect.right,
+              rect.top + grooveWidth,
+            );
+      final shadowY = cavityOnPositiveSide
+          ? rect.bottom - grooveWidth
+          : rect.top + grooveWidth;
+      final highlightY = cavityOnPositiveSide
+          ? shadowY - highlightInset
+          : shadowY + highlightInset;
+      canvas.drawRect(groove, groovePaint);
+      canvas.drawLine(
+        Offset(rect.left, shadowY),
+        Offset(rect.right, shadowY),
+        shadowLine,
+      );
+      if (highlightY > rect.top && highlightY < rect.bottom) {
+        canvas.drawLine(
+          Offset(rect.left, highlightY),
+          Offset(rect.right, highlightY),
+          highlightLine,
+        );
+      }
+    } else {
+      final groove = cavityOnPositiveSide
+          ? Rect.fromLTRB(
+              rect.right - grooveWidth,
+              rect.top,
+              rect.right,
+              rect.bottom,
+            )
+          : Rect.fromLTRB(
+              rect.left,
+              rect.top,
+              rect.left + grooveWidth,
+              rect.bottom,
+            );
+      final shadowX = cavityOnPositiveSide
+          ? rect.right - grooveWidth
+          : rect.left + grooveWidth;
+      final highlightX = cavityOnPositiveSide
+          ? shadowX - highlightInset
+          : shadowX + highlightInset;
+      canvas.drawRect(groove, groovePaint);
+      canvas.drawLine(
+        Offset(shadowX, rect.top),
+        Offset(shadowX, rect.bottom),
+        shadowLine,
+      );
+      if (highlightX > rect.left && highlightX < rect.right) {
+        canvas.drawLine(
+          Offset(highlightX, rect.top),
+          Offset(highlightX, rect.bottom),
+          highlightLine,
+        );
+      }
+    }
   }
 
   void _drawInnerDimensions(Canvas canvas, WindowZone zone) {
@@ -2934,13 +3066,13 @@ class WindowPainter extends CustomPainter {
 
   double getInnerBottomY(double x, double t) {
     if (model.bottomSlantLeftY == 0 && model.bottomSlantRightY == 0) {
-      return model.height - (model.hasBottomFrame ? t : 0.0);
+      return model.height - (_hasEffectiveBottomFrame ? t : 0.0);
     }
     double factor = 0.0;
     if (model.width > 2 * t) {
       factor = ((x - t) / (model.width - 2 * t)).clamp(0.0, 1.0);
     }
-    double bottomOffset = model.hasBottomFrame ? t : 0.0;
+    double bottomOffset = _hasEffectiveBottomFrame ? t : 0.0;
     double yL = model.height - model.bottomSlantLeftY - bottomOffset;
     double yR = model.height - model.bottomSlantRightY - bottomOffset;
     return yL + factor * (yR - yL);
@@ -2958,7 +3090,8 @@ class WindowPainter extends CustomPainter {
     final Path path = Path();
     bool isBottomBound =
         !isInsideSash &&
-        (r.bottom - (model.height - (model.hasBottomFrame ? t : 0.0))).abs() <
+        (r.bottom - (model.height - (_hasEffectiveBottomFrame ? t : 0.0)))
+                .abs() <
             5.0;
 
     double yTL = isTopBound
@@ -3945,7 +4078,34 @@ class WindowPainter extends CustomPainter {
         ? zone.rightPrimaryDivisionAxis
         : zone.primaryDivisionAxis;
     final String effectivePrimary = primaryAxis ?? (innerV > 0 ? 'v' : 'h');
-    final List<Rect> fillRects = [];
+    final List<Rect> primaryDivisionRects = [];
+    final List<Rect> secondaryDivisionRects = [];
+    final List<Rect> selectedDivisionRects = [];
+    final bool selectedThisSide =
+        model.selection.type == SelectionType.innerDivision &&
+        model.selection.zoneId == zone.id &&
+        (model.selection.isRightSashInnerDivision ?? false) == isRightSash;
+    final bool selectedIsHorizontal =
+        model.selection.isHorizontalInnerDivision ?? false;
+    final int selectedDivisionIndex = model.selection.innerDivisionIndex ?? -1;
+
+    void addDivisionRect(
+      Rect rect, {
+      required bool isHorizontal,
+      required int index,
+      required bool isPrimary,
+    }) {
+      if (isPrimary) {
+        primaryDivisionRects.add(rect);
+      } else {
+        secondaryDivisionRects.add(rect);
+      }
+      if (selectedThisSide &&
+          selectedIsHorizontal == isHorizontal &&
+          selectedDivisionIndex == index) {
+        selectedDivisionRects.add(rect);
+      }
+    }
 
     if (effectivePrimary == 'h') {
       // ==========================================
@@ -3957,9 +4117,7 @@ class WindowPainter extends CustomPainter {
           double? runStart;
 
           for (int c = 0; c < cols; c++) {
-            final hKey = getHKey(c, h);
-            bool isSegmentActive =
-                zone.disabledHorizontalDivisions[hKey] != true;
+            bool isSegmentActive = true;
 
             if (isSegmentActive) {
               if (runStart == null) {
@@ -3967,9 +4125,7 @@ class WindowPainter extends CustomPainter {
                 runStart = glassR.left + (glassR.width * leftRatio);
               }
 
-              bool isLast =
-                  (c == cols - 1) ||
-                  (zone.disabledHorizontalDivisions[getHKey(c + 1, h)] == true);
+              bool isLast = c == cols - 1;
               if (isLast) {
                 double rightRatio = c == cols - 1 ? 1.0 : vPositions[c];
                 double right = glassR.left + (glassR.width * rightRatio);
@@ -3978,13 +4134,16 @@ class WindowPainter extends CustomPainter {
                 if (runStart > glassR.left) left -= dividerT / 2;
                 if (right < glassR.right) right += dividerT / 2;
 
-                fillRects.add(
+                addDivisionRect(
                   Rect.fromLTRB(
                     left,
                     y - dividerT / 2,
                     right,
                     y + dividerT / 2,
                   ),
+                  isHorizontal: true,
+                  index: h,
+                  isPrimary: true,
                 );
                 runStart = null;
               }
@@ -4016,11 +4175,7 @@ class WindowPainter extends CustomPainter {
                   getSashTopY(x, glassR.top - sashT, t, topOffset, isTopBound) +
                   sashT;
             } else {
-              bool hasActiveHAbove =
-                  zone.disabledHorizontalDivisions[getHKey(v, r - 1)] != true ||
-                  (v < vPositions.length &&
-                      zone.disabledHorizontalDivisions[getHKey(v + 1, r - 1)] !=
-                          true);
+              bool hasActiveHAbove = true;
               if (hasActiveHAbove) {
                 topYVal += dividerT / 2;
               }
@@ -4028,23 +4183,22 @@ class WindowPainter extends CustomPainter {
 
             double bottomYVal = bottom;
             if (r < rows - 1) {
-              bool hasActiveHBelow =
-                  zone.disabledHorizontalDivisions[getHKey(v, r)] != true ||
-                  (v < vPositions.length &&
-                      zone.disabledHorizontalDivisions[getHKey(v + 1, r)] !=
-                          true);
+              bool hasActiveHBelow = true;
               if (hasActiveHBelow) {
                 bottomYVal -= dividerT / 2;
               }
             }
 
-            fillRects.add(
+            addDivisionRect(
               Rect.fromLTRB(
                 x - dividerT / 2,
                 topYVal,
                 x + dividerT / 2,
                 bottomYVal,
               ),
+              isHorizontal: false,
+              index: v,
+              isPrimary: false,
             );
           }
         }
@@ -4059,8 +4213,7 @@ class WindowPainter extends CustomPainter {
           double? runStartTop;
 
           for (int r = 0; r < rows; r++) {
-            final vKey = getVKey(r, v);
-            bool isSegmentActive = zone.disabledVerticalDivisions[vKey] != true;
+            bool isSegmentActive = true;
 
             if (isSegmentActive) {
               if (runStartTop == null) {
@@ -4081,9 +4234,7 @@ class WindowPainter extends CustomPainter {
                 }
               }
 
-              bool isLast =
-                  (r == rows - 1) ||
-                  (zone.disabledVerticalDivisions[getVKey(r + 1, v)] == true);
+              bool isLast = r == rows - 1;
               if (isLast) {
                 double bottomRatio = r == rows - 1 ? 1.0 : hPositions[r];
                 double bottom = glassR.top + (glassR.height * bottomRatio);
@@ -4094,13 +4245,16 @@ class WindowPainter extends CustomPainter {
                 if (r > 0) topYVal -= dividerT / 2;
                 if (r < rows - 1) bottomYVal += dividerT / 2;
 
-                fillRects.add(
+                addDivisionRect(
                   Rect.fromLTRB(
                     x - dividerT / 2,
                     topYVal,
                     x + dividerT / 2,
                     bottomYVal,
                   ),
+                  isHorizontal: false,
+                  index: v,
+                  isPrimary: true,
                 );
                 runStartTop = null;
               }
@@ -4128,11 +4282,7 @@ class WindowPainter extends CustomPainter {
 
             double leftXVal = left;
             if (c > 0) {
-              bool hasVLeft =
-                  zone.disabledVerticalDivisions[getVKey(h, c - 1)] != true ||
-                  (h < hPositions.length &&
-                      zone.disabledVerticalDivisions[getVKey(h + 1, c - 1)] !=
-                          true);
+              bool hasVLeft = true;
               if (hasVLeft) {
                 leftXVal += dividerT / 2;
               }
@@ -4140,72 +4290,43 @@ class WindowPainter extends CustomPainter {
 
             double rightXVal = right;
             if (c < cols - 1) {
-              bool hasVRight =
-                  zone.disabledVerticalDivisions[getVKey(h, c)] != true ||
-                  (h < hPositions.length &&
-                      zone.disabledVerticalDivisions[getVKey(h + 1, c)] !=
-                          true);
+              bool hasVRight = true;
               if (hasVRight) {
                 rightXVal -= dividerT / 2;
               }
             }
 
-            fillRects.add(
+            addDivisionRect(
               Rect.fromLTRB(
                 leftXVal,
                 y - dividerT / 2,
                 rightXVal,
                 y + dividerT / 2,
               ),
+              isHorizontal: true,
+              index: h,
+              isPrimary: false,
             );
           }
         }
       }
     }
 
-    for (var rect in fillRects) {
+    for (var rect in secondaryDivisionRects) {
+      canvas.drawRect(rect, paint);
+      canvas.drawRect(rect, border);
+    }
+    for (var rect in primaryDivisionRects) {
       canvas.drawRect(rect, paint);
       canvas.drawRect(rect, border);
     }
 
-    // Highlighting for inner division
-    if (model.selection.type == SelectionType.innerDivision &&
-        model.selection.zoneId == zone.id) {
-      final isHSelected = model.selection.isHorizontalInnerDivision ?? false;
-      final isRightSelected = model.selection.isRightSashInnerDivision ?? false;
-      final selectedIdx = model.selection.innerDivisionIndex ?? -1;
-
-      if (isRightSash == isRightSelected && selectedIdx != -1) {
-        final highlightPaint = Paint()
-          ..color = Colors.green.shade600.withValues(alpha: 0.5)
-          ..style = PaintingStyle.fill;
-
-        if (isHSelected && selectedIdx < hPositions.length) {
-          double y = glassR.top + (glassR.height * hPositions[selectedIdx]);
-          canvas.drawRect(
-            Rect.fromLTRB(
-              glassR.left,
-              y - dividerT / 2,
-              glassR.right,
-              y + dividerT / 2,
-            ),
-            highlightPaint,
-          );
-        } else if (!isHSelected && selectedIdx < vPositions.length) {
-          double x = glassR.left + (glassR.width * vPositions[selectedIdx]);
-          double topYVal =
-              getSashTopY(x, glassR.top - sashT, t, topOffset, isTopBound) +
-              sashT;
-          canvas.drawRect(
-            Rect.fromLTRB(
-              x - dividerT / 2,
-              topYVal,
-              x + dividerT / 2,
-              glassR.bottom,
-            ),
-            highlightPaint,
-          );
-        }
+    if (selectedDivisionRects.isNotEmpty) {
+      final highlightPaint = Paint()
+        ..color = Colors.green.shade600.withValues(alpha: 0.5)
+        ..style = PaintingStyle.fill;
+      for (final rect in selectedDivisionRects) {
+        canvas.drawRect(rect, highlightPaint);
       }
     }
 
@@ -4553,7 +4674,7 @@ class WindowPainter extends CustomPainter {
         )..layout();
         bool isBottomBound =
             (cell.rect.bottom -
-                    (model.height - (model.hasBottomFrame ? t : 0.0)))
+                    (model.height - (_hasEffectiveBottomFrame ? t : 0.0)))
                 .abs() <
             5.0;
         final double labelY = (_isSlantedOrArched && isBottomBound)
@@ -6391,7 +6512,7 @@ class WindowPainter extends CustomPainter {
     if (rect.width <= pT * 2 || rect.height <= pT * 2) return;
 
     final bool isBottomOpen =
-        !model.hasBottomFrame && (rect.bottom - model.height).abs() < 1.0;
+        !_hasEffectiveBottomFrame && (rect.bottom - model.height).abs() < 1.0;
     final Rect innerRect = isBottomOpen
         ? Rect.fromLTRB(
             rect.left + pT,
@@ -6570,81 +6691,10 @@ class WindowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant WindowPainter oldDelegate) => true;
-}
-
-class _MergedCell {
-  final int row;
-  final int col;
-  final int hSpan;
-  final int wSpan;
-  final Rect rect;
-  final String key;
-
-  _MergedCell({
-    required this.row,
-    required this.col,
-    required this.hSpan,
-    required this.wSpan,
-    required this.rect,
-    required this.key,
-  });
-}
-
-class _MullionSegment {
-  final double position;
-  final double start;
-  final double end;
-  _MullionSegment({
-    required this.position,
-    required this.start,
-    required this.end,
-  });
-}
-
-class _MullionVisual {
-  final Rect rect;
-  final bool isHorizontal;
-  final double position;
-
-  const _MullionVisual({
-    required this.rect,
-    required this.isHorizontal,
-    required this.position,
-  });
-}
-
-List<_MullionSegment> _mergeMullionSegments(
-  List<_MullionSegment> segments,
-  double thickness,
-) {
-  if (segments.isEmpty) return [];
-
-  List<_MullionSegment> sorted = List.from(segments);
-  sorted.sort((a, b) {
-    int cmp = a.position.compareTo(b.position);
-    if (cmp != 0) return cmp;
-    return a.start.compareTo(b.start);
-  });
-
-  List<_MullionSegment> merged = [];
-  _MullionSegment current = sorted[0];
-
-  for (int i = 1; i < sorted.length; i++) {
-    _MullionSegment next = sorted[i];
-
-    if ((next.position - current.position).abs() < 2.0 &&
-        next.start <= current.end + thickness + 5.0) {
-      current = _MullionSegment(
-        position: current.position,
-        start: current.start,
-        end: math.max(current.end, next.end),
-      );
-    } else {
-      merged.add(current);
-      current = next;
-    }
+  bool shouldRepaint(covariant WindowPainter oldDelegate) {
+    return oldDelegate.model != model ||
+        oldDelegate.overrideIsInternalView != overrideIsInternalView ||
+        oldDelegate.showDrawingDimensions != showDrawingDimensions ||
+        oldDelegate.showSelection != showSelection;
   }
-  merged.add(current);
-  return merged;
 }

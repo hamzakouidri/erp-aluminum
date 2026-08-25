@@ -14,6 +14,26 @@ String _accessorySearchText(Map<String, dynamic> accessory) =>
 bool _containsAny(String value, Iterable<String> terms) =>
     terms.any((term) => value.contains(term));
 
+bool _isScrewSelectorType(String profileType) {
+  final lower = profileType.toLowerCase();
+  return lower.contains('_screw') ||
+      lower.contains('screw') ||
+      profileType.contains('براغي');
+}
+
+bool _isShutterScrewSelectorType(String profileType) {
+  final lower = profileType.toLowerCase();
+  return lower == 'is_kit_screw' ||
+      lower == 'is_caisson_screw' ||
+      lower == 'is_moteur_screw' ||
+      lower == 'is_manivelle_screw' ||
+      (profileType.contains('براغي') &&
+          (profileType.contains('الكيت') ||
+              profileType.contains('الصندوق') ||
+              profileType.contains('المحرك') ||
+              profileType.contains('المانيفال')));
+}
+
 /// A catalogue item is linked to a series only through [series_id] or
 /// [series_ids]. Text in its name/type must never make it appear in another
 /// series.
@@ -397,7 +417,13 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           args.add(widget.seriesId);
           args.add('%,' + widget.seriesId.toString() + ',%');
 
-          if (widget.materialType != null) {
+          final profileTypeLower = widget.profileType.toLowerCase();
+          final isScrewLookup = _isScrewSelectorType(widget.profileType);
+          final isShutterScrewLookup = _isShutterScrewSelectorType(
+            widget.profileType,
+          );
+
+          if (widget.materialType != null && !isShutterScrewLookup) {
             final mat = widget.materialType!.toLowerCase().trim();
             if (mat == 'pvc') {
               // PVC: يظهر فقط ما هو pvc أو both. الـ NULL/فارغ = ألمنيوم بالافتراضي → لا يظهر في PVC
@@ -435,7 +461,6 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
             final n = a['name'].toString().toLowerCase();
             final ty = (a['type'] ?? '').toString().toLowerCase();
-            final profileTypeLower = widget.profileType.toLowerCase();
             final isClampLookup =
                 profileTypeLower.contains('clamp') ||
                 profileTypeLower.contains('clam') ||
@@ -451,11 +476,18 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                         activeSeriesType.contains('جرار'))
                     ? AccessoryDrawingMode.sliding
                     : AccessoryDrawingMode.opening);
-            if (!accessoryMatchesDrawingMode(a, drawingMode)) return false;
+            if (!isScrewLookup &&
+                !accessoryMatchesDrawingMode(a, drawingMode)) {
+              return false;
+            }
 
             // 1. Material Exclusions
             final mat = (widget.materialType ?? '').toLowerCase().trim();
-            if (mat == 'pvc') {
+            if (isShutterScrewLookup) {
+              // Screws of the shutter kit/box/motor are stock accessories of
+              // the shutter itself. They must not disappear when the selected
+              // window material changes from PVC to Aluminium or the opposite.
+            } else if (mat == 'pvc') {
               if (n.contains('aluminium') ||
                   n.contains('aluminum') ||
                   n.contains('alu') ||
@@ -545,10 +577,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             }
 
             // 4. Kit Clamp/Clan Exclusions (Exclude clamp from kit matching, and vice versa)
-            final isScrewQuery =
-                profileTypeLower.contains('_screw') ||
-                profileTypeLower.contains('screw') ||
-                widget.profileType.contains('براغي');
+            final isScrewQuery = isScrewLookup;
             final isKitQuery =
                 !isScrewQuery &&
                 (profileTypeLower.contains('kit') ||

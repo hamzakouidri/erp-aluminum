@@ -221,6 +221,35 @@ class SqlDatabase {
     'KitItemVariants',
   ];
 
+  static const List<String> workshopTables = [
+    'ClientCodeSequence',
+    'Client',
+    'Projects',
+    'Measurements',
+    'Commandes',
+    'Commandes_details',
+    'Commandes_deliveries',
+    'Achats',
+    'Achat_items',
+    'Achat_Details',
+    'Suppliers',
+    'Employees',
+    'Caisses',
+    'Treasury',
+    'PaymentAllocations',
+    'WorkerTransactions',
+    'WorkerAllocations',
+    'WorkerAttendance',
+    'WorkerDailyJobs',
+    'Locations',
+    'InventoryTransactions',
+    'CurrentStock',
+    'InventorySettings',
+    'OrderCuttingSessions',
+    'MaterialRemnants',
+    'MaterialScrap',
+  ];
+
   static void resetDb() {
     _db = null;
     _openingDb = null;
@@ -11920,6 +11949,34 @@ class SqlDatabase {
       );
     }
     await importAllData(catalogData);
+  }
+
+  Future<Map<String, dynamic>> exportWorkshopData() async {
+    final allData = await exportAllData();
+    return Map.fromEntries(
+      allData.entries.where((entry) => workshopTables.contains(entry.key)),
+    );
+  }
+
+  Future<void> importWorkshopData(
+    Map<String, dynamic> data, {
+    bool replaceAllData = false,
+  }) async {
+    final workshopData = <String, dynamic>{};
+    for (final table in workshopTables) {
+      if (data.containsKey(table)) {
+        workshopData[table] = data[table];
+      }
+    }
+    if (data.containsKey('SyncTombstones')) {
+      workshopData['SyncTombstones'] = data['SyncTombstones'];
+    }
+    if (workshopData.isEmpty) return;
+    await importAllData(
+      workshopData,
+      replaceAllData: replaceAllData,
+      mergeAllData: !replaceAllData,
+    );
   }
 
   Future<String> getDatabaseFilePath() async {

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
+import '../utils/real_color_resolver.dart';
 
 class GlassDisplayItem {
   final Map<String, dynamic> glass;
@@ -585,90 +586,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   }
 
   Widget _buildColorCircle(Map<String, dynamic> dbColor, {double size = 20}) {
-    final name = (dbColor['name'] ?? '').toString().toLowerCase();
-    final hexCode = (dbColor['hex_code'] ?? '#9E9E9E').toString();
-
-    // Clean name for uniform checking
-    final cleanName = name
-        .replaceAll('أ', 'ا')
-        .replaceAll('إ', 'ا')
-        .replaceAll('آ', 'ا')
-        .replaceAll('ى', 'ي')
-        .replaceAll('ة', 'ه');
-
-    final isWood =
-        cleanName.contains('خشب') ||
-        cleanName.contains('wood') ||
-        cleanName.contains('bois') ||
-        cleanName.contains('╪«╪┤╪¿') ||
-        cleanName.contains('desert') ||
-        cleanName.contains('ديزر') ||
-        cleanName.contains('ديزير') ||
-        cleanName.contains('oak') ||
-        cleanName.contains('اوك') ||
-        cleanName.contains('chene') ||
-        cleanName.contains('chêne') ||
-        cleanName.contains('noyer') ||
-        cleanName.contains('acajou') ||
-        cleanName.contains('شين') ||
-        cleanName.contains('نويا') ||
-        cleanName.contains('اكاجو') ||
-        cleanName.contains('بوا') ||
-        cleanName.contains('faux') ||
-        cleanName.contains('فو') ||
-        cleanName.contains('antique') ||
-        cleanName.contains('انتيك') ||
-        cleanName.contains('onteak') ||
-        cleanName.contains('╪º┘å╪¬┘è┘â') ||
-        cleanName.contains('╪»┘è╪▓╪▒') ||
-        cleanName.contains('d0') ||
-        cleanName.contains('دي زيرو') ||
-        cleanName.contains('بلوط') ||
-        cleanName.contains('di zero');
-
-    Color parsedColor = Colors.grey;
-    try {
-      parsedColor = Color(int.parse(hexCode.replaceFirst('#', '0xFF')));
-    } catch (_) {}
-
-    DecorationImage? woodImage;
-    if (isWood) {
-      String assetPath = 'assets/images/wood_texture.png';
-      if (cleanName.contains('d0') ||
-          cleanName.contains('oak') ||
-          cleanName.contains('اوك') ||
-          cleanName.contains('شين') ||
-          cleanName.contains('chene') ||
-          cleanName.contains('chêne') ||
-          cleanName.contains('بلوط') ||
-          cleanName.contains('دي زيرو') ||
-          cleanName.contains('di zero') ||
-          cleanName.contains('desert') ||
-          cleanName.contains('ديزر') ||
-          cleanName.contains('ديزير') ||
-          cleanName.contains('╪»┘è╪▓╪▒')) {
-        assetPath = 'assets/images/wood_texture_d0.png';
-      } else if (cleanName.contains('antique') ||
-          cleanName.contains('انتيك') ||
-          cleanName.contains('onteak') ||
-          cleanName.contains('╪º┘å╪¬┘è┘â')) {
-        assetPath = 'assets/images/wood_texture_antique.png';
-      } else if (cleanName.contains('grey') ||
-          cleanName.contains('gray') ||
-          cleanName.contains('gris') ||
-          cleanName.contains('رمادي')) {
-        assetPath = 'assets/images/wood_texture_grey.png';
-      } else if (cleanName.contains('dark') ||
-          cleanName.contains('daكن') ||
-          cleanName.contains('fonce') ||
-          cleanName.contains('foncé')) {
-        assetPath = 'assets/images/wood_texture_dark.png';
-      }
-      woodImage = DecorationImage(
-        image: AssetImage(assetPath),
-        fit: BoxFit.cover,
-      );
-    }
+    final woodImage = realColorTextureImage(dbColor);
+    final parsedColor = realGradientColors(dbColor)[1];
 
     return Container(
       width: size,
@@ -1843,7 +1762,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      Localization.translate('اختر لوناً لـ $bladeKey', lang),
+                      '${Localization.translate('اختر لوناً لـ', lang)} ${Localization.translate(bladeKey, lang)}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,

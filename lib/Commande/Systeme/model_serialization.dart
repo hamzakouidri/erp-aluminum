@@ -647,6 +647,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
         .map((zMap) => windowZoneFromMap(zMap as Map<String, dynamic>))
         .toList();
   }
+  model.enforceBottomFrameForCurrentContent();
 
   // Restore only a zone selection.  It is stable across a saved drawing,
   // unlike temporary mullion/resize selections, and keeps the visible green

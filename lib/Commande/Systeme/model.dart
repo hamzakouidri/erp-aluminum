@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../sql_database.dart';
+import 'package:database_data/utils/real_color_resolver.dart';
 
 enum DimensionTap { none, width, height }
 
@@ -1442,6 +1443,17 @@ List<Color> getEffectiveGradientColors(
         .toUpperCase()
         .replaceAll('#', '')
         .trim();
+    final realHexColor = parseRealHexColor(dbColor['hex_code']);
+    if (realHexColor != null &&
+        !const {
+          'FFF',
+          'FFFFFF',
+          'FFFFFFFF',
+          '9E9E9E',
+          'FF9E9E9E',
+        }.contains(hex)) {
+      return gradientFromColor(realHexColor);
+    }
 
     // 1. Check names first to handle colors that might have default hex code (#FFFFFF) in database
     if (name.contains('white') ||
@@ -1617,6 +1629,20 @@ Color getEffectiveBorderColor(
         .toUpperCase()
         .replaceAll('#', '')
         .trim();
+    final realHexColor = parseRealHexColor(dbColor['hex_code']);
+    if (realHexColor != null &&
+        !const {
+          'FFF',
+          'FFFFFF',
+          'FFFFFFFF',
+          '9E9E9E',
+          'FF9E9E9E',
+        }.contains(hex)) {
+      final hsl = HSLColor.fromColor(realHexColor);
+      return hsl
+          .withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0))
+          .toColor();
+    }
 
     // 1. Check names first
     if (name.contains('white') ||
@@ -2660,11 +2686,14 @@ class WindowModel extends ChangeNotifier {
 
   bool _isPvcSeries(AluminumSeries? series) {
     if (series == null) return false;
+    final seriesType = (series.type ?? '').trim().toLowerCase();
+    final seriesName = series.name.trim().toLowerCase();
+    if (seriesType == 'pvc' || seriesName.contains('pvc')) return true;
     try {
       final system = availableSystems.firstWhere(
         (s) => s.id == series.profileId,
       );
-      return system.type == 'PVC' || system.type == 'pvc';
+      return system.type.trim().toLowerCase() == 'pvc';
     } catch (_) {
       return false;
     }
@@ -3284,6 +3313,33 @@ class WindowModel extends ChangeNotifier {
   String _mullionKey(bool isHorizontal, double position) =>
       '${isHorizontal ? 'H' : 'V'}_${position.toStringAsFixed(1)}';
 
+  bool _divisionKeyBelongsToSide(String key, {required bool isRightSash}) {
+    final isRightKey = key.startsWith('right_');
+    return isRightSash ? isRightKey : !isRightKey;
+  }
+
+  void _keepPrimaryInnerDivisionsContinuous(
+    WindowZone zone, {
+    required bool isRightSash,
+  }) {
+    final primaryAxis = isRightSash
+        ? zone.rightPrimaryDivisionAxis
+        : zone.primaryDivisionAxis;
+    if (primaryAxis == 'h') {
+      zone.disabledHorizontalDivisions =
+          Map<String, bool>.from(zone.disabledHorizontalDivisions)..removeWhere(
+            (key, value) =>
+                _divisionKeyBelongsToSide(key, isRightSash: isRightSash),
+          );
+    } else if (primaryAxis == 'v') {
+      zone.disabledVerticalDivisions =
+          Map<String, bool>.from(zone.disabledVerticalDivisions)..removeWhere(
+            (key, value) =>
+                _divisionKeyBelongsToSide(key, isRightSash: isRightSash),
+          );
+    }
+  }
+
   AluminumSection? _frameForMullion(MullionProfileType profileType) {
     final series = activeFrameSeries;
     if (series == null) return null;
@@ -3390,7 +3446,13 @@ class WindowModel extends ChangeNotifier {
     var maximum = mullionThickness;
     for (final section in mullionSectionOverrides.values) {
       final width = _sectionVisibleWidth(section);
-      if (width > maximum) maximum = width;
+      final isDoubleFrame =
+          _isEnabledFlag(section['is_double_frame']) ||
+          _isEnabledFlag(section['isDoubleFrame']) ||
+          _isEnabledFlag(section['double_frame']) ||
+          _isEnabledFlag(section['doubleFrame']);
+      final effectiveWidth = isDoubleFrame ? width * 2.0 : width;
+      if (effectiveWidth > maximum) maximum = effectiveWidth;
     }
     for (final profileType in mullionProfiles.values) {
       if (profileType == MullionProfileType.standard) {
@@ -3400,8 +3462,14 @@ class WindowModel extends ChangeNotifier {
         profileType == MullionProfileType.flat ? activeFrameOverride : null,
       );
       final frameWidth = _frameForMullion(profileType)?.visibleWidth ?? 0.0;
-      if (width > maximum) maximum = width;
-      if (frameWidth > maximum) maximum = frameWidth;
+      final effectiveOverrideWidth = profileType == MullionProfileType.flat
+          ? width * 2.0
+          : width;
+      if (effectiveOverrideWidth > maximum) maximum = effectiveOverrideWidth;
+      final effectiveFrameWidth = profileType == MullionProfileType.flat
+          ? frameWidth * 2.0
+          : frameWidth;
+      if (effectiveFrameWidth > maximum) maximum = effectiveFrameWidth;
     }
     return maximum;
   }
@@ -3676,7 +3744,7 @@ class WindowModel extends ChangeNotifier {
     if (frame != null && !frame.allowsSideCover) {
       return canSwitchIntegratedFrame;
     }
-    return availableSideCovers.isNotEmpty;
+    return availableSideCovers.isNotEmpty || standaloneSideCoverWidth > 0;
   }
 
   bool get _currentFrameHasIntegratedSideCover {
@@ -3690,7 +3758,7 @@ class WindowModel extends ChangeNotifier {
 
   bool get _canSwitchIntegratedFrameToStandaloneSideCover {
     return !isFramePVC &&
-        availableSideCovers.isNotEmpty &&
+        (availableSideCovers.isNotEmpty || standaloneSideCoverWidth > 0) &&
         _currentFrameHasIntegratedSideCover &&
         _hasFrameThatAllowsStandaloneSideCover;
   }
@@ -3723,26 +3791,6 @@ class WindowModel extends ChangeNotifier {
     // of the standalone-cover capability flag.
     if (isIntegratedFrame) return integratedFrameSideCoverWidth > 0;
     if (!canUseStandaloneSideCover) return false;
-    final frame = getSectionByType('frame');
-    if (frame == null) return true;
-    final codeLower = frame.code.toLowerCase().trim();
-    final nameLower = frame.name.toLowerCase().trim();
-
-    if (systemMode != 'sliding') {
-      if (codeLower == '4002' ||
-          codeLower == '4003' ||
-          nameLower.contains('monobloc') ||
-          nameLower.contains('rénovation') ||
-          nameLower.contains('renovation')) {
-        return false;
-      }
-    } else {
-      if (codeLower == '02' ||
-          codeLower == '03' ||
-          nameLower.contains('monobloc')) {
-        return false;
-      }
-    }
     return true;
   }
 
@@ -4483,9 +4531,6 @@ class WindowModel extends ChangeNotifier {
   List<Map<String, dynamic>> availableAccessoryColors = [];
 
   Future<void> _loadColorsForProfile(int profileId) async {
-    final previousColor = _selectedDbColor == null
-        ? null
-        : Map<String, dynamic>.from(_selectedDbColor!);
     final previousColorId = _selectedDbColor?['id'];
     final previousColorName =
         (_selectedDbColor?['name'] ?? _selectedDbColor?['color_name'])
@@ -4511,10 +4556,12 @@ class WindowModel extends ChangeNotifier {
         previousColorName.isNotEmpty) {
       selectedColor = _findAvailableColorByName(previousColorName);
     }
-    // Preserve the user's/order's colour across catalogue reloads and series
-    // switches.  Only a model with no previous colour starts from white.
-    selectedColor ??= previousColor;
+    // Preserve the user's/order's colour only when the newly selected series
+    // really supports it. Otherwise choose a valid colour for that series.
     selectedColor ??= _defaultFrameColor();
+    if (selectedColor == null && availableColors.isNotEmpty) {
+      selectedColor = availableColors.first;
+    }
 
     _selectedDbColor = selectedColor == null
         ? null
@@ -6987,6 +7034,7 @@ class WindowModel extends ChangeNotifier {
       selectedSideCover = covers.first;
     }
     await _loadColorsForProfile(series.profileId);
+    await _ensureParcloseForCurrentGlass();
     await refreshSectionPricesForSelectedColor(notify: false);
     await refreshBardageColorPrices(notify: false);
     availableAccessoryColors = await db.readAccessoryColors();
@@ -7244,6 +7292,7 @@ class WindowModel extends ChangeNotifier {
     }
 
     await _loadColorsForProfile(series.profileId);
+    await _ensureParcloseForCurrentGlass();
     await refreshSectionPricesForSelectedColor(notify: false);
     await refreshBardageColorPrices(notify: false);
     final d = await db.db;
@@ -7800,19 +7849,19 @@ class WindowModel extends ChangeNotifier {
     }
 
     final series = activeFrameSeries ?? activeSeries;
-    final double doublePaneThickness = zones
+    final double requiredDoubleThickness = zones
         .expand((zone) => [zone.glass, ...zone.cellGlassSpec.values])
         .where((glass) => glass.structure == GlassStructure.double)
         .fold<double>(
           0.0,
-          (maximum, glass) => math.max(
-            maximum,
-            (glass.thicknessOuter ?? kDefaultGlassPaneThickness) +
-                (glass.thicknessInner ?? kDefaultGlassPaneThickness),
-          ),
+          (maximum, glass) =>
+              math.max(maximum, glass.totalThickness(allGlassCache)),
         );
-    final bool needsDoubleParclose = doublePaneThickness > 0;
-    final double minimumDoubleCapacity = math.max(10.0, doublePaneThickness);
+    final bool needsDoubleParclose = requiredDoubleThickness > 0;
+    final double minimumDoubleCapacity = math.max(
+      10.0,
+      requiredDoubleThickness,
+    );
 
     // First use a real, explicitly selected parclose only when it can hold
     // the current glazing.  A stale 5 mm single-glazing parclose must not
@@ -7827,7 +7876,7 @@ class WindowModel extends ChangeNotifier {
       final selected = Map<String, dynamic>.from(entry.value as Map);
       final capacity = capacityOf(selected);
       if (capacity != null &&
-          (!needsDoubleParclose || capacity > minimumDoubleCapacity)) {
+          (!needsDoubleParclose || capacity >= minimumDoubleCapacity)) {
         return capacity;
       }
 
@@ -7839,7 +7888,7 @@ class WindowModel extends ChangeNotifier {
         if (linkedId != null) {
           for (final section in series.sections) {
             if (section.id == linkedId &&
-                section.maxGlassThickness > minimumDoubleCapacity) {
+                section.maxGlassThickness >= minimumDoubleCapacity) {
               return section.maxGlassThickness;
             }
           }
@@ -7848,9 +7897,9 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (series == null) return null;
-    // With double glazing use the same double-parclose family used by the
-    // material table.  The largest configured capacity is the safe series
-    // default when no explicit link exists (e.g. 18 mm → 5 + 8 + 5).
+    // With double glazing use the smallest parclose that can contain the
+    // current glazing pack. If the glass grows past the selected parclose, it
+    // moves to the next larger catalogue capacity.
     if (needsDoubleParclose) {
       final candidates =
           series.sections.where((section) {
@@ -7861,11 +7910,11 @@ class WindowModel extends ChangeNotifier {
                 name.contains('parclose') ||
                 name.contains('باكيت');
             return isParclose &&
-                section.maxGlassThickness > minimumDoubleCapacity;
+                section.maxGlassThickness >= minimumDoubleCapacity;
           }).toList()..sort(
             (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
           );
-      return candidates.isEmpty ? null : candidates.last.maxGlassThickness;
+      return candidates.isEmpty ? null : candidates.first.maxGlassThickness;
     }
 
     // No double glazing: use the first usable double/single catalogue
@@ -7956,7 +8005,7 @@ class WindowModel extends ChangeNotifier {
   /// cannot save an incompatible glazing combination.
   Future<bool> _ensureParcloseForGlass({
     required GlassStructure structure,
-    required double paneThickness,
+    required double glassThickness,
   }) async {
     final current = componentOverrides['باكيت الزجاج (Parclose)'];
     final currentParclose = current is Map
@@ -7969,12 +8018,16 @@ class WindowModel extends ChangeNotifier {
       return false;
     }
     final currentCode = currentParclose?['code']?.toString().trim();
+    final requiredCapacity = needsDoubleParclose
+        ? math.max(10.0, glassThickness)
+        : glassThickness;
+    final currentTooSmall =
+        currentCapacity == null || currentCapacity < requiredCapacity;
     final needsReplacement = needsDoubleParclose
-        ? currentCapacity == null ||
-              currentCapacity <= 10.0 ||
-              currentCapacity <= paneThickness
-        : (currentCapacity != null && currentCapacity > 10.0) ||
-              currentCode != '514';
+        ? currentTooSmall || currentCapacity <= 10.0
+        : currentTooSmall ||
+              (requiredCapacity <= 10.0 &&
+                  (currentCapacity > 10.0 || currentCode != '514'));
     if (!needsReplacement) return false;
 
     final seriesId = activeFrameSeries?.id ?? activeSeries?.id;
@@ -7997,7 +8050,6 @@ class WindowModel extends ChangeNotifier {
     }
 
     if (needsDoubleParclose) {
-      final minimumDoubleCapacity = paneThickness > 10.0 ? paneThickness : 10.0;
       // Prefer the explicitly linked double parclose of the current profile
       // when it is large enough for the selected panes.
       final rawLinkedId = currentParclose?['linked_parclose_double_id'];
@@ -8013,7 +8065,7 @@ class WindowModel extends ChangeNotifier {
         );
         if (linkedRows.isNotEmpty) {
           final linked = Map<String, dynamic>.from(linkedRows.first);
-          if ((_parcloseCapacity(linked) ?? 0) > minimumDoubleCapacity) {
+          if ((_parcloseCapacity(linked) ?? 0) >= requiredCapacity) {
             await selectParclose(linked);
             return true;
           }
@@ -8029,13 +8081,10 @@ class WindowModel extends ChangeNotifier {
           'parclose',
           '%parclose%',
           '%باكيت%',
-          minimumDoubleCapacity,
+          requiredCapacity - 0.001,
         ],
-        // Keep the same double-parclose default as the material table.  In a
-        // typical 5 + 5 configuration this resolves the 18 mm parclose and
-        // therefore the 8 mm spacer, rather than leaving an old 5 mm simple
-        // parclose active in the drawer.
-        orderBy: 'max_glass_thickness DESC',
+        // Pick the next larger capacity, not the largest available profile.
+        orderBy: 'max_glass_thickness ASC',
         limit: 1,
       );
       if (rows.isNotEmpty) {
@@ -8050,8 +8099,16 @@ class WindowModel extends ChangeNotifier {
     final rows = await database.query(
       'Sections',
       where:
-          "series_id = ? AND (LOWER(type) = ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR TRIM(code) = ?) AND (TRIM(code) = '514' OR COALESCE(max_glass_thickness, 0) <= 10.0)",
-      whereArgs: [seriesId, 'parclose', '%parclose%', '%باكيت%', '514'],
+          "series_id = ? AND (LOWER(type) = ? OR LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR TRIM(code) = ?) AND (COALESCE(max_glass_thickness, 0) >= ? OR (TRIM(code) = '514' AND ? <= 10.0))",
+      whereArgs: [
+        seriesId,
+        'parclose',
+        '%parclose%',
+        '%باكيت%',
+        '514',
+        requiredCapacity,
+        requiredCapacity,
+      ],
       orderBy:
           "CASE WHEN TRIM(code) = '514' THEN 0 ELSE 1 END, max_glass_thickness ASC",
       limit: 1,
@@ -8061,6 +8118,42 @@ class WindowModel extends ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  Future<bool> _ensureParcloseForCurrentGlass() async {
+    GlassStructure? targetStructure;
+    double targetThickness = 0.0;
+
+    for (final zone in zones) {
+      if (zone.content == ZoneContent.empty) continue;
+      for (final specification in _effectiveGlassSpecificationsForZone(zone)) {
+        if (specification.structure == GlassStructure.closed) continue;
+        if (specification.structure == GlassStructure.double) {
+          targetStructure = GlassStructure.double;
+          targetThickness = math.max(
+            targetThickness,
+            specification.totalThickness(allGlassCache),
+          );
+        } else if (targetStructure != GlassStructure.double &&
+            specification.structure == GlassStructure.simple) {
+          targetStructure = GlassStructure.simple;
+          targetThickness = math.max(
+            targetThickness,
+            specification.thicknessOuter ?? kDefaultGlassPaneThickness,
+          );
+        }
+      }
+    }
+
+    if (targetStructure == null) return false;
+    final changed = await _ensureParcloseForGlass(
+      structure: targetStructure,
+      glassThickness: targetThickness,
+    );
+    if (changed && targetStructure == GlassStructure.double) {
+      fitDoubleGlassIntercallsToSelectedParclose();
+    }
+    return changed;
   }
 
   /// Returns the configuration to preselect in the glass drawer.
@@ -8928,14 +9021,53 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Selects one outer frame in a coupled drawing.  Unlike a normal zone
-  /// selection, this exposes the frame's own resize controls.
-  void selectFrame(String zoneId) {
-    if (!zones.any((zone) => zone.id == zoneId)) return;
-    selection = SelectionInfo(type: SelectionType.frame, zoneId: zoneId);
+  String _frameSelectionKey(int index) => 'frame:$index';
+
+  int? _frameIndexFromSelectionKey(String? key) {
+    if (key == null || !key.startsWith('frame:')) return null;
+    final index = int.tryParse(key.substring('frame:'.length));
+    final frameCount = getFrameRects().length;
+    if (index == null || index < 0 || index >= frameCount) return null;
+    return index;
+  }
+
+  Rect? frameRectForSelection(String? key) {
+    final index = _frameIndexFromSelectionKey(key);
+    if (index == null) return null;
+    final rects = getFrameRects();
+    return index < rects.length ? rects[index] : null;
+  }
+
+  /// Selects one physical outer frame in a coupled drawing. A divided single
+  /// frame remains one selectable frame; its inner zones do not expose resize
+  /// handles independently.
+  void selectFrameByIndex(int index) {
+    final frameCount = getFrameRects().length;
+    if (index < 0 || index >= frameCount) return;
+    selection = SelectionInfo(
+      type: SelectionType.frame,
+      zoneId: _frameSelectionKey(index),
+    );
     showZoneMenu = false;
     activeSubZone = null;
     notifyListeners();
+  }
+
+  void selectFrame(String zoneId) {
+    if (zoneId.startsWith('frame:')) {
+      final index = _frameIndexFromSelectionKey(zoneId);
+      if (index == null) return;
+      selectFrameByIndex(index);
+      return;
+    }
+
+    final groups = _frameZoneGroups();
+    for (var index = 0; index < groups.length; index++) {
+      if (groups[index].any((zone) => zone.id == zoneId)) {
+        selectFrameByIndex(index);
+        return;
+      }
+    }
   }
 
   void selectAt(Offset pos, {bool isLongPress = false}) {
@@ -9081,12 +9213,21 @@ class WindowModel extends ChangeNotifier {
           }
 
           final double hitThreshold = 30.0;
+          String getVKey(int r, int v) => isRight ? 'right_${r}_$v' : '${r}_$v';
+          String getHKey(int c, int h) => isRight ? 'right_${c}_$h' : '${c}_$h';
 
           for (int i = 0; i < finalHPos.length; i++) {
             double y = glassR.top + glassR.height * finalHPos[i];
-            if ((pos.dy - y).abs() < hitThreshold &&
-                pos.dx >= glassR.left - 10 &&
-                pos.dx <= glassR.right + 10) {
+            if ((pos.dy - y).abs() >= hitThreshold) continue;
+            for (int c = 0; c < finalVPos.length + 1; c++) {
+              if (z.disabledHorizontalDivisions[getHKey(c, i)] == true) {
+                continue;
+              }
+              final leftRatio = c == 0 ? 0.0 : finalVPos[c - 1];
+              final rightRatio = c == finalVPos.length ? 1.0 : finalVPos[c];
+              final left = glassR.left + glassR.width * leftRatio;
+              final right = glassR.left + glassR.width * rightRatio;
+              if (pos.dx < left - 10 || pos.dx > right + 10) continue;
               return SelectionInfo(
                 type: SelectionType.innerDivision,
                 zoneId: z.id,
@@ -9099,9 +9240,16 @@ class WindowModel extends ChangeNotifier {
 
           for (int i = 0; i < finalVPos.length; i++) {
             double x = glassR.left + glassR.width * finalVPos[i];
-            if ((pos.dx - x).abs() < hitThreshold &&
-                pos.dy >= glassR.top - 10 &&
-                pos.dy <= glassR.bottom + 10) {
+            if ((pos.dx - x).abs() >= hitThreshold) continue;
+            for (int r = 0; r < finalHPos.length + 1; r++) {
+              if (z.disabledVerticalDivisions[getVKey(r, i)] == true) {
+                continue;
+              }
+              final topRatio = r == 0 ? 0.0 : finalHPos[r - 1];
+              final bottomRatio = r == finalHPos.length ? 1.0 : finalHPos[r];
+              final top = glassR.top + glassR.height * topRatio;
+              final bottom = glassR.top + glassR.height * bottomRatio;
+              if (pos.dy < top - 10 || pos.dy > bottom + 10) continue;
               return SelectionInfo(
                 type: SelectionType.innerDivision,
                 zoneId: z.id,
@@ -9611,13 +9759,9 @@ class WindowModel extends ChangeNotifier {
     GlassSpecification spec,
   ) async {
     paintAllZonesSpec(spec);
-    final paneThickness = spec.structure == GlassStructure.double
-        ? (spec.thicknessOuter ?? kDefaultGlassPaneThickness) +
-              (spec.thicknessInner ?? kDefaultGlassPaneThickness)
-        : (spec.thicknessOuter ?? kDefaultGlassPaneThickness);
     final parcloseChanged = await _ensureParcloseForGlass(
       structure: spec.structure,
-      paneThickness: paneThickness,
+      glassThickness: spec.totalThickness(allGlassCache),
     );
     if (parcloseChanged) {
       fitDoubleGlassIntercallsToSelectedParclose();
@@ -10446,11 +10590,11 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Resizes one selected outer frame from the supplied handles.  Internal
-  /// edges change the overall drawing size and shift the following frames, so
-  /// neighbouring frame sizes stay unchanged.
+  /// Resizes only the selected outer frame from the supplied handles.  Nearby
+  /// frames are left untouched so the user can create intentional gaps and
+  /// later draw another frame in that space.
   void resizeFrameFromHandles(
-    String zoneId, {
+    String frameSelectionId, {
     required bool moveLeft,
     required bool moveRight,
     required bool moveTop,
@@ -10459,7 +10603,22 @@ class WindowModel extends ChangeNotifier {
     required double deltaY,
     bool saveHistory = true,
   }) {
-    final zoneIndex = zones.indexWhere((zone) => zone.id == zoneId);
+    final frameIndex = _frameIndexFromSelectionKey(frameSelectionId);
+    if (frameIndex != null) {
+      _resizePhysicalFrameFromHandles(
+        frameIndex,
+        moveLeft: moveLeft,
+        moveRight: moveRight,
+        moveTop: moveTop,
+        moveBottom: moveBottom,
+        deltaX: deltaX,
+        deltaY: deltaY,
+        saveHistory: saveHistory,
+      );
+      return;
+    }
+
+    final zoneIndex = zones.indexWhere((zone) => zone.id == frameSelectionId);
     if (zoneIndex == -1) return;
     if (saveHistory) _saveSnapshot();
     final oldWidth = width;
@@ -10467,281 +10626,174 @@ class WindowModel extends ChangeNotifier {
 
     const minInnerSize = 50.0;
 
-    bool isLeftOuter(WindowZone zone) => !zones.any(
-      (other) =>
-          other.id != zone.id && other.boundary.left < zone.boundary.left - 2,
-    );
-    bool isRightOuter(WindowZone zone) => !zones.any(
-      (other) =>
-          other.id != zone.id && other.boundary.right > zone.boundary.right + 2,
-    );
-    bool isTopOuter(WindowZone zone) => !zones.any(
-      (other) =>
-          other.id != zone.id && other.boundary.top < zone.boundary.top - 2,
-    );
-    bool isBottomOuter(WindowZone zone) => !zones.any(
-      (other) =>
-          other.id != zone.id &&
-          other.boundary.bottom > zone.boundary.bottom + 2,
-    );
+    final current = zones[zoneIndex].boundary;
+    double left = current.left;
+    double top = current.top;
+    double right = current.right;
+    double bottom = current.bottom;
+    final minLeft = profileThickness;
+    final minTop = profileThickness;
+    double clampDouble(double value, double minimum, double maximum) {
+      if (maximum < minimum) return minimum;
+      return value.clamp(minimum, maximum).toDouble();
+    }
 
-    void resizeRightEdge() {
-      final zone = zones[zoneIndex];
-      double actual = deltaX;
-      if (zone.boundary.width + actual < minInnerSize) {
-        actual = minInnerSize - zone.boundary.width;
-      }
-      if (zone.boundary.width + actual > maximumFrameBarLengthMm) {
-        actual = maximumFrameBarLengthMm - zone.boundary.width;
-      }
-      if (width + actual > maximumFrameBarLengthMm) {
-        actual = maximumFrameBarLengthMm - width;
-      }
-      if (width + actual < 200.0) {
-        actual = 200.0 - width;
-      }
-      if (actual.abs() < 0.001) return;
-      if (!isRightOuter(zone)) {
-        final oldRight = zone.boundary.right;
-        zone.boundary = Rect.fromLTRB(
-          zone.boundary.left,
-          zone.boundary.top,
-          zone.boundary.right + actual,
-          zone.boundary.bottom,
-        );
-        for (var i = 0; i < zones.length; i++) {
-          final other = zones[i];
-          if (other.id == zone.id || other.boundary.left < oldRight - 1.0) {
-            continue;
-          }
-          zones[i].boundary = other.boundary.shift(Offset(actual, 0));
-        }
-        width = math.max(200.0, width + actual);
-        return;
-      }
-
-      final rightInset = width - zone.boundary.right;
-      zone.boundary = Rect.fromLTRB(
-        zone.boundary.left,
-        zone.boundary.top,
-        zone.boundary.right + actual,
-        zone.boundary.bottom,
+    if (moveLeft) {
+      left = clampDouble(
+        left + deltaX,
+        math.max(minLeft, right - maximumFrameBarLengthMm),
+        right - minInnerSize,
       );
-      double largestOuterRight = zone.boundary.right + rightInset;
-      for (final other in zones) {
-        if (other.id == zone.id) continue;
-        largestOuterRight = math.max(
-          largestOuterRight,
-          other.boundary.right + rightInset,
-        );
-      }
-      width = math.max(200.0, largestOuterRight);
     }
-
-    void resizeLeftEdge() {
-      final zone = zones[zoneIndex];
-      double actual = deltaX;
-      if (zone.boundary.width - actual < minInnerSize) {
-        actual = zone.boundary.width - minInnerSize;
-      }
-      if (zone.boundary.width - actual > maximumFrameBarLengthMm) {
-        actual = zone.boundary.width - maximumFrameBarLengthMm;
-      }
-      if (width - actual > maximumFrameBarLengthMm) {
-        actual = width - maximumFrameBarLengthMm;
-      }
-      if (width - actual < 200.0) {
-        actual = width - 200.0;
-      }
-      if (actual.abs() < 0.001) return;
-      if (!isLeftOuter(zone)) {
-        final oldRight = zone.boundary.right;
-        zone.boundary = Rect.fromLTRB(
-          zone.boundary.left,
-          zone.boundary.top,
-          zone.boundary.right - actual,
-          zone.boundary.bottom,
-        );
-        for (var i = 0; i < zones.length; i++) {
-          final other = zones[i];
-          if (other.id == zone.id || other.boundary.left < oldRight - 1.0) {
-            continue;
-          }
-          zones[i].boundary = other.boundary.shift(Offset(-actual, 0));
-        }
-        width = math.max(200.0, width - actual);
-        return;
-      }
-
-      // Coordinates are anchored at the left edge of the complete drawing.
-      // Rebase all frames when this exterior edge moves so there is never an
-      // empty gap at x = 0.
-      final outerLeft = zone.boundary.left;
-      final rightInset = width - zone.boundary.right;
-      for (final other in zones) {
-        final bool sharesLeft = (other.boundary.left - outerLeft).abs() < 2.0;
-        other.boundary = Rect.fromLTRB(
-          sharesLeft ? outerLeft : other.boundary.left - actual,
-          other.boundary.top,
-          other.boundary.right - actual,
-          other.boundary.bottom,
-        );
-      }
-      double maxRight = 200.0;
-      for (final other in zones) {
-        maxRight = math.max(maxRight, other.boundary.right + rightInset);
-      }
-      width = maxRight;
-    }
-
-    void resizeBottomEdge() {
-      final zone = zones[zoneIndex];
-      double actual = deltaY;
-      if (zone.boundary.height + actual < minInnerSize) {
-        actual = minInnerSize - zone.boundary.height;
-      }
-      if (zone.boundary.height + actual > maximumFrameBarLengthMm) {
-        actual = maximumFrameBarLengthMm - zone.boundary.height;
-      }
-      if (height + actual > maximumFrameBarLengthMm) {
-        actual = maximumFrameBarLengthMm - height;
-      }
-      if (height + actual < 200.0) {
-        actual = 200.0 - height;
-      }
-      if (actual.abs() < 0.001) return;
-      if (!isBottomOuter(zone)) {
-        final oldBottom = zone.boundary.bottom;
-        zone.boundary = Rect.fromLTRB(
-          zone.boundary.left,
-          zone.boundary.top,
-          zone.boundary.right,
-          zone.boundary.bottom + actual,
-        );
-        for (var i = 0; i < zones.length; i++) {
-          final other = zones[i];
-          if (other.id == zone.id || other.boundary.top < oldBottom - 1.0) {
-            continue;
-          }
-          zones[i].boundary = other.boundary.shift(Offset(0, actual));
-        }
-        height = math.max(200.0, height + actual);
-        return;
-      }
-
-      final bottomInset = height - zone.boundary.bottom;
-      zone.boundary = Rect.fromLTRB(
-        zone.boundary.left,
-        zone.boundary.top,
-        zone.boundary.right,
-        zone.boundary.bottom + actual,
+    if (moveRight) {
+      right = clampDouble(
+        right + deltaX,
+        left + minInnerSize,
+        left + maximumFrameBarLengthMm,
       );
-      double largestOuterBottom = zone.boundary.bottom + bottomInset;
-      for (final other in zones) {
-        if (other.id == zone.id) continue;
-        largestOuterBottom = math.max(
-          largestOuterBottom,
-          other.boundary.bottom + bottomInset,
-        );
-      }
-      height = math.max(200.0, largestOuterBottom);
+    }
+    if (moveTop) {
+      top = clampDouble(
+        top + deltaY,
+        math.max(minTop, bottom - maximumFrameBarLengthMm),
+        bottom - minInnerSize,
+      );
+    }
+    if (moveBottom) {
+      bottom = clampDouble(
+        bottom + deltaY,
+        top + minInnerSize,
+        top + maximumFrameBarLengthMm,
+      );
     }
 
-    void resizeTopEdge() {
-      final zone = zones[zoneIndex];
-      double actual = deltaY;
-      if (zone.boundary.height - actual < minInnerSize) {
-        actual = zone.boundary.height - minInnerSize;
-      }
-      if (zone.boundary.height - actual > maximumFrameBarLengthMm) {
-        actual = zone.boundary.height - maximumFrameBarLengthMm;
-      }
-      if (height - actual > maximumFrameBarLengthMm) {
-        actual = height - maximumFrameBarLengthMm;
-      }
-      if (height - actual < 200.0) {
-        actual = height - 200.0;
-      }
-      if (actual.abs() < 0.001) return;
-      if (!isTopOuter(zone)) {
-        final oldBottom = zone.boundary.bottom;
-        zone.boundary = Rect.fromLTRB(
-          zone.boundary.left,
-          zone.boundary.top,
-          zone.boundary.right,
-          zone.boundary.bottom - actual,
-        );
-        for (var i = 0; i < zones.length; i++) {
-          final other = zones[i];
-          if (other.id == zone.id || other.boundary.top < oldBottom - 1.0) {
-            continue;
-          }
-          zones[i].boundary = other.boundary.shift(Offset(0, -actual));
-        }
-        height = math.max(200.0, height - actual);
-        return;
-      }
-
-      // Same rebasing rule as the left exterior edge: keep the drawing
-      // connected to its top origin while its overall height changes.
-      final outerTop = zone.boundary.top;
-      final bottomInset = height - zone.boundary.bottom;
-      for (final other in zones) {
-        final bool sharesTop = (other.boundary.top - outerTop).abs() < 2.0;
-        other.boundary = Rect.fromLTRB(
-          other.boundary.left,
-          sharesTop ? outerTop : other.boundary.top - actual,
-          other.boundary.right,
-          other.boundary.bottom - actual,
-        );
-      }
-      double maxBottom = 200.0;
-      for (final other in zones) {
-        maxBottom = math.max(maxBottom, other.boundary.bottom + bottomInset);
-      }
-      height = maxBottom;
+    final next = Rect.fromLTRB(left, top, right, bottom);
+    if ((next.left - current.left).abs() < 0.001 &&
+        (next.top - current.top).abs() < 0.001 &&
+        (next.right - current.right).abs() < 0.001 &&
+        (next.bottom - current.bottom).abs() < 0.001) {
+      return;
     }
 
-    if (moveLeft) resizeLeftEdge();
-    if (moveRight) resizeRightEdge();
-    if (moveTop) resizeTopEdge();
-    if (moveBottom) resizeBottomEdge();
+    zones[zoneIndex].boundary = next;
+    double nextWidth = 200.0;
+    double nextHeight = 200.0;
+    for (final zone in zones) {
+      nextWidth = math.max(nextWidth, zone.boundary.right + profileThickness);
+      nextHeight = math.max(
+        nextHeight,
+        zone.boundary.bottom + (hasBottomFrame ? profileThickness : 0.0),
+      );
+    }
+    width = math.min(maximumFrameBarLengthMm, nextWidth);
+    height = math.min(maximumFrameBarLengthMm, nextHeight);
     _resizeSideCoverSegments(oldWidth, oldHeight, width, height);
     notifyListeners();
   }
 
-  void moveFrameBy(
-    String zoneId, {
+  void _resizePhysicalFrameFromHandles(
+    int frameIndex, {
+    required bool moveLeft,
+    required bool moveRight,
+    required bool moveTop,
+    required bool moveBottom,
     required double deltaX,
     required double deltaY,
     bool saveHistory = true,
   }) {
-    final zoneIndex = zones.indexWhere((zone) => zone.id == zoneId);
-    if (zoneIndex == -1) return;
+    final groups = _frameZoneGroups();
+    final rects = getFrameRects();
+    if (frameIndex < 0 ||
+        frameIndex >= groups.length ||
+        frameIndex >= rects.length) {
+      return;
+    }
+    final group = groups[frameIndex];
+    if (group.isEmpty) return;
     if (saveHistory) _saveSnapshot();
-
-    final zone = zones[zoneIndex];
-    final minLeft = profileThickness;
-    final minTop = profileThickness;
-    double actualX = deltaX;
-    double actualY = deltaY;
-    if (zone.boundary.left + actualX < minLeft) {
-      actualX = minLeft - zone.boundary.left;
-    }
-    if (zone.boundary.top + actualY < minTop) {
-      actualY = minTop - zone.boundary.top;
-    }
-    if (actualX.abs() < 0.001 && actualY.abs() < 0.001) return;
 
     final oldWidth = width;
     final oldHeight = height;
-    zones[zoneIndex].boundary = zone.boundary.shift(Offset(actualX, actualY));
-    width = math.max(width, zones[zoneIndex].boundary.right + profileThickness);
-    height = math.max(
-      height,
-      zones[zoneIndex].boundary.bottom +
-          (hasBottomFrame ? profileThickness : 0.0),
-    );
+    const minInnerSize = 50.0;
+
+    final currentOuter = rects[frameIndex];
+    double left = currentOuter.left;
+    double top = currentOuter.top;
+    double right = currentOuter.right;
+    double bottom = currentOuter.bottom;
+
+    double clampDouble(double value, double minimum, double maximum) {
+      if (maximum < minimum) return minimum;
+      return value.clamp(minimum, maximum).toDouble();
+    }
+
+    if (moveLeft) {
+      left = clampDouble(
+        left + deltaX,
+        right - maximumFrameBarLengthMm,
+        right - minInnerSize - (2 * profileThickness),
+      );
+    }
+    if (moveRight) {
+      right = clampDouble(
+        right + deltaX,
+        left + minInnerSize + (2 * profileThickness),
+        left + maximumFrameBarLengthMm,
+      );
+    }
+    if (moveTop) {
+      top = clampDouble(
+        top + deltaY,
+        bottom - maximumFrameBarLengthMm,
+        bottom - minInnerSize - (2 * profileThickness),
+      );
+    }
+    if (moveBottom) {
+      bottom = clampDouble(
+        bottom + deltaY,
+        top + minInnerSize + (2 * profileThickness),
+        top + maximumFrameBarLengthMm,
+      );
+    }
+
+    final nextOuter = Rect.fromLTRB(left, top, right, bottom);
+    if ((nextOuter.left - currentOuter.left).abs() < 0.001 &&
+        (nextOuter.top - currentOuter.top).abs() < 0.001 &&
+        (nextOuter.right - currentOuter.right).abs() < 0.001 &&
+        (nextOuter.bottom - currentOuter.bottom).abs() < 0.001) {
+      return;
+    }
+
+    final currentInner = currentOuter.deflate(profileThickness);
+    final nextInner = nextOuter.deflate(profileThickness);
+    final scaleX = currentInner.width.abs() < 0.001
+        ? 1.0
+        : nextInner.width / currentInner.width;
+    final scaleY = currentInner.height.abs() < 0.001
+        ? 1.0
+        : nextInner.height / currentInner.height;
+
+    for (final zone in group) {
+      final r = zone.boundary;
+      zone.boundary = Rect.fromLTRB(
+        nextInner.left + (r.left - currentInner.left) * scaleX,
+        nextInner.top + (r.top - currentInner.top) * scaleY,
+        nextInner.left + (r.right - currentInner.left) * scaleX,
+        nextInner.top + (r.bottom - currentInner.top) * scaleY,
+      );
+    }
+
+    double nextWidth = 200.0;
+    double nextHeight = 200.0;
+    for (final zone in zones) {
+      nextWidth = math.max(nextWidth, zone.boundary.right + profileThickness);
+      nextHeight = math.max(
+        nextHeight,
+        zone.boundary.bottom + (hasBottomFrame ? profileThickness : 0.0),
+      );
+    }
+    width = math.min(maximumFrameBarLengthMm, nextWidth);
+    height = math.min(maximumFrameBarLengthMm, nextHeight);
     _resizeSideCoverSegments(oldWidth, oldHeight, width, height);
     notifyListeners();
   }
@@ -11411,14 +11463,63 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  bool get canDisableBottomFrame {
+    if (systemMode == 'sliding') return false;
+    return zones.any(
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash,
+    );
+  }
+
+  bool get effectiveHasBottomFrame => hasBottomFrame || !canDisableBottomFrame;
+
+  bool _normalizeBottomFrameForCurrentContent() {
+    if (canDisableBottomFrame && systemMode != 'sliding') return false;
+
+    var changed = false;
+    if (!hasBottomFrame) {
+      hasBottomFrame = true;
+      changed = true;
+    }
+    if (hasFramePlintheBottom) {
+      hasFramePlintheBottom = false;
+      changed = true;
+    }
+    for (final zone in zones) {
+      if (zone.hasSashPlintheBottom) {
+        zone.hasSashPlintheBottom = false;
+        changed = true;
+      }
+    }
+    if (!showBottomWall) {
+      showBottomWall = true;
+      changed = true;
+    }
+    return changed;
+  }
+
+  void enforceBottomFrameForCurrentContent({bool notify = false}) {
+    final changed = _normalizeBottomFrameForCurrentContent();
+    if (!changed) return;
+    updateBottomZoneBoundaries();
+    if (notify) notifyListeners();
+  }
+
   void toggleViewMode() {
     isInternalView = !isInternalView;
     notifyListeners();
   }
 
   void toggleBottomFrame(bool value) {
-    if (systemMode == 'sliding') {
+    if (systemMode == 'sliding' || (!value && !canDisableBottomFrame)) {
       hasBottomFrame = true;
+      hasFramePlintheBottom = false;
+      for (var z in zones) {
+        z.hasSashPlintheBottom = false;
+      }
+      showBottomWall = true;
+      updateBottomZoneBoundaries();
       notifyListeners();
       return;
     }
@@ -11625,6 +11726,8 @@ class WindowModel extends ChangeNotifier {
   }
 
   void updateBottomZoneBoundaries() {
+    _normalizeBottomFrameForCurrentContent();
+
     double targetBottom = height;
     if (hasBottomFrame) {
       targetBottom = height - profileThickness;
@@ -12467,8 +12570,10 @@ class WindowModel extends ChangeNotifier {
     // shown with a compatibility warning in the drawing drawer.
     final parcloseChanged = await _ensureParcloseForGlass(
       structure: targetStructure,
-      paneThickness: targetStructure == GlassStructure.double
-          ? effectiveThicknessOuter + effectiveThicknessInner
+      glassThickness: targetStructure == GlassStructure.double
+          ? effectiveThicknessOuter +
+                (intercallThickness ?? baseSpec.intercallThickness).toDouble() +
+                effectiveThicknessInner
           : effectiveThicknessOuter,
     );
     if (parcloseChanged) {
@@ -13977,9 +14082,13 @@ class WindowModel extends ChangeNotifier {
     if (zones.isEmpty) {
       drawingMode = 'new_frame';
     } else {
-      // Auto-detect mode: if start is inside the window → split, otherwise → add_frame
+      // Auto-detect mode: inside an existing frame means split; inside a
+      // deliberate blank area means draw a new independent frame there.
       final windowRect = Rect.fromLTWH(0, 0, width, height);
-      if (windowRect.contains(pos)) {
+      final startsInsideFrame = zones.any(
+        (zone) => zone.boundary.inflate(profileThickness).contains(pos),
+      );
+      if (windowRect.contains(pos) && startsInsideFrame) {
         drawingMode = 'split';
       } else {
         drawingMode = 'add_frame';
@@ -14019,6 +14128,78 @@ class WindowModel extends ChangeNotifier {
       finalT = math.max(1.0, math.min(finalT, (sashRect.height - 10) / 2));
     }
     return sashRect.deflate(finalT);
+  }
+
+  Rect? _blankFrameCellForDrawnFrame(Rect drawnRect, Offset start) {
+    final windowRect = Rect.fromLTWH(0, 0, width, height);
+    if (!windowRect.contains(start) || !windowRect.contains(drawnRect.center)) {
+      return null;
+    }
+
+    final frameRects = getFrameRects();
+    final xs = <double>[0.0, width];
+    final ys = <double>[0.0, height];
+    for (final frame in frameRects) {
+      xs.add(frame.left.clamp(0.0, width).toDouble());
+      xs.add(frame.right.clamp(0.0, width).toDouble());
+      ys.add(frame.top.clamp(0.0, height).toDouble());
+      ys.add(frame.bottom.clamp(0.0, height).toDouble());
+    }
+
+    List<double> sortedUnique(List<double> values) {
+      values.sort();
+      final result = <double>[];
+      for (final value in values) {
+        if (result.isEmpty || (value - result.last).abs() > 2.0) {
+          result.add(value);
+        }
+      }
+      return result;
+    }
+
+    final uniqueX = sortedUnique(xs);
+    final uniqueY = sortedUnique(ys);
+    Rect? best;
+    double bestOverlap = 0.0;
+
+    for (var xi = 0; xi < uniqueX.length - 1; xi++) {
+      for (var yi = 0; yi < uniqueY.length - 1; yi++) {
+        final cell = Rect.fromLTRB(
+          uniqueX[xi],
+          uniqueY[yi],
+          uniqueX[xi + 1],
+          uniqueY[yi + 1],
+        );
+        if (cell.width <= 50 + 2 * profileThickness ||
+            cell.height <= 50 + 2 * profileThickness ||
+            !cell.contains(start) ||
+            !cell.contains(drawnRect.center)) {
+          continue;
+        }
+
+        final occupied = frameRects.any(
+          (frame) => frame.deflate(1.0).overlaps(cell.deflate(1.0)),
+        );
+        if (occupied) continue;
+
+        final overlap = _rectOverlapArea(cell, drawnRect);
+        if (overlap > bestOverlap) {
+          best = cell;
+          bestOverlap = overlap;
+        }
+      }
+    }
+
+    return best;
+  }
+
+  double _rectOverlapArea(Rect a, Rect b) {
+    final left = math.max(a.left, b.left);
+    final top = math.max(a.top, b.top);
+    final right = math.min(a.right, b.right);
+    final bottom = math.min(a.bottom, b.bottom);
+    if (right <= left || bottom <= top) return 0.0;
+    return (right - left) * (bottom - top);
   }
 
   void endDrawing() {
@@ -14100,6 +14281,53 @@ class WindowModel extends ChangeNotifier {
     if (drawingMode == 'add_frame') {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
+        final windowRect = Rect.fromLTWH(0, 0, width, height);
+        final startsInBlankArea =
+            windowRect.contains(drawingStart!) &&
+            !zones.any(
+              (zone) => zone.boundary
+                  .inflate(profileThickness)
+                  .contains(drawingStart!),
+            );
+        final blankFrameRect = startsInBlankArea
+            ? _blankFrameCellForDrawnFrame(drawnRect, drawingStart!)
+            : null;
+        final isInternalBlankFrame = blankFrameRect != null;
+        drawnRect = blankFrameRect ?? drawnRect;
+
+        if (startsInBlankArea && !isInternalBlankFrame) {
+          drawingStart = null;
+          drawingCurrent = null;
+          notifyListeners();
+          return;
+        }
+        if (isInternalBlankFrame) {
+          final inner = Rect.fromLTRB(
+            drawnRect.left + profileThickness,
+            drawnRect.top + profileThickness,
+            drawnRect.right - profileThickness,
+            drawnRect.bottom - (hasBottomFrame ? profileThickness : 0.0),
+          );
+          if (inner.width > 50 && inner.height > 50) {
+            zones.add(
+              WindowZone(
+                id: UniqueKey().toString(),
+                boundary: inner,
+                sashThickness: _calculateSashThickness(false),
+                sashColor: FrameColor.white,
+                selectedDbColor: _selectedDbColor,
+              ),
+            );
+            width = math.max(width, drawnRect.right);
+            height = math.max(height, drawnRect.bottom);
+            updatePrimaryMullionAxis();
+          }
+          drawingStart = null;
+          drawingCurrent = null;
+          notifyListeners();
+          return;
+        }
+
         double newW = _limitFrameDimension(drawnRect.width);
         double newH = _limitFrameDimension(drawnRect.height);
 
@@ -14367,6 +14595,10 @@ class WindowModel extends ChangeNotifier {
                 }
               }
               targetZone.disabledHorizontalDivisions = updatedDisabled;
+              _keepPrimaryInnerDivisionsContinuous(
+                targetZone,
+                isRightSash: false,
+              );
             }
           } else {
             double ratio = ((drawingStart!.dx - glassR.left) / glassR.width)
@@ -14422,6 +14654,10 @@ class WindowModel extends ChangeNotifier {
                 }
               }
               targetZone.disabledVerticalDivisions = updatedDisabled;
+              _keepPrimaryInnerDivisionsContinuous(
+                targetZone,
+                isRightSash: false,
+              );
             }
           }
         } else if (targetZone.content == ZoneContent.doubleSash) {
@@ -14511,6 +14747,10 @@ class WindowModel extends ChangeNotifier {
                   }
                 }
                 targetZone.disabledHorizontalDivisions = updatedDisabled;
+                _keepPrimaryInnerDivisionsContinuous(
+                  targetZone,
+                  isRightSash: true,
+                );
               }
             } else {
               List<double> currentPos = List.from(targetZone.innerHPositions);
@@ -14565,6 +14805,10 @@ class WindowModel extends ChangeNotifier {
                   }
                 }
                 targetZone.disabledHorizontalDivisions = updatedDisabled;
+                _keepPrimaryInnerDivisionsContinuous(
+                  targetZone,
+                  isRightSash: false,
+                );
               }
             }
           } else {
@@ -14626,6 +14870,10 @@ class WindowModel extends ChangeNotifier {
                   }
                 }
                 targetZone.disabledVerticalDivisions = updatedDisabled;
+                _keepPrimaryInnerDivisionsContinuous(
+                  targetZone,
+                  isRightSash: true,
+                );
               }
             } else {
               List<double> currentPos = List.from(targetZone.innerVPositions);
@@ -14680,6 +14928,10 @@ class WindowModel extends ChangeNotifier {
                   }
                 }
                 targetZone.disabledVerticalDivisions = updatedDisabled;
+                _keepPrimaryInnerDivisionsContinuous(
+                  targetZone,
+                  isRightSash: false,
+                );
               }
             }
           }
@@ -15274,6 +15526,7 @@ class WindowModel extends ChangeNotifier {
     } else if (zone.innerV == 0) {
       zone.primaryDivisionAxis = 'h';
     }
+    _keepPrimaryInnerDivisionsContinuous(zone, isRightSash: false);
 
     if (zone.rightInnerH == 0 && zone.rightInnerV == 0) {
       zone.rightPrimaryDivisionAxis = null;
@@ -15282,6 +15535,7 @@ class WindowModel extends ChangeNotifier {
     } else if (zone.rightInnerV == 0) {
       zone.rightPrimaryDivisionAxis = 'h';
     }
+    _keepPrimaryInnerDivisionsContinuous(zone, isRightSash: true);
 
     notifyListeners();
   }
@@ -15450,7 +15704,7 @@ class WindowModel extends ChangeNotifier {
     return joints;
   }
 
-  List<Rect> getFrameRects() {
+  List<List<WindowZone>> _frameZoneGroups() {
     final List<List<WindowZone>> groups = [];
     final double jointT = profileThickness * 2;
 
@@ -15511,6 +15765,12 @@ class WindowModel extends ChangeNotifier {
         groups.add(mergedGroup);
       }
     }
+
+    return groups;
+  }
+
+  List<Rect> getFrameRects() {
+    final groups = _frameZoneGroups();
 
     final List<Rect> rects = [];
     final double t = profileThickness;
