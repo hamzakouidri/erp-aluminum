@@ -34,11 +34,13 @@ class _MullionVisual {
   final Rect rect;
   final bool isHorizontal;
   final double position;
+  final bool isPrimary;
 
   const _MullionVisual({
     required this.rect,
     required this.isHorizontal,
     required this.position,
+    this.isPrimary = false,
   });
 }
 

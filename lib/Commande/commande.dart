@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'package:database_data/Commande/order_date_utils.dart';
 import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Commande/devis_preview_screen.dart';
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/Commande/order_picture_pdf_service.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/order_required_goods_screen.dart';
@@ -106,6 +108,21 @@ class _CommandeState extends State<Commande> {
         return const Color(0xFF546E7A); // رمادي مزرق
     }
   }
+
+  int _displayOrderNumber(Map<String, dynamic> order) {
+    for (final key in const ['display_number', 'order_code']) {
+      final value = order[key];
+      final number = value is num
+          ? value.toInt()
+          : int.tryParse(value?.toString().trim() ?? '');
+      if (number != null && number > 0) return number;
+    }
+    final id = order['id'];
+    return id is num ? id.toInt() : int.tryParse(id?.toString() ?? '') ?? 0;
+  }
+
+  String _displayOrderLabel(Map<String, dynamic> order) =>
+      '#${_displayOrderNumber(order)}';
 
   TextSpan highlightText(String text, String query) {
     if (query.isEmpty) {
@@ -287,7 +304,8 @@ class _CommandeState extends State<Commande> {
         if (!_orderNumericFilters['advance']!.matches(advance)) return false;
       }
       if (_orderNumericFilters['remaining']?.isActive == true) {
-        if (!_orderNumericFilters['remaining']!.matches(remaining)) return false;
+        if (!_orderNumericFilters['remaining']!.matches(remaining))
+          return false;
       }
 
       // Text column filters
@@ -366,8 +384,10 @@ class _CommandeState extends State<Commande> {
             comp = aId.compareTo(bId);
             break;
           case 'client_project':
-            final aName = '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}';
-            final bName = '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}';
+            final aName =
+                '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}';
+            final bName =
+                '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}';
             comp = aName.compareTo(bName);
             break;
           case 'date':
@@ -376,8 +396,14 @@ class _CommandeState extends State<Commande> {
             comp = aDate.compareTo(bDate);
             break;
           case 'total':
-            final aTot = (a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0;
-            final bTot = (b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0;
+            final aTot =
+                (a['net_payable'] as num?)?.toDouble() ??
+                (a['total'] as num?)?.toDouble() ??
+                0.0;
+            final bTot =
+                (b['net_payable'] as num?)?.toDouble() ??
+                (b['total'] as num?)?.toDouble() ??
+                0.0;
             comp = aTot.compareTo(bTot);
             break;
           case 'advance':
@@ -386,8 +412,16 @@ class _CommandeState extends State<Commande> {
             comp = aAdv.compareTo(bAdv);
             break;
           case 'remaining':
-            final aRem = ((a['net_payable'] as num?)?.toDouble() ?? (a['total'] as num?)?.toDouble() ?? 0.0) - ((a['advance_payment'] as num?)?.toDouble() ?? 0.0);
-            final bRem = ((b['net_payable'] as num?)?.toDouble() ?? (b['total'] as num?)?.toDouble() ?? 0.0) - ((b['advance_payment'] as num?)?.toDouble() ?? 0.0);
+            final aRem =
+                ((a['net_payable'] as num?)?.toDouble() ??
+                    (a['total'] as num?)?.toDouble() ??
+                    0.0) -
+                ((a['advance_payment'] as num?)?.toDouble() ?? 0.0);
+            final bRem =
+                ((b['net_payable'] as num?)?.toDouble() ??
+                    (b['total'] as num?)?.toDouble() ??
+                    0.0) -
+                ((b['advance_payment'] as num?)?.toDouble() ?? 0.0);
             comp = aRem.compareTo(bRem);
             break;
           case 'status':
@@ -396,8 +430,12 @@ class _CommandeState extends State<Commande> {
             comp = aSt.compareTo(bSt);
             break;
           case 'creator':
-            final aCr = _formatCreatorDisplay(a['creation_platform']?.toString());
-            final bCr = _formatCreatorDisplay(b['creation_platform']?.toString());
+            final aCr = _formatCreatorDisplay(
+              a['creation_platform']?.toString(),
+            );
+            final bCr = _formatCreatorDisplay(
+              b['creation_platform']?.toString(),
+            );
             comp = aCr.compareTo(bCr);
             break;
         }
@@ -1086,7 +1124,7 @@ class _CommandeState extends State<Commande> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${lang == AppLanguage.french ? "Commande" : "طلب"} #${orderData['id']}',
+                              '${lang == AppLanguage.french ? "Commande" : "طلب"} ${_displayOrderLabel(orderData)}',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -1193,6 +1231,26 @@ class _CommandeState extends State<Commande> {
                     }
                   },
                 ),
+
+                if (settings.canViewOrderDocuments())
+                  ListTile(
+                    leading: const Icon(
+                      Icons.photo_library_outlined,
+                      color: Colors.deepPurple,
+                    ),
+                    title: Text(Localization.translate('Picture', lang)),
+                    subtitle: Text(
+                      Localization.translate(
+                        'صور النوافذ مع التفاصيل والمقاسات',
+                        lang,
+                      ),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _exportOrderPicturePdf(context, orderData, lang);
+                    },
+                  ),
 
                 // 1.3. Facture Officielle / Proforma
                 if (settings.canViewOrderDocuments())
@@ -2110,6 +2168,7 @@ class _CommandeState extends State<Commande> {
                           order: orderData,
                           items: items,
                           workshopName: workshopName,
+                          db: db,
                         );
                       } catch (e) {
                         if (mounted) {
@@ -2587,6 +2646,24 @@ class _CommandeState extends State<Commande> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _exportOrderPicturePdf(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
+    if (!mounted || !context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _OrderPicturePdfPreviewPage(
+          db: db,
+          orderData: Map<String, dynamic>.from(orderData),
+          lang: lang,
+        ),
+      ),
     );
   }
 
@@ -3154,53 +3231,53 @@ class _CommandeState extends State<Commande> {
   }) {
     final isSorted = _orderSortColumn == colKey;
     return InkWell(
-        onTap: () {
-          setState(() {
-            if (_orderSortColumn == colKey) {
-              if (_orderSortAscending) {
-                _orderSortAscending = false;
-              } else {
-                _orderSortColumn = null;
-                _orderSortAscending = true;
-              }
+      onTap: () {
+        setState(() {
+          if (_orderSortColumn == colKey) {
+            if (_orderSortAscending) {
+              _orderSortAscending = false;
             } else {
-              _orderSortColumn = colKey;
+              _orderSortColumn = null;
               _orderSortAscending = true;
             }
-          });
-        },
-        borderRadius: BorderRadius.circular(4),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isSorted ? const Color(0xFF2563EB) : mutedColor,
-                    fontFamily: 'Cairo',
-                    fontSize: 11,
-                    fontWeight: isSorted ? FontWeight.w900 : FontWeight.bold,
-                  ),
+          } else {
+            _orderSortColumn = colKey;
+            _orderSortAscending = true;
+          }
+        });
+      },
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSorted ? const Color(0xFF2563EB) : mutedColor,
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
+                  fontWeight: isSorted ? FontWeight.w900 : FontWeight.bold,
                 ),
               ),
-              if (isSorted) ...[
-                const SizedBox(width: 2),
-                Icon(
-                  _orderSortAscending
-                      ? Icons.arrow_upward_rounded
-                      : Icons.arrow_downward_rounded,
-                  size: 13,
-                  color: const Color(0xFF2563EB),
-                ),
-              ],
+            ),
+            if (isSorted) ...[
+              const SizedBox(width: 2),
+              Icon(
+                _orderSortAscending
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                size: 13,
+                color: const Color(0xFF2563EB),
+              ),
             ],
-          ),
+          ],
         ),
-      );
+      ),
+    );
   }
 
   Widget _buildOrderFilterInputCell({
@@ -3294,13 +3371,19 @@ class _CommandeState extends State<Commande> {
     final columns = [
       ResizableTableColumn(
         id: 'id',
-        label: _buildOrderSortableHeaderCell(label: '#', colKey: 'id', mutedColor: mutedColor),
+        label: _buildOrderSortableHeaderCell(
+          label: '#',
+          colKey: 'id',
+          mutedColor: mutedColor,
+        ),
         filter: CompactTableFilterField(
           hintText: '#...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: _orderNumericFilters['id'] ?? const NumericFilterState(),
-          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['id'] = f),
+          initialNumericState:
+              _orderNumericFilters['id'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) =>
+              setState(() => _orderNumericFilters['id'] = f),
         ),
         initialWidth: 75,
         minWidth: 55,
@@ -3351,8 +3434,10 @@ class _CommandeState extends State<Commande> {
           hintText: 'المجموع...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: _orderNumericFilters['total'] ?? const NumericFilterState(),
-          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['total'] = f),
+          initialNumericState:
+              _orderNumericFilters['total'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) =>
+              setState(() => _orderNumericFilters['total'] = f),
         ),
         initialWidth: 130,
         minWidth: 95,
@@ -3369,8 +3454,10 @@ class _CommandeState extends State<Commande> {
           hintText: 'المدفوع...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: _orderNumericFilters['advance'] ?? const NumericFilterState(),
-          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['advance'] = f),
+          initialNumericState:
+              _orderNumericFilters['advance'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) =>
+              setState(() => _orderNumericFilters['advance'] = f),
         ),
         initialWidth: 120,
         minWidth: 90,
@@ -3387,8 +3474,10 @@ class _CommandeState extends State<Commande> {
           hintText: 'المتبقي...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: _orderNumericFilters['remaining'] ?? const NumericFilterState(),
-          onNumericFilterChanged: (f) => setState(() => _orderNumericFilters['remaining'] = f),
+          initialNumericState:
+              _orderNumericFilters['remaining'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) =>
+              setState(() => _orderNumericFilters['remaining'] = f),
         ),
         initialWidth: 120,
         minWidth: 90,
@@ -3447,7 +3536,10 @@ class _CommandeState extends State<Commande> {
                   onTap: _clearAllOrderColumnFilters,
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.red.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -3455,11 +3547,19 @@ class _CommandeState extends State<Commande> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.clear_all, size: 13, color: Colors.red),
+                        const Icon(
+                          Icons.clear_all,
+                          size: 13,
+                          color: Colors.red,
+                        ),
                         const SizedBox(width: 2),
                         Text(
                           Localization.translate('مسح', lang),
-                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -3474,7 +3574,6 @@ class _CommandeState extends State<Commande> {
     ];
 
     final rows = data.map((order) {
-      final orderId = (order['id'] as num?)?.toInt() ?? 0;
       final clientFirst = order['firstname'] ?? '';
       final clientLast = order['lastname'] ?? '';
       final clientName = '$clientFirst $clientLast'.trim();
@@ -3500,7 +3599,7 @@ class _CommandeState extends State<Commande> {
         cells: [
           // ID
           Text(
-            '#$orderId',
+            _displayOrderLabel(order),
             style: const TextStyle(
               color: Color(0xFF2563EB),
               fontFamily: 'Cairo',
@@ -3552,7 +3651,9 @@ class _CommandeState extends State<Commande> {
           Text(
             '${remaining.toStringAsFixed(0)} د.ج',
             style: TextStyle(
-              color: remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              color: remaining > 0
+                  ? const Color(0xFFEF4444)
+                  : const Color(0xFF10B981),
               fontFamily: 'Cairo',
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -3673,8 +3774,12 @@ class _CommandeState extends State<Commande> {
                         child: ResizableColumnsTable(
                           columns: columns,
                           rows: rows,
-                          headerColor: const Color(0xFF2563EB).withValues(alpha: 0.08),
-                          filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          headerColor: const Color(
+                            0xFF2563EB,
+                          ).withValues(alpha: 0.08),
+                          filterRowColor: isDark
+                              ? const Color(0xFF1E293B)
+                              : const Color(0xFFF8FAFC),
                           borderColor: borderColor,
                           rowColor: cardColor,
                           headerMinHeight: 38,
@@ -3695,5 +3800,452 @@ class _CommandeState extends State<Commande> {
     _loadingDialogContext = null;
     if (dialogContext == null || !dialogContext.mounted) return;
     Navigator.of(dialogContext).pop();
+  }
+}
+
+class _OrderPicturePdfPayload {
+  const _OrderPicturePdfPayload({required this.bytes, required this.filename});
+
+  final Uint8List bytes;
+  final String filename;
+}
+
+class _OrderPicturePreviewPayload {
+  const _OrderPicturePreviewPayload({
+    required this.orderData,
+    required this.filename,
+    required this.items,
+  });
+
+  final Map<String, dynamic> orderData;
+  final String filename;
+  final List<_OrderPicturePreviewItem> items;
+}
+
+class _OrderPicturePreviewItem {
+  const _OrderPicturePreviewItem({
+    required this.title,
+    required this.details,
+    required this.quantity,
+    required this.width,
+    required this.height,
+    required this.color,
+    required this.imageBytes,
+  });
+
+  final String title;
+  final List<String> details;
+  final int quantity;
+  final int width;
+  final int height;
+  final String color;
+  final Uint8List? imageBytes;
+}
+
+class _OrderPicturePdfPreviewPage extends StatefulWidget {
+  const _OrderPicturePdfPreviewPage({
+    required this.db,
+    required this.orderData,
+    required this.lang,
+  });
+
+  final SqlDatabase db;
+  final Map<String, dynamic> orderData;
+  final AppLanguage lang;
+
+  @override
+  State<_OrderPicturePdfPreviewPage> createState() =>
+      _OrderPicturePdfPreviewPageState();
+}
+
+class _OrderPicturePdfPreviewPageState
+    extends State<_OrderPicturePdfPreviewPage> {
+  late Future<_OrderPicturePreviewPayload> _future;
+  _OrderPicturePdfPayload? _pdfPayload;
+  bool _isPdfBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _buildPayload();
+  }
+
+  Future<_OrderPicturePreviewPayload> _buildPayload() async {
+    var orderData = Map<String, dynamic>.from(widget.orderData);
+    final freshOrderId = (orderData['id'] as num?)?.toInt() ?? 0;
+    if (freshOrderId > 0) {
+      final freshOrder = await widget.db.readCommandeWithClientById(
+        freshOrderId,
+      );
+      if (freshOrder != null) {
+        orderData = {...orderData, ...freshOrder};
+      }
+    }
+
+    final rawItems = freshOrderId > 0
+        ? await widget.db.readCommandeDetails(freshOrderId)
+        : const <Map<String, dynamic>>[];
+    final items = <_OrderPicturePreviewItem>[];
+    for (final raw in rawItems) {
+      final item = Map<String, dynamic>.from(raw);
+      final line = DevisBuilder.buildLineItemFromDetail(
+        item,
+        overrideLang: widget.lang,
+        forceGeneratedDetails: false,
+      );
+      final imageBytes = await _readPreviewImageBytes(
+        item,
+      ).timeout(const Duration(seconds: 8), onTimeout: () => null);
+      items.add(
+        _OrderPicturePreviewItem(
+          title: line.title,
+          details: line.details,
+          quantity: line.quantity,
+          width: line.width,
+          height: line.height,
+          color: line.color,
+          imageBytes: imageBytes,
+        ),
+      );
+      await Future.delayed(Duration.zero);
+    }
+
+    return _OrderPicturePreviewPayload(
+      orderData: orderData,
+      filename: OrderPicturePdfService.fileNameFor(orderData, widget.lang),
+      items: items,
+    );
+  }
+
+  void _retry() {
+    setState(() {
+      _pdfPayload = null;
+      _future = _buildPayload();
+    });
+  }
+
+  Future<_OrderPicturePdfPayload> _ensurePdfPayload(
+    _OrderPicturePreviewPayload preview,
+  ) async {
+    final existing = _pdfPayload;
+    if (existing != null) return existing;
+    final bytes = await OrderPicturePdfService.buildPdfBytes(
+      db: widget.db,
+      order: preview.orderData,
+      lang: widget.lang,
+    ).timeout(const Duration(seconds: 90));
+    final payload = _OrderPicturePdfPayload(
+      bytes: bytes,
+      filename: preview.filename,
+    );
+    if (mounted) {
+      setState(() => _pdfPayload = payload);
+    }
+    return payload;
+  }
+
+  Future<void> _runPdfAction(
+    _OrderPicturePreviewPayload preview,
+    Future<void> Function(_OrderPicturePdfPayload payload) action,
+  ) async {
+    if (_isPdfBusy) return;
+    setState(() => _isPdfBusy = true);
+    try {
+      final payload = await _ensurePdfPayload(preview);
+      await action(payload);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${Localization.translate('فشل توليد ملف PDF', widget.lang)}: $error',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isPdfBusy = false);
+    }
+  }
+
+  Future<void> _save(_OrderPicturePdfPayload payload) async {
+    final savedPath = await OrderPicturePdfService.savePdf(
+      bytes: payload.bytes,
+      filename: payload.filename,
+    );
+    if (!mounted || savedPath == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          Localization.translate('تم حفظ ملف الصور بنجاح', widget.lang),
+        ),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Future<void> _share(_OrderPicturePdfPayload payload) async {
+    await OrderPicturePdfService.sharePdf(
+      bytes: payload.bytes,
+      filename: payload.filename,
+    );
+  }
+
+  Future<void> _print(_OrderPicturePdfPayload payload) async {
+    await OrderPicturePdfService.printPdf(
+      bytes: payload.bytes,
+      filename: payload.filename,
+    );
+  }
+
+  Future<Uint8List?> _readPreviewImageBytes(Map<String, dynamic> item) async {
+    final path = item['drawing_image_path']?.toString().trim() ?? '';
+    if (path.isNotEmpty) {
+      try {
+        final file = File(path);
+        if (await file.exists()) return file.readAsBytes();
+      } catch (_) {}
+    }
+
+    final raw = item['drawing_image_base64']?.toString().trim() ?? '';
+    if (raw.isNotEmpty) {
+      try {
+        final separator = raw.indexOf(',');
+        final encoded = raw.startsWith('data:image') && separator >= 0
+            ? raw.substring(separator + 1)
+            : raw;
+        return base64Decode(encoded);
+      } catch (_) {}
+    }
+
+    final jsonRaw = item['partitions_json'];
+    if (jsonRaw == null) return null;
+    try {
+      final decoded = jsonRaw is Map
+          ? Map<String, dynamic>.from(jsonRaw)
+          : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
+      final model = WindowModel(db: widget.db);
+      applyWindowModelFromMap(model, decoded);
+      return captureWindowImage(model, maxSide: 2200);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_OrderPicturePreviewPayload>(
+      future: _future,
+      builder: (context, snapshot) {
+        final payload = snapshot.data;
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(Localization.translate('Picture', widget.lang)),
+            actions: [
+              if (payload != null) ...[
+                IconButton(
+                  tooltip: Localization.translate(
+                    'حفظ Picture PDF',
+                    widget.lang,
+                  ),
+                  icon: _isPdfBusy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_alt),
+                  onPressed: _isPdfBusy
+                      ? null
+                      : () => _runPdfAction(payload, _save),
+                ),
+                IconButton(
+                  tooltip: Localization.translate(
+                    'مشاركة Picture PDF',
+                    widget.lang,
+                  ),
+                  icon: const Icon(Icons.share),
+                  onPressed: _isPdfBusy
+                      ? null
+                      : () => _runPdfAction(payload, _share),
+                ),
+                IconButton(
+                  tooltip: Localization.translate(
+                    'طباعة Picture PDF',
+                    widget.lang,
+                  ),
+                  icon: const Icon(Icons.print),
+                  onPressed: _isPdfBusy
+                      ? null
+                      : () => _runPdfAction(payload, _print),
+                ),
+              ],
+            ],
+          ),
+          body: _buildBody(snapshot, payload),
+        );
+      },
+    );
+  }
+
+  Widget _buildBody(
+    AsyncSnapshot<_OrderPicturePreviewPayload> snapshot,
+    _OrderPicturePreviewPayload? payload,
+  ) {
+    if (snapshot.hasError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 42),
+              const SizedBox(height: 12),
+              Text(
+                '${Localization.translate('خطأ أثناء توليد ملف الصور: ', widget.lang)}${snapshot.error}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _retry,
+                icon: const Icon(Icons.refresh),
+                label: Text(
+                  Localization.translate('إعادة المحاولة', widget.lang),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (payload == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 14),
+            Text(
+              Localization.translate('جار تجهيز الصور', widget.lang),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (payload.items.isEmpty) {
+      return Center(
+        child: Text(
+          Localization.translate('لا توجد صور لهذه الطلبية', widget.lang),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(14),
+      itemCount: payload.items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final item = payload.items[index];
+        return _buildPreviewCard(item, index + 1);
+      },
+    );
+  }
+
+  Widget _buildPreviewCard(_OrderPicturePreviewItem item, int index) {
+    final details = item.details
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .take(10)
+        .toList(growable: false);
+    final meta = <String>[
+      if (item.width > 0 || item.height > 0)
+        '${Localization.translate('الأبعاد', widget.lang)}: ${item.width} x ${item.height} mm',
+      '${Localization.translate('الكمية', widget.lang)}: ${item.quantity}',
+      if (item.color.trim().isNotEmpty)
+        '${Localization.translate('اللون', widget.lang)}: ${item.color}',
+    ];
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '$index. ${item.title}',
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            if (meta.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                meta.join('   |   '),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  color: Colors.grey.shade700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.62,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: item.imageBytes == null
+                    ? Center(
+                        child: Text(
+                          Localization.translate(
+                            'لا توجد صورة محفوظة لهذا العنصر',
+                            widget.lang,
+                          ),
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      )
+                    : InteractiveViewer(
+                        minScale: 0.7,
+                        maxScale: 5,
+                        child: Center(
+                          child: Image.memory(
+                            item.imageBytes!,
+                            fit: BoxFit.contain,
+                            gaplessPlayback: true,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            if (details.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ...details.map(
+                (line) => Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    line,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

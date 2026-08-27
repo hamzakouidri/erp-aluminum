@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:database_data/sql_database.dart'; // كائن الوصول لقاعدة بيانات SQLite
 import 'package:database_data/Commande/Systeme/model.dart'; // نموذج بيانات النافذة (WindowModel)
 import 'package:database_data/Commande/Systeme/calculate_component.dart'; // منطق توليد قائمة المكونات (BOM)
+import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/window_painter.dart'; // رسّام يعرض شكل النافذة (Custom Painter)
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'; // نافذة اختيار بروفيل/مكون بدي
 import 'package:provider/provider.dart'; // لإدارة حالة الإعدادات العامة (اللغة...)
@@ -37,6 +38,7 @@ class _BomSwapTarget {
   final bool isSash;
   final bool isSideCover;
   final int? seriesId;
+  final String? overrideKey;
 
   const _BomSwapTarget({
     required this.profileType,
@@ -46,6 +48,7 @@ class _BomSwapTarget {
     this.isSash = false,
     this.isSideCover = false,
     this.seriesId,
+    this.overrideKey,
   });
 
   bool get isSpecialProfile => isFrame || isSash || isSideCover;
@@ -57,6 +60,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   final ScrollController _scrollController =
       ScrollController(); // للتحكم بتمرير الجدول أفقيًا ومعرفة موضع السكرول
   bool _isBottomBarExpanded = false; // هل شريط الإعدادات السفلي مفتوح أو مطوي
+  bool _isFetchingDefaults = false;
+  bool _hasFetchedDefaults = false;
+  final Map<String, List<Map<String, dynamic>>> _accessoryRowsCache = {};
+  final Map<String, double> _accessoryPriceCache = {};
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
   String get _lang =>
       Provider.of<AppSettingsProvider>(context, listen: false).language.name;
@@ -254,8 +261,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       return widget.model.sideCoverOverride;
     }
 
-    final direct = widget.model.componentOverrides[item.originalName];
-    return direct is Map ? Map<String, dynamic>.from(direct) : null;
+    return _componentOverrideForBom(item);
   }
 
   /// The BOM tells us which sash owns each hardware row.  This must take
@@ -343,6 +349,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return tokens.any((token) => lower.contains(token.toLowerCase()));
   }
 
+  bool _catalogFlagValue(Map<String, dynamic> item, String key) {
+    final value = item[key];
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value?.toString().trim().toLowerCase();
+    return text == '1' || text == 'true' || text == 'yes';
+  }
+
   bool _isScrewBomName(String name) {
     final lower = name.toLowerCase();
     return name.contains('براغي') ||
@@ -366,10 +380,54 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return text == display;
   }
 
+  Map<String, dynamic>? _componentOverrideForBom(BomItem item) {
+    final primaryKey = item.overrideKey ?? item.originalName;
+    final direct = widget.model.componentOverrides[primaryKey];
+    if (direct is Map) return Map<String, dynamic>.from(direct);
+    final fallback = widget.model.componentOverrides[item.originalName];
+    return fallback is Map ? Map<String, dynamic>.from(fallback) : null;
+  }
+
+  void _rebuildIfReady() {
+    if (mounted && !_isFetchingDefaults) setState(() {});
+  }
+
   _BomSwapTarget _resolveBomSwapTarget(BomItem item) {
     final original = item.originalName;
     final lower = original.toLowerCase();
     var drawingMode = _accessoryDrawingModeForItem(item);
+    final explicitCategory = item.selectorCategory?.trim();
+    final explicitType = item.selectorType?.trim();
+    if ((explicitCategory != null && explicitCategory.isNotEmpty) ||
+        (explicitType != null && explicitType.isNotEmpty)) {
+      final type = explicitType == null || explicitType.isEmpty
+          ? original
+          : explicitType;
+      final category = explicitCategory == null || explicitCategory.isEmpty
+          ? item.category
+          : explicitCategory;
+      final isExplicitFrame = category == 'profile' && type == 'frame';
+      final isExplicitSash = category == 'profile' && type == 'sash';
+      final isExplicitSideCover = category == 'profile' && type == 'side_cover';
+      if (isExplicitFrame || isExplicitSash || isExplicitSideCover) {
+        drawingMode = _profileDrawingModeForItem(
+          item,
+          isFrame: isExplicitFrame,
+          isSash: isExplicitSash,
+          isSideCover: isExplicitSideCover,
+        );
+      }
+      return _BomSwapTarget(
+        profileType: type,
+        category: category,
+        drawingMode: drawingMode,
+        isFrame: isExplicitFrame,
+        isSash: isExplicitSash,
+        isSideCover: isExplicitSideCover,
+        seriesId: category == 'profile' ? _seriesIdForItem(item) : null,
+        overrideKey: item.overrideKey ?? original,
+      );
+    }
 
     final isFrame =
         original == 'الإطار (Frame)' ||
@@ -765,9 +823,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       return _overrideLooksResolved(widget.model.sideCoverOverride);
     }
 
-    if (_overrideLooksResolved(
-      widget.model.componentOverrides[item.originalName],
-    )) {
+    if (_overrideLooksResolved(_componentOverrideForBom(item))) {
       return true;
     }
 
@@ -823,6 +879,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ? rawId.toInt()
         : int.tryParse('${rawId ?? ''}');
     final colorId = _selectedAccessoryColorId();
+    final cacheKey = '${accessoryId ?? 'none'}:${colorId ?? 'none'}';
+    final canCachePrice = accessoryId != null;
+    final cachedPrice = canCachePrice ? _accessoryPriceCache[cacheKey] : null;
+    if (cachedPrice != null) return cachedPrice;
 
     if (accessoryId != null && colorId != null) {
       final colorRows = await database.query(
@@ -834,11 +894,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       );
       if (colorRows.isNotEmpty) {
         final colorPrice = _safeDouble(colorRows.first['price']);
-        if (colorPrice > 0) return colorPrice;
+        if (colorPrice > 0) {
+          if (canCachePrice) _accessoryPriceCache[cacheKey] = colorPrice;
+          return colorPrice;
+        }
       }
     }
 
-    return _safeDouble(accessory['price_dzd'] ?? accessory['price']);
+    final price = _safeDouble(accessory['price_dzd'] ?? accessory['price']);
+    if (canCachePrice) _accessoryPriceCache[cacheKey] = price;
+    return price;
   }
 
   Future<Map<String, dynamic>?> _findAccessoryForSeries({
@@ -865,13 +930,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ? " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
               : " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')");
 
-    final rows = await database.query(
+    final cacheKey =
+        '${seriesId ?? 'auto'}|$allowGlobal|$applyMaterialFilter|$normalizedMaterial';
+    final rows = _accessoryRowsCache[cacheKey] ??= (await database.query(
       'Accessories',
       where:
           '(is_active = 1 OR is_active IS NULL)${seriesFilter['clause']}$materialClause',
       whereArgs: seriesFilter['args'],
       orderBy: 'id ASC',
-    );
+    )).map((row) => Map<String, dynamic>.from(row)).toList();
     final candidates = rows
         .map((row) => Map<String, dynamic>.from(row))
         .where(matches)
@@ -1460,8 +1527,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   Future<void> _fetchDefaults() async {
-    await widget.model
-        .updateShutterDefaultsIfNeeded(); // تحديث افتراضيات الستار داخل النموذج نفسه أولًا
+    if (_isFetchingDefaults) return;
+    if (mounted) setState(() => _isFetchingDefaults = true);
+    _accessoryRowsCache.clear();
+    _accessoryPriceCache.clear();
+    try {
+      await widget.model
+          .updateShutterDefaultsIfNeeded(); // تحديث افتراضيات الستار داخل النموذج نفسه أولًا
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isFetchingDefaults = false;
+          _hasFetchedDefaults = true;
+        });
+      }
+      return;
+    }
     // قراءة حالة الآلية الحالية من النموذج لتحديد أي كيت/سيبور يجب أن يكون مفعّلاً
     final isTunnel = widget.model.isCaissonTunnel; // هل الصندوق نوع "تونيل"
     final isMotor =
@@ -1524,7 +1605,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
     final db =
         await SqlDatabase().db; // اتصال قاعدة البيانات لباقي عمليات الجلب
-    if (db == null) return; // بدون اتصال ما فيه داعي نكمل
+    if (db == null) {
+      if (mounted) {
+        setState(() {
+          _isFetchingDefaults = false;
+          _hasFetchedDefaults = true;
+        });
+      }
+      return; // بدون اتصال ما فيه داعي نكمل
+    }
     final Database dbInstance = db;
     try {
       final colorId = widget
@@ -2127,7 +2216,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               widget.model.componentOverrides['حديد الظلفة الخاص بالمفاصل'] =
                   rMap;
             }
-            if (mounted) setState(() {}); // تحديث فوري
+            _rebuildIfReady(); // تحديث فوري
           }
         }
       }
@@ -2191,21 +2280,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // "this screw costs zero". Keep this rule in the automatic selector
         // as well as in the later price refresh.
         Future<double> resolveScrewPrice(Map<String, dynamic> item) async {
-          final defaultPrice = _safeDouble(
-            item['price_dzd'] ?? item['price_per_meter'] ?? item['price'],
-          );
-          if (colorId == null || item['id'] == null) return defaultPrice;
-          final colorRows = await dbInstance.query(
-            'AccessoryColorPrices',
-            columns: const ['price'],
-            where: 'accessory_id = ? AND color_id = ?',
-            whereArgs: [item['id'], colorId],
-            limit: 1,
-          );
-          final colorPrice = colorRows.isEmpty
-              ? 0.0
-              : _safeDouble(colorRows.first['price']);
-          return colorPrice > 0 ? colorPrice : defaultPrice;
+          return _resolveSelectedAccessoryPrice(dbInstance, item);
         }
 
         if (!await hasValidCurrentScrew()) {
@@ -2312,7 +2387,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         if (!isLinked(key)) {
           try {
             final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
-            final seriesFilter = _buildSeriesFilterClause();
+            final seriesFilter = _buildSeriesFilterClause(allowGlobal: true);
             var res = await dbInstance.query(
               'Accessories',
               where:
@@ -2511,7 +2586,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               }
               mutableItem['calculated_price'] = price;
               widget.model.componentOverrides[key] = mutableItem;
-              if (mounted) setState(() {}); // إجبار الخانة على الظهور
+              _rebuildIfReady(); // إجبار الخانة على الظهور
             }
           } catch (e) {}
         }
@@ -2601,7 +2676,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (!isLinked('الطاسو (Tasso)')) {
         try {
           final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
-          final seriesFilter = _buildSeriesFilterClause();
+          final seriesFilter = _buildSeriesFilterClause(allowGlobal: true);
           final tRes = await dbInstance.query(
             'Accessories',
             where:
@@ -2616,14 +2691,67 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             );
             mutableItem['calculated_price'] = price;
             widget.model.componentOverrides['الطاسو (Tasso)'] = mutableItem;
-            if (mounted) setState(() {});
+            _rebuildIfReady();
           }
         } catch (e) {}
       }
       // 5.6 جلب جوانات الزجاج المحددة بالسمك تلقائياً
+      bool isVitrageJointRow(Map<String, dynamic> joint) {
+        final text =
+            '${joint['gasket_type'] ?? ''} ${joint['name'] ?? ''} ${joint['type'] ?? ''}'
+                .toLowerCase();
+        return text.contains('فيتراج') ||
+            text.contains('vitrage') ||
+            text.contains('زجاج') ||
+            text.contains('glass');
+      }
+
+      bool jointMatchesThicknessKeywords(
+        Map<String, dynamic> joint,
+        List<String> kws,
+      ) {
+        if (kws.isEmpty) return true;
+        final text =
+            '${joint['name'] ?? ''} ${joint['gasket_type'] ?? ''} ${joint['thickness'] ?? ''}'
+                .toLowerCase()
+                .replaceAll(',', '.');
+        return kws.any((kw) => text.contains(kw.toLowerCase()));
+      }
+
+      Future<List<Map<String, dynamic>>> linkedVitrageJointRows(
+        List<String> kws,
+      ) async {
+        final activeSeries = widget.model.systemMode == 'sliding'
+            ? (widget.model.activeSlidingSeries ?? widget.model.activeSeries)
+            : (widget.model.activeSeries ?? widget.model.activeSlidingSeries);
+        Map<String, dynamic>? activeSash = widget.model.systemMode == 'sliding'
+            ? widget.model.slidingSashOverride
+            : widget.model.sashOverride;
+        activeSash ??= widget.model.getSectionByType('sash')?.toMap();
+        final seriesId = activeSeries?.id;
+        final rawSectionId = activeSash?['id'];
+        final sectionId = rawSectionId is num
+            ? rawSectionId.toInt()
+            : int.tryParse(rawSectionId?.toString() ?? '');
+        if (seriesId == null || sectionId == null) {
+          return const <Map<String, dynamic>>[];
+        }
+        final rows = await sqlDb.getDefaultJointsForSection(
+          seriesId: seriesId,
+          sectionId: sectionId,
+          positionKeys: const ['sash_inner', 'sash_outer', 'all'],
+        );
+        return rows
+            .map((row) => Map<String, dynamic>.from(row))
+            .where(isVitrageJointRow)
+            .where((row) => jointMatchesThicknessKeywords(row, kws))
+            .toList();
+      }
+
       Future<void> assignVitrageJoint(String uiKey, List<String> kws) async {
         if (!isLinked(uiKey)) {
           try {
+            var jointRes = await linkedVitrageJointRows(kws);
             String whereClause =
                 "(gasket_type = 'جوان فيتراج' OR gasket_type = 'joint_vitrage' OR ((LOWER(name) LIKE '%joint%' OR LOWER(name) LIKE '%جوان%') AND (LOWER(name) LIKE '%vitrage%' OR LOWER(name) LIKE '%زجاج%')))";
             if (kws.isNotEmpty) {
@@ -2632,11 +2760,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   .join(" OR ");
               whereClause = "($whereClause) AND ($kwStrings)";
             }
-            var jointRes = await dbInstance.query(
-              'Joints',
-              where: whereClause,
-              limit: 1,
-            );
+            if (jointRes.isEmpty) {
+              jointRes = await dbInstance.query(
+                'Joints',
+                where: whereClause,
+                limit: 1,
+              );
+            }
             if (jointRes.isEmpty) {
               final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
               final seriesFilter = _buildSeriesFilterClause(allowGlobal: true);
@@ -2657,7 +2787,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               mutableJoint['calculated_price'] = jPrice;
               widget.model.componentOverrides[uiKey] = mutableJoint;
-              if (mounted) setState(() {});
+              _rebuildIfReady();
             }
           } catch (e) {}
         }
@@ -2707,7 +2837,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               mutableJoint['calculated_price'] = jPrice;
               widget.model.componentOverrides[uiKey] = mutableJoint;
-              if (mounted) setState(() {});
+              _rebuildIfReady();
             }
           } catch (e) {}
         }
@@ -2729,7 +2859,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (!isLinked('صداد السكة (Arrêt)')) {
         try {
           final matType = widget.model.isPVC ? 'PVC' : 'Aluminium';
-          final seriesFilter = _buildSeriesFilterClause();
+          final seriesFilter = _buildSeriesFilterClause(allowGlobal: true);
           var aRes = await dbInstance.query(
             'Accessories',
             where:
@@ -2744,7 +2874,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             );
             mutableItem['calculated_price'] = price;
             widget.model.componentOverrides['صداد السكة (Arrêt)'] = mutableItem;
-            if (mounted) setState(() {});
+            _rebuildIfReady();
           }
         } catch (e) {}
       }
@@ -2855,8 +2985,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         if (price != null) kitBundlePrices[kitName] = price;
       }
       _kitBundlePrices = kitBundlePrices;
+      if (!widget.model.hasSimpleGlassForReducer ||
+          widget.model.hasDoubleGlassForRules) {
+        widget.model.clearReducerOverride();
+      }
       // 7. توليد قائمة المكونات الكاملة (BOM) وإكمال أي عنصر "ناقص" (missing) بالبحث الذكي عنه في القاعدة
-      final bomItems = ComponentCalculator.generateBom(
+      var bomItems = ComponentCalculator.generateBom(
+        widget.model,
+        activeVariants,
+        kitBundleData: kitBundleData,
+        kitPerLeafMap: kitPerLeafMap,
+        kitBundlePrices: kitBundlePrices,
+        kitBundleMetadata: _kitBundleMetadata,
+      );
+      await BomEngineV2(
+        database: sqlDb,
+      ).stabilizeSelections(window: widget.model, items: bomItems);
+      bomItems = ComponentCalculator.generateBom(
         widget.model,
         activeVariants,
         kitBundleData: kitBundleData,
@@ -2900,6 +3045,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 final matType = itemMaterialType;
                 final seriesFilter = _buildSeriesFilterClause(
                   seriesId: itemSeriesId,
+                  allowGlobal: true,
                 );
                 var allEsp = await dbInstance.query(
                   'Accessories',
@@ -2950,38 +3096,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   if (selectedEsp == null) continue;
                   // 5. حفظ المكوّن وتحديث الشاشة فورًا
                   final mutableItem = Map<String, dynamic>.from(selectedEsp);
-                  double price = 0.0;
-                  if (colorId != null) {
-                    final colorPriceRes = await dbInstance.query(
-                      'AccessoryColorPrices',
-                      where: 'accessory_id = ? AND color_id = ?',
-                      whereArgs: [selectedEsp['id'], colorId],
-                    );
-                    final allColorPrices = await dbInstance.query(
-                      'AccessoryColorPrices',
-                      columns: ['id'],
-                      where: 'accessory_id = ?',
-                      whereArgs: [selectedEsp['id']],
-                      limit: 1,
-                    );
-                    if (colorPriceRes.isNotEmpty) {
-                      price = _safeDouble(colorPriceRes.first['price']);
-                    } else if (allColorPrices.isNotEmpty) {
-                      price = 0.0;
-                    } else {
-                      price = _safeDouble(
-                        selectedEsp['price_dzd'] ?? selectedEsp['price'],
-                      );
-                    }
-                  } else {
-                    price = _safeDouble(
-                      selectedEsp['price_dzd'] ?? selectedEsp['price'],
-                    );
-                  }
+                  final price = await _resolveSelectedAccessoryPrice(
+                    dbInstance,
+                    mutableItem,
+                  );
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
               } catch (e) {}
               continue; // انتقل للعنصر الناقص التالي (تم التعامل مع الإسبانيوليت بشكل خاص)
@@ -2991,6 +3113,101 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             String keywordAr = ''; // كلمة مفتاحية بالعربي
             String keywordFr = ''; // كلمة مفتاحية بالفرنسي/إنجليزي
             final originalLower = item.originalName.toLowerCase();
+            if (item.category == 'accessory') {
+              final selectorType = item.selectorType?.trim();
+              if (selectorType != null && selectorType.isNotEmpty) {
+                final selectorLengthMatch = RegExp(
+                  r'(\d+(?:[.,]\d+)?)',
+                ).firstMatch(item.originalName);
+                final selectorMaxLength = selectorLengthMatch == null
+                    ? null
+                    : double.tryParse(
+                        selectorLengthMatch.group(1)!.replaceAll(',', '.'),
+                      );
+                Map<String, dynamic>? selected;
+                final ruleKeys = catalogRuleKeysForAccessorySelectorType(
+                  selectorType,
+                );
+                final typedColumns = catalogFlagColumnsForAccessorySelectorType(
+                  selectorType,
+                );
+                if (ruleKeys.isNotEmpty) {
+                  final rules = await sqlDb.getCatalogItemRules(
+                    itemTable: 'Accessories',
+                    seriesId: itemSeriesId,
+                    roleKeys: ruleKeys,
+                  );
+                  for (final rule in rules) {
+                    if (rule['show_in_quantity'] == 0) continue;
+                    final itemId = (rule['item_id'] as num?)?.toInt();
+                    if (itemId == null) continue;
+                    selected = await _findAccessoryForSeries(
+                      database: dbInstance,
+                      seriesId: itemSeriesId,
+                      materialType: itemMaterialType,
+                      drawingMode: itemAccessoryMode,
+                      allowGlobal: true,
+                      applyMaterialFilter: !_isShutterScrewColumn(selectorType),
+                      applyDrawingModeFilter: !_isShutterScrewColumn(
+                        selectorType,
+                      ),
+                      matches: (row) => (row['id'] as num?)?.toInt() == itemId,
+                    );
+                    if (selected != null) break;
+                  }
+                }
+                if (selected == null && typedColumns.isNotEmpty) {
+                  selected = await _findAccessoryForSeries(
+                    database: dbInstance,
+                    seriesId: itemSeriesId,
+                    materialType: itemMaterialType,
+                    drawingMode: itemAccessoryMode,
+                    allowGlobal: true,
+                    applyMaterialFilter: !_isShutterScrewColumn(selectorType),
+                    applyDrawingModeFilter: !_isShutterScrewColumn(
+                      selectorType,
+                    ),
+                    matches: (row) => typedColumns.any(
+                      (column) => _catalogFlagValue(row, column),
+                    ),
+                  );
+                }
+                if (selected == null &&
+                    ruleKeys.isEmpty &&
+                    typedColumns.isEmpty) {
+                  selected = await _findAccessoryForSeries(
+                    database: dbInstance,
+                    seriesId: itemSeriesId,
+                    materialType: itemMaterialType,
+                    drawingMode: itemAccessoryMode,
+                    allowGlobal: true,
+                    applyMaterialFilter: !_isShutterScrewColumn(selectorType),
+                    applyDrawingModeFilter: !_isShutterScrewColumn(
+                      selectorType,
+                    ),
+                    matches: (row) => accessoryMatchesSelectorType(
+                      row,
+                      selectorType,
+                      maxAccessoryLength: selectorMaxLength,
+                    ),
+                  );
+                }
+                if (selected != null) {
+                  widget.model.componentOverrides[item.overrideKey ??
+                          item.originalName] =
+                      selected;
+                  if (item.overrideKey != null) {
+                    widget.model.componentOverrides[item.originalName] =
+                        selected;
+                  }
+                  _rebuildIfReady();
+                  continue;
+                }
+                if (ruleKeys.isNotEmpty || typedColumns.isNotEmpty) {
+                  continue;
+                }
+              }
+            }
             if (item.category == 'accessory' &&
                 (originalLower.contains('poignée coulissante') ||
                     originalLower.contains('poignee coulissante') ||
@@ -3018,7 +3235,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               if (selected != null) {
                 widget.model.componentOverrides[item.originalName] = selected;
-                if (mounted) setState(() {});
+                _rebuildIfReady();
               }
               continue;
             }
@@ -3052,7 +3269,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               );
               if (selected != null) {
                 widget.model.componentOverrides[item.originalName] = selected;
-                if (mounted) setState(() {});
+                _rebuildIfReady();
               }
               continue;
             }
@@ -3085,7 +3302,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 );
                 if (selected != null) {
                   widget.model.componentOverrides[item.originalName] = selected;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
               }
               continue;
@@ -3248,11 +3465,76 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       );
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                   continue;
                 }
               }
             } else if (item.category == 'joint') {
+              final selectorType = item.selectorType?.trim() ?? '';
+              final roleKeys = catalogRuleKeysForJointSelectorType(
+                selectorType,
+              );
+              if (roleKeys.isNotEmpty) {
+                final seriesId = itemSeriesId;
+                if (seriesId == null) continue;
+                Map<String, dynamic>? selected;
+                final rules = await sqlDb.getCatalogItemRules(
+                  itemTable: 'Joints',
+                  seriesId: seriesId,
+                  roleKeys: roleKeys,
+                );
+                for (final rule in rules) {
+                  if (rule['show_in_quantity'] == 0) continue;
+                  final itemId = _catalogInt(rule['item_id']);
+                  if (itemId == null) continue;
+                  final rows = await dbInstance.query(
+                    'Joints',
+                    where:
+                        "id = ? AND ((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))) AND (is_active = 1 OR is_active IS NULL)",
+                    whereArgs: [itemId, seriesId, '%,$seriesId,%'],
+                    limit: 1,
+                  );
+                  if (rows.isNotEmpty) {
+                    selected = Map<String, dynamic>.from(rows.first);
+                    break;
+                  }
+                }
+                if (selected == null) {
+                  final rows = await dbInstance.query(
+                    'Joints',
+                    where:
+                        "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))) AND (is_active = 1 OR is_active IS NULL)",
+                    whereArgs: [seriesId, '%,$seriesId,%'],
+                    orderBy: 'id ASC',
+                  );
+                  for (final row in rows) {
+                    final mutableRow = Map<String, dynamic>.from(row);
+                    if (roleKeys.any(
+                      (roleKey) =>
+                          jointCatalogItemMatchesRole(mutableRow, roleKey),
+                    )) {
+                      selected = mutableRow;
+                      break;
+                    }
+                  }
+                }
+                if (selected != null) {
+                  selected['calculated_price'] = _safeDouble(
+                    selected['price_per_meter'] ??
+                        selected['price_dzd'] ??
+                        selected['price'],
+                  );
+                  widget.model.componentOverrides[item.overrideKey ??
+                          item.originalName] =
+                      selected;
+                  if (item.overrideKey != null) {
+                    widget.model.componentOverrides[item.originalName] =
+                        selected;
+                  }
+                  _rebuildIfReady();
+                }
+                continue;
+              }
               table = 'Joints';
               if (item.originalName.contains('Joint Brosse') ||
                   item.originalName.contains('Joint bross') ||
@@ -3281,6 +3563,76 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               }
             } else if (item.category == 'profile') {
               table = 'Sections';
+              final selectorType = item.selectorType?.trim();
+              final roleKeys = selectorType == null || selectorType.isEmpty
+                  ? const <String>[]
+                  : seriesRoleKeysForProfileSelectorType(selectorType);
+              if (roleKeys.isNotEmpty) {
+                final resolvedSelectorType = selectorType ?? '';
+                if (roleKeys.contains('reducer') &&
+                    (!widget.model.hasSimpleGlassForReducer ||
+                        widget.model.hasDoubleGlassForRules)) {
+                  widget.model.clearReducerOverride();
+                  continue;
+                }
+                final sId = itemSeriesId;
+                if (sId == null) continue;
+                final sections = await sqlDb.getDesignSectionsForRoles(
+                  sId,
+                  roleKeys,
+                  requireDialog: false,
+                  requireQuantity: true,
+                );
+                if (sections.isNotEmpty) {
+                  final mutableItem = Map<String, dynamic>.from(sections.first);
+                  double price = 0.0;
+                  if (colorId != null) {
+                    price = await sqlDb.getSectionPrice(
+                      mutableItem['id'],
+                      colorId,
+                    );
+                  } else {
+                    price = _safeDouble(
+                      mutableItem['price_dzd'] ?? mutableItem['price'],
+                    );
+                  }
+                  mutableItem['calculated_price'] = price;
+                  if (resolvedSelectorType.contains('lateral')) {
+                    widget.model.applySlidingMontantOverride(
+                      mutableItem,
+                      central: false,
+                    );
+                  } else if (resolvedSelectorType.contains('central')) {
+                    widget.model.applySlidingMontantOverride(
+                      mutableItem,
+                      central: true,
+                    );
+                  } else if (resolvedSelectorType == 'frame') {
+                    widget.model.applyFrameOverride(
+                      mutableItem,
+                      sliding:
+                          itemAccessoryMode == AccessoryDrawingMode.sliding,
+                    );
+                  } else if (resolvedSelectorType == 'sash') {
+                    widget.model.applySashOverride(
+                      mutableItem,
+                      sliding:
+                          itemAccessoryMode == AccessoryDrawingMode.sliding,
+                    );
+                  } else if (selectorType == 'side_cover') {
+                    widget.model.sideCoverOverride = mutableItem;
+                    widget.model.componentOverrides[item.overrideKey ??
+                            item.originalName] =
+                        mutableItem;
+                  } else {
+                    widget.model.componentOverrides[item.overrideKey ??
+                            item.originalName] =
+                        mutableItem;
+                  }
+                  _rebuildIfReady();
+                }
+                continue;
+              }
               if (item.originalName.contains('Sash Lateral') ||
                   item.originalName.contains('جانبي')) {
                 final sId = widget.model.systemMode == 'sliding'
@@ -3317,7 +3669,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     central: false,
                     reinforced: isLateralReinforced,
                   );
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                   continue;
                 }
               } else if (item.originalName.contains('Sash Central') ||
@@ -3356,7 +3708,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     central: true,
                     reinforced: isCentralReinforced,
                   );
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                   continue;
                 }
               } else if (item.originalName.contains('Chicane') ||
@@ -3386,7 +3738,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                   continue;
                 }
               }
@@ -3430,7 +3782,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                   continue; // تخطَّ البحث العام أدناه لأننا وجدنا النتيجة هنا
                 } else {
                   keywordFr = 'mullion';
@@ -3488,7 +3840,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
                 continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات خاطئة مثل السكة Rail
               } else if (item.originalName.contains('Couvre') ||
@@ -3531,7 +3883,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
                   widget.model.sideCoverOverride = mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
                 continue;
               } else if (item.originalName.contains('Latéral') ||
@@ -3599,7 +3951,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
                 continue;
               } else if (item.originalName.contains('Central') ||
@@ -3645,7 +3997,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
                 continue;
               } else if (item.originalName.contains('Rail') ||
@@ -3683,7 +4035,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   mutableItem['calculated_price'] = price;
                   widget.model.componentOverrides[item.originalName] =
                       mutableItem;
-                  if (mounted) setState(() {});
+                  _rebuildIfReady();
                 }
                 continue; // 🟢 عدم تنفيذ البحث العام البديل لمنع جلب قطاعات عشوائية
               }
@@ -3886,43 +4238,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     res.first['id'],
                     colorId,
                   );
-                } else if (table == 'Accessories' && colorId != null) {
-                  final colorPriceRes = await dbInstance.query(
-                    'AccessoryColorPrices',
-                    where: 'accessory_id = ? AND color_id = ?',
-                    whereArgs: [res.first['id'], colorId],
+                } else if (table == 'Accessories') {
+                  price = await _resolveSelectedAccessoryPrice(
+                    dbInstance,
+                    mutableItem,
                   );
-                  final accessoryHasColorPrices = await dbInstance.query(
-                    'AccessoryColorPrices',
-                    columns: ['id'],
-                    where: 'accessory_id = ?',
-                    whereArgs: [res.first['id']],
-                    limit: 1,
-                  );
-                  if (accessoryHasColorPrices.isNotEmpty &&
-                      colorPriceRes.isEmpty) {
-                    price = 0.0;
-                  } else if (colorPriceRes.isNotEmpty) {
-                    price = _safeDouble(colorPriceRes.first['price']);
-                  } else {
-                    price = _safeDouble(
-                      res.first['price_dzd'] ??
-                          res.first['price_per_meter'] ??
-                          res.first['price'],
-                    );
-                    if (price == 0) {
-                      // إذا السعر ما زال صفر، ابحث عن أي سعر لوني آخر أكبر من صفر لهذا العنصر
-                      final anyColorRes = await dbInstance.query(
-                        'AccessoryColorPrices',
-                        where: 'accessory_id = ? AND price > 0',
-                        whereArgs: [res.first['id']],
-                        limit: 1,
-                      );
-                      if (anyColorRes.isNotEmpty) {
-                        price = _safeDouble(anyColorRes.first['price']);
-                      }
-                    }
-                  }
                 } else if (table == 'ShutterComponents' && colorId != null) {
                   final colorPriceRes = await dbInstance.query(
                     'ShutterColorPrices',
@@ -3969,9 +4289,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       await _loadPricesFromDb(); // بعد كل ما سبق، أعد تحميل أسعار المتر الخطي/الستار من القاعدة
     } finally {
       if (mounted) {
-        setState(
-          () {},
-        ); // تحديث نهائي للواجهة بغض النظر عن نجاح أو فشل العمليات أعلاه
+        setState(() {
+          _isFetchingDefaults = false;
+          _hasFetchedDefaults = true;
+        }); // تحديث نهائي للواجهة بغض النظر عن نجاح أو فشل العمليات أعلاه
       }
     }
   }
@@ -4029,7 +4350,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // دالة تُستدعى عند تغيّر النموذج من خارج هذه الشاشة، فقط تعيد بناء الواجهة
   Future<void> _refreshGlassCatalogue() async {
     await widget.model.loadGlassProducts();
-    if (mounted) setState(() {});
+    _rebuildIfReady();
   }
 
   void _onModelChanged() {
@@ -4628,6 +4949,25 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    if (!_hasFetchedDefaults) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(Localization.translate('الالكمية والتكلفة', lang)),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 14),
+              Text(
+                Localization.translate('جاري تجهيز الكميات والأسعار...', lang),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     // توليد قائمة المكونات (BOM) الحالية بناءً على النموذج والحالة النشطة
     final items = ComponentCalculator.generateBom(
       widget.model,
@@ -4646,6 +4986,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_isFetchingDefaults) const LinearProgressIndicator(),
             // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
             if (widget.model.shutterHeightWarning != null) ...[
               Container(
@@ -5064,7 +5405,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       } else if (item.category == 'accessory' || item.category == 'other') {
         // كل الإكسسوارات العامة (مقابض، مفاصل...) تُجمع هنا
         accessoryCost += item.total;
-        final override = widget.model.componentOverrides[item.originalName];
+        final override = _componentOverrideForBom(item);
         // إذا كان العنصر معلَّمًا كـ "قابل لإضافة هامش ربح"، أضفه لتكلفة البيع القابلة للربح
         if (override != null && override['is_selling_calculated'] == 1) {
           accessorySellingCost += item.total;
@@ -7556,7 +7897,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           widget.model.refreshUI();
         });
         await widget.model.syncFrameReinforcement();
-        if (mounted) setState(() {});
+        _rebuildIfReady();
       }
       return; // إنهاء الدالة هنا (لا تكمل باقي منطق التبديل العام)
     }
@@ -7671,6 +8012,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         mutableSelected['calculated_price'] = price;
         setState(() {
           widget.model.sideCoverOverride = mutableSelected;
+          widget.model.selectedSideCover = AluminumSection.fromMap(
+            mutableSelected,
+          );
+          widget.model.componentOverrides['الغطاء الجانبي (Side Cover)'] =
+              mutableSelected;
+          if (item.originalName != 'الغطاء الجانبي (Side Cover)') {
+            widget.model.componentOverrides[item.originalName] =
+                mutableSelected;
+          }
           widget.model.refreshUI();
         });
       }
@@ -8197,9 +8547,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             mutableSelected,
           ); // كيت: نمرر المعالجة كاملة لدالة مخصصة
         } else {
+          final overrideKey =
+              swapTarget.overrideKey ?? item.overrideKey ?? item.originalName;
           setState(() {
             // Bidirectional synchronization between B.O.M. profile selection and drawer stiles/montants checkboxes
-            if (item.originalName.contains('Sash Lateral') ||
+            final selectedType = swapTarget.profileType.toLowerCase();
+            if (selectedType.contains('lateral') ||
+                item.originalName.contains('Sash Lateral') ||
                 item.originalName.contains('قائم جانبي') ||
                 item.originalName == 'قائم جانبي (Lateral)') {
               widget.model.applySlidingMontantOverride(
@@ -8207,7 +8561,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 central: false,
                 manualSelection: true,
               );
-            } else if (item.originalName.contains('Sash Central') ||
+            } else if (selectedType.contains('central') ||
+                item.originalName.contains('Sash Central') ||
                 item.originalName.contains('قائم وسطي') ||
                 item.originalName == 'قائم وسطي (Central)') {
               widget.model.applySlidingMontantOverride(
@@ -8216,8 +8571,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 manualSelection: true,
               );
             } else {
-              widget.model.componentOverrides[item.originalName] =
+              widget.model.componentOverrides[overrideKey] =
                   mutableSelected; // حفظ الاختيار الجديد كـ override
+              final normalizedPType = pType.toLowerCase();
+              if (pCategory == 'profile' &&
+                  (normalizedPType == 'parclose' ||
+                      normalizedPType.contains('parclose') ||
+                      normalizedPType.contains('باكيت') ||
+                      normalizedPType.contains('بيركلوز'))) {
+                widget.model.componentOverrides['باكيت الزجاج (Parclose)'] =
+                    mutableSelected;
+              }
             }
             widget.model
                 .updateGlassGasket(); // تحديث جوان الزجاج (إن كان مرتبطًا بتغييرات البروفيل)
@@ -8325,8 +8689,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final db = await SqlDatabase().db;
     if (db == null) return;
     // البحث عن معرف العنصر في جميع المصادر الممكنة
-    Map<String, dynamic>? override =
-        widget.model.componentOverrides[item.originalName];
+    Map<String, dynamic>? override = _componentOverrideForBom(item);
     // إذا لم يُوجد في componentOverrides، ابحث في frameOverride/sashOverride وما إلى ذلك
     if (override == null) {
       final origLower = item.originalName.toLowerCase();
@@ -8590,10 +8953,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     if (newPrice != null) {
                       setState(() {
                         // إذا العنصر ليس له override أصلًا، أنشئ واحدًا جديدًا بأقل بيانات ضرورية
+                        final overrideKey =
+                            item.overrideKey ?? item.originalName;
                         if (!widget.model.componentOverrides.containsKey(
-                          item.originalName,
+                          overrideKey,
                         )) {
-                          widget.model.componentOverrides[item.originalName] = {
+                          widget.model.componentOverrides[overrideKey] = {
                             'name': item.name,
                             'price': newPrice,
                             'calculated_price': newPrice,
@@ -8601,12 +8966,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         } else {
                           // وإلا، انسخ الـ override الحالي وحدّث السعر فيه فقط (بدون فقدان بقية بياناته)
                           final Map<String, dynamic> clone = Map.from(
-                            widget.model.componentOverrides[item.originalName],
+                            widget.model.componentOverrides[overrideKey],
                           );
                           clone['price'] = newPrice;
                           clone['calculated_price'] = newPrice;
-                          widget.model.componentOverrides[item.originalName] =
-                              clone;
+                          widget.model.componentOverrides[overrideKey] = clone;
                         }
                       });
                       // إذا اختار المستخدم حفظه بشكل دائم، نفّذ التحديث الفعلي في قاعدة البيانات

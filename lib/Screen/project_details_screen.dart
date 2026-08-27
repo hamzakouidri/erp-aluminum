@@ -49,8 +49,13 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   void _showEditProjectDialog() {
     if (_project == null) return;
     final nameController = TextEditingController(text: _project!['name']);
-    final descController = TextEditingController(text: _project!['description'] ?? '');
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final descController = TextEditingController(
+      text: _project!['description'] ?? '',
+    );
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
 
     showDialog(
       context: context,
@@ -109,7 +114,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   }
 
   void _confirmDeleteProject() {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -163,18 +171,15 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     final lang = Provider.of<AppSettingsProvider>(context).language;
 
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_project == null) {
-      return const Scaffold(
-        body: Center(child: Text('المشروع غير موجود')),
-      );
+      return const Scaffold(body: Center(child: Text('المشروع غير موجود')));
     }
 
-    final clientName = '${_project!['firstname']} ${_project!['lastname']}'.trim();
+    final clientName = '${_project!['firstname']} ${_project!['lastname']}'
+        .trim();
     final desc = _project!['description']?.toString() ?? '';
     final double totalProjectAmount = _commandes.fold(0.0, (sum, item) {
       final netPayable = (item['net_payable'] as num?)?.toDouble() ?? 0.0;
@@ -196,7 +201,9 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
           ),
         ),
         centerTitle: true,
-        backgroundColor: isDark ? Theme.of(context).appBarTheme.backgroundColor : Colors.blue,
+        backgroundColor: isDark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
@@ -218,7 +225,9 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
           children: [
             // Project Header Card
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
               elevation: 3,
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -238,11 +247,17 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                           children: [
                             Text(
                               Localization.translate('الزبون', lang),
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                             Text(
                               clientName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                           ],
                         ),
@@ -252,12 +267,18 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                       const Divider(height: 24),
                       Text(
                         Localization.translate('الوصف', lang),
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         desc,
-                        style: const TextStyle(color: Colors.black87, fontSize: 14),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                     const Divider(height: 24),
@@ -269,11 +290,17 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                           children: [
                             Text(
                               Localization.translate('عدد الطلبيات', lang),
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                             Text(
                               '${_commandes.length}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                           ],
                         ),
@@ -281,8 +308,14 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              Localization.translate('إجمالي قيمة المشروع', lang),
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              Localization.translate(
+                                'إجمالي قيمة المشروع',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                             Text(
                               '${totalProjectAmount.toStringAsFixed(2)} دج',
@@ -313,7 +346,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                 children: [
                   Text(
                     Localization.translate('الطلبيات المرتبطة', lang),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   Wrap(
                     spacing: 8,
@@ -338,7 +374,9 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                           );
                         },
                         icon: const Icon(Icons.add_shopping_cart, size: 16),
-                        label: Text(Localization.translate('إضافة طلبية', lang)),
+                        label: Text(
+                          Localization.translate('إضافة طلبية', lang),
+                        ),
                       ),
                     ],
                   ),
@@ -353,7 +391,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
-                        Localization.translate('لا توجد طلبيات مرتبطة بهذا المشروع حالياً', lang),
+                        Localization.translate(
+                          'لا توجد طلبيات مرتبطة بهذا المشروع حالياً',
+                          lang,
+                        ),
                         style: const TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -364,16 +405,25 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                     itemCount: _commandes.length,
                     itemBuilder: (context, index) {
                       final cmd = _commandes[index];
-                      final netPayable = (cmd['net_payable'] as num?)?.toDouble() ?? 0.0;
-                      final rawTotal = (cmd['total'] as num?)?.toDouble() ?? 0.0;
+                      final netPayable =
+                          (cmd['net_payable'] as num?)?.toDouble() ?? 0.0;
+                      final rawTotal =
+                          (cmd['total'] as num?)?.toDouble() ?? 0.0;
                       final total = netPayable > 0 ? netPayable : rawTotal;
                       final status = cmd['status'] ?? 'Pending';
+                      final displayNumber =
+                          (cmd['display_number'] as num?)?.toInt() ??
+                          (cmd['order_code'] as num?)?.toInt() ??
+                          (cmd['id'] as num?)?.toInt() ??
+                          0;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
                         child: ListTile(
-                          title: Text('طلب #${cmd['id']}'),
-                          subtitle: Text(cmd['created_at']?.toString().split('T')[0] ?? ''),
+                          title: Text('طلب #$displayNumber'),
+                          subtitle: Text(
+                            cmd['created_at']?.toString().split('T')[0] ?? '',
+                          ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -383,14 +433,19 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                                 children: [
                                   Text(
                                     '${total.toStringAsFixed(2)} دج',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
                                   ),
                                   Text(
                                     status,
                                     style: TextStyle(
                                       color: status.toLowerCase() == 'paid'
                                           ? Colors.green
-                                          : (status.toLowerCase() == 'pending' ? Colors.orange : Colors.blue),
+                                          : (status.toLowerCase() == 'pending'
+                                                ? Colors.orange
+                                                : Colors.blue),
                                       fontSize: 12,
                                     ),
                                   ),

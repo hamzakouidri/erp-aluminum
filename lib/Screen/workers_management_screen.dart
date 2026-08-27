@@ -606,6 +606,7 @@ class _WorkerCardState extends State<WorkerCard> {
       'distribution_tracking': false,
       'sales': false,
       'inventory': false,
+      'inventory_adjustment': false,
       'global_consumption': false,
       'worker_finances': false,
       'worker_settlement': false,
@@ -705,6 +706,145 @@ class _WorkerCardState extends State<WorkerCard> {
     }
   }
 
+  String _dateOnly(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  DateTime? _parsePermissionDate(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  String _inventoryAdjustmentWindowLabel(AppLanguage lang) {
+    if (!_isPermissionEnabled(perms['inventory_adjustment'])) {
+      return _tr('غير مفعلة', 'Non activée', 'Disabled', lang);
+    }
+    final from = _parsePermissionDate(perms['inventory_adjustment_valid_from']);
+    final to = _parsePermissionDate(perms['inventory_adjustment_valid_to']);
+    if (from == null && to == null) {
+      return _tr(
+        'مفعلة بدون مدة محددة',
+        'Activée sans période définie',
+        'Enabled without a defined period',
+        lang,
+      );
+    }
+    final fromText = from == null ? '...' : _dateOnly(from);
+    final toText = to == null ? '...' : _dateOnly(to);
+    return '${_tr('صالحة من', 'Valable du', 'Valid from', lang)} $fromText '
+        '${_tr('إلى', 'au', 'to', lang)} $toText';
+  }
+
+  bool _inventoryAdjustmentMatchesDays(int days) {
+    if (!_isPermissionEnabled(perms['inventory_adjustment'])) return false;
+    final from = _parsePermissionDate(perms['inventory_adjustment_valid_from']);
+    final to = _parsePermissionDate(perms['inventory_adjustment_valid_to']);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return from == today && to == today.add(Duration(days: days - 1));
+  }
+
+  Future<void> _saveInventoryAdjustmentPermission(
+    Map<String, dynamic> updatedPerms,
+  ) async {
+    final workerUid = widget.worker['uid'].toString();
+    final isFirebaseWorker =
+        !workerUid.startsWith('supabase_') &&
+        !workerUid.startsWith('pending_supabase_');
+    final workerRef = isFirebaseWorker
+        ? FirebaseFirestore.instance.collection('users').doc(workerUid)
+        : null;
+    final previousPerms = Map<String, dynamic>.from(perms);
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = prefs.getString('workshop_code') ?? '';
+    setState(() {
+      perms = updatedPerms;
+    });
+    try {
+      if (workerRef != null) {
+        await workerRef.set({
+          'isBlocked': updatedPerms['isBlocked'] ?? false,
+          'permissions': updatedPerms,
+          'permissions_json': jsonEncode(updatedPerms),
+          'permissions_updated_at': FieldValue.serverTimestamp(),
+          if (workshopId.isNotEmpty) 'workshopId': workshopId,
+        }, SetOptions(merge: true));
+      }
+      await widget.db.updateEmployeePermissions(
+        workerUid,
+        jsonEncode(updatedPerms),
+      );
+      await _syncSupabaseWorkerPermissions(updatedPerms);
+    } catch (e) {
+      debugPrint('Error updating inventory adjustment permission: $e');
+      if (mounted) {
+        setState(() {
+          perms = previousPerms;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _setInventoryAdjustmentPreset(int days) async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(Duration(days: days - 1));
+    final updatedPerms = Map<String, dynamic>.from(perms)
+      ..['inventory_adjustment'] = true
+      ..['inventory_adjustment_valid_from'] = _dateOnly(start)
+      ..['inventory_adjustment_valid_to'] = _dateOnly(end);
+    await _saveInventoryAdjustmentPermission(updatedPerms);
+  }
+
+  Future<void> _disableInventoryAdjustment() async {
+    final updatedPerms = Map<String, dynamic>.from(perms)
+      ..['inventory_adjustment'] = false
+      ..remove('inventory_adjustment_valid_from')
+      ..remove('inventory_adjustment_valid_to');
+    await _saveInventoryAdjustmentPermission(updatedPerms);
+  }
+
+  Future<void> _pickInventoryAdjustmentRange(AppLanguage lang) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final currentStart =
+        _parsePermissionDate(perms['inventory_adjustment_valid_from']) ?? today;
+    final currentEnd =
+        _parsePermissionDate(perms['inventory_adjustment_valid_to']) ??
+        today.add(const Duration(days: 6));
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: today.subtract(const Duration(days: 30)),
+      lastDate: today.add(const Duration(days: 730)),
+      initialDateRange: DateTimeRange(start: currentStart, end: currentEnd),
+      helpText: _tr(
+        'مدة صلاحية الجرد السنوي',
+        'Période de validité de l’inventaire',
+        'Inventory adjustment permission period',
+        lang,
+      ),
+      cancelText: _tr('إلغاء', 'Annuler', 'Cancel', lang),
+      confirmText: _tr('اعتماد', 'Valider', 'Apply', lang),
+    );
+    if (range == null) return;
+    final updatedPerms = Map<String, dynamic>.from(perms)
+      ..['inventory_adjustment'] = true
+      ..['inventory_adjustment_valid_from'] = _dateOnly(range.start)
+      ..['inventory_adjustment_valid_to'] = _dateOnly(range.end);
+    await _saveInventoryAdjustmentPermission(updatedPerms);
+  }
+
   Future<void> _updatePermission(String key, bool val) async {
     final workerUid = widget.worker['uid'].toString();
     final isFirebaseWorker =
@@ -765,6 +905,166 @@ class _WorkerCardState extends State<WorkerCard> {
     }
   }
 
+  Future<void> _updatePermissionGroup(
+    Iterable<String> keys,
+    Iterable<String> enabledKeys,
+  ) async {
+    final workerUid = widget.worker['uid'].toString();
+    final isFirebaseWorker =
+        !workerUid.startsWith('supabase_') &&
+        !workerUid.startsWith('pending_supabase_');
+    final workerRef = isFirebaseWorker
+        ? FirebaseFirestore.instance.collection('users').doc(workerUid)
+        : null;
+
+    final previousPerms = Map<String, dynamic>.from(perms);
+    final enabled = enabledKeys.toSet();
+    final updatedPerms = Map<String, dynamic>.from(perms);
+    for (final key in keys) {
+      updatedPerms[key] = enabled.contains(key);
+    }
+    if (updatedPerms['inventory_adjustment'] == true) {
+      final now = DateTime.now();
+      final start = DateTime(now.year, now.month, now.day);
+      updatedPerms['inventory_adjustment_valid_from'] ??= _dateOnly(start);
+      updatedPerms['inventory_adjustment_valid_to'] ??= _dateOnly(
+        start.add(const Duration(days: 6)),
+      );
+    } else {
+      updatedPerms.remove('inventory_adjustment_valid_from');
+      updatedPerms.remove('inventory_adjustment_valid_to');
+    }
+
+    if (_hasFullManagerPermissions) {
+      updatedPerms['full_manager_permissions'] = false;
+      updatedPerms['co_manager'] = false;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final workshopId = prefs.getString('workshop_code') ?? '';
+    setState(() {
+      perms = updatedPerms;
+    });
+
+    try {
+      if (workerRef != null) {
+        await workerRef.set({
+          'isBlocked': updatedPerms['isBlocked'] ?? false,
+          'permissions': updatedPerms,
+          'permissions_json': jsonEncode(updatedPerms),
+          'permissions_updated_at': FieldValue.serverTimestamp(),
+          if (workshopId.isNotEmpty) 'workshopId': workshopId,
+        }, SetOptions(merge: true));
+      }
+      await widget.db.updateEmployeePermissions(
+        workerUid,
+        jsonEncode(updatedPerms),
+      );
+      await _syncSupabaseWorkerPermissions(updatedPerms);
+    } catch (e) {
+      debugPrint('Error updating permission group: $e');
+      if (mounted) {
+        setState(() {
+          perms = previousPerms;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  bool _groupHasExactly(Iterable<String> keys, Iterable<String> enabledKeys) {
+    final enabled = enabledKeys.toSet();
+    for (final key in keys) {
+      if (_isPermissionEnabled(perms[key]) != enabled.contains(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Widget _buildPermissionGroupActions({
+    required AppLanguage lang,
+    required Iterable<String> allKeys,
+    required Iterable<String> viewOnlyKeys,
+  }) {
+    final keys = allKeys.toList(growable: false);
+    final viewKeys = viewOnlyKeys.toList(growable: false);
+    final allSelected = _groupHasExactly(keys, keys);
+    final viewOnlySelected = _groupHasExactly(keys, viewKeys);
+    final noneSelected = _groupHasExactly(keys, const <String>[]);
+
+    Widget actionChip({
+      required IconData icon,
+      required String label,
+      required bool selected,
+      required Color color,
+      required VoidCallback onTap,
+    }) {
+      return FilterChip(
+        avatar: Icon(icon, size: 16, color: selected ? Colors.white : color),
+        label: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: selected ? Colors.white : color,
+          ),
+        ),
+        selected: selected,
+        showCheckmark: false,
+        selectedColor: color,
+        backgroundColor: color.withValues(alpha: 0.09),
+        side: BorderSide(color: color.withValues(alpha: 0.35)),
+        onSelected: (_) => onTap(),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            actionChip(
+              icon: Icons.visibility_outlined,
+              label: _tr('رؤية فقط', 'Lecture seule', 'View only', lang),
+              selected: viewOnlySelected,
+              color: const Color(0xFF2563EB),
+              onTap: () => _updatePermissionGroup(keys, viewKeys),
+            ),
+            actionChip(
+              icon: Icons.done_all_rounded,
+              label: _tr(
+                'كل الصلاحيات',
+                'Toutes les permissions',
+                'Full access',
+                lang,
+              ),
+              selected: allSelected,
+              color: const Color(0xFF059669),
+              onTap: () => _updatePermissionGroup(keys, keys),
+            ),
+            actionChip(
+              icon: Icons.block_rounded,
+              label: _tr('إلغاء الكل', 'Tout désactiver', 'Disable all', lang),
+              selected: noneSelected,
+              color: const Color(0xFFDC2626),
+              onTap: () => _updatePermissionGroup(keys, const <String>[]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 👑 منح أو إلغاء صلاحيات كمدير بالكامل لهذا الشخص
   Future<void> _toggleFullManagerPermissions(bool grant) async {
     final previousPerms = Map<String, dynamic>.from(perms);
@@ -775,16 +1075,27 @@ class _WorkerCardState extends State<WorkerCard> {
 
     if (grant) {
       updatedPerms.forEach((k, v) {
-        if (k != 'isBlocked') {
+        if (k != 'isBlocked' &&
+            !k.endsWith('_valid_from') &&
+            !k.endsWith('_valid_to')) {
           updatedPerms[k] = true;
         }
       });
+      updatedPerms.remove('inventory_adjustment_valid_from');
+      updatedPerms.remove('inventory_adjustment_valid_to');
     } else {
       // A demoted co-manager must not retain the individual permissions that
       // were enabled when full access was granted.
       updatedPerms.updateAll(
-        (key, value) => key == 'isBlocked' ? value : false,
+        (key, value) =>
+            key == 'isBlocked' ||
+                key.endsWith('_valid_from') ||
+                key.endsWith('_valid_to')
+            ? value
+            : false,
       );
+      updatedPerms.remove('inventory_adjustment_valid_from');
+      updatedPerms.remove('inventory_adjustment_valid_to');
     }
 
     setState(() {
@@ -1377,6 +1688,22 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'view_clients',
+                    'view_client_ledger',
+                    'create_clients',
+                    'edit_clients',
+                    'delete_clients',
+                    'view_client_details',
+                  ],
+                  viewOnlyKeys: const [
+                    'view_clients',
+                    'view_client_ledger',
+                    'view_client_details',
+                  ],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -1477,6 +1804,36 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'view_orders',
+                    'view_projects',
+                    'distribution_tracking',
+                    'sales',
+                    'create_orders',
+                    'edit_orders',
+                    'delete_orders',
+                    'view_order_details',
+                    'view_order_documents',
+                    'fiche_de_coupe',
+                    'view_order_materials',
+                    'change_order_status',
+                    'pass_to_next_stage',
+                    'duplicate_orders',
+                    'order_allocation',
+                    'view_all_worker_tasks',
+                  ],
+                  viewOnlyKeys: const [
+                    'view_orders',
+                    'view_projects',
+                    'sales',
+                    'view_order_details',
+                    'view_order_documents',
+                    'fiche_de_coupe',
+                    'view_order_materials',
+                  ],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -1736,6 +2093,11 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const ['measurements_card', 'confirm_measurements'],
+                  viewOnlyKeys: const ['measurements_card'],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -1784,6 +2146,34 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'view_my_tasks',
+                    'view_my_accreditations',
+                    'view_profiles',
+                    'view_glass',
+                    'view_shutters',
+                    'view_colors',
+                    'view_accessories',
+                    'view_series_accessories',
+                    'view_joints',
+                    'view_kit_bundles',
+                    'external_operations',
+                  ],
+                  viewOnlyKeys: const [
+                    'view_my_tasks',
+                    'view_my_accreditations',
+                    'view_profiles',
+                    'view_glass',
+                    'view_shutters',
+                    'view_colors',
+                    'view_accessories',
+                    'view_series_accessories',
+                    'view_joints',
+                    'view_kit_bundles',
+                  ],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -1974,6 +2364,24 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: widget.isDeputyManager
+                      ? const [
+                          'cloud_backup',
+                          'sync_global_catalog',
+                          'local_json_backup',
+                        ]
+                      : const [
+                          'manage_workers',
+                          'edit_worker',
+                          'delete_worker',
+                          'cloud_backup',
+                          'sync_global_catalog',
+                          'local_json_backup',
+                        ],
+                  viewOnlyKeys: const [],
+                ),
                 if (!widget.isDeputyManager)
                   SwitchListTile(
                     title: Text(
@@ -2134,6 +2542,11 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const ['settings', 'select_systems'],
+                  viewOnlyKeys: const ['settings'],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -2180,6 +2593,26 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'change_prices',
+                    'view_cost_price',
+                    'change_transaction_dates',
+                    'treasury',
+                    'manage_caisses',
+                    'edit_payments',
+                    'delete_payments',
+                    'worker_finances',
+                    'worker_settlement',
+                  ],
+                  viewOnlyKeys: const [
+                    'view_cost_price',
+                    'treasury',
+                    'worker_finances',
+                    'worker_settlement',
+                  ],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -2328,6 +2761,25 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'inventory',
+                    'inventory_adjustment',
+                    'view_suppliers',
+                    'purchases',
+                    'add_purchases',
+                    'edit_purchases',
+                    'delete_purchases',
+                    'global_consumption',
+                  ],
+                  viewOnlyKeys: const [
+                    'inventory',
+                    'view_suppliers',
+                    'purchases',
+                    'global_consumption',
+                  ],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -2341,6 +2793,66 @@ class _WorkerCardState extends State<WorkerCard> {
                   value: perms['inventory'] ?? false,
                   onChanged: (val) => _updatePermission('inventory', val),
                 ),
+                SwitchListTile(
+                  title: Text(
+                    _tr(
+                      'الجرد السنوي / تصحيح المخزون',
+                      'Inventaire annuel / Ajustement du stock',
+                      'Annual inventory / Stock adjustment',
+                      lang,
+                    ),
+                    style: switchTitleStyle,
+                  ),
+                  subtitle: Text(
+                    _inventoryAdjustmentWindowLabel(lang),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                  value: _isPermissionEnabled(perms['inventory_adjustment']),
+                  onChanged: (val) => val
+                      ? _setInventoryAdjustmentPreset(7)
+                      : _disableInventoryAdjustment(),
+                ),
+                if (_isPermissionEnabled(perms['inventory_adjustment']))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        ChoiceChip(
+                          label: Text(
+                            _tr('أسبوع', 'Une semaine', 'One week', lang),
+                          ),
+                          selected: _inventoryAdjustmentMatchesDays(7),
+                          onSelected: (_) => _setInventoryAdjustmentPreset(7),
+                        ),
+                        ChoiceChip(
+                          label: Text(
+                            _tr('10 أيام', '10 jours', '10 days', lang),
+                          ),
+                          selected: _inventoryAdjustmentMatchesDays(10),
+                          onSelected: (_) => _setInventoryAdjustmentPreset(10),
+                        ),
+                        ChoiceChip(
+                          label: Text(_tr('شهر', 'Un mois', 'One month', lang)),
+                          selected: _inventoryAdjustmentMatchesDays(30),
+                          onSelected: (_) => _setInventoryAdjustmentPreset(30),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _pickInventoryAdjustmentRange(lang),
+                          icon: const Icon(Icons.date_range_rounded, size: 18),
+                          label: Text(
+                            _tr(
+                              'تاريخ بداية ونهاية',
+                              'Date début et fin',
+                              'Start and end date',
+                              lang,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 SwitchListTile(
                   title: Text(
                     _tr(
@@ -2441,6 +2953,14 @@ class _WorkerCardState extends State<WorkerCard> {
                 style: titleStyle,
               ),
               children: [
+                _buildPermissionGroupActions(
+                  lang: lang,
+                  allKeys: const [
+                    'statistics',
+                    'accelerate_confirmed_invoices',
+                  ],
+                  viewOnlyKeys: const ['statistics'],
+                ),
                 SwitchListTile(
                   title: Text(
                     _tr(

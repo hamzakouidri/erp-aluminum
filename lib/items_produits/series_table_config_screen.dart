@@ -67,6 +67,29 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'Laissez vide si la série ne l’utilise pas',
     ),
     _SeriesRole(
+      key: 'sash_lateral',
+      ar: 'قائم جانبي منزلق',
+      fr: 'Montant latéral coulissant',
+      descriptionAr: 'القطع التي يمكن أن تستبدل القائم الجانبي في المنزلق',
+      descriptionFr:
+          'Profils interchangeables pour le montant latéral coulissant',
+    ),
+    _SeriesRole(
+      key: 'sash_central',
+      ar: 'قائم وسطي منزلق',
+      fr: 'Montant central coulissant',
+      descriptionAr: 'القطع التي يمكن أن تستبدل القائم الوسطي في المنزلق',
+      descriptionFr:
+          'Profils interchangeables pour le montant central coulissant',
+    ),
+    _SeriesRole(
+      key: 'sash_traverse',
+      ar: 'سكة / ترافيرس الضلفة',
+      fr: 'Traverse ouvrant coulissant',
+      descriptionAr: 'القطع العرضية الخاصة بضلفة المنزلق',
+      descriptionFr: 'Profils traverses de l’ouvrant coulissant',
+    ),
+    _SeriesRole(
       key: 'glazing_bead',
       ar: 'باغيت / غطاء الزجاج',
       fr: 'Parclose',
@@ -132,6 +155,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   final Map<String, int?> _defaultSectionByRole = {
     for (final role in _roles) role.key: null,
   };
+  final Map<String, Map<String, dynamic>> _roleOptionsByRoleSection = {};
   final Map<int, Map<String, String?>> _gasketTypeBySectionPosition = {};
 
   bool _loadingProfiles = true;
@@ -236,6 +260,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       _defaultSectionByRole[role.key] = null;
     }
     _tableConfig = null;
+    _roleOptionsByRoleSection.clear();
     _gasketTypeBySectionPosition.clear();
     _sashWidth2Controller.clear();
     _sashWidth3Controller.clear();
@@ -321,6 +346,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       final sectionId = (item['section_id'] as num?)?.toInt();
       if (!_sectionIdsByRole.containsKey(role) || sectionId == null) continue;
       _sectionIdsByRole[role]!.add(sectionId);
+      _roleOptionsByRoleSection[_roleOptionKey(role, sectionId)] =
+          _roleOptionsFromRow(item);
       if (item['is_default'] == 1 || _defaultSectionByRole[role] == null) {
         _defaultSectionByRole[role] = sectionId;
       }
@@ -347,14 +374,77 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     }
   }
 
+  String _roleOptionKey(String role, int sectionId) => '$role:$sectionId';
+
+  bool _truthy(dynamic value, {bool fallback = false}) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value.toString().trim().toLowerCase();
+    if (text.isEmpty) return fallback;
+    return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
+  }
+
+  double _number(dynamic value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ??
+        fallback;
+  }
+
+  Map<String, dynamic> _defaultRoleOptions(String role) {
+    return {
+      'usage_scope': _isSlidingSeries ? 'sliding' : 'opening',
+      'show_when_glass': role == 'reducer' ? 'simple' : 'any',
+      'integrated_side_cover': false,
+      'allows_side_cover': true,
+      'allowed_with_shutter': true,
+      'show_in_drawing': true,
+      'show_in_quantity': true,
+      'show_in_dialog': true,
+      'width_adjust_mm': 0.0,
+      'height_adjust_mm': 0.0,
+      'formula_note': '',
+    };
+  }
+
+  Map<String, dynamic> _roleOptionsFromRow(Map<String, dynamic> row) {
+    final role = row['role_key']?.toString() ?? '';
+    return {
+      ..._defaultRoleOptions(role),
+      'usage_scope': row['usage_scope']?.toString() ?? 'auto',
+      'show_when_glass': row['show_when_glass']?.toString() ?? 'any',
+      'integrated_side_cover': _truthy(row['integrated_side_cover']),
+      'allows_side_cover': _truthy(row['allows_side_cover'], fallback: true),
+      'allowed_with_shutter': _truthy(
+        row['allowed_with_shutter'],
+        fallback: true,
+      ),
+      'show_in_drawing': _truthy(row['show_in_drawing'], fallback: true),
+      'show_in_quantity': _truthy(row['show_in_quantity'], fallback: true),
+      'show_in_dialog': _truthy(row['show_in_dialog'], fallback: true),
+      'width_adjust_mm': _number(row['width_adjust_mm']),
+      'height_adjust_mm': _number(row['height_adjust_mm']),
+      'formula_note': row['formula_note']?.toString() ?? '',
+    };
+  }
+
+  Map<String, dynamic> _roleOptionsFor(String role, int sectionId) {
+    return _roleOptionsByRoleSection.putIfAbsent(
+      _roleOptionKey(role, sectionId),
+      () => _defaultRoleOptions(role),
+    );
+  }
+
   void _toggleSection(String role, int sectionId, bool selected) {
     setState(() {
       final selectedIds = _sectionIdsByRole[role]!;
       if (selected) {
         selectedIds.add(sectionId);
         _defaultSectionByRole[role] ??= sectionId;
+        _roleOptionsFor(role, sectionId);
       } else {
         selectedIds.remove(sectionId);
+        _roleOptionsByRoleSection.remove(_roleOptionKey(role, sectionId));
         if (role == 'frame' || role == 'sash' || role == 'glazing_bead') {
           _gasketTypeBySectionPosition.remove(sectionId);
         }
@@ -390,9 +480,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final roles = <Map<String, dynamic>>[];
     for (final role in _availableRoles) {
       for (final sectionId in _sectionIdsByRole[role.key]!) {
+        final options = _roleOptionsFor(role.key, sectionId);
         roles.add({
           'role_key': role.key,
           'section_id': sectionId,
+          ...options,
           'is_required': role.required,
           'is_default': _defaultSectionByRole[role.key] == sectionId,
           'is_visible': true,
@@ -704,8 +796,319 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                 );
               }).toList(),
             ),
+          _selectedRoleRulesList(role),
         ],
       ),
+    );
+  }
+
+  Widget _selectedRoleRulesList(_SeriesRole role) {
+    final sections = _selectedSectionsForRole(role.key);
+    if (sections.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _t('قواعد المقاطع المختارة', 'Règles des profils choisis'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          for (final section in sections) _selectedRoleRuleTile(role, section),
+        ],
+      ),
+    );
+  }
+
+  Widget _selectedRoleRuleTile(_SeriesRole role, Map<String, dynamic> section) {
+    final sectionId = (section['id'] as num?)?.toInt();
+    if (sectionId == null) return const SizedBox.shrink();
+    final options = _roleOptionsFor(role.key, sectionId);
+    final isDefault = _defaultSectionByRole[role.key] == sectionId;
+    final badges = <String>[
+      _usageScopeLabel(options['usage_scope']?.toString() ?? 'auto'),
+      _glassRuleLabel(options['show_when_glass']?.toString() ?? 'any'),
+      if (_truthy(options['integrated_side_cover']))
+        _t('غطاء مدمج', 'Couvre-joint intégré'),
+      if (!_truthy(options['allows_side_cover'], fallback: true))
+        _t('لا يقبل كوفرجوا', 'Sans couvre-joint séparé'),
+      if (!_truthy(options['allowed_with_shutter'], fallback: true))
+        _t('ممنوع مع الستار', 'Interdit avec volet'),
+    ];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        dense: true,
+        leading: Icon(
+          isDefault ? Icons.star_rounded : Icons.rule_folder_outlined,
+          color: isDefault ? Colors.amber.shade700 : null,
+        ),
+        title: Text(_sectionLabel(section)),
+        subtitle: Text(badges.join(' • ')),
+        trailing: IconButton(
+          tooltip: _t('تعديل القواعد', 'Modifier les règles'),
+          icon: const Icon(Icons.tune_rounded),
+          onPressed: () => _editRoleOptions(role, section),
+        ),
+        onTap: () => _editRoleOptions(role, section),
+      ),
+    );
+  }
+
+  String _usageScopeLabel(String value) {
+    switch (value) {
+      case 'opening':
+        return _t('فتح', 'Ouvrant');
+      case 'sliding':
+        return _t('منزلق', 'Coulissant');
+      case 'both':
+        return _t('فتح ومنزلق', 'Ouvrant et coulissant');
+      default:
+        return _t('تلقائي', 'Auto');
+    }
+  }
+
+  String _glassRuleLabel(String value) {
+    switch (value) {
+      case 'simple':
+        return _t('زجاج مفرد فقط', 'Vitrage simple seul');
+      case 'double':
+        return _t('زجاج مزدوج فقط', 'Double vitrage seul');
+      default:
+        return _t('كل أنواع الزجاج', 'Tout vitrage');
+    }
+  }
+
+  Future<void> _editRoleOptions(
+    _SeriesRole role,
+    Map<String, dynamic> section,
+  ) async {
+    final sectionId = (section['id'] as num?)?.toInt();
+    if (sectionId == null) return;
+    final original = Map<String, dynamic>.from(
+      _roleOptionsFor(role.key, sectionId),
+    );
+    final widthCtrl = TextEditingController(
+      text: _number(original['width_adjust_mm']).toString(),
+    );
+    final heightCtrl = TextEditingController(
+      text: _number(original['height_adjust_mm']).toString(),
+    );
+    final noteCtrl = TextEditingController(
+      text: original['formula_note']?.toString() ?? '',
+    );
+    var draft = Map<String, dynamic>.from(original);
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            void update(String key, dynamic value) {
+              setDialogState(() => draft[key] = value);
+            }
+
+            return AlertDialog(
+              title: Text('${_t('قواعد', 'Règles')} ${_sectionLabel(section)}'),
+              content: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue:
+                            draft['usage_scope']?.toString() ?? 'auto',
+                        decoration: InputDecoration(
+                          labelText: _t('استعمال المقطع', 'Utilisation'),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'auto',
+                            child: Text(_usageScopeLabel('auto')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'opening',
+                            child: Text(_usageScopeLabel('opening')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'sliding',
+                            child: Text(_usageScopeLabel('sliding')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'both',
+                            child: Text(_usageScopeLabel('both')),
+                          ),
+                        ],
+                        onChanged: (value) =>
+                            update('usage_scope', value ?? 'auto'),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue:
+                            draft['show_when_glass']?.toString() ?? 'any',
+                        decoration: InputDecoration(
+                          labelText: _t('يظهر مع الزجاج', 'Vitrage'),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'any',
+                            child: Text(_glassRuleLabel('any')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'simple',
+                            child: Text(_glassRuleLabel('simple')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'double',
+                            child: Text(_glassRuleLabel('double')),
+                          ),
+                        ],
+                        onChanged: (value) =>
+                            update('show_when_glass', value ?? 'any'),
+                      ),
+                      const SizedBox(height: 10),
+                      _dialogSwitch(
+                        title: _t('غطاء جانبي مدمج', 'Couvre-joint intégré'),
+                        value: _truthy(draft['integrated_side_cover']),
+                        onChanged: (value) =>
+                            update('integrated_side_cover', value),
+                      ),
+                      _dialogSwitch(
+                        title: _t(
+                          'يقبل كوفرجوا منفصل',
+                          'Accepte un couvre-joint séparé',
+                        ),
+                        value: _truthy(
+                          draft['allows_side_cover'],
+                          fallback: true,
+                        ),
+                        onChanged: (value) =>
+                            update('allows_side_cover', value),
+                      ),
+                      _dialogSwitch(
+                        title: _t('مسموح مع الستار', 'Autorisé avec volet'),
+                        value: _truthy(
+                          draft['allowed_with_shutter'],
+                          fallback: true,
+                        ),
+                        onChanged: (value) =>
+                            update('allowed_with_shutter', value),
+                      ),
+                      const Divider(height: 20),
+                      _dialogSwitch(
+                        title: _t('يظهر في الرسم', 'Visible au dessin'),
+                        value: _truthy(
+                          draft['show_in_drawing'],
+                          fallback: true,
+                        ),
+                        onChanged: (value) => update('show_in_drawing', value),
+                      ),
+                      _dialogSwitch(
+                        title: _t(
+                          'يظهر في جدول الكمية',
+                          'Visible au tableau quantité',
+                        ),
+                        value: _truthy(
+                          draft['show_in_quantity'],
+                          fallback: true,
+                        ),
+                        onChanged: (value) => update('show_in_quantity', value),
+                      ),
+                      _dialogSwitch(
+                        title: _t('يظهر في نافذة التغيير', 'Visible au choix'),
+                        value: _truthy(draft['show_in_dialog'], fallback: true),
+                        onChanged: (value) => update('show_in_dialog', value),
+                      ),
+                      const Divider(height: 20),
+                      TextField(
+                        controller: widthCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _t(
+                            'تعديل العرض لهذا الدور (مم)',
+                            'Correction largeur du rôle (mm)',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: heightCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          signed: true,
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _t(
+                            'تعديل الطول لهذا الدور (مم)',
+                            'Correction hauteur du rôle (mm)',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: noteCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          labelText: _t('ملاحظة حسابية', 'Note de calcul'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(_t('إلغاء', 'Annuler')),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    draft = {
+                      ...draft,
+                      'width_adjust_mm': _number(widthCtrl.text),
+                      'height_adjust_mm': _number(heightCtrl.text),
+                      'formula_note': noteCtrl.text.trim(),
+                    };
+                    Navigator.pop(dialogContext, draft);
+                  },
+                  icon: const Icon(Icons.check_rounded),
+                  label: Text(_t('اعتماد', 'Valider')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    widthCtrl.dispose();
+    heightCtrl.dispose();
+    noteCtrl.dispose();
+
+    if (!mounted) return;
+    if (result == null) return;
+    setState(() {
+      _roleOptionsByRoleSection[_roleOptionKey(role.key, sectionId)] = result;
+    });
+  }
+
+  Widget _dialogSwitch({
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile.adaptive(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      value: value,
+      onChanged: onChanged,
     );
   }
 

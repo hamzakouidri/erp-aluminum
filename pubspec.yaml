@@ -62,11 +62,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
-    - assets/images/wood_texture.png
-    - assets/images/wood_texture_d0.png
-    - assets/images/wood_texture_antique.png
-    - assets/images/wood_texture_dark.png
-    - assets/images/wood_texture_grey.png
     - assets/fonts/Amiri-Regular.ttf
     - assets/fonts/Amiri-Bold.ttf
     - assets/fonts/Cairo-Regular.ttf
@@ -78,7 +73,6 @@ flutter:
     # web build.
     - web/sqlite3.wasm
     - Icon/
-    - images/
 
   fonts:
     - family: Arial

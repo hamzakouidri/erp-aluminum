@@ -2228,6 +2228,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     required double price,
     required ValueChanged<double> onSave,
   }) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return SizedBox(
       width: 320,
       child: DecoratedBox(
@@ -2254,7 +2258,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               ),
             ),
             PriceEditRow(
-              title: 'السعر',
+              title: Localization.translate('السعر', lang),
               currentPrice: price,
               canChangePrices: canChangePrices,
               onSave: onSave,

@@ -568,6 +568,79 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     model.height = height;
   }
 
+  String _catalogCacheToken(Map<String, dynamic>? value) {
+    if (value == null) return '';
+    final id = value['id']?.toString().trim() ?? '';
+    if (id.isNotEmpty) return 'id:$id';
+    return 'name:${(value['name'] ?? value['color_name'] ?? '').toString().trim().toLowerCase()}';
+  }
+
+  String _glassSpecCacheToken(GlassSpecification spec) {
+    return [
+      spec.structure.name,
+      spec.finishOuter.name,
+      spec.finishInner.name,
+      spec.colorOuter.name,
+      spec.colorInner.name,
+      spec.processingOuter.name,
+      spec.processingInner.name,
+      spec.temperedOuter ? 'to' : '',
+      spec.temperedInner ? 'ti' : '',
+      spec.colorP.name,
+      spec.hasGas ? 'gas' : '',
+      spec.intercallThickness,
+      spec.thicknessOuter ?? '',
+      spec.thicknessInner ?? '',
+      spec.laminatedColorOuter,
+      spec.laminatedColorInner,
+      spec.jointTwoSides ? 'joint2' : 'joint1',
+    ].join(':');
+  }
+
+  String _catalogGlassSignature(WindowModel model) {
+    final parts = <String>[];
+    for (final zone in model.zones) {
+      parts.add('${zone.content.name}:${_glassSpecCacheToken(zone.glass)}');
+      final cellKeys = zone.cellGlassSpec.keys.toList()..sort();
+      for (final key in cellKeys) {
+        parts.add('$key:${_glassSpecCacheToken(zone.cellGlassSpec[key]!)}');
+      }
+    }
+    return parts.join('|');
+  }
+
+  String _catalogCacheKey(WindowModel model) {
+    return [
+      model.systemMode ?? '',
+      model.loadedSeriesId?.toString() ?? '',
+      model.loadedSeriesName ?? '',
+      model.loadedSlidingSeriesId?.toString() ?? '',
+      model.loadedSlidingSeriesName ?? '',
+      _catalogCacheToken(model.selectedDbColor),
+      _catalogCacheToken(model.selectedAccessoryColor),
+      _catalogGlassSignature(model),
+    ].join('|');
+  }
+
+  Future<void> _applyWindowModelWithCatalogCache(
+    WindowModel model,
+    Map<String, dynamic> modelMap,
+    Map<String, WindowModel> catalogCache,
+  ) async {
+    applyWindowModelFromMap(model, modelMap);
+    final cacheKey = _catalogCacheKey(model);
+    final cached = catalogCache[cacheKey];
+    if (cached != null) {
+      model.copyCatalogRuntimeFrom(cached);
+      return;
+    }
+
+    await model.loadCatalogData(model.systemMode ?? '');
+    final snapshot = WindowModel(db: widget.db);
+    snapshot.copyCatalogRuntimeFrom(model, preserveCurrentSelections: false);
+    catalogCache[cacheKey] = snapshot;
+  }
+
   List<BomItem> _standaloneProductBom(WindowModel model) {
     final name = (model.manualNameOverride ?? model.description ?? 'منتج خاص')
         .trim();
@@ -1249,6 +1322,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
       final rawItems = await widget.db.readCommandeDetails(orderId);
       final kitCache = await _loadKitBundleCache();
+      final catalogCache = <String, WindowModel>{};
 
       // مخزن التجميع: مفتاح التجميع → السلعة المجمّعة
       // مفتاح التجميع = (originalName + unit + imagePath) لتمييز السلع الفريدة
@@ -1294,7 +1368,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           }
 
           final model = WindowModel(db: widget.db);
-          await applyWindowModelAndLoadCatalog(model, modelMap);
+          await _applyWindowModelWithCatalogCache(
+            model,
+            modelMap,
+            catalogCache,
+          );
 
           // Only the explicit replacement flag cancels a product. Price zero
           // can mean a missing price or a free item and must not erase its BOM.
@@ -1349,7 +1427,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
               // Create a dedicated instance model for drawing and individual listing
               final instanceModel = WindowModel(db: widget.db);
-              await applyWindowModelAndLoadCatalog(instanceModel, modelMap);
+              applyWindowModelFromMap(instanceModel, modelMap);
+              instanceModel.copyCatalogRuntimeFrom(model);
               if (w > 0 && h > 0) {
                 _applyInstanceSize(instanceModel, w, h);
               }
@@ -1847,6 +1926,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     int? supplierId = suppliers.first['id'] as int?;
     int? locationId = locations.first['id'] as int?;
     var documentKind = _PurchaseDocumentKind.purchaseOrder;
+    final glassItemsForDialog = purchaseItems
+        .where((item) => item.category == 'glass')
+        .toList();
+    final otherItemsForDialog = purchaseItems
+        .where((item) => item.category != 'glass')
+        .toList();
 
     final request = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -1947,6 +2032,32 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       ),
                     ),
                   ),
+                  if (glassItemsForDialog.isNotEmpty &&
+                      otherItemsForDialog.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.cyan.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.cyan.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Text(
+                        '${_t('سيتم فصل الشراء تلقائيًا إلى وثيقتين:')} '
+                        '${_t('الزجاج')} (${glassItemsForDialog.length})، '
+                        '${_t('وباقي العناصر')} (${otherItemsForDialog.length}). '
+                        '${_t('يمكن تعديل كل وثيقة بعد إنشائها.')}',
+                        style: TextStyle(
+                          color: Colors.cyan.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -2515,6 +2626,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final categories = grouped.keys.toList()
       ..sort((a, b) => _categorySortIndex(a).compareTo(_categorySortIndex(b)));
 
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      return _buildDesktopRequiredGoodsTable();
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
       children: [
@@ -2596,6 +2711,431 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ],
       ],
     );
+  }
+
+  Widget _buildDesktopRequiredGoodsTable() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerStyle = const TextStyle(
+      color: Colors.white,
+      fontWeight: FontWeight.bold,
+      fontSize: 12,
+    );
+    final rows = <ResizableTableRow>[];
+
+    for (final item in _aggregatedItems) {
+      rows.add(_buildDesktopRequiredGoodsRow(item, item.category, isDark));
+      final kitName = item.kitGroupName;
+      if (kitName != null &&
+          kitName.isNotEmpty &&
+          _expandedKits.contains(item.name)) {
+        for (final child in item.kitSubItems) {
+          if (!child.originalName.startsWith('${kitName}_')) continue;
+          rows.add(_buildDesktopKitChildRow(child, isDark));
+        }
+      }
+
+      final plan = item.cuttingPlan;
+      if (plan != null &&
+          _expandedCuttingPlans.contains(_cuttingKeyForItem(item))) {
+        rows.addAll(_buildDesktopCuttingRows(item, plan, isDark));
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+      child: SingleChildScrollView(
+        child: ResizableColumnsTable(
+          key: ValueKey('required-goods-${_aggregatedItems.length}'),
+          headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+          borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+          rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+          headerMinHeight: 42,
+          rowMinHeight: 54,
+          cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          columns: [
+            ResizableTableColumn(
+              id: 'image',
+              label: Text(_t('الصورة'), style: headerStyle),
+              initialWidth: 72,
+              minWidth: 58,
+              maxWidth: 110,
+              alignment: Alignment.center,
+            ),
+            ResizableTableColumn(
+              id: 'category',
+              label: Text(_t('الفئة'), style: headerStyle),
+              initialWidth: 160,
+              minWidth: 120,
+              maxWidth: 240,
+            ),
+            ResizableTableColumn(
+              id: 'name',
+              label: Text(_t('Libellé / Description'), style: headerStyle),
+              initialWidth: 330,
+              minWidth: 220,
+              maxWidth: 620,
+            ),
+            ResizableTableColumn(
+              id: 'details',
+              label: Text(_t('التفاصيل'), style: headerStyle),
+              initialWidth: 300,
+              minWidth: 180,
+              maxWidth: 520,
+            ),
+            ResizableTableColumn(
+              id: 'actual',
+              label: Text(_t('المطلوب الفعلي'), style: headerStyle),
+              initialWidth: 140,
+              minWidth: 110,
+              maxWidth: 220,
+            ),
+            ResizableTableColumn(
+              id: 'purchase',
+              label: Text(_t('كمية الشراء'), style: headerStyle),
+              initialWidth: 140,
+              minWidth: 110,
+              maxWidth: 220,
+            ),
+            ResizableTableColumn(
+              id: 'unit_price',
+              label: Text(_t('سعر الوحدة'), style: headerStyle),
+              initialWidth: 130,
+              minWidth: 105,
+              maxWidth: 210,
+            ),
+            ResizableTableColumn(
+              id: 'estimated',
+              label: Text(_t('السعر التقديري'), style: headerStyle),
+              initialWidth: 150,
+              minWidth: 120,
+              maxWidth: 240,
+            ),
+            ResizableTableColumn(
+              id: 'actions',
+              label: Text(_t('إجراء'), style: headerStyle),
+              initialWidth: 110,
+              minWidth: 90,
+              maxWidth: 180,
+              alignment: Alignment.center,
+            ),
+          ],
+          rows: rows,
+        ),
+      ),
+    );
+  }
+
+  ResizableTableRow _buildDesktopRequiredGoodsRow(
+    AggregatedGoodItem item,
+    String category,
+    bool isDark,
+  ) {
+    final color = _categoryColor(category);
+    final isKit = item.kitGroupName != null && item.kitGroupName!.isNotEmpty;
+    final plan = item.cuttingPlan;
+    final rowColor = isDark
+        ? color.withValues(alpha: 0.08)
+        : color.withValues(alpha: 0.035);
+    final onTap = isKit
+        ? () => _toggleKitExpansion(item.name)
+        : category == 'profile'
+        ? () => _showSectionSelectionDialog(item, category)
+        : null;
+
+    return ResizableTableRow(
+      color: rowColor,
+      onTap: onTap,
+      cells: [
+        Center(
+          child: isKit
+              ? Icon(Icons.inventory, color: color)
+              : SectionImageWidget(
+                  code: item.profileCode,
+                  imagePath: item.imagePath,
+                  size: 34,
+                  fallbackIcon: _categoryIcon(category),
+                  fallbackColor: color,
+                ),
+        ),
+        _desktopCategoryCell(category, color, isDark),
+        _desktopNameCell(
+          title: item.name,
+          subtitle: item.name != item.originalName
+              ? '${_t('المكوّن المطلوب')}: ${_t(item.originalName)}'
+              : null,
+          isDark: isDark,
+          leading: item.isMissing
+              ? Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange.shade700,
+                  size: 17,
+                )
+              : null,
+        ),
+        _desktopTextCell(_itemMeta(item), isDark: isDark, maxLines: 3),
+        _desktopTextCell(
+          _actualRequiredLabel(item),
+          isDark: isDark,
+          fontWeight: FontWeight.w700,
+        ),
+        _desktopTextCell(
+          _purchaseQuantityLabel(item),
+          isDark: isDark,
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
+        _desktopTextCell(
+          item.unitPrice > 0
+              ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}'
+              : _t('السعر غير محدد'),
+          isDark: isDark,
+        ),
+        _desktopTextCell(
+          '${item.totalCost.toStringAsFixed(2)} دج',
+          isDark: isDark,
+          fontWeight: FontWeight.w800,
+        ),
+        _desktopActionCell(item, category, plan, color),
+      ],
+    );
+  }
+
+  ResizableTableRow _buildDesktopKitChildRow(BomItem child, bool isDark) {
+    final category = requiredGoodsCategoryForBom(child);
+    final color = _categoryColor(category);
+    final details = <String>[
+      if ((child.profileCode ?? '').trim().isNotEmpty)
+        '${_t('الكود')}: ${child.profileCode}',
+      if ((child.colorName ?? '').trim().isNotEmpty)
+        '${_t('اللون')}: ${_t(child.colorName!)}',
+      if ((child.length ?? 0) > 0) '${_t('القياس')}: ${child.length}',
+    ].join(' • ');
+
+    return ResizableTableRow(
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.03)
+          : Colors.grey.shade50,
+      cells: [
+        Icon(Icons.subdirectory_arrow_left, size: 18, color: color),
+        _desktopCategoryCell(category, color, isDark),
+        _desktopNameCell(
+          title: requiredGoodsDisplayName(child),
+          subtitle: _t('مكوّن داخل الكِت'),
+          isDark: isDark,
+        ),
+        _desktopTextCell(details, isDark: isDark, maxLines: 2),
+        _desktopTextCell(
+          '${_roundQuantity(child.purchaseQuantity, child.unit)} ${_t(child.unit)}',
+          isDark: isDark,
+        ),
+        _desktopTextCell(
+          '${_roundQuantity(child.purchaseQuantity, child.unit)} ${_t(child.unit)}',
+          isDark: isDark,
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+        _desktopTextCell(
+          '${child.unitPrice.toStringAsFixed(2)} دج / ${_t(child.unit)}',
+          isDark: isDark,
+        ),
+        _desktopTextCell(
+          '${child.total.toStringAsFixed(2)} دج',
+          isDark: isDark,
+          fontWeight: FontWeight.w700,
+        ),
+        const SizedBox.shrink(),
+      ],
+    );
+  }
+
+  List<ResizableTableRow> _buildDesktopCuttingRows(
+    AggregatedGoodItem item,
+    OrderCuttingPlan plan,
+    bool isDark,
+  ) {
+    final color = _categoryColor(item.category);
+    return plan.bars.indexed.map((entry) {
+      final barNumber = entry.$1 + 1;
+      final cuts = entry.$2;
+      final cutText = cuts.map((cut) => '${(cut * 1000).round()}').join(' + ');
+      final remainder = _barRemainder(plan, cuts);
+      return ResizableTableRow(
+        color: isDark
+            ? color.withValues(alpha: 0.04)
+            : color.withValues(alpha: 0.025),
+        cells: [
+          Icon(Icons.content_cut, size: 18, color: color),
+          _desktopTextCell(_t('خطة القص'), isDark: isDark),
+          _desktopNameCell(
+            title: '${_t('قطاع')} $barNumber',
+            subtitle: item.name,
+            isDark: isDark,
+          ),
+          _desktopTextCell(
+            '$cutText mm • ${_t('الباقي')}: ${(remainder * 1000).round()} mm',
+            isDark: isDark,
+            maxLines: 2,
+          ),
+          _desktopTextCell('-', isDark: isDark),
+          _desktopTextCell('-', isDark: isDark),
+          _desktopTextCell('-', isDark: isDark),
+          _desktopTextCell('-', isDark: isDark),
+          const SizedBox.shrink(),
+        ],
+      );
+    }).toList();
+  }
+
+  Widget _desktopCategoryCell(String category, Color color, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.18 : 0.1),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        _categoryLabel(category),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopNameCell({
+    required String title,
+    required bool isDark,
+    String? subtitle,
+    Widget? leading,
+  }) {
+    return Row(
+      children: [
+        if (leading != null) ...[leading, const SizedBox(width: 5)],
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t(title),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isDark ? Colors.white60 : Colors.grey.shade600,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _desktopTextCell(
+    String text, {
+    required bool isDark,
+    Color? color,
+    FontWeight fontWeight = FontWeight.w500,
+    int maxLines = 2,
+  }) {
+    return Text(
+      text.trim().isEmpty ? '-' : text,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: color ?? (isDark ? Colors.white70 : Colors.grey.shade800),
+        fontSize: 12,
+        fontWeight: fontWeight,
+      ),
+    );
+  }
+
+  Widget _desktopActionCell(
+    AggregatedGoodItem item,
+    String category,
+    OrderCuttingPlan? plan,
+    Color color,
+  ) {
+    final isKit = item.kitGroupName != null && item.kitGroupName!.isNotEmpty;
+    if (isKit) {
+      final isExpanded = _expandedKits.contains(item.name);
+      return IconButton(
+        tooltip: _t(isExpanded ? 'إخفاء المكونات' : 'عرض المكونات'),
+        onPressed: () => _toggleKitExpansion(item.name),
+        icon: Icon(
+          isExpanded ? Icons.expand_less : Icons.expand_more,
+          color: color,
+        ),
+      );
+    }
+    if (category == 'profile' || plan != null) {
+      final key = plan == null ? null : _cuttingKeyForItem(item);
+      final isExpanded = key != null && _expandedCuttingPlans.contains(key);
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (category == 'profile')
+            IconButton(
+              tooltip: _t('تغيير القطاع'),
+              onPressed: () => _showSectionSelectionDialog(item, category),
+              icon: Icon(Icons.compare_arrows, color: color),
+            ),
+          if (key != null)
+            IconButton(
+              tooltip: _t(isExpanded ? 'إخفاء خطة القص' : 'عرض خطة القص'),
+              onPressed: () => _toggleCuttingPlanExpansion(key),
+              icon: Icon(
+                isExpanded ? Icons.expand_less : Icons.content_cut,
+                color: color,
+              ),
+            ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  void _toggleKitExpansion(String key) {
+    setState(() {
+      if (_expandedKits.contains(key)) {
+        _expandedKits.remove(key);
+      } else {
+        _expandedKits.add(key);
+      }
+    });
+  }
+
+  String _cuttingKeyForItem(AggregatedGoodItem item) =>
+      '${item.inventoryItemType}:${item.catalogItemId}:${item.colorId}:'
+      '${item.stockLength}:${item.originalName}';
+
+  void _toggleCuttingPlanExpansion(String key) {
+    setState(() {
+      if (_expandedCuttingPlans.contains(key)) {
+        _expandedCuttingPlans.remove(key);
+      } else {
+        _expandedCuttingPlans.add(key);
+      }
+    });
   }
 
   Future<int?> _seriesIdFor(AggregatedGoodItem item) async {
@@ -3031,6 +3571,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       MaterialPageRoute(
         builder: (context) => _OrderShortageReportPage(
           orderId: _safeInt(widget.orderData['id'])!,
+          db: widget.db,
           reports: reports,
         ),
       ),
@@ -3496,8 +4037,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
 
     final plan = item.cuttingPlan;
-    final cuttingKey =
-        '${item.inventoryItemType}:${item.catalogItemId}:${item.colorId}:${item.stockLength}:${item.originalName}';
+    final cuttingKey = _cuttingKeyForItem(item);
     final isCuttingExpanded = _expandedCuttingPlans.contains(cuttingKey);
 
     final itemRow = Container(
@@ -3853,6 +4393,20 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       return '$formatted ${_t('قطاع')}';
     }
     return '$formatted ${_t(item.unit)}';
+  }
+
+  String _actualRequiredLabel(AggregatedGoodItem item) {
+    if (item.cuttingPieces.isNotEmpty) {
+      final actualMeters = item.cuttingPieces.fold<double>(
+        0,
+        (sum, piece) => sum + piece,
+      );
+      return '${_roundQuantity(actualMeters, 'م')} ${_t('م')}';
+    }
+    if (item.category == 'glass' || item.unit.trim().toLowerCase() == 'm²') {
+      return '${_roundQuantity(item.totalQuantity, 'm²')} m²';
+    }
+    return _purchaseQuantityLabel(item);
   }
 
   String _itemMeta(AggregatedGoodItem item) {
@@ -4250,10 +4804,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 class _OrderShortageReportPage extends StatelessWidget {
   const _OrderShortageReportPage({
     required this.orderId,
+    required this.db,
     required this.reports,
   });
 
   final int orderId;
+  final SqlDatabase db;
   final List<Map<String, dynamic>> reports;
 
   String _quantity(double value) => value == value.roundToDouble()
@@ -4262,6 +4818,99 @@ class _OrderShortageReportPage extends StatelessWidget {
 
   String _address(Map<String, dynamic> row) =>
       RemnantTicketService.storageAddress(row);
+
+  List<int> _usedRemnantIds() {
+    final ids = <int>{};
+    for (final report in reports) {
+      final plan = report['remnant_plan'] as InventoryAwareCuttingPlan?;
+      if (plan == null) continue;
+      for (final usage in plan.remnantUsages) {
+        ids.add(usage.remnant.id);
+      }
+    }
+    return ids.toList();
+  }
+
+  List<Map<String, dynamic>> _stockDeductions() {
+    final rows = <Map<String, dynamic>>[];
+    for (final report in reports) {
+      if (report['unlinked'] == true) continue;
+      final item = report['item'] as AggregatedGoodItem;
+      final stockRows = List<Map<String, dynamic>>.from(
+        report['stock_rows'] as List? ?? const [],
+      );
+      for (final row in stockRows) {
+        final quantity = (row['allocated_quantity'] as num?)?.toDouble() ?? 0.0;
+        if (quantity <= 0) continue;
+        rows.add({
+          'item_id': item.catalogItemId,
+          'item_type': item.inventoryItemType,
+          'color_id': item.colorId,
+          'location_id': row['location_id'],
+          'quantity': quantity,
+        });
+      }
+    }
+    return rows;
+  }
+
+  Future<void> _applyInventoryIssue(BuildContext context) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    String t(String key) => Localization.translate(key, lang);
+    final remnantIds = _usedRemnantIds();
+    final stockDeductions = _stockDeductions();
+    if (remnantIds.isEmpty && stockDeductions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t('لا توجد كميات متاحة لاعتماد صرفها.'))),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t('اعتماد صرف المخزون')),
+        content: Text(
+          t(
+            'سيتم خصم القطع الكاملة من المخزون وتغيير حالة الفضلات المستعملة إلى منتهية. لا يمكن اعتماد نفس الطلبية مرتين.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(t('إلغاء')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.check_circle_outline),
+            label: Text(t('اعتماد')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final result = await db.applyOrderInventoryIssue(
+      orderId: orderId,
+      remnantIds: remnantIds,
+      stockDeductions: stockDeductions,
+    );
+    if (!context.mounted) return;
+    final alreadyApplied = result['already_applied'] == true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          alreadyApplied
+              ? t('تم اعتماد صرف هذه الطلبية سابقاً.')
+              : '${t('تم اعتماد الصرف')}: '
+                    '${result['consumed_remnants'] ?? 0} ${t('فضلات')}، '
+                    '${result['deducted_rows'] ?? 0} ${t('أسطر مخزون')}.',
+        ),
+        backgroundColor: alreadyApplied ? Colors.orange : Colors.green,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4276,6 +4925,16 @@ class _OrderShortageReportPage extends StatelessWidget {
         title: Text('${t('تقرير نواقص الطلبية')} #$orderId'),
         backgroundColor: const Color(0xFF1A237E),
         foregroundColor: Colors.white,
+        actions: [
+          TextButton.icon(
+            onPressed: () => _applyInventoryIssue(context),
+            icon: const Icon(Icons.inventory_2_outlined, color: Colors.white),
+            label: Text(
+              t('اعتماد الصرف'),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 40),

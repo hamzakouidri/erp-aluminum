@@ -196,8 +196,10 @@ class SqlDatabase {
     'Profile',
     'Series',
     'Sections',
+    'SeriesTableConfig',
     'SeriesDesignConfig',
     'SeriesDesignRoles',
+    'CatalogItemRules',
     'SectionJointLinks',
     'SeriesShutterRules',
     'Colors',
@@ -246,6 +248,7 @@ class SqlDatabase {
     'CurrentStock',
     'InventorySettings',
     'OrderCuttingSessions',
+    'OrderInventoryIssueSessions',
     'MaterialRemnants',
     'MaterialScrap',
   ];
@@ -320,7 +323,7 @@ class SqlDatabase {
       return _dbFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 62,
+          version: 64,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
           onOpen: (db) async {
@@ -331,7 +334,7 @@ class SqlDatabase {
     }
     return openDatabase(
       path,
-      version: 62,
+      version: 64,
       password: password,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -466,12 +469,14 @@ class SqlDatabase {
 
     await _ensureSeriesDesignTables(db);
     await _ensureClientCodeInfrastructure(db);
+    await _ensureOrderCodeInfrastructure(db);
     await _ensureRemnantInventorySchema(db);
     await _ensureAdvancedKitCompatibilitySchema(db);
     await _ensureDecorPanelDesignSchema(db);
     await _ensurePaymentAllocationSchema(db);
     await _ensureSyncTombstoneInfrastructure(db);
     await _backfillClientCodes(db);
+    await _backfillOrderCodes(db);
 
     // Automatically link section and profile images based on their codes
     try {
@@ -1137,6 +1142,11 @@ class SqlDatabase {
         "ALTER TABLE Accessories ADD COLUMN is_kit_screw INTEGER DEFAULT 0;",
       );
     } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE Accessories ADD COLUMN is_tandem_screw INTEGER DEFAULT 0;",
+      );
+    } catch (_) {}
 
     // Ensure new tables exist in case of skipped version updates
     await db.execute('''
@@ -1584,6 +1594,17 @@ class SqlDatabase {
         series_id INTEGER NOT NULL,
         role_key TEXT NOT NULL,
         section_id INTEGER NOT NULL,
+        usage_scope TEXT NOT NULL DEFAULT 'auto',
+        show_when_glass TEXT NOT NULL DEFAULT 'any',
+        integrated_side_cover INTEGER NOT NULL DEFAULT 0,
+        allows_side_cover INTEGER NOT NULL DEFAULT 1,
+        allowed_with_shutter INTEGER NOT NULL DEFAULT 1,
+        show_in_drawing INTEGER NOT NULL DEFAULT 1,
+        show_in_quantity INTEGER NOT NULL DEFAULT 1,
+        show_in_dialog INTEGER NOT NULL DEFAULT 1,
+        width_adjust_mm REAL NOT NULL DEFAULT 0.0,
+        height_adjust_mm REAL NOT NULL DEFAULT 0.0,
+        formula_note TEXT NOT NULL DEFAULT '',
         is_required INTEGER NOT NULL DEFAULT 0,
         is_default INTEGER NOT NULL DEFAULT 0,
         is_visible INTEGER NOT NULL DEFAULT 1,
@@ -1629,6 +1650,71 @@ class SqlDatabase {
         UNIQUE(series_id, component_id, component_role, selection_mode)
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS CatalogItemRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_table TEXT NOT NULL,
+        item_id INTEGER NOT NULL,
+        series_id INTEGER,
+        role_key TEXT NOT NULL,
+        usage_scope TEXT NOT NULL DEFAULT 'global',
+        show_when_glass TEXT NOT NULL DEFAULT 'any',
+        selection_mode TEXT NOT NULL DEFAULT 'always',
+        integrated_side_cover INTEGER NOT NULL DEFAULT 0,
+        allows_side_cover INTEGER NOT NULL DEFAULT 1,
+        allowed_with_shutter INTEGER NOT NULL DEFAULT 1,
+        show_in_drawing INTEGER NOT NULL DEFAULT 1,
+        show_in_quantity INTEGER NOT NULL DEFAULT 1,
+        show_in_dialog INTEGER NOT NULL DEFAULT 1,
+        width_adjust_mm REAL NOT NULL DEFAULT 0.0,
+        height_adjust_mm REAL NOT NULL DEFAULT 0.0,
+        formula_note TEXT NOT NULL DEFAULT '',
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(item_table, item_id, series_id, role_key)
+      )
+    ''');
+    for (final statement in const [
+      "ALTER TABLE SeriesDesignRoles ADD COLUMN usage_scope TEXT NOT NULL DEFAULT 'auto';",
+      "ALTER TABLE SeriesDesignRoles ADD COLUMN show_when_glass TEXT NOT NULL DEFAULT 'any';",
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN integrated_side_cover INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN allowed_with_shutter INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN show_in_drawing INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN show_in_quantity INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN show_in_dialog INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN width_adjust_mm REAL NOT NULL DEFAULT 0.0;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN height_adjust_mm REAL NOT NULL DEFAULT 0.0;',
+      "ALTER TABLE SeriesDesignRoles ADD COLUMN formula_note TEXT NOT NULL DEFAULT '';",
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
+    for (final statement in const [
+      "ALTER TABLE CatalogItemRules ADD COLUMN usage_scope TEXT NOT NULL DEFAULT 'global';",
+      "ALTER TABLE CatalogItemRules ADD COLUMN show_when_glass TEXT NOT NULL DEFAULT 'any';",
+      "ALTER TABLE CatalogItemRules ADD COLUMN selection_mode TEXT NOT NULL DEFAULT 'always';",
+      'ALTER TABLE CatalogItemRules ADD COLUMN integrated_side_cover INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN allows_side_cover INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN allowed_with_shutter INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN show_in_drawing INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN show_in_quantity INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN show_in_dialog INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN width_adjust_mm REAL NOT NULL DEFAULT 0.0;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN height_adjust_mm REAL NOT NULL DEFAULT 0.0;',
+      "ALTER TABLE CatalogItemRules ADD COLUMN formula_note TEXT NOT NULL DEFAULT '';",
+      'ALTER TABLE CatalogItemRules ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
+      'ALTER TABLE CatalogItemRules ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;',
+      "ALTER TABLE CatalogItemRules ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';",
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_design_roles_series ON SeriesDesignRoles(series_id, role_key);',
     );
@@ -1640,6 +1726,9 @@ class SqlDatabase {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_design_shutter_series ON SeriesShutterRules(series_id, component_role);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_catalog_item_rules_lookup ON CatalogItemRules(item_table, item_id, series_id, role_key);',
     );
   }
 
@@ -2171,6 +2260,22 @@ class SqlDatabase {
           type TEXT NOT NULL,
           price REAL NOT NULL DEFAULT 0.0,
           screw_count INTEGER NOT NULL DEFAULT 0,
+          is_moteur_screw INTEGER DEFAULT 0,
+          is_caisson_screw INTEGER DEFAULT 0,
+          is_batmo_screw INTEGER DEFAULT 0,
+          is_bouchon_batmo_screw INTEGER DEFAULT 0,
+          is_renfort_screw INTEGER DEFAULT 0,
+          is_manivelle_screw INTEGER DEFAULT 0,
+          is_tandem_screw INTEGER DEFAULT 0,
+          is_kit_screw INTEGER DEFAULT 0,
+          is_assembly_screw INTEGER DEFAULT 0,
+          is_accessory_screw INTEGER DEFAULT 0,
+          is_installation_screw INTEGER DEFAULT 0,
+          is_gache_simple INTEGER DEFAULT 0,
+          is_gache_double INTEGER DEFAULT 0,
+          is_gache_porte INTEGER DEFAULT 0,
+          is_lock_clef INTEGER DEFAULT 0,
+          is_lock_condamnation INTEGER DEFAULT 0,
           is_active INTEGER NOT NULL DEFAULT 1
         )
       ''');
@@ -2489,6 +2594,7 @@ class SqlDatabase {
           color_id INTEGER,
           location_id INTEGER NOT NULL,
           quantity REAL NOT NULL DEFAULT 0.0,
+          low_stock_alert_enabled INTEGER NOT NULL DEFAULT 0,
           updated_at TEXT NOT NULL DEFAULT (datetime('now')),
           UNIQUE(item_id, item_type, color_id, location_id)
         )
@@ -2581,6 +2687,10 @@ class SqlDatabase {
           "ALTER TABLE CurrentStock ADD COLUMN min_qty REAL DEFAULT 0.0;",
         );
       } catch (_) {}
+    }
+    if (oldVersion < 64) {
+      await _ensureInventoryAlertSchema(db);
+      await _ensureOrderInventoryIssueSchema(db);
     }
 
     if (oldVersion < 44) {
@@ -2778,6 +2888,11 @@ class SqlDatabase {
       try {
         await db.execute('DROP INDEX IF EXISTS idx_achat_items_unique;');
       } catch (_) {}
+      await _ensureInventoryAlertSchema(db);
+    }
+    if (oldVersion < 63) {
+      await _ensureOrderCodeInfrastructure(db);
+      await _backfillOrderCodes(db);
     }
   }
 
@@ -2915,6 +3030,7 @@ class SqlDatabase {
     await db.execute('''
   CREATE TABLE Commandes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_code INTEGER NOT NULL DEFAULT 0,
     client_id INTEGER NOT NULL,
     status TEXT,
     description TEXT,
@@ -2928,6 +3044,7 @@ class SqlDatabase {
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )
 ''');
+    await _ensureOrderCodeInfrastructure(db);
 
     await db.execute('''
   CREATE TABLE Commandes_details (
@@ -3189,11 +3306,13 @@ class SqlDatabase {
         location_id INTEGER NOT NULL,
         quantity REAL NOT NULL DEFAULT 0.0,
         min_qty REAL DEFAULT 0.0,
+        low_stock_alert_enabled INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(item_id, item_type, color_id, location_id)
       )
     ''');
     await _ensureRemnantInventorySchema(db);
+    await _ensureOrderInventoryIssueSchema(db);
 
     // Kit Bundles tables
     await db.execute('''
@@ -3826,6 +3945,125 @@ class SqlDatabase {
     return nextCode;
   }
 
+  /// Adds the immutable, user-facing order number infrastructure.  [id] can be
+  /// a large distributed sync key; [order_code] is the short number people see.
+  Future<void> _ensureOrderCodeInfrastructure(DatabaseExecutor executor) async {
+    try {
+      await executor.execute(
+        'ALTER TABLE Commandes ADD COLUMN order_code INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {
+      // The column already exists on new and upgraded databases.
+    }
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS OrderCodeSequence (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_code INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await executor.insert('OrderCodeSequence', {
+      'id': 1,
+      'last_code': 0,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  /// Gives restored or legacy orders a permanent display number once.  Old
+  /// AUTOINCREMENT IDs such as #21 are preserved; distributed IDs get #22...
+  /// based on creation order.
+  Future<void> _backfillOrderCodes(DatabaseExecutor executor) async {
+    await _ensureOrderCodeInfrastructure(executor);
+    final rows = await executor.query(
+      'Commandes',
+      columns: ['id', 'order_code', 'created_at', 'updated_at'],
+      orderBy:
+          "COALESCE(NULLIF(TRIM(created_at), ''), NULLIF(TRIM(updated_at), ''), CAST(id AS TEXT)) ASC, id ASC",
+    );
+    if (rows.isEmpty) return;
+
+    final usedCodes = <int>{};
+    final pending = <Map<String, dynamic>>[];
+    var highestCode = 0;
+
+    for (final source in rows) {
+      final row = Map<String, dynamic>.from(source);
+      final code = _positiveInt(row['order_code']);
+      if (code > 0 && usedCodes.add(code)) {
+        if (code > highestCode) highestCode = code;
+      } else {
+        pending.add(row);
+      }
+    }
+
+    final stillPending = <Map<String, dynamic>>[];
+    for (final row in pending) {
+      final legacyId = _positiveInt(row['id']);
+      if (legacyId > 0 && legacyId < 100000 && usedCodes.add(legacyId)) {
+        await executor.update(
+          'Commandes',
+          {'order_code': legacyId},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        if (legacyId > highestCode) highestCode = legacyId;
+      } else {
+        stillPending.add(row);
+      }
+    }
+
+    for (final row in stillPending) {
+      do {
+        highestCode++;
+      } while (usedCodes.contains(highestCode));
+      usedCodes.add(highestCode);
+      await executor.update(
+        'Commandes',
+        {'order_code': highestCode},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+
+    final sequenceRows = await executor.query(
+      'OrderCodeSequence',
+      columns: ['last_code'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    final previousHighWater = sequenceRows.isEmpty
+        ? 0
+        : _positiveInt(sequenceRows.first['last_code']);
+    if (highestCode > previousHighWater) {
+      await executor.update('OrderCodeSequence', {
+        'last_code': highestCode,
+      }, where: 'id = 1');
+    }
+  }
+
+  Future<int> _reserveNextOrderCode(DatabaseExecutor executor) async {
+    await _ensureOrderCodeInfrastructure(executor);
+    final sequenceRows = await executor.query(
+      'OrderCodeSequence',
+      columns: ['last_code'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    final sequenceValue = sequenceRows.isEmpty
+        ? 0
+        : _positiveInt(sequenceRows.first['last_code']);
+    final maxRows = await executor.rawQuery(
+      'SELECT MAX(order_code) AS max_code FROM Commandes',
+    );
+    final maxExisting = maxRows.isEmpty
+        ? 0
+        : _positiveInt(maxRows.first['max_code']);
+    final nextCode =
+        (sequenceValue > maxExisting ? sequenceValue : maxExisting) + 1;
+    await executor.update('OrderCodeSequence', {
+      'last_code': nextCode,
+    }, where: 'id = 1');
+    return nextCode;
+  }
+
   Future<List<Map<String, dynamic>>> readClient() async {
     Database? myDb = await db;
     return await myDb!.rawQuery('SELECT * FROM Client');
@@ -4209,10 +4447,14 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readCommandesForProject(
     int projectId,
   ) async {
-    Database? myDb = await db;
-    return await myDb!.rawQuery(
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _backfillOrderCodes(myDb);
+    return await myDb.rawQuery(
       '''
-      SELECT co.*, cl.firstname, cl.lastname 
+      SELECT co.*,
+        co.order_code AS display_number,
+        cl.firstname, cl.lastname 
       FROM Commandes co
       INNER JOIN Client cl ON co.client_id = cl.id
       WHERE co.project_id = ?
@@ -4237,12 +4479,17 @@ class SqlDatabase {
   }
 
   Future<List<Map<String, dynamic>>> readCommandesWithClients() async {
-    Database? myDb = await db;
-    return await myDb!.rawQuery('''
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _backfillOrderCodes(myDb);
+    return await myDb.rawQuery('''
       SELECT c.*,
+        c.order_code AS display_number,
         COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), '')) as created_at,
         cl.firstname, cl.lastname, cl.phone1 as phone,
-        p.name as project_name
+        cl.address as client_address,
+        p.name as project_name,
+        p.description as project_description
       FROM Commandes c
       LEFT JOIN Client cl ON c.client_id = cl.id
       LEFT JOIN Projects p ON c.project_id = p.id
@@ -4695,29 +4942,20 @@ class SqlDatabase {
 
   /// Returns 1-based sequential order index for display/document numbering (1, 2, 3, 4...)
   Future<int> getOrderSequenceNumber(int orderId) async {
-    if (orderId > 0 && orderId < 100000) return orderId;
     try {
       final myDb = await db;
       if (myDb == null) return 1;
+      await _backfillOrderCodes(myDb);
       final orderRows = await myDb.query(
         'Commandes',
-        columns: ['created_at'],
+        columns: ['order_code'],
         where: 'id = ? OR CAST(id AS TEXT) = ?',
         whereArgs: [orderId, orderId.toString()],
+        limit: 1,
       );
       if (orderRows.isEmpty) return 1;
-      final createdAt = orderRows.first['created_at']?.toString() ?? '';
-      final countResult = await myDb.rawQuery(
-        '''
-        SELECT COUNT(*) as seq FROM Commandes 
-        WHERE (created_at < ? OR (created_at = ? AND (id <= ? OR CAST(id AS TEXT) <= ?)))
-        ''',
-        [createdAt, createdAt, orderId, orderId.toString()],
-      );
-      if (countResult.isNotEmpty) {
-        final seq = (countResult.first['seq'] as num?)?.toInt() ?? 1;
-        return seq > 0 ? seq : 1;
-      }
+      final code = _positiveInt(orderRows.first['order_code']);
+      if (code > 0) return code;
     } catch (e) {
       debugPrint('Error computing order sequence number: $e');
     }
@@ -4750,10 +4988,13 @@ class SqlDatabase {
   }
 
   Future<Map<String, dynamic>?> readCommandeWithClientById(int id) async {
-    Database? myDb = await db;
-    final rows = await myDb!.rawQuery(
+    final myDb = await db;
+    if (myDb == null) return null;
+    await _backfillOrderCodes(myDb);
+    final rows = await myDb.rawQuery(
       '''
       SELECT c.*,
+        c.order_code AS display_number,
         COALESCE(NULLIF(TRIM(c.created_at), ''), NULLIF(TRIM(c.updated_at), '')) as created_at,
         cl.firstname, cl.lastname, cl.phone1 as phone,
         p.name as project_name
@@ -7022,6 +7263,7 @@ class SqlDatabase {
     if (myDb == null) {
       throw StateError('Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± Ù…ØªØ§Ø­Ø©.');
     }
+    await _backfillOrderCodes(myDb);
     if (details.isEmpty) {
       throw StateError(
         'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø­ÙØ¸ Ø·Ù„Ø¨ÙŠØ© Ø¨Ø¯ÙˆÙ† ØªÙØ§ØµÙŠÙ„.',
@@ -7068,8 +7310,10 @@ class SqlDatabase {
 
       if (idCommande == null) {
         final newOrderId = _nextDistributedId();
+        final orderCode = await _reserveNextOrderCode(txn);
         await txn.insert('Commandes', {
           'id': newOrderId,
+          'order_code': orderCode,
           'client_id': clientId,
           'status': status,
           'description': description,
@@ -7088,14 +7332,18 @@ class SqlDatabase {
         orderId = idCommande;
         final existing = await txn.query(
           'Commandes',
-          columns: ['advance_payment'],
+          columns: ['advance_payment', 'order_code'],
           where: 'id = ? OR CAST(id AS TEXT) = ?',
           whereArgs: [orderId, orderId.toString()],
           limit: 1,
         );
         if (existing.isEmpty) {
+          final orderCode = orderId > 0 && orderId < 100000
+              ? orderId
+              : await _reserveNextOrderCode(txn);
           await txn.insert('Commandes', {
             'id': orderId,
+            'order_code': orderCode,
             'client_id': clientId,
             'status': status,
             'description': description,
@@ -7112,12 +7360,17 @@ class SqlDatabase {
         } else {
           final advance =
               (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
+          final existingOrderCode = _positiveInt(existing.first['order_code']);
+          final orderCode = existingOrderCode > 0
+              ? existingOrderCode
+              : await _reserveNextOrderCode(txn);
           final paymentStatus = advance >= netPayable
               ? 'Paid'
               : (advance > 0 ? 'Partial' : 'Unpaid');
           await txn.update(
             'Commandes',
             {
+              'order_code': orderCode,
               'client_id': clientId,
               'description': description,
               'remise': remise,
@@ -7223,15 +7476,21 @@ class SqlDatabase {
     String? createdAt,
     int? projectId,
   }) async {
-    Database? myDb = await db;
+    final myDb = await db;
+    if (myDb == null) {
+      throw StateError('قاعدة بيانات الطلبات غير متاحة');
+    }
+    await _backfillOrderCodes(myDb);
     final netPayable = total - remise + ((total * tva) / 100);
     final now = DateTime.now().toIso8601String();
     final orderDate = createdAt ?? now;
     final distributedId = _nextDistributedId();
-    var res = await myDb!.rawInsert(
-      'INSERT INTO Commandes (id, client_id, status, description, remise, tva, total, net_payable, advance_payment, payment_status, created_at, updated_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    final orderCode = await _reserveNextOrderCode(myDb);
+    var res = await myDb.rawInsert(
+      'INSERT INTO Commandes (id, order_code, client_id, status, description, remise, tva, total, net_payable, advance_payment, payment_status, created_at, updated_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         distributedId,
+        orderCode,
         idClient,
         status,
         description,
@@ -7964,11 +8223,20 @@ class SqlDatabase {
     return res;
   }
 
-  Future<int> updateAchatItem(int id, double quantity, double price) async {
+  Future<int> updateAchatItem(
+    int id,
+    double quantity,
+    double price, {
+    String? itemCode,
+    String? itemName,
+  }) async {
     Database? myDb = await db;
+    final data = <String, Object?>{'quantity': quantity, 'price': price};
+    if (itemCode != null) data['item_code'] = itemCode;
+    if (itemName != null) data['item_name'] = itemName;
     var res = await myDb!.update(
       'Achat_items',
-      {'quantity': quantity, 'price': price},
+      data,
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -11089,6 +11357,16 @@ class SqlDatabase {
     });
   }
 
+  Future<void> clearPendingCloudChanges() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSyncTombstoneInfrastructure(myDb);
+    await myDb.transaction((txn) async {
+      await txn.delete('_sync_change_log');
+      await txn.delete('SyncTombstones');
+    });
+  }
+
   Future<bool> hasPendingCloudChanges() async {
     final myDb = await db;
     if (myDb == null) return false;
@@ -11267,6 +11545,7 @@ class SqlDatabase {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Commandes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_code INTEGER NOT NULL DEFAULT 0,
         client_id INTEGER NOT NULL,
         status TEXT,
         description TEXT,
@@ -11280,6 +11559,7 @@ class SqlDatabase {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     ''');
+    await _ensureOrderCodeInfrastructure(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS Commandes_details (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -11438,6 +11718,22 @@ class SqlDatabase {
       "ALTER TABLE Accessories ADD COLUMN series_id INTEGER",
       "ALTER TABLE Accessories ADD COLUMN series_ids TEXT",
       "ALTER TABLE Accessories ADD COLUMN screw_count INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_moteur_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_caisson_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_batmo_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_bouchon_batmo_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_renfort_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_manivelle_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_tandem_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_kit_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_assembly_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_accessory_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_installation_screw INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_gache_simple INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_gache_double INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_gache_porte INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_lock_clef INTEGER DEFAULT 0",
+      "ALTER TABLE Accessories ADD COLUMN is_lock_condamnation INTEGER DEFAULT 0",
       "ALTER TABLE Accessories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
       "ALTER TABLE Series ADD COLUMN has_three_piece_sash INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE WorkerAllocations ADD COLUMN is_transferred_to_dist INTEGER DEFAULT 0",
@@ -11744,6 +12040,7 @@ class SqlDatabase {
       'SeriesTableConfig',
       'SeriesDesignConfig',
       'SeriesDesignRoles',
+      'CatalogItemRules',
       'SectionJointLinks',
       'SeriesShutterRules',
       'ClientCodeSequence',
@@ -11790,6 +12087,7 @@ class SqlDatabase {
       'CurrentStock',
       'InventorySettings',
       'OrderCuttingSessions',
+      'OrderInventoryIssueSessions',
       'MaterialRemnants',
       'MaterialScrap',
     ];
@@ -11827,6 +12125,7 @@ class SqlDatabase {
       'CurrentStock',
       'InventorySettings',
       'OrderCuttingSessions',
+      'OrderInventoryIssueSessions',
       'MaterialRemnants',
       'MaterialScrap',
     };
@@ -11924,9 +12223,10 @@ class SqlDatabase {
       }, where: 'id = 1');
       await txn.execute('PRAGMA foreign_keys = ON');
     });
-    // Old cloud snapshots have no client_code field. Assign immutable codes
-    // once immediately after restore, before any customer list is displayed.
+    // Old cloud snapshots have no display code fields. Assign immutable codes
+    // once immediately after restore, before any list is displayed.
     await _backfillClientCodes(myDb);
+    await _backfillOrderCodes(myDb);
   }
 
   Future<Map<String, dynamic>> exportGlobalCatalog() async {
@@ -12564,6 +12864,25 @@ class SqlDatabase {
     );
   }
 
+  Future<void> _ensureInventoryAlertSchema(DatabaseExecutor db) async {
+    try {
+      await db.execute(
+        'ALTER TABLE CurrentStock ADD COLUMN low_stock_alert_enabled INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _ensureOrderInventoryIssueSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS OrderInventoryIssueSessions (
+        id INTEGER PRIMARY KEY,
+        order_id INTEGER NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
   Future<double?> readMinimumReusableLengthMm() async {
     final myDb = await db;
     if (myDb == null) return null;
@@ -12788,6 +13107,151 @@ class SqlDatabase {
       ''', args);
   }
 
+  Future<List<Map<String, dynamic>>> readAllAvailableMaterialRemnants({
+    int? locationId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureRemnantInventorySchema(myDb);
+    final where = StringBuffer('r.status = ?');
+    final args = <Object?>['available'];
+    if (locationId != null) {
+      where.write(' AND r.location_id = ?');
+      args.add(locationId);
+    }
+    return myDb.rawQuery('''
+      SELECT r.*, l.name AS location_name, c.name AS color_name,
+             se.name AS series_name,
+             COALESCE(s.name, sc.name, a.name, j.name, g.name) AS item_name,
+             COALESCE(s.code, '') AS item_code
+      FROM MaterialRemnants r
+      LEFT JOIN Locations l ON l.id = r.location_id
+      LEFT JOIN Colors c ON c.id = r.color_id
+      LEFT JOIN Sections s ON r.item_type = 'Section' AND s.id = r.item_id
+      LEFT JOIN Series se ON se.id = COALESCE(r.series_id, s.series_id)
+      LEFT JOIN ShutterComponents sc
+        ON r.item_type = 'ShutterComponent' AND sc.id = r.item_id
+      LEFT JOIN Accessories a ON r.item_type = 'Accessory' AND a.id = r.item_id
+      LEFT JOIN Joints j ON r.item_type = 'Joints' AND j.id = r.item_id
+      LEFT JOIN Glass g ON r.item_type = 'Glass' AND g.id = r.item_id
+      WHERE $where
+      ORDER BY r.location_id ASC, r.item_type ASC, item_name ASC,
+               r.length_mm DESC, r.created_at ASC
+      ''', args);
+  }
+
+  Future<Map<String, dynamic>> applyOrderInventoryIssue({
+    required int orderId,
+    required List<int> remnantIds,
+    required List<Map<String, dynamic>> stockDeductions,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return const {'applied': false};
+    await _ensureRemnantInventorySchema(myDb);
+    await _ensureOrderInventoryIssueSchema(myDb);
+    final uniqueRemnantIds = remnantIds.toSet().toList();
+    var consumedRemnants = 0;
+    var deductedRows = 0;
+    var alreadyApplied = false;
+
+    await myDb.transaction((txn) async {
+      final existing = await txn.query(
+        'OrderInventoryIssueSessions',
+        columns: const ['id'],
+        where: 'order_id = ?',
+        whereArgs: [orderId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        alreadyApplied = true;
+        return;
+      }
+
+      final timestamp = DateTime.now().toIso8601String();
+      await txn.insert(
+        'OrderInventoryIssueSessions',
+        _withDistributedId({
+          'order_id': orderId,
+          'created_at': timestamp,
+          'updated_at': timestamp,
+        }),
+      );
+
+      for (final id in uniqueRemnantIds) {
+        consumedRemnants += await txn.update(
+          'MaterialRemnants',
+          {
+            'status': 'consumed',
+            'consumed_order_id': orderId,
+            'consumed_at': timestamp,
+            'updated_at': timestamp,
+          },
+          where: 'id = ? AND status = ?',
+          whereArgs: [id, 'available'],
+        );
+      }
+
+      for (final row in stockDeductions) {
+        final itemId = (row['item_id'] as num?)?.toInt();
+        final itemType = row['item_type']?.toString();
+        final locationId = (row['location_id'] as num?)?.toInt();
+        final quantity = _readStoredNumber(row['quantity']) ?? 0;
+        if (itemId == null ||
+            itemType == null ||
+            itemType.trim().isEmpty ||
+            locationId == null ||
+            quantity <= 0) {
+          continue;
+        }
+        final colorId = (row['color_id'] as num?)?.toInt();
+        final where = colorId == null
+            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+        final whereArgs = colorId == null
+            ? <Object?>[itemId, itemType, locationId]
+            : <Object?>[itemId, itemType, colorId, locationId];
+        final stockRows = await txn.query(
+          'CurrentStock',
+          columns: const ['quantity'],
+          where: where,
+          whereArgs: whereArgs,
+          limit: 1,
+        );
+        if (stockRows.isEmpty) continue;
+        final current = _readStoredNumber(stockRows.first['quantity']) ?? 0;
+        final next = max(0.0, current - quantity);
+        deductedRows += await txn.update(
+          'CurrentStock',
+          {'quantity': next, 'updated_at': timestamp},
+          where: where,
+          whereArgs: whereArgs,
+        );
+        await txn.insert(
+          'InventoryTransactions',
+          _withDistributedId({
+            'item_id': itemId,
+            'item_type': itemType,
+            'color_id': colorId,
+            'location_id': locationId,
+            'quantity': -quantity,
+            'transaction_type': 'order_issue',
+            'reference_id': orderId,
+            'note': 'صرف تلقائي للطلبية #$orderId',
+            'created_at': timestamp,
+          }),
+        );
+      }
+    });
+
+    if (!alreadyApplied) CloudSyncService().notifyChange();
+    return {
+      'applied': !alreadyApplied,
+      'already_applied': alreadyApplied,
+      'consumed_remnants': consumedRemnants,
+      'deducted_rows': deductedRows,
+    };
+  }
+
   Future<List<Map<String, dynamic>>> readStockAvailability({
     required int itemId,
     required String itemType,
@@ -12900,9 +13364,11 @@ class SqlDatabase {
     int? colorId,
     required int locationId,
     required double minQty,
+    required bool alertEnabled,
   }) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
+    await _ensureInventoryAlertSchema(myDb);
 
     final stock = await myDb.query(
       'CurrentStock',
@@ -12922,13 +13388,18 @@ class SqlDatabase {
           'location_id': locationId,
           'quantity': 0.0,
           'min_qty': minQty,
+          'low_stock_alert_enabled': alertEnabled ? 1 : 0,
           'updated_at': DateTime.now().toIso8601String(),
         }),
       );
     } else {
       res = await myDb.update(
         'CurrentStock',
-        {'min_qty': minQty, 'updated_at': DateTime.now().toIso8601String()},
+        {
+          'min_qty': minQty,
+          'low_stock_alert_enabled': alertEnabled ? 1 : 0,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
         where: 'id = ?',
         whereArgs: [stock.first['id']],
       );
@@ -13016,6 +13487,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return [];
+    await _ensureInventoryAlertSchema(myDb);
 
     // 1. Fetch current stock for fast lookup
     final stock = await myDb.query(
@@ -13026,11 +13498,14 @@ class SqlDatabase {
 
     Map<String, double> stockMap = {};
     Map<String, double> minQtyMap = {};
+    Map<String, bool> alertMap = {};
     for (var row in stock) {
       String key =
           '${row['item_type']}_${row['item_id']}_${row['color_id'] ?? 0}';
       stockMap[key] = (row['quantity'] as num).toDouble();
       minQtyMap[key] = (row['min_qty'] as num?)?.toDouble() ?? 0.0;
+      alertMap[key] =
+          ((row['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
     }
 
     List<Map<String, dynamic>> allItems = [];
@@ -13236,6 +13711,7 @@ class SqlDatabase {
       final cId = item['color_id'] as int? ?? 0;
       final key = '${type}_${id}_$cId';
       item['min_qty'] = minQtyMap[key] ?? 0.0;
+      item['low_stock_alert_enabled'] = alertMap[key] == true ? 1 : 0;
     }
 
     return allItems;
@@ -13244,6 +13720,7 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readCurrentStock(int locationId) async {
     Database? myDb = await db;
     if (myDb == null) return [];
+    await _ensureInventoryAlertSchema(myDb);
 
     final stock = await myDb.query(
       'CurrentStock',
@@ -13352,6 +13829,14 @@ class SqlDatabase {
       String key = '${itemName}_${colorName}_$itemType';
       if (groupedStock.containsKey(key)) {
         groupedStock[key]!['quantity'] += (row['quantity'] as num).toDouble();
+        final rowAlert =
+            ((row['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
+        final existingAlert =
+            ((groupedStock[key]!['low_stock_alert_enabled'] as num?)?.toInt() ??
+                0) ==
+            1;
+        groupedStock[key]!['low_stock_alert_enabled'] =
+            rowAlert || existingAlert ? 1 : 0;
       } else {
         groupedStock[key] = {
           ...row,
@@ -14495,6 +14980,38 @@ class SqlDatabase {
           'series_id': seriesId,
           'role_key': roleKey,
           'section_id': sectionId,
+          'usage_scope': role['usage_scope']?.toString() ?? 'auto',
+          'show_when_glass': role['show_when_glass']?.toString() ?? 'any',
+          'integrated_side_cover':
+              role['integrated_side_cover'] == true ||
+                  role['integrated_side_cover'] == 1
+              ? 1
+              : 0,
+          'allows_side_cover':
+              role['allows_side_cover'] == false ||
+                  role['allows_side_cover'] == 0
+              ? 0
+              : 1,
+          'allowed_with_shutter':
+              role['allowed_with_shutter'] == false ||
+                  role['allowed_with_shutter'] == 0
+              ? 0
+              : 1,
+          'show_in_drawing':
+              role['show_in_drawing'] == false || role['show_in_drawing'] == 0
+              ? 0
+              : 1,
+          'show_in_quantity':
+              role['show_in_quantity'] == false || role['show_in_quantity'] == 0
+              ? 0
+              : 1,
+          'show_in_dialog':
+              role['show_in_dialog'] == false || role['show_in_dialog'] == 0
+              ? 0
+              : 1,
+          'width_adjust_mm': role['width_adjust_mm'] ?? 0.0,
+          'height_adjust_mm': role['height_adjust_mm'] ?? 0.0,
+          'formula_note': role['formula_note']?.toString() ?? '',
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -14712,6 +15229,129 @@ class SqlDatabase {
     );
   }
 
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    final where = <String>['is_active = 1'];
+    final args = <Object?>[];
+    if (itemTable != null && itemTable.trim().isNotEmpty) {
+      where.add('item_table = ?');
+      args.add(itemTable.trim());
+    }
+    if (itemId != null) {
+      where.add('item_id = ?');
+      args.add(itemId);
+    }
+    if (seriesId != null) {
+      where.add('(series_id = ? OR series_id IS NULL)');
+      args.add(seriesId);
+    }
+    final keys = roleKeys
+        .map((key) => key.trim())
+        .where((key) => key.isNotEmpty)
+        .toList();
+    if (keys.isNotEmpty) {
+      where.add('role_key IN (${List.filled(keys.length, '?').join(',')})');
+      args.addAll(keys);
+    }
+
+    return myDb.query(
+      'CatalogItemRules',
+      where: where.join(' AND '),
+      whereArgs: args,
+      orderBy:
+          'CASE WHEN series_id IS NULL THEN 1 ELSE 0 END, sort_order ASC, is_default DESC, id ASC',
+    );
+  }
+
+  Future<void> saveCatalogItemRules({
+    required String itemTable,
+    int? seriesId,
+    required List<Map<String, dynamic>> rules,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final cleanTable = itemTable.trim();
+    if (cleanTable.isEmpty) return;
+    final now = DateTime.now().toIso8601String();
+    await myDb.transaction((txn) async {
+      if (seriesId == null) {
+        await txn.delete(
+          'CatalogItemRules',
+          where: 'item_table = ? AND series_id IS NULL',
+          whereArgs: [cleanTable],
+        );
+      } else {
+        await txn.delete(
+          'CatalogItemRules',
+          where: 'item_table = ? AND series_id = ?',
+          whereArgs: [cleanTable, seriesId],
+        );
+      }
+      for (var index = 0; index < rules.length; index++) {
+        final rule = rules[index];
+        final itemId = (rule['item_id'] as num?)?.toInt();
+        final roleKey = rule['role_key']?.toString().trim() ?? '';
+        if (itemId == null || roleKey.isEmpty) continue;
+        await txn.insert('CatalogItemRules', {
+          'item_table': cleanTable,
+          'item_id': itemId,
+          'series_id': seriesId,
+          'role_key': roleKey,
+          'usage_scope': rule['usage_scope']?.toString() ?? 'global',
+          'show_when_glass': rule['show_when_glass']?.toString() ?? 'any',
+          'selection_mode': rule['selection_mode']?.toString() ?? 'always',
+          'integrated_side_cover':
+              rule['integrated_side_cover'] == true ||
+                  rule['integrated_side_cover'] == 1
+              ? 1
+              : 0,
+          'allows_side_cover':
+              rule['allows_side_cover'] == false ||
+                  rule['allows_side_cover'] == 0
+              ? 0
+              : 1,
+          'allowed_with_shutter':
+              rule['allowed_with_shutter'] == false ||
+                  rule['allowed_with_shutter'] == 0
+              ? 0
+              : 1,
+          'show_in_drawing':
+              rule['show_in_drawing'] == false || rule['show_in_drawing'] == 0
+              ? 0
+              : 1,
+          'show_in_quantity':
+              rule['show_in_quantity'] == false || rule['show_in_quantity'] == 0
+              ? 0
+              : 1,
+          'show_in_dialog':
+              rule['show_in_dialog'] == false || rule['show_in_dialog'] == 0
+              ? 0
+              : 1,
+          'width_adjust_mm': rule['width_adjust_mm'] ?? 0.0,
+          'height_adjust_mm': rule['height_adjust_mm'] ?? 0.0,
+          'formula_note': rule['formula_note']?.toString() ?? '',
+          'is_default': rule['is_default'] == true || rule['is_default'] == 1
+              ? 1
+              : 0,
+          'is_active': rule['is_active'] == false || rule['is_active'] == 0
+              ? 0
+              : 1,
+          'sort_order': index,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
   /// Saves an entire definition in one transaction. Replacing the rows keeps
   /// the page predictable: the exact set visible in Design is always the set
   /// selected by the administrator, with no old component left behind.
@@ -14750,6 +15390,38 @@ class SqlDatabase {
           'series_id': seriesId,
           'role_key': roleKey,
           'section_id': sectionId,
+          'usage_scope': role['usage_scope']?.toString() ?? 'auto',
+          'show_when_glass': role['show_when_glass']?.toString() ?? 'any',
+          'integrated_side_cover':
+              role['integrated_side_cover'] == true ||
+                  role['integrated_side_cover'] == 1
+              ? 1
+              : 0,
+          'allows_side_cover':
+              role['allows_side_cover'] == false ||
+                  role['allows_side_cover'] == 0
+              ? 0
+              : 1,
+          'allowed_with_shutter':
+              role['allowed_with_shutter'] == false ||
+                  role['allowed_with_shutter'] == 0
+              ? 0
+              : 1,
+          'show_in_drawing':
+              role['show_in_drawing'] == false || role['show_in_drawing'] == 0
+              ? 0
+              : 1,
+          'show_in_quantity':
+              role['show_in_quantity'] == false || role['show_in_quantity'] == 0
+              ? 0
+              : 1,
+          'show_in_dialog':
+              role['show_in_dialog'] == false || role['show_in_dialog'] == 0
+              ? 0
+              : 1,
+          'width_adjust_mm': role['width_adjust_mm'] ?? 0.0,
+          'height_adjust_mm': role['height_adjust_mm'] ?? 0.0,
+          'formula_note': role['formula_note']?.toString() ?? '',
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -14799,21 +15471,28 @@ class SqlDatabase {
 
   Future<List<Map<String, dynamic>>> getDesignSectionsForRoles(
     int seriesId,
-    Iterable<String> roleKeys,
-  ) async {
+    Iterable<String> roleKeys, {
+    bool requireDialog = true,
+    bool requireQuantity = false,
+  }) async {
     final keys = roleKeys.where((key) => key.trim().isNotEmpty).toList();
     if (keys.isEmpty) return [];
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureSeriesDesignTables(myDb);
     final placeholders = List.filled(keys.length, '?').join(',');
+    final surfaceFilters = <String>[
+      'r.is_visible = 1',
+      if (requireDialog) 'r.show_in_dialog = 1',
+      if (requireQuantity) 'r.show_in_quantity = 1',
+    ].join('\n        AND ');
     return myDb.rawQuery(
       '''
       SELECT s.*
       FROM Sections s
       INNER JOIN SeriesDesignRoles r ON r.section_id = s.id
       WHERE r.series_id = ?
-        AND r.is_visible = 1
+        AND $surfaceFilters
         AND r.role_key IN ($placeholders)
         AND (s.is_active = 1 OR s.is_active IS NULL)
       ORDER BY r.sort_order ASC, r.is_default DESC, s.name ASC

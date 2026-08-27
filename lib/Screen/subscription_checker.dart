@@ -743,9 +743,7 @@ class _SyncGatewayState extends State<SyncGateway> {
       try {
         await CloudSyncService().init();
         if (!mounted) return;
-        CloudSyncService().startListeningForUpdates(() {
-          if (mounted) setState(() {});
-        });
+        CloudSyncService().startListeningForUpdates(() {});
         await _rememberActiveWorkshop();
         CloudSyncService()
             .fullRecoverySync()
@@ -769,9 +767,7 @@ class _SyncGatewayState extends State<SyncGateway> {
       });
       // بدء المزامنة التلقائية الصامتة في الخلفية
       if (startListening) {
-        CloudSyncService().startListeningForUpdates(() {
-          if (mounted) setState(() {});
-        });
+        CloudSyncService().startListeningForUpdates(() {});
       }
     }
   }

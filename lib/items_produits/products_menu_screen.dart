@@ -12,6 +12,7 @@ import 'accessoires.dart';
 import 'joint.dart';
 import 'kit_bundles_screen.dart';
 import 'catalogue_manager.dart';
+import 'catalog_rules_screen.dart';
 import 'series_accessories_screen.dart';
 import 'series_table_config_screen.dart';
 
@@ -195,6 +196,21 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
+                _buildMenuCard(
+                  context,
+                  title: _catalogRulesTitle(lang),
+                  icon: Icons.rule_rounded,
+                  color: Colors.blueGrey,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CatalogRulesScreen(db: widget.db),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
               ],
               if (settings.canViewGlass()) ...[
                 _buildMenuCard(
@@ -337,6 +353,12 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
     AppLanguage.arabic => 'مكوّنات وحسابات السلسلة',
     AppLanguage.french => 'Composants et calculs de la série',
     AppLanguage.english => 'Series components and calculations',
+  };
+
+  String _catalogRulesTitle(AppLanguage language) => switch (language) {
+    AppLanguage.arabic => 'قواعد الكتالوج العامة',
+    AppLanguage.french => 'Règles du catalogue',
+    AppLanguage.english => 'Catalog rules',
   };
 
   Widget _buildMenuCard(

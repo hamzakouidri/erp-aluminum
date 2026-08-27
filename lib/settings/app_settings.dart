@@ -241,6 +241,28 @@ class AppSettingsProvider extends ChangeNotifier {
     return defaultValue;
   }
 
+  DateTime? _parsePermissionDate(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  bool _permissionWindowIsActive(String permissionKey) {
+    final from = _parsePermissionDate(
+      _workerPermissions['${permissionKey}_valid_from'],
+    );
+    final to = _parsePermissionDate(
+      _workerPermissions['${permissionKey}_valid_to'],
+    );
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (from != null && today.isBefore(from)) return false;
+    if (to != null && today.isAfter(to)) return false;
+    return true;
+  }
+
   bool _isSubPermissionEnabled(String key) {
     if (isManager) return true;
     if (!canViewMyAccreditations()) return false;
@@ -278,6 +300,12 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool canAccessInventory() =>
       isManager || _isPermissionTrue(_workerPermissions['inventory']);
+
+  bool canAdjustInventory() =>
+      isManager ||
+      (canAccessInventory() &&
+          _isPermissionTrue(_workerPermissions['inventory_adjustment']) &&
+          _permissionWindowIsActive('inventory_adjustment'));
 
   bool canAccessDistributionTracking() =>
       isManager ||

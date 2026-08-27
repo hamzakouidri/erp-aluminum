@@ -2540,4 +2540,256 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'OK, archiver',
     AppLanguage.english: 'OK, archive',
   },
+  'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.': {
+    AppLanguage.arabic:
+        'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
+    AppLanguage.french:
+        'Cet élément sera archivé (masqué) et ne sera pas supprimé définitivement afin de préserver les données de stock et les anciennes factures associées.',
+    AppLanguage.english:
+        'This item will be archived (hidden), not permanently deleted, to preserve stock data and related previous invoices.',
+  },
+  'اسم السلسلة (مثال: سلسلة 45)': {
+    AppLanguage.arabic: 'اسم السلسلة (مثال: سلسلة 45)',
+    AppLanguage.french: 'Nom de la série (exemple : Série 45)',
+    AppLanguage.english: 'Series name (example: Series 45)',
+  },
+  'دعم ضلفة 3 قطع (Lateral/Central/Traverse)': {
+    AppLanguage.arabic: 'دعم ضلفة 3 قطع (Lateral/Central/Traverse)',
+    AppLanguage.french:
+        'Prendre en charge le vantail en 3 pièces (latéral/central/traverse)',
+    AppLanguage.english: 'Support 3-piece sash (lateral/central/transom)',
+  },
+  'الكود التجاري (مثال: P400)': {
+    AppLanguage.arabic: 'الكود التجاري (مثال: P400)',
+    AppLanguage.french: 'Code commercial (exemple : P400)',
+    AppLanguage.english: 'Commercial code (example: P400)',
+  },
+  'اسم المقطع (مثال: حلق 45)': {
+    AppLanguage.arabic: 'اسم المقطع (مثال: حلق 45)',
+    AppLanguage.french: 'Nom du profilé (exemple : dormant 45)',
+    AppLanguage.english: 'Section name (example: frame 45)',
+  },
+  'غطاء جانبي / Couvre-joint': {
+    AppLanguage.arabic: 'غطاء جانبي / Couvre-joint',
+    AppLanguage.french: 'Couvre-joint',
+    AppLanguage.english: 'Side cover',
+  },
+  'بارداش (Bardage Profile)': {
+    AppLanguage.arabic: 'بارداش (Bardage Profile)',
+    AppLanguage.french: 'Profilé de bardage',
+    AppLanguage.english: 'Cladding profile',
+  },
+  'بانو / برداج (قديم)': {
+    AppLanguage.arabic: 'بانو / برداج (قديم)',
+    AppLanguage.french: 'Panneau / bardage (ancien)',
+    AppLanguage.english: 'Panel / cladding (legacy)',
+  },
+  'باتمو (Batmo)': {
+    AppLanguage.arabic: 'باتمو (Batmo)',
+    AppLanguage.french: 'Battement',
+    AppLanguage.english: 'Meeting stile',
+  },
+  'غطاء باتمو (Bouchon Batmo)': {
+    AppLanguage.arabic: 'غطاء باتمو (Bouchon Batmo)',
+    AppLanguage.french: 'Bouchon de battement',
+    AppLanguage.english: 'Meeting stile cap',
+  },
+  'ري / سكة (Rail)': {
+    AppLanguage.arabic: 'ري / سكة (Rail)',
+    AppLanguage.french: 'Rail',
+    AppLanguage.english: 'Rail',
+  },
+  'حديد دعم (Renfort)': {
+    AppLanguage.arabic: 'حديد دعم (Renfort)',
+    AppLanguage.french: 'Renfort',
+    AppLanguage.english: 'Reinforcement',
+  },
+  'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)': {
+    AppLanguage.arabic: 'وظائف المقطع في الرسم (يمكن اختيار أكثر من وظيفة)',
+    AppLanguage.french:
+        'Rôles du profilé dans le dessin (plusieurs choix possibles)',
+    AppLanguage.english:
+        'Section roles in drawing (more than one can be selected)',
+  },
+  'يُستعمل كإطار (Frame)': {
+    AppLanguage.arabic: 'يُستعمل كإطار (Frame)',
+    AppLanguage.french: 'Utilisé comme dormant',
+    AppLanguage.english: 'Used as frame',
+  },
+  'يُستعمل كظلفة (Sash)': {
+    AppLanguage.arabic: 'يُستعمل كظلفة (Sash)',
+    AppLanguage.french: 'Utilisé comme ouvrant',
+    AppLanguage.english: 'Used as sash',
+  },
+  'يُستعمل كتقسيم (Mullion)': {
+    AppLanguage.arabic: 'يُستعمل كتقسيم (Mullion)',
+    AppLanguage.french: 'Utilisé comme meneau/traverse',
+    AppLanguage.english: 'Used as mullion',
+  },
+  'Montant Lateral': {
+    AppLanguage.arabic: 'قائم جانبي',
+    AppLanguage.french: 'Montant latéral',
+    AppLanguage.english: 'Lateral stile',
+  },
+  'Montant Central': {
+    AppLanguage.arabic: 'قائم وسطي',
+    AppLanguage.french: 'Montant central',
+    AppLanguage.english: 'Central stile',
+  },
+  'Traverse Haut et Bas': {
+    AppLanguage.arabic: 'سكة علوية وسفلية',
+    AppLanguage.french: 'Traverse haut et bas',
+    AppLanguage.english: 'Top and bottom rail',
+  },
+  'نوع الضلفة المنزلقة / Sash Sub-type': {
+    AppLanguage.arabic: 'نوع الضلفة المنزلقة',
+    AppLanguage.french: 'Sous-type du vantail coulissant',
+    AppLanguage.english: 'Sliding sash subtype',
+  },
+  'طول البار (متر) / Bar Length (m)': {
+    AppLanguage.arabic: 'طول البار (متر)',
+    AppLanguage.french: 'Longueur de la barre (m)',
+    AppLanguage.english: 'Bar length (m)',
+  },
+  'ركوب الزجاج / Glass Deduction (mm)': {
+    AppLanguage.arabic: 'ركوب الزجاج (مم)',
+    AppLanguage.french: 'Feuillure du vitrage (mm)',
+    AppLanguage.english: 'Glass rebate (mm)',
+  },
+  'الوزن للمتر (Kg/m)': {
+    AppLanguage.arabic: 'الوزن للمتر (كغ/م)',
+    AppLanguage.french: 'Poids par mètre (kg/m)',
+    AppLanguage.english: 'Weight per meter (kg/m)',
+  },
+  'عرض الكوفرجوا (الاتجاه الأول) (mm)': {
+    AppLanguage.arabic: 'عرض الكوفرجوا (الاتجاه الأول) (مم)',
+    AppLanguage.french: 'Largeur du couvre-joint (1er sens) (mm)',
+    AppLanguage.english: 'Side cover width (first direction) (mm)',
+  },
+  'عرض الكوفرجوا / Couvre-joint Width (mm)': {
+    AppLanguage.arabic: 'عرض الكوفرجوا (مم)',
+    AppLanguage.french: 'Largeur du couvre-joint (mm)',
+    AppLanguage.english: 'Side cover width (mm)',
+  },
+  'سمك الكوفرجوا / Couvre-joint Thickness (mm)': {
+    AppLanguage.arabic: 'سمك الكوفرجوا (مم)',
+    AppLanguage.french: 'Épaisseur du couvre-joint (mm)',
+    AppLanguage.english: 'Side cover thickness (mm)',
+  },
+  'يسمح بركوب غطاء جانبي منفصل (Couvre-joint)': {
+    AppLanguage.arabic: 'يسمح بركوب غطاء جانبي منفصل (Couvre-joint)',
+    AppLanguage.french: 'Autorise un couvre-joint séparé',
+    AppLanguage.english: 'Allows a separate side cover',
+  },
+  'قم بإلغاء التحديد إذا كان هذا الإطار لا يركب عليه غطاء جانبي منفصل مطلقاً': {
+    AppLanguage.arabic:
+        'قم بإلغاء التحديد إذا كان هذا الإطار لا يركب عليه غطاء جانبي منفصل مطلقاً',
+    AppLanguage.french:
+        'Décochez si ce dormant n’accepte jamais un couvre-joint séparé.',
+    AppLanguage.english:
+        'Clear this if this frame never accepts a separate side cover.',
+  },
+  'خصم التقطيع الإضافي / Cutting Deduction (mm)': {
+    AppLanguage.arabic: 'خصم التقطيع الإضافي (مم)',
+    AppLanguage.french: 'Déduction de coupe supplémentaire (mm)',
+    AppLanguage.english: 'Additional cutting deduction (mm)',
+  },
+  'العرض الظاهر (الاتجاه الثاني) (mm)': {
+    AppLanguage.arabic: 'العرض الظاهر (الاتجاه الثاني) (مم)',
+    AppLanguage.french: 'Largeur visible (2e sens) (mm)',
+    AppLanguage.english: 'Visible width (second direction) (mm)',
+  },
+  'العرض الظاهر / Visible Width (mm)': {
+    AppLanguage.arabic: 'العرض الظاهر (مم)',
+    AppLanguage.french: 'Largeur visible (mm)',
+    AppLanguage.english: 'Visible width (mm)',
+  },
+  'تداخل الضلفة لكل جهة / Recouvrement par côté (mm) (مثال: 10)': {
+    AppLanguage.arabic: 'تداخل الضلفة لكل جهة (مم) (مثال: 10)',
+    AppLanguage.french: 'Recouvrement par côté (mm) (exemple : 10)',
+    AppLanguage.english: 'Sash overlap per side (mm) (example: 10)',
+  },
+  'السمك الأقصى للزجاج / Max Glass Thickness (mm)': {
+    AppLanguage.arabic: 'السمك الأقصى للزجاج (مم)',
+    AppLanguage.french: 'Épaisseur maximale du vitrage (mm)',
+    AppLanguage.english: 'Maximum glass thickness (mm)',
+  },
+  'البيركلوز المزدوج المرتبط / Linked Double Parclose': {
+    AppLanguage.arabic: 'البيركلوز المزدوج المرتبط',
+    AppLanguage.french: 'Parclose double associée',
+    AppLanguage.english: 'Linked double parclose',
+  },
+  'حديد الدعم المرتبط (Renfort)': {
+    AppLanguage.arabic: 'حديد الدعم المرتبط (Renfort)',
+    AppLanguage.french: 'Renfort associé',
+    AppLanguage.english: 'Linked reinforcement',
+  },
+  'خصم اللحام (mm) (مثال: 140)': {
+    AppLanguage.arabic: 'خصم اللحام (مم) (مثال: 140)',
+    AppLanguage.french: 'Déduction de soudure (mm) (exemple : 140)',
+    AppLanguage.english: 'Welding deduction (mm) (example: 140)',
+  },
+  'اختيار صورة للمقطع (اختياري)': {
+    AppLanguage.arabic: 'اختيار صورة للمقطع (اختياري)',
+    AppLanguage.french: 'Choisir une image du profilé (facultatif)',
+    AppLanguage.english: 'Choose section image (optional)',
+  },
+  'تغيير صورة المقطع': {
+    AppLanguage.arabic: 'تغيير صورة المقطع',
+    AppLanguage.french: 'Changer l’image du profilé',
+    AppLanguage.english: 'Change section image',
+  },
+  'نسخ المقاطع من ProWin إلى باقي السلاسل': {
+    AppLanguage.arabic: 'نسخ المقاطع من ProWin إلى باقي السلاسل',
+    AppLanguage.french: 'Copier les profilés ProWin vers les autres séries',
+    AppLanguage.english: 'Copy ProWin sections to other series',
+  },
+  'تأكيد النسخ': {
+    AppLanguage.arabic: 'تأكيد النسخ',
+    AppLanguage.french: 'Confirmer la copie',
+    AppLanguage.english: 'Confirm copy',
+  },
+  'هل أنت متأكد أنك تريد نسخ مقاطع ProWin 60 و 70 وتطبيقها على باقي بروفيلات الـ PVC والألمنيوم؟': {
+    AppLanguage.arabic:
+        'هل أنت متأكد أنك تريد نسخ مقاطع ProWin 60 و 70 وتطبيقها على باقي بروفيلات الـ PVC والألمنيوم؟',
+    AppLanguage.french:
+        'Voulez-vous vraiment copier les profilés ProWin 60 et 70 vers les autres profilés PVC et aluminium ?',
+    AppLanguage.english:
+        'Are you sure you want to copy ProWin 60 and 70 sections to the other PVC and aluminum profiles?',
+  },
+  'نعم، انسخ': {
+    AppLanguage.arabic: 'نعم، انسخ',
+    AppLanguage.french: 'Oui, copier',
+    AppLanguage.english: 'Yes, copy',
+  },
+  'بروفيل ProWin غير موجود!': {
+    AppLanguage.arabic: 'بروفيل ProWin غير موجود!',
+    AppLanguage.french: 'Le profilé ProWin est introuvable.',
+    AppLanguage.english: 'ProWin profile was not found.',
+  },
+  'السلسلة 60 أو 70/72 غير موجودة داخل ProWin!': {
+    AppLanguage.arabic: 'السلسلة 60 أو 70/72 غير موجودة داخل ProWin!',
+    AppLanguage.french: 'La série 60 ou 70/72 est introuvable dans ProWin.',
+    AppLanguage.english: 'Series 60 or 70/72 was not found in ProWin.',
+  },
+  'تم نسخ المقاطع بنجاح!': {
+    AppLanguage.arabic: 'تم نسخ المقاطع بنجاح!',
+    AppLanguage.french: 'Les profilés ont été copiés avec succès.',
+    AppLanguage.english: 'Sections copied successfully.',
+  },
+  'حدث خطأ أثناء النسخ': {
+    AppLanguage.arabic: 'حدث خطأ أثناء النسخ',
+    AppLanguage.french: 'Une erreur est survenue pendant la copie',
+    AppLanguage.english: 'An error occurred while copying',
+  },
+  'أفقي:': {
+    AppLanguage.arabic: 'أفقي:',
+    AppLanguage.french: 'Horizontal :',
+    AppLanguage.english: 'Horizontal:',
+  },
+  'عمودي:': {
+    AppLanguage.arabic: 'عمودي:',
+    AppLanguage.french: 'Vertical :',
+    AppLanguage.english: 'Vertical:',
+  },
 };

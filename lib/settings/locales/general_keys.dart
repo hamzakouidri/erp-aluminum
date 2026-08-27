@@ -98,7 +98,8 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'يرجى اختيار الزبون أولاً لعرض مشاريعه': {
     AppLanguage.arabic: 'يرجى اختيار الزبون أولاً لعرض مشاريعه',
-    AppLanguage.french: 'Veuillez d\'abord choisir le client pour voir ses projets',
+    AppLanguage.french:
+        'Veuillez d\'abord choisir le client pour voir ses projets',
     AppLanguage.english: 'Please select client first to view their projects',
   },
   'اختيار المشروع': {
@@ -137,9 +138,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'No orders linked to this project currently',
   },
   'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.': {
-    AppLanguage.arabic: 'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.',
-    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer ce projet? Les commandes liées seront dissociées sans être supprimées.',
-    AppLanguage.english: 'Are you sure you want to delete this project? Linked orders will be dissociated without being deleted.',
+    AppLanguage.arabic:
+        'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.',
+    AppLanguage.french:
+        'Êtes-vous sûr de vouloir supprimer ce projet? Les commandes liées seront dissociées sans être supprimées.',
+    AppLanguage.english:
+        'Are you sure you want to delete this project? Linked orders will be dissociated without being deleted.',
   },
   'arabic': {
     AppLanguage.arabic: 'العربية',
@@ -341,7 +345,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Cadre de base',
     AppLanguage.english: 'Bottom Frame',
   },
-    'إلغاء': {
+  'إلغاء': {
     AppLanguage.arabic: 'إلغاء',
     AppLanguage.french: 'Annuler',
     AppLanguage.english: 'Cancel',
@@ -377,9 +381,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'AI is available for free preview',
   },
   'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.': {
-    AppLanguage.arabic: 'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.',
-    AppLanguage.french: 'L’application va simuler la lecture d’une vraie facture d’aluminium, afficher l’inspection interactive et la lier directement pour que vous puissiez tester la fonctionnalité facilement.',
-    AppLanguage.english: 'The application will simulate reading a real aluminum invoice, display the interactive inspection, and link it directly so you can easily test the feature.',
+    AppLanguage.arabic:
+        'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.',
+    AppLanguage.french:
+        'L’application va simuler la lecture d’une vraie facture d’aluminium, afficher l’inspection interactive et la lier directement pour que vous puissiez tester la fonctionnalité facilement.',
+    AppLanguage.english:
+        'The application will simulate reading a real aluminum invoice, display the interactive inspection, and link it directly so you can easily test the feature.',
   },
   'القيمة الإجمالية': {
     AppLanguage.arabic: 'القيمة الإجمالية',
@@ -486,7 +493,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Suppression définitive',
     AppLanguage.english: 'Permanent Delete',
   },
-    'حفظ': {
+  'حفظ': {
     AppLanguage.arabic: 'حفظ',
     AppLanguage.french: 'Enregistrer',
     AppLanguage.english: 'Save',
@@ -863,8 +870,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:': {
     AppLanguage.arabic: '',
-    AppLanguage.french: 'Vérification de la conformité des profilés reçus avec le catalogue local dans la base de données :',
-    AppLanguage.english: 'Checking conformity of incoming profiles with the local aluminum catalog in the database:',
+    AppLanguage.french:
+        'Vérification de la conformité des profilés reçus avec le catalogue local dans la base de données :',
+    AppLanguage.english:
+        'Checking conformity of incoming profiles with the local aluminum catalog in the database:',
   },
   'الرجاء إدخال رقم صحيح': {
     AppLanguage.arabic: 'الرجاء إدخال رقم صحيح',
@@ -881,7 +890,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'الرد المستلم من الذكاء الاصطناعي فارغ.',
     AppLanguage.english: 'الرد المستلم من الذكاء الاصطناعي فارغ.',
   },
-    'الرصيد الإجمالي': {
+  'الرصيد الإجمالي': {
     AppLanguage.arabic: 'الرصيد الإجمالي',
     AppLanguage.french: 'Solde Total',
     AppLanguage.english: 'Total Balance',
@@ -1088,7 +1097,8 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'انقر لتحديد وتعديل أي منطقة': {
     AppLanguage.arabic: 'انقر لتحديد وتعديل أي منطقة',
-    AppLanguage.french: 'Cliquer pour sélectionner et modifier n\'importe quelle zone',
+    AppLanguage.french:
+        'Cliquer pour sélectionner et modifier n\'importe quelle zone',
     AppLanguage.english: 'Click to select and edit any zone',
   },
   'باج': {
@@ -1398,8 +1408,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'سيتم مسح البيانات الحالية بالكامل واستبدالها بالنسخة السحابية المحفوظة. هل أنت متأكد؟': {
     AppLanguage.arabic: '',
-    AppLanguage.french: 'Toutes les données actuelles seront effacées et remplacées par la version cloud. Êtes-vous sûr ?',
-    AppLanguage.english: 'All current data will be erased and replaced with the cloud version. Are you sure?',
+    AppLanguage.french:
+        'Toutes les données actuelles seront effacées et remplacées par la version cloud. Êtes-vous sûr ?',
+    AppLanguage.english:
+        'All current data will be erased and replaced with the cloud version. Are you sure?',
   },
   'شفاف': {
     AppLanguage.arabic: 'شفاف',
@@ -1626,7 +1638,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Trempé',
     AppLanguage.english: 'Tempered',
   },
-    'ملغى': {
+  'ملغى': {
     AppLanguage.arabic: 'ملغى',
     AppLanguage.french: 'Annulé',
     AppLanguage.english: 'Canceled',
@@ -1721,7 +1733,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Type de traitement :',
     AppLanguage.english: 'Processing type:',
   },
-    'نوع المعاملة': {
+  'نوع المعاملة': {
     AppLanguage.arabic: 'نوع المعاملة',
     AppLanguage.french: 'Type de transaction',
     AppLanguage.english: 'Transaction type',
@@ -1763,7 +1775,8 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'يرجى مطابقة كافة السلع أولاً': {
     AppLanguage.arabic: 'يرجى مطابقة كافة السلع أولاً',
-    AppLanguage.french: 'Veuillez d\'abord faire correspondre tous les articles',
+    AppLanguage.french:
+        'Veuillez d\'abord faire correspondre tous les articles',
     AppLanguage.english: 'Please match all items first',
   },
   'يسار': {
@@ -1771,11 +1784,13 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Gauche',
     AppLanguage.english: 'Left',
   },
-  'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.':
-      {
-    AppLanguage.arabic: 'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.',
-    AppLanguage.french: 'L\'IA extrait les noms des fournisseurs, les valeurs des factures et les codes commerciaux pour une correspondance automatique.',
-    AppLanguage.english: 'AI extracts supplier names, invoice values, and commercial codes for automatic matching.',
+  'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.': {
+    AppLanguage.arabic:
+        'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.',
+    AppLanguage.french:
+        'L\'IA extrait les noms des fournisseurs, les valeurs des factures et les codes commerciaux pour une correspondance automatique.',
+    AppLanguage.english:
+        'AI extracts supplier names, invoice values, and commercial codes for automatic matching.',
   },
   'يمين': {
     AppLanguage.arabic: 'يمين',
@@ -2072,7 +2087,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Modification (Amélioration)',
     AppLanguage.english: 'Modification (Improvement)',
   },
-    'دج': {
+  'دج': {
     AppLanguage.arabic: 'دج',
     AppLanguage.french: 'D.A.',
     AppLanguage.english: 'D.A.',
@@ -2240,6 +2255,11 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Quantité & Coût',
     AppLanguage.english: 'Quantity & Cost',
   },
+  'جاري تجهيز الكميات والأسعار...': {
+    AppLanguage.arabic: 'جاري تجهيز الكميات والأسعار...',
+    AppLanguage.french: 'Préparation des quantités et des prix...',
+    AppLanguage.english: 'Preparing quantities and prices...',
+  },
   'القياس': {
     AppLanguage.arabic: 'القياس',
     AppLanguage.french: 'Dimensions / Mesures',
@@ -2265,7 +2285,7 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Unité',
     AppLanguage.english: 'Unit',
   },
-    'متر': {
+  'متر': {
     AppLanguage.arabic: 'متر',
     AppLanguage.french: 'Mètre',
     AppLanguage.english: 'Meter',
@@ -2363,13 +2383,16 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   r'''هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟
 
 لا يمكن التراجع عن هذا الإجراء!''': {
-    AppLanguage.arabic: r'''هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟
+    AppLanguage.arabic:
+        r'''هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟
 
 لا يمكن التراجع عن هذا الإجراء!''',
-    AppLanguage.french: r'''Êtes-vous sûr de vouloir réinitialiser tout le stock à 0 ?
+    AppLanguage.french:
+        r'''Êtes-vous sûr de vouloir réinitialiser tout le stock à 0 ?
 
 Cette action est irréversible !''',
-    AppLanguage.english: r'''Are you sure you want to reset the entire stock to 0?
+    AppLanguage.english:
+        r'''Are you sure you want to reset the entire stock to 0?
 
 This action cannot be undone!''',
   },
@@ -2604,9 +2627,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Generating invoice number...',
   },
   'لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.': {
-    AppLanguage.arabic: 'لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.',
-    AppLanguage.french: 'Aucun fournisseur enregistré, veuillez d\'abord en ajouter un.',
-    AppLanguage.english: 'No registered suppliers, please add a supplier first.',
+    AppLanguage.arabic:
+        'لا يوجد موردين مسجلين، يرجى إضافة مورد أولاً من صفحة إدارة الموردين.',
+    AppLanguage.french:
+        'Aucun fournisseur enregistré, veuillez d\'abord en ajouter un.',
+    AppLanguage.english:
+        'No registered suppliers, please add a supplier first.',
   },
   'المورد *': {
     AppLanguage.arabic: 'المورد *',
@@ -2654,9 +2680,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Are you sure you want to delete invoice number: ',
   },
   ' نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.': {
-    AppLanguage.arabic: ' نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.',
-    AppLanguage.french: ' définitivement de la base de données ? Cette action est irréversible.',
-    AppLanguage.english: ' permanently from the database? This action cannot be undone.',
+    AppLanguage.arabic:
+        ' نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.',
+    AppLanguage.french:
+        ' définitivement de la base de données ? Cette action est irréversible.',
+    AppLanguage.english:
+        ' permanently from the database? This action cannot be undone.',
   },
   'تفاصيل المشتريات': {
     AppLanguage.arabic: 'تفاصيل المشتريات',
@@ -2743,7 +2772,7 @@ This action cannot be undone!''',
     AppLanguage.french: 'Sections',
     AppLanguage.english: 'Sections',
   },
-    'إكسسوارات': {
+  'إكسسوارات': {
     AppLanguage.arabic: 'إكسسوارات',
     AppLanguage.french: 'Accessoires',
     AppLanguage.english: 'Accessories',
@@ -3112,7 +3141,8 @@ This action cannot be undone!''',
     AppLanguage.english: 'Shutter Sqm Price (DA) - Manual',
   },
   'معامل عزم المحرك (وزن كغ لكل 1 نيوتن) (الافتراضي: 1.6)': {
-    AppLanguage.arabic: 'معامل عزم المحرك (وزن كغ لكل 1 نيوتن) (الافتراضي: 1.6)',
+    AppLanguage.arabic:
+        'معامل عزم المحرك (وزن كغ لكل 1 نيوتن) (الافتراضي: 1.6)',
     AppLanguage.french: 'Facteur de couple (Kg/Nm) (Défaut : 1.6)',
     AppLanguage.english: 'Motor torque factor (Kg/Nm) (Default: 1.6)',
   },
@@ -3408,9 +3438,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Max glass thickness',
   },
   'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات': {
-    AppLanguage.arabic: 'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات',
-    AppLanguage.french: 'Aucune parclose enregistrée pour cette gamme dans la base de données',
-    AppLanguage.english: 'No glass bead sections registered for this series in the database',
+    AppLanguage.arabic:
+        'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات',
+    AppLanguage.french:
+        'Aucune parclose enregistrée pour cette gamme dans la base de données',
+    AppLanguage.english:
+        'No glass bead sections registered for this series in the database',
   },
   'تقسيم متساوي': {
     AppLanguage.arabic: 'تقسيم متساوي',
@@ -3489,7 +3522,8 @@ This action cannot be undone!''',
   },
   'هل تريد طباعة كل النسخ أم نسخة محددة؟': {
     AppLanguage.arabic: 'هل تريد طباعة كل النسخ أم نسخة محددة؟',
-    AppLanguage.french: 'Voulez-vous imprimer toutes les copies ou une copie spécifique?',
+    AppLanguage.french:
+        'Voulez-vous imprimer toutes les copies ou une copie spécifique?',
     AppLanguage.english: 'Do you want to print all copies or a specific one?',
   },
   'طباعة الكل': {
@@ -3747,17 +3781,17 @@ This action cannot be undone!''',
     AppLanguage.french: 'Statut des commandes',
     AppLanguage.english: 'Orders Status',
   },
-    'دائري': {
+  'دائري': {
     AppLanguage.arabic: 'دائري',
     AppLanguage.french: 'Circulaire',
     AppLanguage.english: 'Pie',
   },
-    'أشهر': {
+  'أشهر': {
     AppLanguage.arabic: 'أشهر',
     AppLanguage.french: 'Mois',
     AppLanguage.english: 'Months',
   },
-    'منحنى بياني': {
+  'منحنى بياني': {
     AppLanguage.arabic: 'منحنى بياني',
     AppLanguage.french: 'Lignes',
     AppLanguage.english: 'Lines',
@@ -3804,7 +3838,7 @@ This action cannot be undone!''',
     AppLanguage.english: 'Products',
   },
 
-      'المستودع الرئيسي': {
+  'المستودع الرئيسي': {
     AppLanguage.arabic: 'المستودع الرئيسي',
     AppLanguage.french: 'Dépôt principal',
     AppLanguage.english: 'Main Warehouse',
@@ -3850,7 +3884,7 @@ This action cannot be undone!''',
     AppLanguage.french: 'Caisse',
     AppLanguage.english: 'Treasury',
   },
-    'دفع من المورد': {
+  'دفع من المورد': {
     AppLanguage.arabic: 'دفع من المورد',
     AppLanguage.french: 'Paiement au fournisseur',
     AppLanguage.english: 'Payment to supplier',
@@ -3860,7 +3894,7 @@ This action cannot be undone!''',
     AppLanguage.french: 'Recherche par nom ou description',
     AppLanguage.english: 'Search by name or description',
   },
-    'الفاتورة': {
+  'الفاتورة': {
     AppLanguage.arabic: 'الفاتورة',
     AppLanguage.french: 'Facture',
     AppLanguage.english: 'Invoice',
@@ -3875,22 +3909,22 @@ This action cannot be undone!''',
     AppLanguage.french: 'Employé (Salaire/Avance)',
     AppLanguage.english: 'Worker (Salary/Advance)',
   },
-    'عامل': {
+  'عامل': {
     AppLanguage.arabic: 'عامل',
     AppLanguage.french: 'Ouvrier',
     AppLanguage.english: 'Worker',
   },
-    'دفع فاتورة مشتريات للمورد': {
+  'دفع فاتورة مشتريات للمورد': {
     AppLanguage.arabic: 'دفع فاتورة مشتريات للمورد',
     AppLanguage.french: 'Paiement de la facture d\'achat au fournisseur',
     AppLanguage.english: 'Payment of purchase invoice to supplier',
   },
-    'استرجاع من المورد': {
+  'استرجاع من المورد': {
     AppLanguage.arabic: 'استرجاع من المورد',
     AppLanguage.french: 'Récupération du fournisseur',
     AppLanguage.english: 'Retrieval from supplier',
   },
-    'فاتورة مشتريات رقم': {
+  'فاتورة مشتريات رقم': {
     AppLanguage.arabic: 'فاتورة مشتريات رقم',
     AppLanguage.french: 'Facture d\'achat N°',
     AppLanguage.english: 'Purchase invoice No.',
@@ -3905,32 +3939,38 @@ This action cannot be undone!''',
     AppLanguage.french: 'Ajouter une transaction à la caisse',
     AppLanguage.english: 'Add cash transaction',
   },
-    'خيارات حذف المكون المؤرشف': {
+  'خيارات حذف المكون المؤرشف': {
     AppLanguage.arabic: 'خيارات حذف المكون المؤرشف',
     AppLanguage.french: 'Options de suppression du composant archivé',
     AppLanguage.english: 'Archived component deletion options',
   },
-    'تأكيد الحذف والأرشفة': {
+  'تأكيد الحذف والأرشفة': {
     AppLanguage.arabic: 'تأكيد الحذف والأرشفة',
     AppLanguage.french: 'Confirmer la suppression et l\'archivage',
     AppLanguage.english: 'Confirm deletion and archiving',
   },
-    'هذا العنصر مؤرشف بالفعل. يمكنك استعادته ليصبح نشطاً مجدداً أو حذفه نهائياً من قاعدة البيانات.': {
-    AppLanguage.arabic: 'هذا العنصر مؤرشف بالفعل. يمكنك استعادته ليصبح نشطاً مجدداً أو حذفه نهائياً من قاعدة البيانات.',
-    AppLanguage.french: 'Cet élément est déjà archivé. Vous pouvez le restaurer pour le rendre à nouveau actif ou le supprimer définitivement de la base de données.',
-    AppLanguage.english: 'This item is already archived. You can restore it to active state or permanently delete it from the database.',
+  'هذا العنصر مؤرشف بالفعل. يمكنك استعادته ليصبح نشطاً مجدداً أو حذفه نهائياً من قاعدة البيانات.': {
+    AppLanguage.arabic:
+        'هذا العنصر مؤرشف بالفعل. يمكنك استعادته ليصبح نشطاً مجدداً أو حذفه نهائياً من قاعدة البيانات.',
+    AppLanguage.french:
+        'Cet élément est déjà archivé. Vous pouvez le restaurer pour le rendre à nouveau actif ou le supprimer définitivement de la base de données.',
+    AppLanguage.english:
+        'This item is already archived. You can restore it to active state or permanently delete it from the database.',
   },
-    'يمكنك أرشفة هذا العنصر (إخفاؤه من الطلبيات الجديدة مع الحفاظ على الفواتير القديمة) أو حذفه نهائياً من قاعدة البيانات.': {
-    AppLanguage.arabic: 'يمكنك أرشفة هذا العنصر (إخفاؤه من الطلبيات الجديدة مع الحفاظ على الفواتير القديمة) أو حذفه نهائياً من قاعدة البيانات.',
-    AppLanguage.french: 'Vous pouvez archiver cet élément (le masquer des nouvelles commandes tout en conservant les anciennes factures) ou le supprimer définitivement de la base de données.',
-    AppLanguage.english: 'You can archive this item (hide it from new orders while keeping old invoices) or permanently delete it from the database.',
+  'يمكنك أرشفة هذا العنصر (إخفاؤه من الطلبيات الجديدة مع الحفاظ على الفواتير القديمة) أو حذفه نهائياً من قاعدة البيانات.': {
+    AppLanguage.arabic:
+        'يمكنك أرشفة هذا العنصر (إخفاؤه من الطلبيات الجديدة مع الحفاظ على الفواتير القديمة) أو حذفه نهائياً من قاعدة البيانات.',
+    AppLanguage.french:
+        'Vous pouvez archiver cet élément (le masquer des nouvelles commandes tout en conservant les anciennes factures) ou le supprimer définitivement de la base de données.',
+    AppLanguage.english:
+        'You can archive this item (hide it from new orders while keeping old invoices) or permanently delete it from the database.',
   },
-    'استعادة المكون': {
+  'استعادة المكون': {
     AppLanguage.arabic: 'استعادة المكون',
     AppLanguage.french: 'Restaurer le composant',
     AppLanguage.english: 'Restore component',
   },
-    'أرشفة (إخفاء)': {
+  'أرشفة (إخفاء)': {
     AppLanguage.arabic: 'أرشفة (إخفاء)',
     AppLanguage.french: 'Archiver (Masquer)',
     AppLanguage.english: 'Archive (Hide)',
@@ -3940,29 +3980,27 @@ This action cannot be undone!''',
     AppLanguage.french: 'Gestion des Kits',
     AppLanguage.english: 'Kit Management',
   },
-    'مؤرشف': {
+  'مؤرشف': {
     AppLanguage.arabic: 'مؤرشف',
     AppLanguage.french: 'Archivé',
     AppLanguage.english: 'Archived',
   },
-    'إكسترودي': {
+  'إكسترودي': {
     AppLanguage.arabic: 'إكسترودي',
     AppLanguage.french: 'Extrudé',
     AppLanguage.english: 'Extruded',
   },
-    'م': {
+  'م': {
     AppLanguage.arabic: 'م',
     AppLanguage.french: 'm',
     AppLanguage.english: 'm',
   },
-
 
   'فاتورة مشتريات': {
     AppLanguage.arabic: 'فاتورة مشتريات',
     AppLanguage.french: 'Facture d\'achat',
     AppLanguage.english: 'Purchase Invoice',
   },
-
 
   'doc_devis_menu': {
     AppLanguage.arabic: 'تسعيرة (Devis)',
@@ -4050,18 +4088,18 @@ This action cannot be undone!''',
     AppLanguage.english: 'Confirm Measurements & Stickers',
   },
   'تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة': {
-    AppLanguage.arabic: 'تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة',
-    AppLanguage.french: 'Modification des mesures réelles des sites et impression des codes-barres par pièce',
-    AppLanguage.english: 'Edit actual site measurements and print barcode per piece',
+    AppLanguage.arabic:
+        'تعديل القياسات الفعلية للموقع وطباعة الباركود لكل قطعة',
+    AppLanguage.french:
+        'Modification des mesures réelles des sites et impression des codes-barres par pièce',
+    AppLanguage.english:
+        'Edit actual site measurements and print barcode per piece',
   },
   'تأكيد الطلبية (Confirmer)': {
     AppLanguage.arabic: 'تأكيد الطلبية (Confirmer)',
     AppLanguage.french: 'Confirmer la commande',
     AppLanguage.english: 'Confirm Order',
   },
-
-
-
 
   'تقرير النواقص الشامل': {
     AppLanguage.arabic: 'تقرير النواقص الشامل',
@@ -4070,7 +4108,8 @@ This action cannot be undone!''',
   },
   'نواقص كل الطلبيات (Aluminium, Verre, Acc)': {
     AppLanguage.arabic: 'نواقص كل الطلبيات (Aluminium, Verre, Acc)',
-    AppLanguage.french: 'Besoins de toutes les commandes (Aluminium, Verre, Acc)',
+    AppLanguage.french:
+        'Besoins de toutes les commandes (Aluminium, Verre, Acc)',
     AppLanguage.english: 'Needs of all orders (Aluminium, Glass, Acc)',
   },
   'أجور وسلفيات العمال': {
@@ -4124,7 +4163,6 @@ This action cannot be undone!''',
     AppLanguage.english: 'You do not have permission to view any reports',
   },
 
-
   'قبض (Encaissement)': {
     AppLanguage.arabic: 'قبض (Encaissement)',
     AppLanguage.french: 'Encaissement',
@@ -4160,7 +4198,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Description (détails)',
     AppLanguage.english: 'Description (details)',
   },
-
 
   'بواسطة': {
     AppLanguage.arabic: 'بواسطة',
@@ -4198,7 +4235,6 @@ This action cannot be undone!''',
     AppLanguage.english: 'To worker:',
   },
 
-
   'commandes': {
     AppLanguage.arabic: 'الطلبيات',
     AppLanguage.french: 'Commandes',
@@ -4226,7 +4262,8 @@ This action cannot be undone!''',
   },
   'تم حفظ PDF بنجاح في مجلد التحميلات': {
     AppLanguage.arabic: 'تم حفظ PDF بنجاح في مجلد التحميلات',
-    AppLanguage.french: 'PDF enregistré avec succès dans le dossier Téléchargements',
+    AppLanguage.french:
+        'PDF enregistré avec succès dans le dossier Téléchargements',
     AppLanguage.english: 'PDF saved successfully in Downloads folder',
   },
   'فاتورة رسمية / أولية': {
@@ -4375,7 +4412,6 @@ This action cannot be undone!''',
     AppLanguage.english: 'Set',
   },
 
-
   'اضافة مركب': {
     AppLanguage.arabic: 'اضافة مركب',
     AppLanguage.french: 'Ajouter un composant',
@@ -4456,7 +4492,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Simple/Double',
     AppLanguage.english: 'Simple/Double',
   },
-
 
   'الجودة (النوعية)': {
     AppLanguage.arabic: 'الجودة (النوعية)',
@@ -4554,7 +4589,6 @@ This action cannot be undone!''',
     AppLanguage.english: 'Unit selling price',
   },
 
-
   'مقابض (Poignées)': {
     AppLanguage.arabic: 'مقابض (Poignées)',
     AppLanguage.french: 'Poignées',
@@ -4581,7 +4615,6 @@ This action cannot be undone!''',
     AppLanguage.english: 'Others',
   },
 
-
   'الاستخدامات:': {
     AppLanguage.arabic: 'الاستخدامات:',
     AppLanguage.french: 'Usages :',
@@ -4592,7 +4625,6 @@ This action cannot be undone!''',
     AppLanguage.french: "Nombre de vis pour l'accessoire :",
     AppLanguage.english: 'Number of screws for accessory:',
   },
-
 
   'بوشون باتمو': {
     AppLanguage.arabic: 'بوشون باتمو',
@@ -4647,9 +4679,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Maximum box height (mm)',
   },
   "يرجى تحديد ألوان النظام أولاً من تبويب 'ألوان الأنظمة'.": {
-    AppLanguage.arabic: "يرجى تحديد ألوان النظام أولاً من تبويب 'ألوان الأنظمة'.",
-    AppLanguage.french: "Veuillez d'abord sélectionner les couleurs du système dans l'onglet 'Couleurs des Systèmes'.",
-    AppLanguage.english: "Please select system colors first from the 'System Colors' tab.",
+    AppLanguage.arabic:
+        "يرجى تحديد ألوان النظام أولاً من تبويب 'ألوان الأنظمة'.",
+    AppLanguage.french:
+        "Veuillez d'abord sélectionner les couleurs du système dans l'onglet 'Couleurs des Systèmes'.",
+    AppLanguage.english:
+        "Please select system colors first from the 'System Colors' tab.",
   },
 
   // --- Order Editing Screen (add_commande) ---
@@ -4835,8 +4870,10 @@ This action cannot be undone!''',
   },
   'نظام المنزلق لا يدعم الشكل المائل والمقوس': {
     AppLanguage.arabic: 'نظام المنزلق لا يدعم الشكل المائل والمقوس',
-    AppLanguage.french: 'Le système coulissant ne supporte pas les formes inclinées et cintrées',
-    AppLanguage.english: 'The sliding system does not support inclined or arched shapes',
+    AppLanguage.french:
+        'Le système coulissant ne supporte pas les formes inclinées et cintrées',
+    AppLanguage.english:
+        'The sliding system does not support inclined or arched shapes',
   },
   'حذف بلانت الضلفة': {
     AppLanguage.arabic: 'حذف بلانت الضلفة',
@@ -5078,7 +5115,8 @@ This action cannot be undone!''',
   },
   'الستار غير مدعوم للأشكال المقوسة أو المائلة': {
     AppLanguage.arabic: 'الستار غير مدعوم للأشكال المقوسة أو المائلة',
-    AppLanguage.french: 'Volet non supporté pour les formes arquées ou inclinées',
+    AppLanguage.french:
+        'Volet non supporté pour les formes arquées ou inclinées',
     AppLanguage.english: 'Shutter not supported for arched or slanted shapes',
   },
   'تدعيم المونطو (Renfort)': {
@@ -5153,13 +5191,18 @@ This action cannot be undone!''',
   },
   'كل الكميات متوفرة بشكل جيد ولا توجد نواقص!': {
     AppLanguage.arabic: 'كل الكميات متوفرة بشكل جيد ولا توجد نواقص!',
-    AppLanguage.french: 'Toutes les quantités sont bien disponibles et il n\'y a pas de pénurie !',
-    AppLanguage.english: 'All quantities are well available and there are no shortages!',
+    AppLanguage.french:
+        'Toutes les quantités sont bien disponibles et il n\'y a pas de pénurie !',
+    AppLanguage.english:
+        'All quantities are well available and there are no shortages!',
   },
   'العناصر التالية وصلت للحد الأدنى أو نفذت من المخزون، يرجى إعادة طلبها قريباً:': {
-    AppLanguage.arabic: 'العناصر التالية وصلت للحد الأدنى أو نفذت من المخزون، يرجى إعادة طلبها قريباً:',
-    AppLanguage.french: 'Les articles suivants ont atteint la limite minimale ou sont en rupture de stock, veuillez les réapprovisionner bientôt :',
-    AppLanguage.english: 'The following items have reached the minimum limit or are out of stock, please reorder them soon:',
+    AppLanguage.arabic:
+        'العناصر التالية وصلت للحد الأدنى أو نفذت من المخزون، يرجى إعادة طلبها قريباً:',
+    AppLanguage.french:
+        'Les articles suivants ont atteint la limite minimale ou sont en rupture de stock, veuillez les réapprovisionner bientôt :',
+    AppLanguage.english:
+        'The following items have reached the minimum limit or are out of stock, please reorder them soon:',
   },
   'إغلاق': {
     AppLanguage.arabic: 'إغلاق',
@@ -5223,8 +5266,10 @@ This action cannot be undone!''',
   },
   'لا توجد فواتير تسليم جزئية مسجلة حالياً.': {
     AppLanguage.arabic: 'لا توجد فواتير تسليم جزئية مسجلة حالياً.',
-    AppLanguage.french: 'Aucune facture de livraison partielle n\'est enregistrée actuellement.',
-    AppLanguage.english: 'No partial delivery invoices are currently registered.',
+    AppLanguage.french:
+        'Aucune facture de livraison partielle n\'est enregistrée actuellement.',
+    AppLanguage.english:
+        'No partial delivery invoices are currently registered.',
   },
   'طلب': {
     AppLanguage.arabic: 'طلب',
@@ -5380,7 +5425,8 @@ This action cannot be undone!''',
   },
   'لا توجد إكسسوارات مطابقة لنوع مادة هذا البروفيل': {
     AppLanguage.arabic: 'لا توجد إكسسوارات مطابقة لنوع مادة هذا البروفيل',
-    AppLanguage.french: 'Aucun accessoire ne correspond au type de matériau de ce profilé',
+    AppLanguage.french:
+        'Aucun accessoire ne correspond au type de matériau de ce profilé',
     AppLanguage.english: 'No accessories match this profile\'s material type',
   },
   'الإكسسوارات المرتبطة': {
@@ -5456,9 +5502,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Kit screws',
   },
   'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!': {
-    AppLanguage.arabic: 'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
-    AppLanguage.french: 'Veuillez sélectionner au moins une série lors du choix d\'une portée spécifique à la série !',
-    AppLanguage.english: 'Please select at least one series when choosing a series-specific scope!',
+    AppLanguage.arabic:
+        'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
+    AppLanguage.french:
+        'Veuillez sélectionner au moins une série lors du choix d\'une portée spécifique à la série !',
+    AppLanguage.english:
+        'Please select at least one series when choosing a series-specific scope!',
   },
   'الستار': {
     AppLanguage.arabic: 'الستار',
@@ -5568,8 +5617,10 @@ This action cannot be undone!''',
   },
   'إكسسوار عام – يظهر في كل السلاسل تلقائياً': {
     AppLanguage.arabic: 'إكسسوار عام – يظهر في كل السلاسل تلقائياً',
-    AppLanguage.french: 'Accessoire global – s\'affiche dans toutes les séries par défaut',
-    AppLanguage.english: 'Global accessory – displayed in all series by default',
+    AppLanguage.french:
+        'Accessoire global – s\'affiche dans toutes les séries par défaut',
+    AppLanguage.english:
+        'Global accessory – displayed in all series by default',
   },
   'تم فك ربط': {
     AppLanguage.arabic: 'تم فك ربط',
@@ -5772,9 +5823,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Search for a place...',
   },
   'اضغط على أي مكان في الخريطة لتحديد الموقع بدقة، ثم اضغط على زر الصح بالأعلى للحفظ': {
-    AppLanguage.arabic: 'اضغط على أي مكان في الخريطة لتحديد الموقع بدقة، ثم اضغط على زر الصح بالأعلى للحفظ',
-    AppLanguage.french: 'Appuyez n\'importe où sur la carte pour définir l\'emplacement, puis appuyez sur la coche en haut pour enregistrer',
-    AppLanguage.english: 'Tap anywhere on the map to specify location, then press the check button on top to save',
+    AppLanguage.arabic:
+        'اضغط على أي مكان في الخريطة لتحديد الموقع بدقة، ثم اضغط على زر الصح بالأعلى للحفظ',
+    AppLanguage.french:
+        'Appuyez n\'importe où sur la carte pour définir l\'emplacement, puis appuyez sur la coche en haut pour enregistrer',
+    AppLanguage.english:
+        'Tap anywhere on the map to specify location, then press the check button on top to save',
   },
   'فتح الموقع في الخرائط': {
     AppLanguage.arabic: 'فتح الموقع في الخرائط',
@@ -6012,9 +6066,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Edit Cash Box Name',
   },
   'هل أنت متأكد من حذف الصندوق "\$name"؟ سيتم نقل معاملاته تلقائياً للصندوق الآخر.': {
-    AppLanguage.arabic: 'هل أنت متأكد من حذف الصندوق "\$name"؟ سيتم نقل معاملاته تلقائياً للصندوق الآخر.',
-    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer la caisse "\$name" ? Ses transactions seront automatiquement transférées.',
-    AppLanguage.english: 'Are you sure you want to delete cash box "\$name"? Its transactions will be automatically transferred.',
+    AppLanguage.arabic:
+        'هل أنت متأكد من حذف الصندوق "\$name"؟ سيتم نقل معاملاته تلقائياً للصندوق الآخر.',
+    AppLanguage.french:
+        'Êtes-vous sûr de vouloir supprimer la caisse "\$name" ? Ses transactions seront automatiquement transférées.',
+    AppLanguage.english:
+        'Are you sure you want to delete cash box "\$name"? Its transactions will be automatically transferred.',
   },
   'دفع للمورد الفاتوره': {
     AppLanguage.arabic: 'دفع للمورد الفاتوره',
@@ -6063,7 +6120,8 @@ This action cannot be undone!''',
   },
   'هل أنت متأكد أنك تريد حذف هذه المعاملة من الصندوق؟': {
     AppLanguage.arabic: 'هل أنت متأكد أنك تريد حذف هذه المعاملة من الصندوق؟',
-    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer cette transaction ?',
+    AppLanguage.french:
+        'Êtes-vous sûr de vouloir supprimer cette transaction ?',
     AppLanguage.english: 'Are you sure you want to delete this transaction?',
   },
   'ترتيب العناصر': {
@@ -6083,8 +6141,10 @@ This action cannot be undone!''',
   },
   'كشف حساب تفصيلي (بالنوافذ والمقاسات)': {
     AppLanguage.arabic: 'كشف حساب تفصيلي (بالنوافذ والمقاسات)',
-    AppLanguage.french: 'Relevé de compte détaillé (avec fenêtres et dimensions)',
-    AppLanguage.english: 'Detailed Account Statement (with windows & dimensions)',
+    AppLanguage.french:
+        'Relevé de compte détaillé (avec fenêtres et dimensions)',
+    AppLanguage.english:
+        'Detailed Account Statement (with windows & dimensions)',
   },
   'كشف حساب مختصر (بالأرقام فقط)': {
     AppLanguage.arabic: 'كشف حساب مختصر (بالأرقام فقط)',
@@ -6383,8 +6443,10 @@ This action cannot be undone!''',
   },
   'سيتم نقل معاملاته تلقائياً للصندوق الآخر.': {
     AppLanguage.arabic: 'سيتم نقل معاملاته تلقائياً للصندوق الآخر.',
-    AppLanguage.french: 'Ses transactions seront automatiquement transférées vers l\'autre caisse.',
-    AppLanguage.english: 'Its transactions will be automatically transferred to the other cash box.',
+    AppLanguage.french:
+        'Ses transactions seront automatiquement transférées vers l\'autre caisse.',
+    AppLanguage.english:
+        'Its transactions will be automatically transferred to the other cash box.',
   },
 
   'BON_ROUTE': {
@@ -6483,4 +6545,3 @@ This action cannot be undone!''',
     AppLanguage.english: 'Details',
   },
 };
-

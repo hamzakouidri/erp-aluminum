@@ -164,7 +164,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
         for (var item in stockData) {
           final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
           final minQty = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
-          if (minQty > 0 && quantity <= minQty) {
+          final alertEnabled =
+              ((item['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
+          if (alertEnabled && minQty > 0 && quantity <= minQty) {
             final key =
                 "${item['item_id']}_${item['item_type']}_${item['color_id']}";
             if (!uniqueKeys.contains(key)) {
@@ -811,7 +813,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
                               // ── بيانات الاشتراك ──────────────────────────────
                               _sectionLabel(
-                                Localization.translate('الاشتراك والمدة المتبقية', lang),
+                                Localization.translate(
+                                  'الاشتراك والمدة المتبقية',
+                                  lang,
+                                ),
                               ),
                               const SizedBox(height: 12),
                               const SubscriptionOverviewCard(),
@@ -2019,6 +2024,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
+  int _desktopOrderDisplayNumber(Map<String, dynamic> order) {
+    for (final key in const ['display_number', 'order_code']) {
+      final value = order[key];
+      final number = value is num
+          ? value.toInt()
+          : int.tryParse(value?.toString().trim() ?? '');
+      if (number != null && number > 0) return number;
+    }
+    final id = order['id'];
+    return id is num ? id.toInt() : int.tryParse(id?.toString() ?? '') ?? 0;
+  }
+
   Widget _buildDetailedOrdersTable(
     BuildContext context,
     Color contentColor,
@@ -2050,7 +2067,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ResizableTableColumn(
         id: 'client_project',
         label: _desktopTableCell(
-          _desktopText(lang, 'الزبون والمشروع', 'Client & Projet', 'Client & Project'),
+          _desktopText(
+            lang,
+            'الزبون والمشروع',
+            'Client & Projet',
+            'Client & Project',
+          ),
           3,
           mutedColor,
           true,
@@ -2172,16 +2194,55 @@ class _WelcomScreenState extends State<WelcomScreen> {
       return ResizableTableRow(
         onTap: _openOrders,
         cells: [
-          Text('#$orderId', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF2563EB), fontSize: 12)),
-          Text(clientProject.isEmpty ? 'زبون عام' : clientProject, style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12), overflow: TextOverflow.ellipsis),
-          Text(_formatDate(order['created_at']), style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11)),
-          Text(_formatCurrency(total), style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12)),
-          Text(_formatCurrency(advance), style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF10B981), fontSize: 12)),
+          Text(
+            '#${_desktopOrderDisplayNumber(order)}',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2563EB),
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            clientProject.isEmpty ? 'زبون عام' : clientProject,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: contentColor,
+              fontSize: 12,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            _formatDate(order['created_at']),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 11,
+            ),
+          ),
+          Text(
+            _formatCurrency(total),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: contentColor,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            _formatCurrency(advance),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              color: Color(0xFF10B981),
+              fontSize: 12,
+            ),
+          ),
           Text(
             _formatCurrency(remaining),
             style: TextStyle(
               fontFamily: 'Cairo',
-              color: remaining > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              color: remaining > 0
+                  ? const Color(0xFFEF4444)
+                  : const Color(0xFF10B981),
               fontWeight: FontWeight.bold,
               fontSize: 12,
             ),
@@ -2203,8 +2264,24 @@ class _WelcomScreenState extends State<WelcomScreen> {
               ),
             ),
           ),
-          Text(creator, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11), overflow: TextOverflow.ellipsis),
-          Text(assignedWorkers, style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 11), overflow: TextOverflow.ellipsis),
+          Text(
+            creator,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 11,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            assignedWorkers,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: contentColor,
+              fontSize: 11,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       );
     }).toList();
@@ -2292,7 +2369,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           child: Row(
             children: [
               _desktopTableCell(
-                '#$orderId',
+                '#${_desktopOrderDisplayNumber(order)}',
                 1,
                 contentColor,
                 false,
@@ -2531,7 +2608,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final displayClients = _desktopClients.take(15).toList();
     final rows = displayClients.map((client) {
       final clientId = (client['id'] as num?)?.toInt() ?? 0;
-      final clientNumber = (client['display_number'] as num?)?.toInt() ?? clientId;
+      final clientNumber =
+          (client['display_number'] as num?)?.toInt() ?? clientId;
       final firstName = (client['firstname'] ?? '').toString().trim();
       final lastName = (client['lastname'] ?? '').toString().trim();
       final fullName = '$firstName $lastName'.trim();
@@ -2585,26 +2663,112 @@ class _WelcomScreenState extends State<WelcomScreen> {
       return ResizableTableRow(
         onTap: _openClients,
         cells: [
-          Text('#$clientNumber', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF0EA5E9), fontSize: 12)),
-          Text(fullName.isEmpty ? 'زبون #$clientNumber' : fullName, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0EA5E9), fontSize: 12, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-          Text(phoneDisplay, style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 11.5)),
-          Text(addressDisplay, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11.5), overflow: TextOverflow.ellipsis),
-          Text(emailDisplay, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11.5), overflow: TextOverflow.ellipsis),
-          Text(taxDisplay, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF8B5CF6), fontSize: 11), overflow: TextOverflow.ellipsis),
-          Text(_formatDate(client['created_at']), style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11)),
-          Text(_formatCurrency(totalSum), style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12)),
-          Text(_formatCurrency(paidSum), style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF10B981), fontSize: 12)),
+          Text(
+            '#$clientNumber',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0EA5E9),
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            fullName.isEmpty ? 'زبون #$clientNumber' : fullName,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              color: Color(0xFF0EA5E9),
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            phoneDisplay,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: contentColor,
+              fontSize: 11.5,
+            ),
+          ),
+          Text(
+            addressDisplay,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 11.5,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            emailDisplay,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 11.5,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            taxDisplay,
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              color: Color(0xFF8B5CF6),
+              fontSize: 11,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            _formatDate(client['created_at']),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 11,
+            ),
+          ),
+          Text(
+            _formatCurrency(totalSum),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: contentColor,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            _formatCurrency(paidSum),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              color: Color(0xFF10B981),
+              fontSize: 12,
+            ),
+          ),
           Text(
             _formatCurrency(remainingDebt),
             style: TextStyle(
               fontFamily: 'Cairo',
-              color: remainingDebt > 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              color: remainingDebt > 0
+                  ? const Color(0xFFEF4444)
+                  : const Color(0xFF10B981),
               fontWeight: FontWeight.bold,
               fontSize: 12,
             ),
           ),
-          Text('${clientOrders.length}', style: TextStyle(fontFamily: 'Cairo', color: contentColor, fontSize: 12)),
-          Text(addedBy, style: TextStyle(fontFamily: 'Cairo', color: mutedColor, fontSize: 11), overflow: TextOverflow.ellipsis),
+          Text(
+            '${clientOrders.length}',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: contentColor,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            addedBy,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              color: mutedColor,
+              fontSize: 11,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       );
     }).toList();

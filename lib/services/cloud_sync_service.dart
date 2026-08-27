@@ -57,8 +57,8 @@ class CloudSyncService {
   static const int _maxUploadBatchWrites = 25;
   static const int _maxUploadBatchBytes = 3000000;
   static const int _maxFirestoreDocumentBytes = 900000;
-  static const int _maxLiveEventDocumentBytes = 650000;
-  static const int _liveEventListenerLimit = 120;
+  static const int _maxLiveEventDocumentBytes = 120000;
+  static const int _liveEventListenerLimit = 8;
 
   // ⚠️ [توفير حصة Firebase]: يحدّ هذا الرقم أقصى عدد مستندات delta تُقرأ في
   // أي استعلام واحد (سواء المستمع اللحظي أو الفحص الدوري)، بدل قراءة كل ما
@@ -352,6 +352,14 @@ class CloudSyncService {
       if (shouldRefresh) {
         await refreshFromCloudIfChanged();
       }
+      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+      if (supabaseWorkshopSync.isSignedIn) {
+        if (shouldBackup || await _db.hasPendingCloudChanges()) {
+          supabaseWorkshopSync.notifyLocalChange(immediate: true);
+        }
+        await _clearFirebaseTransactionalPendingFlag();
+        return;
+      }
       if (shouldBackup || await _hasPendingTransactions()) {
         _queueImmediateLiveEventUpload();
         await _silentBackup();
@@ -363,6 +371,21 @@ class CloudSyncService {
     // Product definitions (colours, profiles and shutter components) are a
     // single shared catalogue. They must not be split between workshops.
     return _firestore.collection('global_catalog').doc('latest');
+  }
+
+  Future<void> _clearFirebaseTransactionalPendingFlag() async {
+    _hasPendingTransactionalChanges = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = _workshopId ?? prefs.getString('workshop_code');
+      if (workshopId != null && workshopId.isNotEmpty) {
+        await prefs.setBool(_transactionPendingKey(workshopId), false);
+      }
+      await prefs.setBool('has_pending_transaction_changes', false);
+      await prefs.setBool('is_local_dirty', false);
+    } catch (error) {
+      print('Could not clear legacy Firebase pending marker: $error');
+    }
   }
 
   DocumentReference<Map<String, dynamic>> _transactionalSyncStateDocument() {
@@ -506,6 +529,14 @@ class CloudSyncService {
     _pendingTransactionUploadTimer = Timer(
       const Duration(seconds: 2),
       () async {
+        final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+        if (supabaseWorkshopSync.isSignedIn) {
+          if (await _db.hasPendingCloudChanges()) {
+            supabaseWorkshopSync.notifyLocalChange(immediate: true);
+          }
+          await _clearFirebaseTransactionalPendingFlag();
+          return;
+        }
         if (await _hasPendingTransactions()) {
           await _silentBackup();
         }
@@ -1090,7 +1121,8 @@ class CloudSyncService {
   /// بدء الاستماع لتحديثات السحابة لتطبيق المزامنة التلقائية اللحظية لجميع الحسابات
   void startListeningForUpdates(Function() onUpdateCallback) {
     onDataRestored = onUpdateCallback;
-    SupabaseWorkshopSyncService().start(onDataChanged: onUpdateCallback);
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    supabaseWorkshopSync.start(onDataChanged: onUpdateCallback);
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -1118,6 +1150,37 @@ class CloudSyncService {
         details:
             'حسابك غير مرتبط بورشة صحيحة في Firebase. تحقق من workshopId للعامل.',
       );
+      return;
+    }
+
+    if (supabaseWorkshopSync.isSignedIn) {
+      _listener?.cancel();
+      _catalogListener?.cancel();
+      _deltaListener?.cancel();
+      _liveEventListener?.cancel();
+      _statusListener?.cancel();
+      _orderStatusListener?.cancel();
+      _measurementsListener?.cancel();
+      _deletionsListener?.cancel();
+      _orderDeletionsListener?.cancel();
+      _listener = null;
+      _catalogListener = null;
+      _deltaListener = null;
+      _liveEventListener = null;
+      _statusListener = null;
+      _orderStatusListener = null;
+      _measurementsListener = null;
+      _deletionsListener = null;
+      _orderDeletionsListener = null;
+      _clearFirebaseTransactionalPendingFlag();
+      if (_lastAnnouncedListenerWorkshopId != 'supabase:$_workshopId') {
+        _lastAnnouncedListenerWorkshopId = 'supabase:$_workshopId';
+        _sendSyncFeedback(
+          CloudSyncFeedbackType.syncReady,
+          'تم تفعيل مزامنة الورشة عبر Supabase.',
+          details: 'معرّف الورشة: $_workshopId',
+        );
+      }
       return;
     }
 
@@ -1857,6 +1920,15 @@ class CloudSyncService {
 
   Future<void> _applyLatestBackupUpdate(Map<String, dynamic> payload) async {
     if (payload['status']?.toString() != 'completed') return;
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      try {
+        await supabaseWorkshopSync.downloadWorkshopData();
+      } catch (error) {
+        print('Supabase preferred workshop refresh failed: $error');
+      }
+      return;
+    }
     _rememberFullSnapshotMetadata(payload);
     if (_isLocalWriteInProgress) {
       _refreshQueuedAfterLocalWrite = true;
@@ -2082,6 +2154,13 @@ class CloudSyncService {
 
     _isCheckingCloudChanges = true;
     try {
+      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+      if (supabaseWorkshopSync.isSignedIn) {
+        await supabaseWorkshopSync.downloadWorkshopData();
+        await _refreshPermissionsFromCloudIfChanged();
+        return;
+      }
+
       final doc = await _firestore
           .collection('workshops')
           .doc(_workshopId)
@@ -2208,6 +2287,14 @@ class CloudSyncService {
     if (_isRestoring || _isLocalWriteInProgress) return;
 
     try {
+      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+      if (supabaseWorkshopSync.isSignedIn) {
+        if (await _db.hasPendingCloudChanges()) {
+          supabaseWorkshopSync.notifyLocalChange(immediate: true);
+        }
+        await _clearFirebaseTransactionalPendingFlag();
+        return;
+      }
       final hasUnpublishedRows = await _db.hasPendingCloudChanges();
       if (hasUnpublishedRows || await _hasPendingTransactions()) {
         await _silentBackup();
@@ -2341,8 +2428,23 @@ class CloudSyncService {
   /// إشعار بوجود تغيير محلي ليتم رفعه للسحابة (Debounced)
   void notifyChange() async {
     _dbUpdateController.add('');
-    SupabaseWorkshopSyncService().notifyLocalChange();
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
     _backupRetryTimer?.cancel();
+
+    if (supabaseWorkshopSync.isSignedIn) {
+      if (_isLocalWriteInProgress) {
+        _backupQueuedAfterLocalWrite = true;
+        return;
+      }
+      if (_isRestoring) {
+        _localSyncQueuedAfterRestore = true;
+        return;
+      }
+      supabaseWorkshopSync.notifyLocalChange();
+      await _clearFirebaseTransactionalPendingFlag();
+      return;
+    }
+
     _queueImmediateLiveEventUpload();
 
     try {
@@ -2384,8 +2486,23 @@ class CloudSyncService {
   /// إشعار بوجود تغيير عاجل محلياً (كعمليات الصندوق والمعاملات المالية) والرفع الفوري للسحابة بدون انتظار
   void notifyChangeImmediate() async {
     _dbUpdateController.add('');
-    SupabaseWorkshopSyncService().notifyLocalChange(immediate: true);
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
     _backupRetryTimer?.cancel();
+
+    if (supabaseWorkshopSync.isSignedIn) {
+      if (_isLocalWriteInProgress) {
+        _backupQueuedAfterLocalWrite = true;
+        return;
+      }
+      if (_isRestoring) {
+        _localSyncQueuedAfterRestore = true;
+        return;
+      }
+      supabaseWorkshopSync.notifyLocalChange(immediate: true);
+      await _clearFirebaseTransactionalPendingFlag();
+      return;
+    }
+
     _queueImmediateLiveEventUpload();
 
     try {
@@ -2493,6 +2610,16 @@ class CloudSyncService {
       _localSyncQueuedAfterRestore = true;
       return;
     }
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      try {
+        await supabaseWorkshopSync.uploadPendingChanges();
+        await _clearFirebaseTransactionalPendingFlag();
+      } catch (error) {
+        print('Supabase auto-sync upload failed: $error');
+      }
+      return;
+    }
     if (_isSilentBackupRunning) {
       // Preserve only one follow-up upload. It contains the newest local
       // state and prevents older, overlapping snapshots from winning.
@@ -2528,6 +2655,16 @@ class CloudSyncService {
   /// receive this small event first and the delta/full backup confirms it
   /// afterwards.
   void _queueImmediateLiveEventUpload() {
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      if (_isRestoring || _isLocalWriteInProgress) {
+        _liveEventUploadQueued = true;
+        return;
+      }
+      supabaseWorkshopSync.notifyLocalChange(immediate: true);
+      _clearFirebaseTransactionalPendingFlag();
+      return;
+    }
     if (_isRestoring || _isLocalWriteInProgress) {
       _liveEventUploadQueued = true;
       return;
@@ -3121,6 +3258,16 @@ class CloudSyncService {
     bool forceFullSnapshot = false,
     bool verifyOnServer = false,
   }) async {
+    final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+    if (supabaseWorkshopSync.isSignedIn) {
+      if (isSilent && !forceFullSnapshot && !verifyOnServer) {
+        await supabaseWorkshopSync.uploadPendingChanges();
+      } else {
+        await supabaseWorkshopSync.uploadFullWorkshopData();
+      }
+      await _clearFirebaseTransactionalPendingFlag();
+      return;
+    }
     if (isSilent && !forceFullSnapshot) {
       final handledAsDelta = await _performDeltaBackupToCloud();
       if (handledAsDelta) return;

@@ -26,6 +26,12 @@ class BomItem {
   final int? catalogItemId;
   final String? inventoryItemType;
   final int? colorId;
+  final String? overrideKey;
+  final String? selectorCategory;
+  final String? selectorType;
+  final String? roleKey;
+  final int? sourceSeriesId;
+  final String? materialType;
 
   /// Quantity actually required for pricing. For profiles this can be a
   /// fractional number of bars, unlike the rounded purchase quantity.
@@ -82,6 +88,12 @@ class BomItem {
     this.catalogItemId,
     this.inventoryItemType,
     this.colorId,
+    this.overrideKey,
+    this.selectorCategory,
+    this.selectorType,
+    this.roleKey,
+    this.sourceSeriesId,
+    this.materialType,
   }) : this.name = name.replaceAll(RegExp(r'\s*\(\s*جودة[^)]*\)'), '').trim();
 
   double get exactTotal {
@@ -357,6 +369,12 @@ class BomItem {
     int? catalogItemId,
     String? inventoryItemType,
     int? colorId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     return BomItem(
       category: category,
@@ -381,11 +399,400 @@ class BomItem {
       catalogItemId: catalogItemId ?? this.catalogItemId,
       inventoryItemType: inventoryItemType ?? this.inventoryItemType,
       colorId: colorId ?? this.colorId,
+      overrideKey: overrideKey ?? this.overrideKey,
+      selectorCategory: selectorCategory ?? this.selectorCategory,
+      selectorType: selectorType ?? this.selectorType,
+      roleKey: roleKey ?? this.roleKey,
+      sourceSeriesId: sourceSeriesId ?? this.sourceSeriesId,
+      materialType: materialType ?? this.materialType,
     );
   }
 }
 
 class ComponentCalculator {
+  static bool _textHasAny(String value, Iterable<String> needles) {
+    final lower = value.toLowerCase();
+    for (final needle in needles) {
+      final normalizedNeedle = needle.toLowerCase();
+      if (value.contains(needle) || lower.contains(normalizedNeedle)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String _selectorTypeForProfile(String originalName) {
+    if (_textHasAny(originalName, const [
+      'إطار',
+      'frame',
+      'cadre',
+      'dormant',
+    ])) {
+      return 'frame';
+    }
+    if (_textHasAny(originalName, const [
+      'الغطاء الجانبي',
+      'side cover',
+      'couvre joint',
+      'couvre-joint',
+    ])) {
+      return 'side_cover';
+    }
+    if (_textHasAny(originalName, const [
+      'قائم جانبي',
+      'sash lateral',
+      'ouvrant laterale',
+      'ouvrant latérale',
+      'lateral',
+      'latéral',
+    ])) {
+      return 'sash_lateral';
+    }
+    if (_textHasAny(originalName, const [
+      'قائم وسطي',
+      'sash central',
+      'ouvrant central',
+      'central',
+    ])) {
+      return 'sash_central';
+    }
+    if (_textHasAny(originalName, const [
+      'سكة الظلفة',
+      'sash traverse',
+      'traverse ouvrant',
+      'traverse haut',
+      'traverse bas',
+    ])) {
+      return 'sash_traverse';
+    }
+    if (_textHasAny(originalName, const ['الظلفة', 'sash', 'ouvrant'])) {
+      return 'sash';
+    }
+    if (_textHasAny(originalName, const [
+      'حديد',
+      'الدعم',
+      'renfort',
+      'renfore',
+    ])) {
+      return 'renfort';
+    }
+    if (_textHasAny(originalName, const ['traverse', 'تقسيم', 'mullion'])) {
+      return 'mullion';
+    }
+    if (_textHasAny(originalName, const ['bouchon', 'bochon', 'بوشون'])) {
+      return 'bouchon batmo';
+    }
+    if (_textHasAny(originalName, const ['batmo', 'باتمو'])) {
+      return 'batmo';
+    }
+    if (_textHasAny(originalName, const [
+      'reducteur',
+      'réducteur',
+      'ريديكتور',
+      'مخفض',
+    ])) {
+      return '67114';
+    }
+    if (_textHasAny(originalName, const ['parclose', 'باكيت', 'بيركلوز'])) {
+      return 'parclose';
+    }
+    if (_textHasAny(originalName, const ['rail', 'الري'])) {
+      return 'rail';
+    }
+    return originalName;
+  }
+
+  static String _selectorTypeForAccessory(String originalName) {
+    if (originalName.contains('براغي حديد الدعم')) return 'is_renfort_screw';
+    if (originalName.contains('براغي بوشون باتمو')) {
+      return 'is_bouchon_batmo_screw';
+    }
+    if (originalName.contains('براغي الباتمو')) return 'is_batmo_screw';
+    if (originalName.contains('براغي الكيت')) return 'is_kit_screw';
+    if (originalName.contains('براغي المانيفال')) {
+      return 'is_manivelle_screw';
+    }
+    if (originalName.contains('براغي المحرك')) return 'is_moteur_screw';
+    if (originalName.contains('براغي الصندوق')) return 'is_caisson_screw';
+    if (originalName.contains('براغي التجميع')) return 'is_assembly_screw';
+    if (originalName.contains('براغي التركيب')) return 'is_installation_screw';
+    if (originalName.contains('براغي الإكسسوارات')) {
+      return 'is_accessory_screw';
+    }
+    if (originalName.contains('براغي')) return 'is_accessory_screw';
+    if (_textHasAny(originalName, const ['clamp', 'clam', 'كلامب', 'كلام'])) {
+      return 'clamp';
+    }
+    if (_textHasAny(originalName, const ['قاش دوبل', 'gache double'])) {
+      return 'is_gache_double';
+    }
+    if (_textHasAny(originalName, const ['قاش سامبل', 'gache simple'])) {
+      return 'is_gache_simple';
+    }
+    if (_textHasAny(originalName, const [
+      'gache coulisse',
+      'gâche coulisse',
+      'gache coulissant',
+      'gâche coulissant',
+      'كاش كوليسون',
+    ])) {
+      return 'كاش كوليسون';
+    }
+    if (_textHasAny(originalName, const [
+      'poignée coulissante',
+      'poignee coulissante',
+      'مقبض منزلق',
+    ])) {
+      return 'poignee coulissante';
+    }
+    if (_textHasAny(originalName, const ['poignée porte à clé'])) {
+      return 'is_poign_clef';
+    }
+    if (_textHasAny(originalName, const [
+      'serrure condamnation',
+      'قفل الباب condamnation',
+    ])) {
+      return 'is_lock_condamnation';
+    }
+    if (_textHasAny(originalName, const ['condamnation'])) {
+      return 'is_poign_condamnation';
+    }
+    if (_textHasAny(originalName, const ['canon', 'الأسطوانة'])) {
+      return 'is_canon';
+    }
+    if (_textHasAny(originalName, const ['قفل بمفتاح', 'clef'])) {
+      return 'is_lock_clef';
+    }
+    if (_textHasAny(originalName, const ['serrure'])) return 'is_lock_clef';
+    if (_textHasAny(originalName, const ['اسبانيوليت', 'إسبانيوليت'])) {
+      return 'اسبانيوليت';
+    }
+    if (_textHasAny(originalName, const ['مفاصل', 'hinges'])) return 'مفاصل';
+    if (_textHasAny(originalName, const ['فيرو', 'verrou'])) return 'فيرو';
+    if (_textHasAny(originalName, const ['كريمون', 'cremone', 'crémone'])) {
+      return 'cremone';
+    }
+    if (_textHasAny(originalName, const [
+      'المقبض (handle)',
+      'مقبض نافذة',
+      'poignée fenêtre',
+      'poignee fenetre',
+    ])) {
+      return 'is_window_handle';
+    }
+    if (_textHasAny(originalName, const ['مقبض', 'handle', 'poignée'])) {
+      return 'مقبض';
+    }
+    if (_textHasAny(originalName, const ['الطاسو', 'tasso'])) return 'tasso';
+    if (_textHasAny(originalName, const ['عجلات', 'roulette'])) {
+      return 'roulette';
+    }
+    if (_textHasAny(originalName, const [
+      'أونتروماتيك',
+      'entrematique',
+      'انتراميتيك',
+      'intra',
+    ])) {
+      return 'entrematique';
+    }
+    return originalName;
+  }
+
+  static String _selectorTypeForShutter(String originalName) {
+    if (_textHasAny(originalName, const ['براغي'])) {
+      return _selectorTypeForAccessory(originalName);
+    }
+    if (_textHasAny(originalName, const ['مانيفال', 'manivelle'])) {
+      return 'مانيفال';
+    }
+    if (_textHasAny(originalName, const ['محرك', 'moteur'])) return 'محرك';
+    if (_textHasAny(originalName, const ['صندوق', 'caisson'])) return 'صندوق';
+    if (_textHasAny(originalName, const ['كيت', 'kit'])) return 'كيت';
+    if (_textHasAny(originalName, const ['سكك', 'coulisse'])) return 'سكك';
+    if (_textHasAny(originalName, const ['lame finale', 'نهائية'])) {
+      return 'شريحة نهائية';
+    }
+    if (_textHasAny(originalName, const ['شرائح', 'lame'])) return 'شريحة';
+    if (_textHasAny(originalName, const ['محور', 'axe'])) return 'محور';
+    if (_textHasAny(originalName, const ['أطاش', 'attache'])) return 'أطاش';
+    if (_textHasAny(originalName, const [
+      'سيبور موتور',
+      'support_moteur',
+      'support moteur',
+    ])) {
+      return 'سيبور موتور';
+    }
+    if (_textHasAny(originalName, const ['الامبو', 'embout'])) {
+      return 'الامبو';
+    }
+    if (_textHasAny(originalName, const [
+      'سيبور رولمو',
+      'support_roulement',
+      'support roulement',
+    ])) {
+      return 'سيبور رولمو';
+    }
+    if (_textHasAny(originalName, const [
+      'أغطية الشفرات',
+      'bouchons lames',
+      'bouchon lame',
+    ])) {
+      return 'أغطية الشفرات';
+    }
+    return originalName;
+  }
+
+  static String _selectorTypeForJoint(String originalName) {
+    if (_textHasAny(originalName, const ['بروس', 'bross', 'brosse'])) {
+      return 'Joint bross';
+    }
+    if (_textHasAny(originalName, const ['vitrage', 'فيتراج'])) {
+      return 'joint de vitrage';
+    }
+    if (_textHasAny(originalName, const ['bourrage', 'بوراج'])) {
+      return 'joint bourrage';
+    }
+    if (_textHasAny(originalName, const ['frappe', 'فراب', 'ضرب'])) {
+      return 'joint frappe';
+    }
+    if (_textHasAny(originalName, const ['centrale', 'central', 'سنترال'])) {
+      return 'joint centrale';
+    }
+    return originalName;
+  }
+
+  static String? _roleKeyForProfileSelector(String selectorType) {
+    switch (selectorType.toLowerCase().trim()) {
+      case 'frame':
+        return 'frame';
+      case 'sash':
+        return 'sash';
+      case 'sash_lateral':
+        return 'sash_lateral';
+      case 'sash_central':
+        return 'sash_central';
+      case 'sash_traverse':
+        return 'sash_traverse';
+      case 'mullion':
+        return 'mullion';
+      case 'parclose':
+        return 'parclose';
+      case '67114':
+        return 'reducer';
+      case 'side_cover':
+        return 'side_cover';
+      case 'rail':
+        return 'rail';
+      case 'batmo':
+        return 'batmo';
+      case 'bouchon batmo':
+        return 'bouchon_batmo';
+      case 'renfort':
+        return 'renfort';
+    }
+    return null;
+  }
+
+  static String? _roleKeyForAccessorySelector(String selectorType) {
+    switch (selectorType.toLowerCase().trim()) {
+      case 'is_kit_screw':
+        return 'kit_screw';
+      case 'is_caisson_screw':
+        return 'caisson_screw';
+      case 'is_moteur_screw':
+        return 'moteur_screw';
+      case 'is_batmo_screw':
+        return 'batmo_screw';
+      case 'is_bouchon_batmo_screw':
+        return 'bouchon_batmo_screw';
+      case 'is_renfort_screw':
+        return 'renfort_screw';
+      case 'is_manivelle_screw':
+        return 'manivelle_screw';
+      case 'is_assembly_screw':
+        return 'assembly_screw';
+      case 'is_accessory_screw':
+        return 'accessory_screw';
+      case 'is_installation_screw':
+        return 'installation_screw';
+      case 'clamp':
+        return 'clamp';
+      case 'is_gache_simple':
+        return 'gache_simple';
+      case 'is_gache_double':
+        return 'gache_double';
+      case 'is_lock_clef':
+        return 'lock_clef';
+      case 'is_lock_condamnation':
+        return 'lock_condamnation';
+      case 'cremone':
+        return 'cremone';
+    }
+    return null;
+  }
+
+  static String? _roleKeyForJointSelector(String selectorType) {
+    switch (selectorType.toLowerCase().trim()) {
+      case 'joint de vitrage':
+        return 'joint_vitrage';
+      case 'joint bourrage':
+        return 'joint_bourrage';
+      case 'joint frappe':
+        return 'joint_frappe';
+      case 'joint centrale':
+        return 'joint_central';
+      case 'joint bross':
+        return 'joint_brosse';
+    }
+    return null;
+  }
+
+  static String? _roleKeyForShutterSelector(String selectorType) {
+    final lower = selectorType.toLowerCase().trim();
+    if (lower == 'كيت') return 'kit';
+    if (lower == 'صندوق') return 'caisson';
+    if (lower == 'سكك') return 'coulisse';
+    if (lower == 'شريحة') return 'lame';
+    if (lower == 'شريحة نهائية') return 'lame_finale';
+    if (lower == 'محور') return 'axe';
+    if (lower == 'محرك') return 'moteur';
+    if (lower == 'مانيفال') return 'manivelle';
+    return _roleKeyForAccessorySelector(selectorType);
+  }
+
+  static bool _profileSelectorUsesSlidingSeries(
+    WindowModel window,
+    String selectorType,
+  ) {
+    final lower = selectorType.toLowerCase().trim();
+    if (lower == 'sash_lateral' ||
+        lower == 'sash_central' ||
+        lower == 'sash_traverse' ||
+        lower == 'rail') {
+      return true;
+    }
+    return window.systemMode == 'sliding' &&
+        (lower == 'frame' || lower == 'sash' || lower == 'side_cover');
+  }
+
+  static int? _sourceSeriesIdForProfile(
+    WindowModel window,
+    String selectorType,
+  ) {
+    return _profileSelectorUsesSlidingSeries(window, selectorType)
+        ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+        : window.activeSeries?.id;
+  }
+
+  static String _materialTypeForProfile(
+    WindowModel window,
+    String selectorType,
+  ) {
+    return _profileSelectorUsesSlidingSeries(window, selectorType)
+        ? (window.isSlidingPVC ? 'pvc' : 'aluminium')
+        : (window.isPVC ? 'pvc' : 'aluminium');
+  }
+
   /// Exact clear opening of the selected outer frame. The top caisson and the
   /// current frame width are read afresh instead of trusting a zone boundary
   /// that may still contain dimensions from a formerly selected profile.
@@ -990,6 +1397,7 @@ class ComponentCalculator {
       Map<String, dynamic>? overrideMap,
       bool preferOverrideMap = false,
       bool priceByWholeBar = false,
+      String? selectorType,
     }) {
       final savedOverride = window.componentOverrides[originalName];
       final selectedOverride = preferOverrideMap && overrideMap != null
@@ -1004,6 +1412,8 @@ class ComponentCalculator {
           multipliedPieces.addAll(pieces);
         }
       }
+      final resolvedSelectorType =
+          selectorType ?? _selectorTypeForProfile(originalName);
       return _createProfile(
         window.componentOverrides,
         originalName,
@@ -1018,6 +1428,12 @@ class ComponentCalculator {
         priceByWholeBar: priceByWholeBar,
         catalogItemId: catalogueId(selectedOverride),
         colorId: catalogueColorId(color),
+        overrideKey: originalName,
+        selectorCategory: 'profile',
+        selectorType: resolvedSelectorType,
+        roleKey: _roleKeyForProfileSelector(resolvedSelectorType),
+        sourceSeriesId: _sourceSeriesIdForProfile(window, resolvedSelectorType),
+        materialType: _materialTypeForProfile(window, resolvedSelectorType),
       );
     }
 
@@ -1026,15 +1442,27 @@ class ComponentCalculator {
       bool isActive = true,
       String? color,
       int qty = 0,
-    }) => _createAccessory(
-      window.componentOverrides,
-      originalName,
-      isActive: isActive,
-      color: color,
-      qty: qty * window.quantity,
-      catalogItemId: catalogueId(window.componentOverrides[originalName]),
-      colorId: catalogueColorId(color, accessory: true),
-    );
+    }) {
+      final selectorType = _selectorTypeForAccessory(originalName);
+      return _createAccessory(
+        window.componentOverrides,
+        originalName,
+        isActive: isActive,
+        color: color,
+        qty: qty * window.quantity,
+        catalogItemId: catalogueId(window.componentOverrides[originalName]),
+        colorId: catalogueColorId(color, accessory: true),
+        overrideKey: originalName,
+        selectorCategory: 'accessory',
+        selectorType: selectorType,
+        roleKey: _roleKeyForAccessorySelector(selectorType),
+        sourceSeriesId: window.systemMode == 'sliding'
+            ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+            : window.activeSeries?.id,
+        materialType: window.isPVC ? 'pvc' : 'aluminium',
+      );
+    }
+
     BomItem createInteractiveAccessory(
       String originalName,
       String group, {
@@ -1042,20 +1470,40 @@ class ComponentCalculator {
       double qty = 1,
       String? kitGroupName,
       String category = 'accessory',
-    }) => _createInteractiveAccessory(
-      window.componentOverrides,
-      originalName,
-      group,
-      isActive: isActive,
-      qty: qty * window.quantity,
-      kitGroupName: kitGroupName,
-      category: category,
-      catalogItemId: catalogueId(window.componentOverrides[originalName]),
-      inventoryItemType: category == 'shutter'
-          ? 'ShutterComponent'
-          : 'Accessory',
-      colorId: catalogueColorId(null, accessory: category != 'shutter'),
-    );
+    }) {
+      final selectorType = category == 'shutter'
+          ? _selectorTypeForShutter(originalName)
+          : _selectorTypeForAccessory(originalName);
+      return _createInteractiveAccessory(
+        window.componentOverrides,
+        originalName,
+        group,
+        isActive: isActive,
+        qty: qty * window.quantity,
+        kitGroupName: kitGroupName,
+        category: category,
+        catalogItemId: catalogueId(window.componentOverrides[originalName]),
+        inventoryItemType: category == 'shutter'
+            ? 'ShutterComponent'
+            : 'Accessory',
+        colorId: catalogueColorId(null, accessory: category != 'shutter'),
+        overrideKey: originalName,
+        selectorCategory: category,
+        selectorType: selectorType,
+        roleKey: category == 'shutter'
+            ? _roleKeyForShutterSelector(selectorType)
+            : _roleKeyForAccessorySelector(selectorType),
+        sourceSeriesId: category == 'shutter'
+            ? null
+            : (window.systemMode == 'sliding'
+                  ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+                  : window.activeSeries?.id),
+        materialType: category == 'shutter'
+            ? 'shutter'
+            : (window.isPVC ? 'pvc' : 'aluminium'),
+      );
+    }
+
     BomItem createShutter(
       String originalName, {
       String? color,
@@ -1071,6 +1519,7 @@ class ComponentCalculator {
           multipliedPieces.addAll(pieces);
         }
       }
+      final selectorType = _selectorTypeForShutter(originalName);
       return _createShutter(
         window.componentOverrides,
         originalName,
@@ -1086,6 +1535,15 @@ class ComponentCalculator {
         windowQuantity: window.quantity,
         catalogItemId: catalogueId(window.componentOverrides[originalName]),
         colorId: catalogueColorId(color),
+        overrideKey: originalName,
+        selectorCategory: _textHasAny(originalName, const ['براغي'])
+            ? 'accessory'
+            : 'shutter',
+        selectorType: selectorType,
+        roleKey: _textHasAny(originalName, const ['براغي'])
+            ? _roleKeyForAccessorySelector(selectorType)
+            : _roleKeyForShutterSelector(selectorType),
+        materialType: 'shutter',
       );
     }
 
@@ -1113,6 +1571,11 @@ class ComponentCalculator {
         kitGroupName: bundleName,
         catalogItemId: catalogueId(savedOverride) ?? catalogueId(metadata),
         inventoryItemType: 'KitBundle',
+        overrideKey: logicalKey,
+        selectorCategory: 'shutter',
+        selectorType: 'كيت',
+        roleKey: 'kit',
+        materialType: 'shutter',
       );
     }
 
@@ -1139,6 +1602,16 @@ class ComponentCalculator {
         unit: unit,
         exactQuantity: exactQty,
         catalogItemId: catalogueId(window.componentOverrides[originalName]),
+        overrideKey: originalName,
+        selectorCategory: 'joint',
+        selectorType: _selectorTypeForJoint(originalName),
+        roleKey: _roleKeyForJointSelector(_selectorTypeForJoint(originalName)),
+        sourceSeriesId: window.systemMode == 'sliding'
+            ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+            : window.activeSeries?.id,
+        materialType: window.systemMode == 'sliding'
+            ? (window.isSlidingPVC ? 'pvc' : 'aluminium')
+            : (window.isPVC ? 'pvc' : 'aluminium'),
       );
     }
 
@@ -1147,15 +1620,26 @@ class ComponentCalculator {
       bool isActive = true,
       String? color,
       int qty = 0,
-    }) => _createOther(
-      window.componentOverrides,
-      originalName,
-      isActive: isActive,
-      color: color,
-      qty: qty * window.quantity,
-      catalogItemId: catalogueId(window.componentOverrides[originalName]),
-      colorId: catalogueColorId(color, accessory: true),
-    );
+    }) {
+      final selectorType = _selectorTypeForAccessory(originalName);
+      return _createOther(
+        window.componentOverrides,
+        originalName,
+        isActive: isActive,
+        color: color,
+        qty: qty * window.quantity,
+        catalogItemId: catalogueId(window.componentOverrides[originalName]),
+        colorId: catalogueColorId(color, accessory: true),
+        overrideKey: originalName,
+        selectorCategory: 'accessory',
+        selectorType: selectorType,
+        roleKey: _roleKeyForAccessorySelector(selectorType),
+        sourceSeriesId: window.systemMode == 'sliding'
+            ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+            : window.activeSeries?.id,
+        materialType: window.isPVC ? 'pvc' : 'aluminium',
+      );
+    }
 
     // The catalogue value is shared by every opening-sash calculation. Add it
     // to both sides of the clear opening (10 mm + 10 mm in the usual case),
@@ -1429,6 +1913,9 @@ class ComponentCalculator {
     final String accessoryColorName = window.selectedAccessoryColor != null
         ? (window.selectedAccessoryColor!['name'] ?? colorName).toString()
         : colorName;
+    final String shutterColorName = window.selectedAccessoryColor != null
+        ? (window.selectedAccessoryColor!['name'] ?? colorName).toString()
+        : colorName;
 
     int totalHandles = 0;
     int octoHandles = 0;
@@ -1673,6 +2160,13 @@ class ComponentCalculator {
     }) {
       final result = <BomItem>[];
       final String? expandedItemGroupName = groupExpandedItems ? kitName : null;
+      String selectorTypeForKitChild(String value) => category == 'shutter'
+          ? _selectorTypeForShutter(value)
+          : _selectorTypeForAccessory(value);
+      String selectorCategoryForKitChild(String value) =>
+          selectorTypeForKitChild(value).contains('_screw')
+          ? 'accessory'
+          : category;
       final selectedMechanismScopes =
           mechanismScopes ??
           <String>{normalizeKitMechanismScope(mechanismScope)};
@@ -1721,16 +2215,19 @@ class ComponentCalculator {
         if (mode == 'fixed') {
           final qty =
               ((item['base_qty'] as num?)?.toDouble() ?? 1) * itemLeafCount;
+          final componentName = item['component_type'] as String? ?? '';
           result.add(
             BomItem(
               category: category,
               originalName: '${kitName}_${item['component_type']}',
-              name: item['component_type'] as String? ?? '',
+              name: componentName,
               quantity: qty,
               unit: unit,
               unitPrice: (item['price'] as num?)?.toDouble() ?? 0.0,
               isActive: isActive,
               kitGroupName: expandedItemGroupName,
+              selectorCategory: selectorCategoryForKitChild(componentName),
+              selectorType: selectorTypeForKitChild(componentName),
             ),
           );
         } else if (mode == 'by_range' && ranges.isNotEmpty) {
@@ -1821,6 +2318,12 @@ class ComponentCalculator {
                   const <Map<String, dynamic>>[];
               final linkedId = catalogueId(linkedComponent);
               final linkedName = linkedComponent?['name']?.toString().trim();
+              final productName = matchedRange['product_name'] as String? ?? '';
+              final displayName = linkedName?.isNotEmpty == true
+                  ? linkedName!
+                  : productName.isNotEmpty
+                  ? productName
+                  : item['component_type'] as String? ?? '';
               final linkedPrice = linkedComponent == null
                   ? (matchedRange['price'] as num?)?.toDouble() ?? 0
                   : resolveShutterComponentUnitPrice(
@@ -1832,11 +2335,7 @@ class ComponentCalculator {
                 BomItem(
                   category: category,
                   originalName: '${kitName}_${matchedRange['product_name']}',
-                  name: linkedName?.isNotEmpty == true
-                      ? linkedName!
-                      : matchedRange['product_name'] as String? ??
-                            item['component_type'] as String? ??
-                            '',
+                  name: displayName,
                   quantity: qty,
                   unit: unit,
                   unitPrice: linkedPrice,
@@ -1848,6 +2347,8 @@ class ComponentCalculator {
                       ? null
                       : 'ShutterComponent',
                   colorId: linkedId == null ? null : catalogueColorId(null),
+                  selectorCategory: selectorCategoryForKitChild(displayName),
+                  selectorType: selectorTypeForKitChild(displayName),
                 ),
               );
             }
@@ -1868,6 +2369,12 @@ class ComponentCalculator {
                 isActive: isActive,
                 isMissing: true,
                 kitGroupName: expandedItemGroupName,
+                selectorCategory: selectorCategoryForKitChild(
+                  item['component_type'] as String? ?? '',
+                ),
+                selectorType: selectorTypeForKitChild(
+                  item['component_type'] as String? ?? '',
+                ),
               ),
             );
           }
@@ -1886,16 +2393,19 @@ class ComponentCalculator {
           final qty =
               ((matchedVariant['qty'] as num?)?.toDouble() ?? 1) *
               itemLeafCount;
+          final productName = matchedVariant['product_name'] as String? ?? '';
           result.add(
             BomItem(
               category: category,
               originalName: '${kitName}_${matchedVariant['product_name']}',
-              name: matchedVariant['product_name'] as String? ?? '',
+              name: productName,
               quantity: qty,
               unit: unit,
               unitPrice: (matchedVariant['price'] as num?)?.toDouble() ?? 0,
               isActive: isActive,
               kitGroupName: expandedItemGroupName,
+              selectorCategory: selectorCategoryForKitChild(productName),
+              selectorType: selectorTypeForKitChild(productName),
             ),
           );
         }
@@ -2756,6 +3266,9 @@ class ComponentCalculator {
             unit: 'قطاع',
             unitPrice: group['price'],
             isMissing: group['isMissing'],
+            overrideKey: 'الظلفة (Sash)',
+            selectorCategory: 'profile',
+            selectorType: 'sash',
           ),
         );
       });
@@ -3729,7 +4242,7 @@ class ComponentCalculator {
         items.add(
           createShutter(
             'الصندوق (Caisson)',
-            color: colorName,
+            color: shutterColorName,
             pieces: caissonPieces,
             unit: 'بارة',
           ),
@@ -3761,11 +4274,17 @@ class ComponentCalculator {
         // ===== 4. المحرك/المانيفال - مباشرة بعد المحور =====
         if (window.shutterMechanism == 'مانيفال') {
           items.add(
-            createShutter('المانيفال (Manivelle)', color: colorName, qty: 1),
+            createShutter(
+              'المانيفال (Manivelle)',
+              color: shutterColorName,
+              qty: 1,
+            ),
           );
           items.add(createShutter('براغي المانيفال', qty: isTunnel ? 1 : 4));
         } else if (window.shutterMechanism == 'محرك') {
-          items.add(createShutter('المحرك (Moteur)', color: colorName, qty: 1));
+          items.add(
+            createShutter('المحرك (Moteur)', color: shutterColorName, qty: 1),
+          );
           items.add(createShutter('براغي المحرك', qty: isTunnel ? 1 : 4));
           if (window.motorHasInterrupteur) {
             items.add(createShutter('قاطعة (Interrupteur)', qty: 1));
@@ -3813,7 +4332,7 @@ class ComponentCalculator {
         items.add(
           createShutter(
             'الشرائح (Lames)',
-            color: colorName,
+            color: shutterColorName,
             pieces: bladePieces,
             unit: 'بارة',
           ),
@@ -3850,7 +4369,7 @@ class ComponentCalculator {
         items.add(
           createShutter(
             'الشريحة النهائية (Lame Finale)',
-            color: colorName,
+            color: shutterColorName,
             pieces: lameFinalePieces,
             unit: 'بارة',
           ),
@@ -3861,7 +4380,7 @@ class ComponentCalculator {
         items.add(
           createShutter(
             'السكك (Coulisses)',
-            color: colorName,
+            color: shutterColorName,
             pieces: coulissePieces,
             unit: 'بارة',
           ),
@@ -4600,7 +5119,9 @@ class ComponentCalculator {
     bool hasSimpleGlassReducerPieces = false;
 
     // ===== متغيرات جوانات نظام الفتح (ألمنيوم فقط) =====
-    // Vitrage  = Bourrage = parcloseSimple×1 + parcloseDouble×2 (يُحسب في لحظة الإخراج)
+    // Vitrage and Bourrage can be linked to different physical gasket types.
+    // Keep them as separate BOM rows even when their length is derived from
+    // the same glazing/parclose perimeter.
     // Frappe   = محيط الظلفة + محيط الإطار (لكل فتحة بها ظلفة)
     // Central  = محيط الإطار (فتحات مزدوجة فقط)
     double swingFrappeSashPerim = 0.0; // مجموع محيطات الظلفات (متر)
@@ -5563,6 +6084,24 @@ class ComponentCalculator {
     // ✅ إضافة قطع الزجاج والبانو المدمجة إلى كشف المواد الإجمالي ليظهر في الجدول
     items.addAll(mergedGlass.values);
 
+    // Sliding glass gaskets are discovered while glass cells are calculated,
+    // so they must be appended after the glass loop.  The earlier accessory
+    // section runs before this data exists.
+    final pendingSlidingVitrageJoints = slidingGlassJoints.entries
+        .where(
+          (entry) => _selectorTypeForJoint(entry.key) == 'joint de vitrage',
+        )
+        .toList();
+    final modelQuantity = window.quantity <= 0 ? 1 : window.quantity;
+    for (final entry in pendingSlidingVitrageJoints) {
+      if (entry.value > 0) {
+        items.add(
+          createJoint(entry.key, qty: entry.value / modelQuantity, unit: 'متر'),
+        );
+      }
+      slidingGlassJoints.remove(entry.key);
+    }
+
     // --- 5. الباكيت (Parclose) ---
     final chosenParclose = window.componentOverrides['باكيت الزجاج (Parclose)'];
 
@@ -5789,10 +6328,14 @@ class ComponentCalculator {
       ); // محيط زجاج مزدوج (×2)
       final double vitrageQty = simplePerim * 1.0 + doublePerim * 2.0;
 
-      // Joint Bourrage = كمية تثبيت الزجاج الفعلية. لا نعرض Joint Vitrage
-      // كسطر منفصل لأن اتجاه الجوان (جهة/جهتين) خيار في الرسم وليس قطعة
-      // يمين/يسار مستقلة داخل جدول الجوان.
       if (vitrageQty > 0) {
+        items.add(
+          createJoint(
+            'جوان الزجاج (Joint Vitrage)',
+            qty: vitrageQty,
+            unit: 'متر',
+          ),
+        );
         items.add(
           createJoint(
             'جوان البوراج (Joint Bourrage)',
@@ -5822,7 +6365,12 @@ class ComponentCalculator {
       }
     }
 
-    if (reducteurPieces.isNotEmpty && hasSimpleGlassReducerPieces) {
+    final bool reducerGlassIsStrictlySimple =
+        hasSimpleGlassReducerPieces &&
+        window.hasSimpleGlassForReducer &&
+        !window.hasDoubleGlassForRules;
+
+    if (reducteurPieces.isNotEmpty && reducerGlassIsStrictlySimple) {
       Map<String, dynamic>? reducteurOverride =
           window.componentOverrides['ريديكتور (Réducteur)'] ??
           window.componentOverrides['مخفض الزجاج (Réducteur)'];
@@ -6312,6 +6860,12 @@ class ComponentCalculator {
     bool priceByWholeBar = false,
     int? catalogItemId,
     int? colorId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     final Map<String, dynamic>? savedOverride =
         overrides.containsKey(originalName)
@@ -6415,6 +6969,12 @@ class ComponentCalculator {
               : int.tryParse('${selectedOverride?['id'] ?? ''}')),
       inventoryItemType: 'Section',
       colorId: colorId,
+      overrideKey: overrideKey ?? originalName,
+      selectorCategory: selectorCategory ?? 'profile',
+      selectorType: selectorType ?? _selectorTypeForProfile(originalName),
+      roleKey: roleKey,
+      sourceSeriesId: sourceSeriesId,
+      materialType: materialType,
       unit: unit,
       unitPrice: price,
       isMissing: !isLinked,
@@ -6431,6 +6991,12 @@ class ComponentCalculator {
     int qty = 0,
     int? catalogItemId,
     int? colorId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     String lookupKey = originalName;
     if (!overrides.containsKey(lookupKey) &&
@@ -6475,6 +7041,12 @@ class ComponentCalculator {
       catalogItemId: linkedCatalogueId,
       inventoryItemType: 'Accessory',
       colorId: colorId,
+      overrideKey: overrideKey ?? lookupKey,
+      selectorCategory: selectorCategory ?? 'accessory',
+      selectorType: selectorType ?? _selectorTypeForAccessory(originalName),
+      roleKey: roleKey,
+      sourceSeriesId: sourceSeriesId,
+      materialType: materialType,
     );
   }
 
@@ -6486,6 +7058,12 @@ class ComponentCalculator {
     int qty = 0,
     int? catalogItemId,
     int? colorId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     String lookupKey = originalName;
     bool isLinked = overrides.containsKey(lookupKey);
@@ -6525,6 +7103,12 @@ class ComponentCalculator {
       catalogItemId: linkedCatalogueId,
       inventoryItemType: 'Accessory',
       colorId: colorId,
+      overrideKey: overrideKey ?? lookupKey,
+      selectorCategory: selectorCategory ?? 'accessory',
+      selectorType: selectorType ?? _selectorTypeForAccessory(originalName),
+      roleKey: roleKey,
+      sourceSeriesId: sourceSeriesId,
+      materialType: materialType,
     );
   }
 
@@ -6539,6 +7123,12 @@ class ComponentCalculator {
     int? catalogItemId,
     String? inventoryItemType,
     int? colorId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     String lookupKey = originalName;
     if (!overrides.containsKey(lookupKey) &&
@@ -6585,6 +7175,16 @@ class ComponentCalculator {
       catalogItemId: linkedCatalogueId,
       inventoryItemType: inventoryItemType ?? 'Accessory',
       colorId: colorId,
+      overrideKey: overrideKey ?? lookupKey,
+      selectorCategory: selectorCategory ?? category,
+      selectorType:
+          selectorType ??
+          (category == 'shutter'
+              ? _selectorTypeForShutter(originalName)
+              : _selectorTypeForAccessory(originalName)),
+      roleKey: roleKey,
+      sourceSeriesId: sourceSeriesId,
+      materialType: materialType,
     );
   }
 
@@ -6596,6 +7196,12 @@ class ComponentCalculator {
     String unit = 'متر',
     double? exactQuantity,
     int? catalogItemId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     bool isLinked = overrides.containsKey(originalName);
     String name = originalName;
@@ -6644,6 +7250,12 @@ class ComponentCalculator {
       exactQuantity: exactQty,
       catalogItemId: linkedCatalogueId,
       inventoryItemType: 'Joints',
+      overrideKey: overrideKey ?? originalName,
+      selectorCategory: selectorCategory ?? 'joint',
+      selectorType: selectorType ?? _selectorTypeForJoint(originalName),
+      roleKey: roleKey,
+      sourceSeriesId: sourceSeriesId,
+      materialType: materialType,
     );
   }
 
@@ -6660,6 +7272,12 @@ class ComponentCalculator {
     int windowQuantity = 1,
     int? catalogItemId,
     int? colorId,
+    String? overrideKey,
+    String? selectorCategory,
+    String? selectorType,
+    String? roleKey,
+    int? sourceSeriesId,
+    String? materialType,
   }) {
     bool isLinked = overrides.containsKey(originalName);
     String name = originalName;
@@ -6809,6 +7427,16 @@ class ComponentCalculator {
       catalogItemId: linkedCatalogueId,
       inventoryItemType: isAccessoryOverride ? 'Accessory' : 'ShutterComponent',
       colorId: colorId,
+      overrideKey: overrideKey ?? originalName,
+      selectorCategory:
+          selectorCategory ??
+          (isAccessoryOverride || _textHasAny(originalName, const ['براغي'])
+              ? 'accessory'
+              : 'shutter'),
+      selectorType: selectorType ?? _selectorTypeForShutter(originalName),
+      roleKey: roleKey,
+      sourceSeriesId: sourceSeriesId,
+      materialType: materialType,
     );
   }
 

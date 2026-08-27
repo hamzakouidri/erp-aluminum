@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../widgets/resizable_columns_table.dart';
 import 'achat_item_picker.dart';
 
 class AchatDetailsScreen extends StatefulWidget {
@@ -137,8 +139,11 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           newAmount: paidAmount,
           newDescription: desc,
           newCaisse: existingTx.first['caisse_name'] ?? 'الصندوق الرئيسي',
-          newPaymentMethod: existingTx.first['payment_method'] ?? 'نقداً / Espèce',
-          newCreatedAt: existingTx.first['created_at'] ?? DateTime.now().toIso8601String(),
+          newPaymentMethod:
+              existingTx.first['payment_method'] ?? 'نقداً / Espèce',
+          newCreatedAt:
+              existingTx.first['created_at'] ??
+              DateTime.now().toIso8601String(),
         );
       } else {
         await _db.insertTreasury(
@@ -1072,6 +1077,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
   }
 
   Future<void> _editAchatItem(Map<String, dynamic> item) async {
+    final codeCtrl = TextEditingController(
+      text: item['item_code']?.toString() ?? '',
+    );
+    final nameCtrl = TextEditingController(
+      text: item['item_name']?.toString() ?? '',
+    );
     final qtyCtrl = TextEditingController(
       text: (item['quantity'] as num?)?.toString() ?? '0',
     );
@@ -1096,6 +1107,22 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'اسم العنصر',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: codeCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'الكود / القياس',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: qtyCtrl,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -1130,12 +1157,17 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                     double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0.0;
                 final newPrice =
                     double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
-                if (newQty <= 0 || newPrice < 0) {
+                final newName = nameCtrl.text.trim();
+                final newCode = codeCtrl.text.trim();
+                if (newName.isEmpty ||
+                    newCode.isEmpty ||
+                    newQty <= 0 ||
+                    newPrice < 0) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                        'الكمية يجب أن تكون أكبر من 0 والسعر لا يمكن أن يكون سالباً',
+                        'الاسم والكود مطلوبان، والكمية يجب أن تكون أكبر من 0 والسعر لا يمكن أن يكون سالباً',
                         style: TextStyle(fontFamily: 'Cairo'),
                       ),
                       backgroundColor: Colors.red,
@@ -1161,7 +1193,13 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                   );
                 }
 
-                await _db.updateAchatItem(item['id'] as int, newQty, newPrice);
+                await _db.updateAchatItem(
+                  item['id'] as int,
+                  newQty,
+                  newPrice,
+                  itemCode: newCode,
+                  itemName: newName,
+                );
                 await _loadAchatDetails();
                 await _db.updateAchatTotal(widget.achatId, _itemsTotal);
                 if (!mounted) return;
@@ -1184,6 +1222,227 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     );
   }
 
+  bool _isGlassAchatItem(Map<String, dynamic> item) {
+    final type = item['item_type']?.toString().trim().toLowerCase() ?? '';
+    final text = '${item['item_code'] ?? ''} ${item['item_name'] ?? ''}'
+        .toLowerCase();
+    return type == 'glass' ||
+        text.contains('زجاج') ||
+        text.contains('glass') ||
+        text.contains('vitrage');
+  }
+
+  _GlassAchatDimensions? _glassDimensionsFor(Map<String, dynamic> item) {
+    if (!_isGlassAchatItem(item)) return null;
+    final text = '${item['item_code'] ?? ''} ${item['item_name'] ?? ''}';
+    final match = RegExp(
+      r'(?:GL-)?(\d{2,5}(?:[.,]\d+)?)\s*[xX×]\s*(\d{2,5}(?:[.,]\d+)?)',
+    ).firstMatch(text);
+    if (match == null) return null;
+    final width = double.tryParse(match.group(1)!.replaceAll(',', '.'));
+    final height = double.tryParse(match.group(2)!.replaceAll(',', '.'));
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return null;
+    }
+    final lower = text.toLowerCase();
+    return _GlassAchatDimensions(
+      width: width,
+      height: height,
+      hasDecor:
+          lower.contains('ديكور') ||
+          lower.contains('decor') ||
+          lower.contains('décor'),
+    );
+  }
+
+  Widget _buildGlassAchatPreview(Map<String, dynamic> item) {
+    final dimensions = _glassDimensionsFor(item);
+    if (dimensions == null) {
+      return const Icon(Icons.inventory_2_outlined, color: Colors.grey);
+    }
+    return SizedBox(
+      width: 86,
+      height: 58,
+      child: CustomPaint(painter: _GlassAchatSketchPainter(dimensions)),
+    );
+  }
+
+  Widget _buildAchatItemsDesktopTable(bool canEditInvoice, AppLanguage lang) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerStyle = const TextStyle(
+      color: Colors.white,
+      fontWeight: FontWeight.bold,
+      fontSize: 12,
+      fontFamily: 'Cairo',
+    );
+
+    return ResizableColumnsTable(
+      key: ValueKey('achat-items-${widget.achatId}-${_items.length}'),
+      headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+      borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+      rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+      headerMinHeight: 42,
+      rowMinHeight: 52,
+      cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      columns: [
+        ResizableTableColumn(
+          id: 'preview',
+          label: Text(
+            Localization.translate('الرسم', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 96,
+          minWidth: 80,
+          maxWidth: 150,
+          alignment: Alignment.center,
+        ),
+        ResizableTableColumn(
+          id: 'name',
+          label: Text(
+            Localization.translate('Libellé / Description', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 340,
+          minWidth: 220,
+          maxWidth: 620,
+        ),
+        ResizableTableColumn(
+          id: 'type',
+          label: Text(
+            Localization.translate('النوع', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 150,
+          minWidth: 110,
+          maxWidth: 260,
+        ),
+        ResizableTableColumn(
+          id: 'color',
+          label: Text(
+            Localization.translate('اللون', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 150,
+          minWidth: 100,
+          maxWidth: 260,
+        ),
+        ResizableTableColumn(
+          id: 'quantity',
+          label: Text(
+            Localization.translate('الكمية', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 120,
+          minWidth: 90,
+          maxWidth: 200,
+        ),
+        ResizableTableColumn(
+          id: 'price',
+          label: Text(
+            Localization.translate('سعر الوحدة', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 130,
+          minWidth: 100,
+          maxWidth: 220,
+        ),
+        ResizableTableColumn(
+          id: 'total',
+          label: Text(
+            Localization.translate('الإجمالي', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 140,
+          minWidth: 110,
+          maxWidth: 240,
+        ),
+        ResizableTableColumn(
+          id: 'actions',
+          label: Text(
+            Localization.translate('إجراء', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 130,
+          minWidth: 110,
+          maxWidth: 180,
+          alignment: Alignment.center,
+        ),
+      ],
+      rows: _items.map((item) {
+        final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+        final lineTotal = quantity * price;
+        return ResizableTableRow(
+          cells: [
+            _buildGlassAchatPreview(item),
+            _achatTableCell(
+              Localization.translate(
+                item['item_name'] ?? item['item_code'] ?? 'عنصر',
+                lang,
+              ),
+              isDark,
+              fontWeight: FontWeight.w700,
+              maxLines: 2,
+            ),
+            _achatTableCell(
+              Localization.translate(item['item_type'] ?? '', lang),
+              isDark,
+            ),
+            _achatTableCell(
+              item['color_id'] == null
+                  ? '-'
+                  : Localization.translate(item['color_name'] ?? 'مجهول', lang),
+              isDark,
+            ),
+            _achatTableCell(_formatValue(quantity), isDark),
+            _achatTableCell('${_formatValue(price)} DZD', isDark),
+            _achatTableCell(
+              '${_formatValue(lineTotal)} DZD',
+              isDark,
+              fontWeight: FontWeight.w700,
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: Localization.translate('تعديل', lang),
+                  onPressed: canEditInvoice ? () => _editAchatItem(item) : null,
+                  icon: const Icon(Icons.edit, size: 19),
+                ),
+                IconButton(
+                  tooltip: Localization.translate('حذف', lang),
+                  onPressed: _status == 'Confirmed'
+                      ? null
+                      : () => _deleteAchatItem(item['id'] as int),
+                  icon: const Icon(Icons.delete_outline, size: 19),
+                ),
+              ],
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _achatTableCell(
+    String text,
+    bool isDark, {
+    FontWeight fontWeight = FontWeight.w500,
+    int maxLines = 1,
+  }) {
+    return Text(
+      text,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: isDark ? Colors.white70 : Colors.grey.shade800,
+        fontFamily: 'Cairo',
+        fontSize: 12,
+        fontWeight: fontWeight,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
@@ -1203,7 +1462,9 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
         ? Colors.green
         : Colors.orange;
     return Scaffold(
-      appBar: AppBar(title: Text(Localization.translate('تفاصيل المشتريات', lang))),
+      appBar: AppBar(
+        title: Text(Localization.translate('تفاصيل المشتريات', lang)),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Stack(
@@ -1226,12 +1487,18 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                   controller: _invoiceController,
                                   enabled: canEditInvoice,
                                   decoration: InputDecoration(
-                                    labelText: Localization.translate('رقم الفاتورة', lang),
+                                    labelText: Localization.translate(
+                                      'رقم الفاتورة',
+                                      lang,
+                                    ),
                                     border: const OutlineInputBorder(),
                                   ),
                                   validator: (value) =>
                                       (value == null || value.trim().isEmpty)
-                                      ? Localization.translate('يرجى إدخال رقم الفاتورة', lang)
+                                      ? Localization.translate(
+                                          'يرجى إدخال رقم الفاتورة',
+                                          lang,
+                                        )
                                       : null,
                                 ),
                                 const SizedBox(height: 12),
@@ -1239,12 +1506,18 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                   controller: _supplierController,
                                   enabled: canEditInvoice,
                                   decoration: InputDecoration(
-                                    labelText: Localization.translate('المورد', lang),
+                                    labelText: Localization.translate(
+                                      'المورد',
+                                      lang,
+                                    ),
                                     border: const OutlineInputBorder(),
                                   ),
                                   validator: (value) =>
                                       (value == null || value.trim().isEmpty)
-                                      ? Localization.translate('يرجى إدخال اسم المورد', lang)
+                                      ? Localization.translate(
+                                          'يرجى إدخال اسم المورد',
+                                          lang,
+                                        )
                                       : null,
                                 ),
                                 const SizedBox(height: 16),
@@ -1269,8 +1542,13 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                             ? _saveAchatDetails
                                             : null,
                                         child: Text(
-                                          Localization.translate('حفظ التعديلات', lang),
-                                          style: const TextStyle(fontFamily: 'Cairo'),
+                                          Localization.translate(
+                                            'حفظ التعديلات',
+                                            lang,
+                                          ),
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1295,8 +1573,13 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                             : null,
                                         icon: const Icon(Icons.add),
                                         label: Text(
-                                          Localization.translate('إضافة عناصر', lang),
-                                          style: const TextStyle(fontFamily: 'Cairo'),
+                                          Localization.translate(
+                                            'إضافة عناصر',
+                                            lang,
+                                          ),
+                                          style: const TextStyle(
+                                            fontFamily: 'Cairo',
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1323,7 +1606,10 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                       onPressed: _discardChanges,
                                       icon: const Icon(Icons.undo, size: 18),
                                       label: Text(
-                                        Localization.translate('تراجع عن التعديلات', lang),
+                                        Localization.translate(
+                                          'تراجع عن التعديلات',
+                                          lang,
+                                        ),
                                         style: const TextStyle(
                                           fontFamily: 'Cairo',
                                           fontWeight: FontWeight.w600,
@@ -1345,7 +1631,11 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12.0),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+                                    color:
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.grey.shade900
+                                        : Colors.grey.shade100,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Column(
@@ -1354,7 +1644,10 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                     children: [
                                       if (_imagePath != null) ...[
                                         Text(
-                                          Localization.translate('صورة الفاتورة المرفقة', lang),
+                                          Localization.translate(
+                                            'صورة الفاتورة المرفقة',
+                                            lang,
+                                          ),
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -1375,7 +1668,10 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                       ],
                                       if (_pdfPath != null) ...[
                                         Text(
-                                          Localization.translate('ملف PDF محفوظ', lang),
+                                          Localization.translate(
+                                            'ملف PDF محفوظ',
+                                            lang,
+                                          ),
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -1391,7 +1687,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                             ),
                                             TextButton(
                                               onPressed: _openPdfFile,
-                                              child: Text(Localization.translate('فتح', lang)),
+                                              child: Text(
+                                                Localization.translate(
+                                                  'فتح',
+                                                  lang,
+                                                ),
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -1404,7 +1705,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                               onPressed:
                                                   _showImageSourceOptions,
                                               icon: const Icon(Icons.photo),
-                                              label: Text(Localization.translate('إرفاق صورة', lang)),
+                                              label: Text(
+                                                Localization.translate(
+                                                  'إرفاق صورة',
+                                                  lang,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(width: 8),
@@ -1414,7 +1720,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                               icon: const Icon(
                                                 Icons.picture_as_pdf,
                                               ),
-                                              label: Text(Localization.translate('حفظ PDF', lang)),
+                                              label: Text(
+                                                Localization.translate(
+                                                  'حفظ PDF',
+                                                  lang,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -1431,7 +1742,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                       child: ElevatedButton.icon(
                                         onPressed: _showImageSourceOptions,
                                         icon: const Icon(Icons.photo),
-                                        label: Text(Localization.translate('إرفاق صورة', lang)),
+                                        label: Text(
+                                          Localization.translate(
+                                            'إرفاق صورة',
+                                            lang,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
@@ -1439,7 +1755,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                       child: ElevatedButton.icon(
                                         onPressed: _generateInvoicePdf,
                                         icon: const Icon(Icons.picture_as_pdf),
-                                        label: Text(Localization.translate('حفظ PDF', lang)),
+                                        label: Text(
+                                          Localization.translate(
+                                            'حفظ PDF',
+                                            lang,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1494,12 +1815,27 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                   height: 120,
                                   padding: const EdgeInsets.all(16.0),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+                                    color:
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.grey.shade900
+                                        : Colors.grey.shade100,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Center(
-                                    child: Text(Localization.translate('لا توجد عناصر مضافة بعد.', lang)),
+                                    child: Text(
+                                      Localization.translate(
+                                        'لا توجد عناصر مضافة بعد.',
+                                        lang,
+                                      ),
+                                    ),
                                   ),
+                                ),
+                              ] else if (MediaQuery.sizeOf(context).width >=
+                                  900) ...[
+                                _buildAchatItemsDesktopTable(
+                                  canEditInvoice,
+                                  lang,
                                 ),
                               ] else
                                 ..._items.map((item) {
@@ -1528,6 +1864,17 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
+                                            if (_glassDimensionsFor(item) !=
+                                                null) ...[
+                                              const SizedBox(height: 8),
+                                              Align(
+                                                alignment: AlignmentDirectional
+                                                    .centerStart,
+                                                child: _buildGlassAchatPreview(
+                                                  item,
+                                                ),
+                                              ),
+                                            ],
                                             const SizedBox(height: 8),
                                             Text(
                                               '${Localization.translate('النوع: ', lang)}${Localization.translate(item['item_type'] ?? '', lang)}',
@@ -1568,7 +1915,10 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                                     size: 18,
                                                   ),
                                                   label: Text(
-                                                    Localization.translate('تعديل', lang),
+                                                    Localization.translate(
+                                                      'تعديل',
+                                                      lang,
+                                                    ),
                                                     style: const TextStyle(
                                                       fontFamily: 'Cairo',
                                                     ),
@@ -1588,7 +1938,10 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                                                     size: 18,
                                                   ),
                                                   label: Text(
-                                                    Localization.translate('حذف', lang),
+                                                    Localization.translate(
+                                                      'حذف',
+                                                      lang,
+                                                    ),
                                                     style: const TextStyle(
                                                       fontFamily: 'Cairo',
                                                     ),
@@ -1614,4 +1967,90 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
             ),
     );
   }
+}
+
+class _GlassAchatDimensions {
+  const _GlassAchatDimensions({
+    required this.width,
+    required this.height,
+    required this.hasDecor,
+  });
+
+  final double width;
+  final double height;
+  final bool hasDecor;
+}
+
+class _GlassAchatSketchPainter extends CustomPainter {
+  const _GlassAchatSketchPainter(this.dimensions);
+
+  final _GlassAchatDimensions dimensions;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = const Color(0xFF0891B2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    final fill = Paint()
+      ..color = const Color(0xFF67E8F9).withValues(alpha: 0.25)
+      ..style = PaintingStyle.fill;
+    final decorPaint = Paint()
+      ..color = const Color(0xFFF59E0B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+
+    final available = Size(size.width - 4, size.height - 16);
+    final ratio = dimensions.width / dimensions.height;
+    var drawWidth = available.width;
+    var drawHeight = drawWidth / ratio;
+    if (drawHeight > available.height) {
+      drawHeight = available.height;
+      drawWidth = drawHeight * ratio;
+    }
+    final rect = Rect.fromLTWH(
+      (size.width - drawWidth) / 2,
+      1,
+      drawWidth,
+      drawHeight,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+      fill,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+      stroke,
+    );
+
+    if (dimensions.hasDecor) {
+      canvas.drawLine(rect.centerLeft, rect.centerRight, decorPaint);
+      canvas.drawLine(rect.topCenter, rect.bottomCenter, decorPaint);
+      canvas.drawCircle(rect.center, 3.5, decorPaint);
+    }
+
+    final paragraphStyle = ui.ParagraphStyle(
+      textAlign: TextAlign.center,
+      fontSize: 9,
+      maxLines: 1,
+    );
+    final textStyle = TextStyle(
+      color: const Color(0xFF0F172A),
+      fontSize: 9,
+      fontWeight: FontWeight.w700,
+    );
+    final builder = ui.ParagraphBuilder(paragraphStyle)
+      ..pushStyle(textStyle.getTextStyle())
+      ..addText('${dimensions.width.round()} × ${dimensions.height.round()}');
+    final paragraph = builder.build()
+      ..layout(ui.ParagraphConstraints(width: size.width));
+    canvas.drawParagraph(paragraph, Offset(0, size.height - 13));
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlassAchatSketchPainter oldDelegate) =>
+      oldDelegate.dimensions.width != dimensions.width ||
+      oldDelegate.dimensions.height != dimensions.height ||
+      oldDelegate.dimensions.hasDecor != dimensions.hasDecor;
 }

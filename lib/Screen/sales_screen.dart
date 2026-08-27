@@ -74,7 +74,10 @@ class _SalesScreenState extends State<SalesScreen> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ أثناء تحميل المبيعات: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('خطأ أثناء تحميل المبيعات: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -105,21 +108,53 @@ class _SalesScreenState extends State<SalesScreen> {
   List<Map<String, dynamic>> get _filteredOrders {
     final active = _allOrders.where((o) {
       final s = (o['status'] ?? '').toString().toLowerCase().trim();
-      return _activeStatuses.contains(s) && s != 'pending' && s != 'في حالة انتظار';
+      return _activeStatuses.contains(s) &&
+          s != 'pending' &&
+          s != 'في حالة انتظار';
     }).toList();
 
     if (_selectedTab == 'all') {
       return active;
     } else if (_selectedTab == 'confirmed') {
-      return active.where((o) => (o['status'] ?? '').toString().toLowerCase().trim() == 'confirmed').toList();
+      return active
+          .where(
+            (o) =>
+                (o['status'] ?? '').toString().toLowerCase().trim() ==
+                'confirmed',
+          )
+          .toList();
     } else if (_selectedTab == 'partial_manufacturing') {
-      return active.where((o) => (o['status'] ?? '').toString().toLowerCase().trim() == 'partial manufacturing').toList();
+      return active
+          .where(
+            (o) =>
+                (o['status'] ?? '').toString().toLowerCase().trim() ==
+                'partial manufacturing',
+          )
+          .toList();
     } else if (_selectedTab == 'full_manufacturing') {
-      return active.where((o) => (o['status'] ?? '').toString().toLowerCase().trim() == 'full manufacturing').toList();
+      return active
+          .where(
+            (o) =>
+                (o['status'] ?? '').toString().toLowerCase().trim() ==
+                'full manufacturing',
+          )
+          .toList();
     } else if (_selectedTab == 'partial_distribution') {
-      return active.where((o) => (o['status'] ?? '').toString().toLowerCase().trim() == 'partial distribution').toList();
+      return active
+          .where(
+            (o) =>
+                (o['status'] ?? '').toString().toLowerCase().trim() ==
+                'partial distribution',
+          )
+          .toList();
     } else if (_selectedTab == 'full_distribution') {
-      return active.where((o) => (o['status'] ?? '').toString().toLowerCase().trim() == 'full distribution').toList();
+      return active
+          .where(
+            (o) =>
+                (o['status'] ?? '').toString().toLowerCase().trim() ==
+                'full distribution',
+          )
+          .toList();
     } else if (_selectedTab == 'installed') {
       return active.where((o) {
         final s = (o['status'] ?? '').toString().toLowerCase().trim();
@@ -133,7 +168,12 @@ class _SalesScreenState extends State<SalesScreen> {
     } else if (_selectedTab == 'finished') {
       return active.where((o) {
         final s = (o['status'] ?? '').toString().toLowerCase().trim();
-        return s == 'finished' || s == 'completed' || s == 'archived' || s == 'done' || s == 'أرشيف' || s == 'منتهية';
+        return s == 'finished' ||
+            s == 'completed' ||
+            s == 'archived' ||
+            s == 'done' ||
+            s == 'أرشيف' ||
+            s == 'منتهية';
       }).toList();
     }
     return active;
@@ -143,7 +183,10 @@ class _SalesScreenState extends State<SalesScreen> {
   Map<int, List<Map<String, dynamic>>> get _groupedDeliveries {
     final Map<int, List<Map<String, dynamic>>> grouped = {};
     for (final del in _allDeliveries) {
-      final orderStatus = (del['order_status'] ?? '').toString().toLowerCase().trim();
+      final orderStatus = (del['order_status'] ?? '')
+          .toString()
+          .toLowerCase()
+          .trim();
       if (orderStatus == 'pending' || orderStatus == 'في حالة انتظار') continue;
 
       final orderId = del['id_commandes'] as int;
@@ -156,7 +199,10 @@ class _SalesScreenState extends State<SalesScreen> {
   double get _totalSalesAmount {
     if (_selectedTab == 'partial') {
       // Sum of all partial deliveries for active orders
-      return _allDeliveries.fold(0.0, (sum, del) => sum + ((del['total_amount'] as num?)?.toDouble() ?? 0.0));
+      return _allDeliveries.fold(
+        0.0,
+        (sum, del) => sum + ((del['total_amount'] as num?)?.toDouble() ?? 0.0),
+      );
     } else {
       // Sum of filtered active orders
       return _filteredOrders.fold(0.0, (sum, o) {
@@ -193,7 +239,12 @@ class _SalesScreenState extends State<SalesScreen> {
       case 'done':
       case 'أرشيف':
       case 'منتهية':
-        return _tr('المنتهية / المؤرشفة', 'Terminée / Archivée', 'Finished / Archived', lang);
+        return _tr(
+          'المنتهية / المؤرشفة',
+          'Terminée / Archivée',
+          'Finished / Archived',
+          lang,
+        );
       case 'pending':
       case 'في حالة انتظار':
         return _tr('قيد الانتظار', 'En Attente', 'Pending', lang);
@@ -205,31 +256,86 @@ class _SalesScreenState extends State<SalesScreen> {
   String _statCardTitle(AppLanguage lang) {
     switch (_selectedTab) {
       case 'all':
-        return _tr('إجمالي كل المبيعات المؤكدة', 'Total ventes confirmées', 'Total Confirmed Sales', lang);
+        return _tr(
+          'إجمالي كل المبيعات المؤكدة',
+          'Total ventes confirmées',
+          'Total Confirmed Sales',
+          lang,
+        );
       case 'confirmed':
-        return _tr('إجمالي الطلبيات المؤكدة', 'Total commandes confirmées', 'Total Confirmed Orders', lang);
+        return _tr(
+          'إجمالي الطلبيات المؤكدة',
+          'Total commandes confirmées',
+          'Total Confirmed Orders',
+          lang,
+        );
       case 'partial_manufacturing':
-        return _tr('إجمالي التصنيع الجزئي', 'Total Fab. Partielle', 'Total Partial Mfg', lang);
+        return _tr(
+          'إجمالي التصنيع الجزئي',
+          'Total Fab. Partielle',
+          'Total Partial Mfg',
+          lang,
+        );
       case 'full_manufacturing':
-        return _tr('إجمالي التصنيع الكلي', 'Total Fab. Totale', 'Total Full Mfg', lang);
+        return _tr(
+          'إجمالي التصنيع الكلي',
+          'Total Fab. Totale',
+          'Total Full Mfg',
+          lang,
+        );
       case 'partial_distribution':
-        return _tr('إجمالي التوزيع الجزئي', 'Total Dist. Partielle', 'Total Partial Dist', lang);
+        return _tr(
+          'إجمالي التوزيع الجزئي',
+          'Total Dist. Partielle',
+          'Total Partial Dist',
+          lang,
+        );
       case 'full_distribution':
-        return _tr('إجمالي التوزيع الكلي', 'Total Dist. Totale', 'Total Full Dist', lang);
+        return _tr(
+          'إجمالي التوزيع الكلي',
+          'Total Dist. Totale',
+          'Total Full Dist',
+          lang,
+        );
       case 'installed':
-        return _tr('إجمالي الطلبيات المركبة', 'Total installées', 'Total Installed', lang);
+        return _tr(
+          'إجمالي الطلبيات المركبة',
+          'Total installées',
+          'Total Installed',
+          lang,
+        );
       case 'reserve':
-        return _tr('إجمالي المحجوزة / حجز', 'Total réservées', 'Total Reserved', lang);
+        return _tr(
+          'إجمالي المحجوزة / حجز',
+          'Total réservées',
+          'Total Reserved',
+          lang,
+        );
       case 'finished':
-        return _tr('إجمالي الطلبيات المنتهية', 'Total terminées', 'Total Finished', lang);
+        return _tr(
+          'إجمالي الطلبيات المنتهية',
+          'Total terminées',
+          'Total Finished',
+          lang,
+        );
       case 'partial':
-        return _tr('إجمالي المبيعات الجزئية المسلمة', 'Total livraisons partielles', 'Total Partial Deliveries', lang);
+        return _tr(
+          'إجمالي المبيعات الجزئية المسلمة',
+          'Total livraisons partielles',
+          'Total Partial Deliveries',
+          lang,
+        );
       default:
         return _tr('إجمالي المبيعات', 'Total des ventes', 'Total Sales', lang);
     }
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -289,7 +395,12 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
-  Widget _buildTabButton(String id, String label, IconData icon, Color activeColor) {
+  Widget _buildTabButton(
+    String id,
+    String label,
+    IconData icon,
+    Color activeColor,
+  ) {
     final isSelected = _selectedTab == id;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -303,7 +414,9 @@ class _SalesScreenState extends State<SalesScreen> {
         ? (isDark ? Colors.blue : activeColor)
         : (isDark ? Colors.white54 : Colors.grey);
     final Color bgColor = isDark
-        ? (isSelected ? Colors.blue.withOpacity(0.08) : Theme.of(context).cardColor)
+        ? (isSelected
+              ? Colors.blue.withOpacity(0.08)
+              : Theme.of(context).cardColor)
         : (isSelected ? activeColor.withOpacity(0.08) : Colors.white);
 
     return GestureDetector(
@@ -314,10 +427,7 @@ class _SalesScreenState extends State<SalesScreen> {
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: borderColor,
-            width: isSelected ? 2 : 1,
-          ),
+          border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -354,8 +464,16 @@ class _SalesScreenState extends State<SalesScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(
-            _tr('صفحة المبيعات والطلبيات', 'Ventes & Commandes', 'Sales & Orders', lang),
-            style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+            _tr(
+              'صفحة المبيعات والطلبيات',
+              'Ventes & Commandes',
+              'Sales & Orders',
+              lang,
+            ),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Cairo',
+            ),
           ),
           backgroundColor: Colors.blueGrey.shade900,
           foregroundColor: Colors.white,
@@ -386,25 +504,105 @@ class _SalesScreenState extends State<SalesScreen> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _buildTabButton('all',                  _tr('الكل', 'Tous', 'All', lang),                                Icons.list_alt_rounded,            Colors.indigo),
+                          _buildTabButton(
+                            'all',
+                            _tr('الكل', 'Tous', 'All', lang),
+                            Icons.list_alt_rounded,
+                            Colors.indigo,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('confirmed',            _tr('المؤكدة', 'Confirmée', 'Confirmed', lang),                 Icons.check_circle_outline,        Colors.blue),
+                          _buildTabButton(
+                            'confirmed',
+                            _tr('المؤكدة', 'Confirmée', 'Confirmed', lang),
+                            Icons.check_circle_outline,
+                            Colors.blue,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('partial_manufacturing', _tr('التصنيع الجزئي', 'Fab. Partielle', 'Partial Mfg', lang),    Icons.precision_manufacturing_rounded, Colors.amber),
+                          _buildTabButton(
+                            'partial_manufacturing',
+                            _tr(
+                              'التصنيع الجزئي',
+                              'Fab. Partielle',
+                              'Partial Mfg',
+                              lang,
+                            ),
+                            Icons.precision_manufacturing_rounded,
+                            Colors.amber,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('full_manufacturing',    _tr('التصنيع الكلي', 'Fab. Totale', 'Full Mfg', lang),         Icons.build,                       Colors.green),
+                          _buildTabButton(
+                            'full_manufacturing',
+                            _tr(
+                              'التصنيع الكلي',
+                              'Fab. Totale',
+                              'Full Mfg',
+                              lang,
+                            ),
+                            Icons.build,
+                            Colors.green,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('partial_distribution',  _tr('التوزيع الجزئي', 'Dist. Partielle', 'Partial Dist', lang),  Icons.delivery_dining_outlined,    Colors.deepOrange),
+                          _buildTabButton(
+                            'partial_distribution',
+                            _tr(
+                              'التوزيع الجزئي',
+                              'Dist. Partielle',
+                              'Partial Dist',
+                              lang,
+                            ),
+                            Icons.delivery_dining_outlined,
+                            Colors.deepOrange,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('full_distribution',     _tr('التوزيع الكلي', 'Dist. Totale', 'Full Dist', lang),       Icons.local_shipping_rounded,      Colors.teal),
+                          _buildTabButton(
+                            'full_distribution',
+                            _tr(
+                              'التوزيع الكلي',
+                              'Dist. Totale',
+                              'Full Dist',
+                              lang,
+                            ),
+                            Icons.local_shipping_rounded,
+                            Colors.teal,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('installed',            _tr('المركبة', 'Installée', 'Installed', lang),                 Icons.home_repair_service_rounded, Colors.purple),
+                          _buildTabButton(
+                            'installed',
+                            _tr('المركبة', 'Installée', 'Installed', lang),
+                            Icons.home_repair_service_rounded,
+                            Colors.purple,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('reserve',              _tr('المحجوزة / حجز', 'Réservée', 'Reserved', lang),            Icons.bookmark,                    Colors.brown),
+                          _buildTabButton(
+                            'reserve',
+                            _tr('المحجوزة / حجز', 'Réservée', 'Reserved', lang),
+                            Icons.bookmark,
+                            Colors.brown,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('finished',             _tr('المنتهية / المؤرشفة', 'Terminée', 'Finished', lang),       Icons.task_alt_rounded,            Colors.blueGrey),
+                          _buildTabButton(
+                            'finished',
+                            _tr(
+                              'المنتهية / المؤرشفة',
+                              'Terminée',
+                              'Finished',
+                              lang,
+                            ),
+                            Icons.task_alt_rounded,
+                            Colors.blueGrey,
+                          ),
                           const SizedBox(width: 6),
-                          _buildTabButton('partial',              _tr('المبيعات الجزئية', 'Ventes Partielles', 'Partial Sales', lang), Icons.receipt_long_rounded,       Colors.cyan),
+                          _buildTabButton(
+                            'partial',
+                            _tr(
+                              'المبيعات الجزئية',
+                              'Ventes Partielles',
+                              'Partial Sales',
+                              lang,
+                            ),
+                            Icons.receipt_long_rounded,
+                            Colors.cyan,
+                          ),
                         ],
                       ),
                     ),
@@ -428,7 +626,12 @@ class _SalesScreenState extends State<SalesScreen> {
     if (list.isEmpty) {
       return Center(
         child: Text(
-          _tr('لا توجد طلبيات مطابقة لهذا التصنيف.', 'Aucune commande trouvée.', 'No matching orders found.', lang),
+          _tr(
+            'لا توجد طلبيات مطابقة لهذا التصنيف.',
+            'Aucune commande trouvée.',
+            'No matching orders found.',
+            lang,
+          ),
           style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Cairo'),
         ),
       );
@@ -443,28 +646,49 @@ class _SalesScreenState extends State<SalesScreen> {
         final rawTotal = (order['total'] as num?)?.toDouble() ?? 0.0;
         final total = netPayable > 0 ? netPayable : rawTotal;
         final date = order['created_at']?.toString().split('T')[0] ?? '';
+        final displayNumber =
+            (order['display_number'] as num?)?.toInt() ??
+            (order['order_code'] as num?)?.toInt() ??
+            (order['id'] as num?)?.toInt() ??
+            0;
 
         return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           margin: const EdgeInsets.only(bottom: 12),
           elevation: 2,
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
             leading: CircleAvatar(
               backgroundColor: Colors.blue.withOpacity(0.15),
               child: const Icon(Icons.receipt, color: Colors.blue),
             ),
             title: Text(
-              '${_tr('طلب', 'Commande', 'Order', lang)} #${order['id']} - $clientName',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+              '${_tr('طلب', 'Commande', 'Order', lang)} #$displayNumber - $clientName',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Cairo',
+              ),
             ),
             subtitle: Text(
               '${_tr('التاريخ', 'Date', 'Date', lang)}: $date  ·  ${_tr('الحالة', 'Statut', 'Status', lang)}: ${_translateStatus(order['status']?.toString(), lang)}',
-              style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
             ),
             trailing: Text(
               '${_currencyFormatter.format(total)} دج',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 14),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+                fontSize: 14,
+              ),
             ),
             onTap: () {
               openOrderInWorkspaceTab(
@@ -485,7 +709,12 @@ class _SalesScreenState extends State<SalesScreen> {
     if (grouped.isEmpty) {
       return Center(
         child: Text(
-          _tr('لا توجد فواتير تسليم جزئية مسجلة حالياً.', 'Aucune livraison partielle.', 'No partial deliveries found.', lang),
+          _tr(
+            'لا توجد فواتير تسليم جزئية مسجلة حالياً.',
+            'Aucune livraison partielle.',
+            'No partial deliveries found.',
+            lang,
+          ),
           style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Cairo'),
         ),
       );
@@ -499,7 +728,10 @@ class _SalesScreenState extends State<SalesScreen> {
         final orderId = parentIds[idx];
         final deliveries = grouped[orderId]!;
 
-        final parentOrder = _allOrders.firstWhere((o) => o['id'] == orderId, orElse: () => {});
+        final parentOrder = _allOrders.firstWhere(
+          (o) => o['id'] == orderId,
+          orElse: () => {},
+        );
         final clientName = parentOrder.isNotEmpty
             ? '${parentOrder['firstname']} ${parentOrder['lastname']}'.trim()
             : _tr('زبون غير معروف', 'Client inconnu', 'Unknown client', lang);
@@ -512,11 +744,16 @@ class _SalesScreenState extends State<SalesScreen> {
             : 0.0;
         final orderTotal = netPayable > 0 ? netPayable : rawTotal;
 
-        final sumDeliveries = deliveries.fold(0.0, (sum, d) => sum + ((d['total_amount'] as num?)?.toDouble() ?? 0.0));
+        final sumDeliveries = deliveries.fold(
+          0.0,
+          (sum, d) => sum + ((d['total_amount'] as num?)?.toDouble() ?? 0.0),
+        );
         final isCompleted = sumDeliveries >= orderTotal && orderTotal > 0;
 
         return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           margin: const EdgeInsets.only(bottom: 14),
           elevation: 3,
           child: Theme(
@@ -528,18 +765,31 @@ class _SalesScreenState extends State<SalesScreen> {
               ),
               title: Text(
                 '${_tr('طلب', 'Commande', 'Order', lang)} #$orderId - $clientName',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Cairo',
+                  fontSize: 14,
+                ),
               ),
               subtitle: Builder(
                 builder: (tileCtx) {
-                  final isDark = Theme.of(tileCtx).brightness == Brightness.dark;
+                  final isDark =
+                      Theme.of(tileCtx).brightness == Brightness.dark;
                   final badgeBg = isCompleted
-                      ? (isDark ? Colors.green.withOpacity(0.15) : Colors.green.shade50)
-                      : (isDark ? Colors.orange.withOpacity(0.15) : Colors.orange.shade50);
+                      ? (isDark
+                            ? Colors.green.withOpacity(0.15)
+                            : Colors.green.shade50)
+                      : (isDark
+                            ? Colors.orange.withOpacity(0.15)
+                            : Colors.orange.shade50);
                   final badgeText = isCompleted
                       ? (isDark ? Colors.green.shade300 : Colors.green.shade800)
-                      : (isDark ? Colors.orange.shade300 : Colors.orange.shade800);
-                  final badgeBorder = isCompleted ? Colors.green : Colors.orange;
+                      : (isDark
+                            ? Colors.orange.shade300
+                            : Colors.orange.shade800);
+                  final badgeBorder = isCompleted
+                      ? Colors.green
+                      : Colors.orange;
 
                   return Wrap(
                     spacing: 8,
@@ -547,10 +797,17 @@ class _SalesScreenState extends State<SalesScreen> {
                     children: [
                       Text(
                         '${_tr('قيمة الطلب', 'Montant', 'Amount', lang)}: ${_currencyFormatter.format(orderTotal)} دج  ·  ${_tr('مجموع المسلّم', 'Livré', 'Delivered', lang)}: ${_currencyFormatter.format(sumDeliveries)} دج',
-                        style: TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Theme.of(tileCtx).textTheme.bodySmall?.color),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Cairo',
+                          color: Theme.of(tileCtx).textTheme.bodySmall?.color,
+                        ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: badgeBg,
                           borderRadius: BorderRadius.circular(8),
@@ -558,8 +815,18 @@ class _SalesScreenState extends State<SalesScreen> {
                         ),
                         child: Text(
                           isCompleted
-                              ? _tr('مكتملة بالكامل', 'Livrée totalement', 'Fully Delivered', lang)
-                              : _tr('غير جاهزة كلياً (جزئية)', 'Livraison partielle', 'Partial Delivery', lang),
+                              ? _tr(
+                                  'مكتملة بالكامل',
+                                  'Livrée totalement',
+                                  'Fully Delivered',
+                                  lang,
+                                )
+                              : _tr(
+                                  'غير جاهزة كلياً (جزئية)',
+                                  'Livraison partielle',
+                                  'Partial Delivery',
+                                  lang,
+                                ),
                           style: TextStyle(
                             fontSize: 9,
                             color: badgeText,
@@ -576,14 +843,23 @@ class _SalesScreenState extends State<SalesScreen> {
                 const Divider(height: 1),
                 Builder(
                   builder: (tileCtx) {
-                    final isDark = Theme.of(tileCtx).brightness == Brightness.dark;
+                    final isDark =
+                        Theme.of(tileCtx).brightness == Brightness.dark;
                     return Container(
-                      color: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      color: isDark
+                          ? Colors.grey.shade900
+                          : Colors.grey.shade50,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 16,
+                      ),
                       child: Column(
                         children: deliveries.map((d) {
-                          final delDate = d['delivery_date']?.toString().split('T')[0] ?? '';
-                          final delAmount = (d['total_amount'] as num?)?.toDouble() ?? 0.0;
+                          final delDate =
+                              d['delivery_date']?.toString().split('T')[0] ??
+                              '';
+                          final delAmount =
+                              (d['total_amount'] as num?)?.toDouble() ?? 0.0;
 
                           List<dynamic> items = [];
                           try {
@@ -592,23 +868,35 @@ class _SalesScreenState extends State<SalesScreen> {
                               if (rawItems is List) {
                                 items = rawItems;
                               } else {
-                                items = jsonDecode(rawItems.toString()) as List<dynamic>;
+                                items =
+                                    jsonDecode(rawItems.toString())
+                                        as List<dynamic>;
                               }
                             }
                           } catch (_) {}
 
-                          final itemsSummary = items.map((i) => '${i['game'] ?? 'Window'} (${i['qty'] ?? 1}x)').join(', ');
+                          final itemsSummary = items
+                              .map(
+                                (i) =>
+                                    '${i['game'] ?? 'Window'} (${i['qty'] ?? 1}x)',
+                              )
+                              .join(', ');
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8.0),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.circle, size: 6, color: Colors.teal),
+                                const Icon(
+                                  Icons.circle,
+                                  size: 6,
+                                  color: Colors.teal,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         '${_tr('تاريخ التسليم', 'Date livraison', 'Delivery date', lang)}: $delDate',
@@ -616,7 +904,9 @@ class _SalesScreenState extends State<SalesScreen> {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
                                           fontFamily: 'Cairo',
-                                          color: Theme.of(tileCtx).textTheme.bodyLarge?.color,
+                                          color: Theme.of(
+                                            tileCtx,
+                                          ).textTheme.bodyLarge?.color,
                                         ),
                                       ),
                                       if (itemsSummary.isNotEmpty)
@@ -624,7 +914,9 @@ class _SalesScreenState extends State<SalesScreen> {
                                           '${_tr('القطع', 'Pièces', 'Items', lang)}: $itemsSummary',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: isDark ? Colors.white70 : Colors.grey.shade600,
+                                            color: isDark
+                                                ? Colors.white70
+                                                : Colors.grey.shade600,
                                             fontFamily: 'Cairo',
                                           ),
                                         ),
@@ -633,7 +925,11 @@ class _SalesScreenState extends State<SalesScreen> {
                                 ),
                                 Text(
                                   '${_currencyFormatter.format(delAmount)} دج',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal, fontSize: 13),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ],
                             ),

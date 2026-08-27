@@ -1,5 +1,3 @@
-import 'dart:ui' show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
-
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/add_commande.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart';
@@ -10,6 +8,18 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+int _orderDisplayNumber(Map<String, dynamic> order) {
+  for (final key in const ['display_number', 'order_code']) {
+    final value = order[key];
+    final number = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString().trim() ?? '');
+    if (number != null && number > 0) return number;
+  }
+  final id = order['id'];
+  return id is num ? id.toInt() : int.tryParse(id?.toString() ?? '') ?? 0;
+}
 
 /// Opens one order as a real application workspace tab.  It deliberately does
 /// not put a second tab strip inside the order editor.
@@ -62,12 +72,11 @@ Future<void> openOrderInWorkspaceTab(
     return;
   }
 
-  var title = editCommandeId == null
-      ? 'طلبية جديدة'
-      : 'طلبية #$editCommandeId';
+  var title = editCommandeId == null ? 'طلبية جديدة' : 'طلبية #$editCommandeId';
   if (editCommandeId != null) {
     try {
       final order = await db.readCommandeWithClientById(editCommandeId);
+      if (!context.mounted) return;
       final firstName = order?['firstname']?.toString().trim() ?? '';
       final lastName = order?['lastname']?.toString().trim() ?? '';
       final clientName = '$firstName $lastName'.trim();
@@ -76,6 +85,7 @@ Future<void> openOrderInWorkspaceTab(
       // Keep the order number as a safe fallback if the local record is absent.
     }
   }
+  if (!context.mounted) return;
   workspace.open(
     entryId: entryId,
     title: title,
@@ -314,14 +324,16 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (_, index) {
               final order = orders[index];
-              final id = order['id']?.toString() ?? '';
+              final displayId = _orderDisplayNumber(order);
               final firstName = order['firstname']?.toString().trim() ?? '';
               final lastName = order['lastname']?.toString().trim() ?? '';
               final clientName = '$firstName $lastName'.trim();
               return ListTile(
                 leading: const Icon(Icons.receipt_long_outlined),
-                title: Text(clientName.isEmpty ? 'طلبية #$id' : clientName),
-                subtitle: Text('طلبية #$id'),
+                title: Text(
+                  clientName.isEmpty ? 'طلبية #$displayId' : clientName,
+                ),
+                subtitle: Text('طلبية #$displayId'),
                 onTap: () => Navigator.pop(
                   dialogContext,
                   Map<String, dynamic>.from(order),
@@ -413,7 +425,8 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
                     child: Scrollbar(
                       controller: _tabsScrollController,
                       interactive: true,
-                      thumbVisibility: !kIsWeb &&
+                      thumbVisibility:
+                          !kIsWeb &&
                           defaultTargetPlatform == TargetPlatform.windows,
                       child: SingleChildScrollView(
                         controller: _tabsScrollController,
@@ -424,53 +437,59 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
                         ),
                         child: Row(
                           children: List.generate(_tabs.length, (index) {
-                        final tab = _tabs[index];
-                        final isActive = index == _activeIndex;
-                        return Padding(
-                          key: tab.tabKey,
-                          padding: const EdgeInsetsDirectional.only(end: 6),
-                          child: Material(
-                            color: isActive
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(10),
-                              onTap: () => _selectTab(index),
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.only(
-                                  start: 12,
-                                  end: 4,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 190,
-                                      ),
-                                      child: Text(
-                                        tab.title,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontWeight: isActive
-                                              ? FontWeight.bold
-                                              : FontWeight.w500,
+                            final tab = _tabs[index];
+                            final isActive = index == _activeIndex;
+                            return Padding(
+                              key: tab.tabKey,
+                              padding: const EdgeInsetsDirectional.only(end: 6),
+                              child: Material(
+                                color: isActive
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.primaryContainer
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => _selectTab(index),
+                                  child: Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: 12,
+                                      end: 4,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 190,
+                                          ),
+                                          child: Text(
+                                            tab.title,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontWeight: isActive
+                                                  ? FontWeight.bold
+                                                  : FontWeight.w500,
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        IconButton(
+                                          tooltip: 'إغلاق',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () =>
+                                              _requestCloseTab(index),
+                                          icon: const Icon(
+                                            Icons.close,
+                                            size: 18,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    IconButton(
-                                      tooltip: 'إغلاق',
-                                      visualDensity: VisualDensity.compact,
-                                      onPressed: () => _requestCloseTab(index),
-                                      icon: const Icon(Icons.close, size: 18),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                        );
+                            );
                           }),
                         ),
                       ),

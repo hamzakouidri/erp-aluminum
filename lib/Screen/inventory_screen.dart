@@ -33,7 +33,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Color get _bg => Theme.of(context).scaffoldBackgroundColor;
   Color get _cardBg => Theme.of(context).cardColor;
   Color get _text => Theme.of(context).colorScheme.onSurface;
-  Color get _textDim => Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
+  Color get _textDim =>
+      Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
   Color get _divider => Theme.of(context).dividerColor;
 
   @override
@@ -55,6 +56,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
     _loadLocations();
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadLocations() async {
     final locs = await widget.db.readLocations();
     if (mounted) {
@@ -62,9 +69,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
         _locations = locs;
         if (_locations.isNotEmpty) {
           _selectedLocationId = _locations.first['id'] as int;
-          final firstLocName = _locations.first['name']?.toString() ?? 'المستودع الرئيسي';
+          final firstLocName =
+              _locations.first['name']?.toString() ?? 'المستودع الرئيسي';
           _selectedLocationName = firstLocName == 'المستودع الرئيسي'
-              ? Localization.translate('المستودع الرئيسي', Provider.of<AppSettingsProvider>(context, listen: false).language)
+              ? Localization.translate(
+                  'المستودع الرئيسي',
+                  Provider.of<AppSettingsProvider>(
+                    context,
+                    listen: false,
+                  ).language,
+                )
               : firstLocName;
           _loadStockData();
         } else {
@@ -200,7 +214,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       children: [
                         Expanded(
                           child: ChoiceChip(
-                            label: Text(Localization.translate('المتوفر فقط', lang)),
+                            label: Text(
+                              Localization.translate('المتوفر فقط', lang),
+                            ),
                             selected: !_showAllItems,
                             onSelected: (val) {
                               if (val) {
@@ -213,7 +229,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: ChoiceChip(
-                            label: Text(Localization.translate('كل العناصر', lang)),
+                            label: Text(
+                              Localization.translate('كل العناصر', lang),
+                            ),
                             selected: _showAllItems,
                             onSelected: (val) {
                               if (val) {
@@ -232,7 +250,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       controller: _searchCtrl,
                       onChanged: (value) => _filterStock(),
                       decoration: InputDecoration(
-                        hintText: Localization.translate('البحث عن عنصر، مقطع، لون...', lang),
+                        hintText: Localization.translate(
+                          'البحث عن عنصر، مقطع، لون...',
+                          lang,
+                        ),
                         prefixIcon: Icon(Icons.search, color: _blue),
                         filled: true,
                         fillColor: Theme.of(context).cardColor,
@@ -259,6 +280,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Widget _buildAppBar(AppLanguage lang) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final canAdjustInventory = settings.canAdjustInventory();
     return SliverAppBar(
       expandedHeight: 150.0,
       pinned: true,
@@ -276,83 +299,102 @@ class _InventoryScreenState extends State<InventoryScreen> {
           : null,
       actions: [
         IconButton(
-          icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-          tooltip: Localization.translate('تصفير المخزون (فترة تجريبية)', lang),
-          onPressed: () {
-            if (_selectedLocationId != null) {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Row(
-                    children: [
-                      const Icon(Icons.warning, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Text(Localization.translate('تصفير المخزون!', lang)),
+          icon: const Icon(Icons.recycling, color: Colors.white),
+          tooltip: Localization.translate('الفضلات المتاحة', lang),
+          onPressed: () => _showAvailableRemnantsDialog(lang),
+        ),
+        if (canAdjustInventory)
+          IconButton(
+            icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+            tooltip: Localization.translate(
+              'تصفير المخزون (فترة تجريبية)',
+              lang,
+            ),
+            onPressed: () {
+              if (_selectedLocationId != null) {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Row(
+                      children: [
+                        const Icon(Icons.warning, color: Colors.red),
+                        const SizedBox(width: 8),
+                        Text(Localization.translate('تصفير المخزون!', lang)),
+                      ],
+                    ),
+                    content: Text(
+                      Localization.translate(
+                        'هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟\n\nلا يمكن التراجع عن هذا الإجراء!',
+                        lang,
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(Localization.translate('إلغاء', lang)),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(ctx);
+                          await widget.db.emptyInventory(_selectedLocationId!);
+                          await _loadStockData();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  Localization.translate(
+                                    'تم تصفير المخزون بنجاح',
+                                    lang,
+                                  ),
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        },
+                        child: Text(
+                          Localization.translate('تأكيد التصفير', lang),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
                     ],
                   ),
-                  content: Text(
-                    Localization.translate('هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟\n\nلا يمكن التراجع عن هذا الإجراء!', lang),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: Text(Localization.translate('إلغاء', lang)),
+                );
+              }
+            },
+          ),
+        if (canAdjustInventory)
+          IconButton(
+            icon: const Icon(Icons.inventory, color: Colors.white),
+            tooltip: Localization.translate('جرد سنوي / تعديل المخزون', lang),
+            onPressed: () {
+              if (_selectedLocationId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InventoryAdjustmentScreen(
+                      db: widget.db,
+                      locationId: _selectedLocationId!,
+                      locationName: _selectedLocationName,
                     ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                      ),
-                      onPressed: () async {
-                        Navigator.pop(ctx);
-                        await widget.db.emptyInventory(_selectedLocationId!);
-                        await _loadStockData();
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                Localization.translate('تم تصفير المخزون بنجاح', lang),
-                                style: const TextStyle(fontFamily: 'Cairo'),
-                              ),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        }
-                      },
-                      child: Text(
-                        Localization.translate('تأكيد التصفير', lang),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.inventory, color: Colors.white),
-          tooltip: Localization.translate('جرد سنوي / تعديل المخزون', lang),
-          onPressed: () {
-            if (_selectedLocationId != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InventoryAdjustmentScreen(
-                    db: widget.db,
-                    locationId: _selectedLocationId!,
-                    locationName: _selectedLocationName,
                   ),
-                ),
-              ).then((_) => _loadStockData());
-            }
-          },
-        ),
+                ).then((_) => _loadStockData());
+              }
+            },
+          ),
       ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [_blue, _cyan], begin: Alignment.topLeft,
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? [Color(0xFF111827), Color(0xFF070E1D)]
+                  : [_blue, _cyan],
+              begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
           ),
@@ -404,7 +446,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
       width: double.infinity,
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: Theme.of(context).brightness == Brightness.dark ? [Color(0xFF111827), Color(0xFF070E1D)] : [_blue, _cyan], ),
+        gradient: LinearGradient(
+          colors: Theme.of(context).brightness == Brightness.dark
+              ? [Color(0xFF111827), Color(0xFF070E1D)]
+              : [_blue, _cyan],
+        ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -476,7 +522,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
           items: _locations.map((loc) {
             final locName = loc['name']?.toString() ?? 'المستودع الرئيسي';
             final displayName = locName == 'المستودع الرئيسي'
-                ? Localization.translate('المستودع الرئيسي', Provider.of<AppSettingsProvider>(context, listen: false).language)
+                ? Localization.translate(
+                    'المستودع الرئيسي',
+                    Provider.of<AppSettingsProvider>(
+                      context,
+                      listen: false,
+                    ).language,
+                  )
                 : locName;
             return DropdownMenuItem<int>(
               value: loc['id'] as int,
@@ -486,7 +538,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   const SizedBox(width: 12),
                   Text(
                     displayName,
-                    style:  TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -501,9 +553,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
             if (val != null) {
               setState(() {
                 _selectedLocationId = val;
-                final matchedLocName = _locations.firstWhere((l) => l['id'] == val)['name']?.toString() ?? 'المستودع الرئيسي';
+                final matchedLocName =
+                    _locations
+                        .firstWhere((l) => l['id'] == val)['name']
+                        ?.toString() ??
+                    'المستودع الرئيسي';
                 _selectedLocationName = matchedLocName == 'المستودع الرئيسي'
-                    ? Localization.translate('المستودع الرئيسي', Provider.of<AppSettingsProvider>(context, listen: false).language)
+                    ? Localization.translate(
+                        'المستودع الرئيسي',
+                        Provider.of<AppSettingsProvider>(
+                          context,
+                          listen: false,
+                        ).language,
+                      )
                     : matchedLocName;
               });
               _loadStockData();
@@ -555,7 +617,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
         final colorName = item['color_name'] as String;
         final quantity = (item['quantity'] as num).toDouble();
         final minQty = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
-        final bool isLowStock = minQty > 0 && quantity <= minQty;
+        final alertEnabled =
+            ((item['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
+        final bool isLowStock =
+            alertEnabled && minQty > 0 && quantity <= minQty;
 
         return Container(
           margin: EdgeInsets.only(bottom: 12),
@@ -632,11 +697,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               ),
                               if (colorName.isNotEmpty) ...[
                                 const SizedBox(width: 8),
-                                Icon(
-                                  Icons.circle,
-                                  size: 4,
-                                  color: _divider,
-                                ),
+                                Icon(Icons.circle, size: 4, color: _divider),
                                 const SizedBox(width: 8),
                                 Text(
                                   Localization.translate(colorName, lang),
@@ -652,7 +713,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         ],
                       ),
                     ),
-                     Column(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
@@ -683,19 +744,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 fontWeight: FontWeight.w900,
                                 fontSize: 18,
                                 color: quantity > 0
-                                    ? (isLowStock ? Colors.orange.shade800 : _text)
+                                    ? (isLowStock
+                                          ? Colors.orange.shade800
+                                          : _text)
                                     : Colors.red,
                               ),
                             ),
                           ],
                         ),
-                        if (minQty > 0)
+                        if (alertEnabled && minQty > 0)
                           Text(
                             '${Localization.translate('الحد الأدنى', lang)}: ${minQty.toStringAsFixed(minQty.truncateToDouble() == minQty ? 0 : 2)}',
                             style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 9,
-                              color: isLowStock ? Colors.orange.shade800 : _textDim,
+                              color: isLowStock
+                                  ? Colors.orange.shade800
+                                  : _textDim,
                             ),
                           ),
                       ],
@@ -703,12 +768,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     const SizedBox(width: 8),
                     IconButton(
                       icon: Icon(
-                        minQty > 0 ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                        alertEnabled
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
                         size: 20,
-                        color: minQty > 0 ? (isLowStock ? Colors.orange.shade800 : _blue) : _textDim,
+                        color: alertEnabled
+                            ? (isLowStock ? Colors.orange.shade800 : _blue)
+                            : _textDim,
                       ),
                       onPressed: () => _showMinQtyDialog(item),
-                      tooltip: Localization.translate('تنبيه الحد الأدنى', lang),
+                      tooltip: Localization.translate(
+                        'تنبيه الحد الأدنى',
+                        lang,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     Icon(
@@ -727,17 +799,154 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _showMinQtyDialog(Map<String, dynamic> item) async {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final itemId = item['item_id'] as int;
     final itemType = item['item_type'] as String;
     final itemName = item['item_name'] as String;
     final colorId = item['color_id'] as int?;
     final minQty = (item['min_qty'] as num?)?.toDouble() ?? 0.0;
+    bool alertEnabled =
+        ((item['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1;
 
     final controller = TextEditingController(
       text: minQty.toStringAsFixed(minQty.truncateToDouble() == minQty ? 0 : 2),
     );
 
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                const Icon(Icons.notifications_active_outlined, color: _blue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    Localization.translate('تنبيه الحد الأدنى للمخزون', lang),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  itemName,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: Localization.translate(
+                      'أقل كمية مقبولة للتنبيه',
+                      lang,
+                    ),
+                    labelStyle: const TextStyle(fontFamily: 'Cairo'),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: alertEnabled,
+                  onChanged: (value) =>
+                      setDialogState(() => alertEnabled = value),
+                  title: Text(
+                    Localization.translate('تفعيل تنبيه نفاد الكمية', lang),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'لن يظهر هذا العنصر في التنبيهات إلا إذا كان هذا الخيار مفعلاً.',
+                      lang,
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  Localization.translate('إلغاء', lang),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () async {
+                  final double? val = double.tryParse(controller.text.trim());
+                  if (val != null && val >= 0) {
+                    await widget.db.updateMinQty(
+                      itemType: itemType,
+                      itemId: itemId,
+                      colorId: colorId,
+                      locationId: _selectedLocationId!,
+                      minQty: val,
+                      alertEnabled: alertEnabled,
+                    );
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                    }
+                    _loadStockData();
+                  }
+                },
+                child: Text(
+                  Localization.translate('حفظ', lang),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAvailableRemnantsDialog(AppLanguage lang) async {
+    final locationId = _selectedLocationId;
+    if (locationId == null) return;
+    final remnants = await widget.db.readAllAvailableMaterialRemnants(
+      locationId: locationId,
+    );
+    if (!mounted) return;
     await showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -748,73 +957,81 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
           title: Row(
             children: [
-              const Icon(Icons.notifications_active_outlined, color: _blue),
+              const Icon(Icons.recycling, color: Colors.teal),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  Localization.translate('تنبيه الحد الأدنى للمخزون', lang),
-                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                itemName,
-                style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: Localization.translate('أقل كمية مقبولة للتنبيه', lang),
-                  labelStyle: const TextStyle(fontFamily: 'Cairo'),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  Localization.translate('الفضلات المتاحة', lang),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
               ),
             ],
           ),
+          content: SizedBox(
+            width: 520,
+            child: remnants.isEmpty
+                ? Text(
+                    Localization.translate(
+                      'لا توجد فضلات قابلة للاستعمال في هذا المخزون.',
+                      lang,
+                    ),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: remnants.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final row = remnants[index];
+                      final length =
+                          ((row['length_mm'] as num?)?.toDouble() ?? 0).round();
+                      final name = row['item_name']?.toString() ?? '';
+                      final code = row['item_code']?.toString() ?? '';
+                      final color = row['color_name']?.toString() ?? '';
+                      final series = row['series_name']?.toString() ?? '';
+                      final address =
+                          [row['rack_code'], row['shelf_code'], row['bin_code']]
+                              .map((value) => value?.toString().trim() ?? '')
+                              .where((value) => value.isNotEmpty)
+                              .join(' / ');
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.straighten, color: _blue),
+                        title: Text(
+                          '${row['ticket_code']} - ${code.isEmpty ? name : '[$code] $name'}',
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(
+                          [
+                            if (series.isNotEmpty) series,
+                            if (color.isNotEmpty) color,
+                            if (address.isNotEmpty) address,
+                          ].join(' - '),
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                        trailing: Text(
+                          '$length ${Localization.translate('مم', lang)}',
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(
-                Localization.translate('إلغاء', lang),
-                style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _blue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                final double? val = double.tryParse(controller.text.trim());
-                if (val != null && val >= 0) {
-                  await widget.db.updateMinQty(
-                    itemType: itemType,
-                    itemId: itemId,
-                    colorId: colorId,
-                    locationId: _selectedLocationId!,
-                    minQty: val,
-                  );
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                  }
-                  _loadStockData();
-                }
-              },
-              child: Text(
-                Localization.translate('حفظ', lang),
-                style: const TextStyle(fontFamily: 'Cairo', color: Colors.white),
-              ),
+              child: Text(Localization.translate('إغلاق', lang)),
             ),
           ],
         ),

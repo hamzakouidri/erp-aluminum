@@ -128,7 +128,8 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
   },
   'No clients registered yet. Add your first client.': {
     AppLanguage.arabic: 'لا يوجد زبائن مسجلون بعد. أضف أول زبون.',
-    AppLanguage.french: 'Aucun client enregistré. Ajoutez votre premier client.',
+    AppLanguage.french:
+        'Aucun client enregistré. Ajoutez votre premier client.',
     AppLanguage.english: 'No clients registered yet. Add your first client.',
   },
   'No matching results': {
@@ -143,7 +144,8 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
   },
   'Could not load data. Please try again.': {
     AppLanguage.arabic: 'تعذر تحميل البيانات. يرجى المحاولة مرة أخرى.',
-    AppLanguage.french: 'Impossible de charger les données. Veuillez réessayer.',
+    AppLanguage.french:
+        'Impossible de charger les données. Veuillez réessayer.',
     AppLanguage.english: 'Could not load data. Please try again.',
   },
   'Refresh': {
@@ -414,7 +416,8 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
   },
   'حدث خطأ أثناء معالجة الفاتورة بالـ AI: \$e': {
     AppLanguage.arabic: 'حدث خطأ أثناء معالجة الفاتورة بالـ AI: \$e',
-    AppLanguage.french: 'Erreur lors du traitement de la facture par l\'IA : \$e',
+    AppLanguage.french:
+        'Erreur lors du traitement de la facture par l\'IA : \$e',
     AppLanguage.english: 'Error processing invoice by AI: \$e',
   },
   'حفظ الدفعة': {
@@ -482,16 +485,10 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Infos de paiement (BaridiMob)',
     AppLanguage.english: 'Payment info (BaridiMob)',
   },
-  'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: \$invoiceNumber؟ \\nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: \$invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
+  'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: \$invoiceNumber؟ \\nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.':
+      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
+  'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: \$invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.':
+      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
   'يرجى إدخال رقم الفاتورة': {
     AppLanguage.arabic: 'يرجى إدخال رقم الفاتورة',
     AppLanguage.french: 'Veuillez saisir le numéro de facture',
@@ -564,8 +561,10 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
   },
   'هل أنت متأكد أنك تريد حذف هذه النافذة من الطلبية؟': {
     AppLanguage.arabic: 'هل أنت متأكد أنك تريد حذف هذه النافذة من الطلبية؟',
-    AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer cette fenêtre de la commande ?',
-    AppLanguage.english: 'Are you sure you want to delete this window from the order?',
+    AppLanguage.french:
+        'Êtes-vous sûr de vouloir supprimer cette fenêtre de la commande ?',
+    AppLanguage.english:
+        'Are you sure you want to delete this window from the order?',
   },
   'التكلفة المحسوبة:': {
     AppLanguage.arabic: 'التكلفة المحسوبة:',
@@ -621,5 +620,75 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.arabic: 'تعديل الطلبية',
     AppLanguage.french: 'Modifier la commande',
     AppLanguage.english: 'Edit Order',
+  },
+  'Picture': {
+    AppLanguage.arabic: 'صور الطلبية',
+    AppLanguage.french: 'Photos',
+    AppLanguage.english: 'Picture',
+  },
+  'صور النوافذ مع التفاصيل والمقاسات': {
+    AppLanguage.arabic: 'صور النوافذ مع التفاصيل والمقاسات',
+    AppLanguage.french: 'Photos des fenêtres avec détails et dimensions',
+    AppLanguage.english: 'Window pictures with details and dimensions',
+  },
+  'المشروع': {
+    AppLanguage.arabic: 'المشروع',
+    AppLanguage.french: 'Projet',
+    AppLanguage.english: 'Project',
+  },
+  'الموقع': {
+    AppLanguage.arabic: 'الموقع',
+    AppLanguage.french: 'Emplacement',
+    AppLanguage.english: 'Location',
+  },
+  'التفاصيل والقياسات': {
+    AppLanguage.arabic: 'التفاصيل والقياسات',
+    AppLanguage.french: 'Détails et dimensions',
+    AppLanguage.english: 'Details and measurements',
+  },
+  'معاينة Picture PDF': {
+    AppLanguage.arabic: 'معاينة ملف الصور PDF',
+    AppLanguage.french: 'Aperçu du PDF des photos',
+    AppLanguage.english: 'Preview Picture PDF',
+  },
+  'طباعة Picture PDF': {
+    AppLanguage.arabic: 'طباعة ملف الصور PDF',
+    AppLanguage.french: 'Imprimer le PDF des photos',
+    AppLanguage.english: 'Print Picture PDF',
+  },
+  'مشاركة Picture PDF': {
+    AppLanguage.arabic: 'مشاركة ملف الصور PDF',
+    AppLanguage.french: 'Partager le PDF des photos',
+    AppLanguage.english: 'Share Picture PDF',
+  },
+  'حفظ Picture PDF': {
+    AppLanguage.arabic: 'حفظ ملف الصور PDF',
+    AppLanguage.french: 'Enregistrer le PDF des photos',
+    AppLanguage.english: 'Save Picture PDF',
+  },
+  'لا توجد صور لهذه الطلبية': {
+    AppLanguage.arabic: 'لا توجد صور لهذه الطلبية',
+    AppLanguage.french: 'Aucune photo pour cette commande',
+    AppLanguage.english: 'No pictures for this order',
+  },
+  'جار تجهيز ملف الصور PDF': {
+    AppLanguage.arabic: 'جار تجهيز ملف الصور PDF',
+    AppLanguage.french: 'Préparation du PDF des photos...',
+    AppLanguage.english: 'Preparing picture PDF...',
+  },
+  'إعادة المحاولة': {
+    AppLanguage.arabic: 'إعادة المحاولة',
+    AppLanguage.french: 'Réessayer',
+    AppLanguage.english: 'Retry',
+  },
+  'تم حفظ ملف الصور بنجاح': {
+    AppLanguage.arabic: 'تم حفظ ملف الصور بنجاح',
+    AppLanguage.french: 'Le fichier des photos a été enregistré avec succès',
+    AppLanguage.english: 'Picture file saved successfully',
+  },
+  'خطأ أثناء توليد ملف الصور: ': {
+    AppLanguage.arabic: 'خطأ أثناء توليد ملف الصور: ',
+    AppLanguage.french: 'Erreur lors de la génération du fichier photos : ',
+    AppLanguage.english: 'Error generating picture file: ',
   },
 };

@@ -241,10 +241,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setStateDialog) => AlertDialog(
           title: Text(
-            Localization.translate(
-              'تخصيص الألوان حسب البروفيلات',
-              lang,
-            ),
+            Localization.translate('تخصيص الألوان حسب البروفيلات', lang),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
@@ -271,10 +268,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
                 if (_profiles.isNotEmpty)
                   DropdownButtonFormField<int>(
                     decoration: InputDecoration(
-                      labelText: Localization.translate(
-                        'اختر البروفيل',
-                        lang,
-                      ),
+                      labelText: Localization.translate('اختر البروفيل', lang),
                       border: const OutlineInputBorder(),
                     ),
                     initialValue: selectedProfileId,
@@ -353,9 +347,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                Localization.translate('إلغاء', lang),
-              ),
+              child: Text(Localization.translate('إلغاء', lang)),
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.save_rounded, size: 18),
@@ -435,10 +427,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
         builder: (context, setStateDialog) {
           return AlertDialog(
             title: Text(
-              Localization.translate(
-                'تخصيص ألوان الزجاج',
-                lang,
-              ),
+              Localization.translate('تخصيص ألوان الزجاج', lang),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             content: SizedBox(

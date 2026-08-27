@@ -25,6 +25,7 @@ import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Screen/caisson_tunnel_screen.dart';
 import 'package:database_data/Screen/moustiquaire_screen.dart';
 import 'package:database_data/Screen/tempered_glass_work_screen.dart';
+import 'package:database_data/utils/real_color_resolver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
@@ -1634,15 +1635,21 @@ class _CommandePageState extends State<CommandePage> {
                   shrinkWrap: true,
                   children: colors.map((dbColor) {
                     final name = dbColor['name']?.toString() ?? '';
-                    final hex = dbColor['hex_code']?.toString() ?? '#9E9E9E';
-                    Color parsedColor = Colors.grey;
-                    try {
-                      parsedColor = Color(
-                        int.parse(hex.replaceAll('#', '0xFF')),
-                      );
-                    } catch (_) {}
                     return ListTile(
-                      leading: CircleAvatar(backgroundColor: parsedColor),
+                      leading: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: realGradientColors(dbColor),
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          image: realColorTextureImage(dbColor),
+                          border: Border.all(color: Colors.black26),
+                        ),
+                      ),
                       title: Text(name),
                       onTap: () async {
                         Navigator.pop(ctx);

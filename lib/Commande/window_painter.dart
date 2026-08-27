@@ -125,14 +125,22 @@ class WindowPainter extends CustomPainter {
       model.isIntegratedFrame && model.integratedFrameSideCoverWidth > 0;
 
   bool get _hasDrawableStandaloneSideCover =>
-      model.hasSideCovers &&
-      model.sideCoverWidth > 0 &&
-      model.isSideCoverAllowed;
+      model.hasSideCovers && _drawableStandaloneSideCoverWidth > 0;
 
   bool get _shouldDrawSideCovers =>
       _hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover;
 
   bool get _hasEffectiveBottomFrame => model.effectiveHasBottomFrame;
+
+  double get _drawableStandaloneSideCoverWidth {
+    final width = model.sideCoverWidth;
+    if (width > 0) return width;
+    if (model.hasSideCovers &&
+        (model.selectedSideCover != null || model.sideCoverOverride != null)) {
+      return 35.0;
+    }
+    return 0.0;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1788,9 +1796,24 @@ class WindowPainter extends CustomPainter {
       if (segRight <= segLeft) continue;
 
       final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
-      canvas.drawRect(segRect, fill);
-      canvas.drawRect(segRect, border);
+      _drawGroovedMullionProfile(
+        canvas,
+        segRect,
+        isHorizontal: true,
+        fill: fill,
+        border: border,
+        cavityOnPositiveSide: false,
+      );
       canvas.drawLine(Offset(segLeft, h - t), Offset(segRight, h - t), border);
+      final innerLipY = h - math.min(t * 0.34, math.max(4.0, t * 0.24));
+      canvas.drawLine(
+        Offset(segLeft, innerLipY),
+        Offset(segRight, innerLipY),
+        Paint()
+          ..color = _fb.withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9,
+      );
       if (touchesLeftFrame) {
         canvas.drawLine(Offset(0, h), Offset(t, h - t), border);
       } else if (segLeft > 0.1) {
@@ -1834,11 +1857,10 @@ class WindowPainter extends CustomPainter {
       // A custom value is a visible projection, never an instruction to let
       // a cover grow beyond the selected cover profile itself.  This also
       // repairs older drawings that accidentally stored a larger value.
+      final fallbackCoverWidth = _drawableStandaloneSideCoverWidth;
       final visible =
-          (segment.visibleWidth > 0
-                  ? segment.visibleWidth
-                  : model.sideCoverWidth)
-              .clamp(0.0, model.sideCoverWidth)
+          (segment.visibleWidth > 0 ? segment.visibleWidth : fallbackCoverWidth)
+              .clamp(0.0, fallbackCoverWidth)
               .toDouble();
       if (visible <= 0) continue;
       geometry[segment.side] = {'start': start, 'end': end, 'visible': visible};
@@ -1987,7 +2009,9 @@ class WindowPainter extends CustomPainter {
     double topY,
   ) {
     if (!_shouldDrawSideCovers) return;
-    final coverWidth = model.sideCoverWidth;
+    final coverWidth = model.isIntegratedFrame && model.sideCoverWidth > 0
+        ? model.sideCoverWidth
+        : _drawableStandaloneSideCoverWidth;
     if (coverWidth <= 0) return;
 
     if (model.useCustomSideCoverLayout) {
@@ -2238,6 +2262,7 @@ class WindowPainter extends CustomPainter {
             ),
             isHorizontal: true,
             position: seg.position,
+            isPrimary: true,
           ),
         );
       }
@@ -2310,6 +2335,7 @@ class WindowPainter extends CustomPainter {
             ),
             isHorizontal: false,
             position: seg.position,
+            isPrimary: true,
           ),
         );
       }
@@ -2352,7 +2378,7 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    for (final mullion in mullions) {
+    void drawMullion(_MullionVisual mullion) {
       if (model.isGroovedFrameMullionAt(
         mullion.isHorizontal,
         mullion.position,
@@ -2388,7 +2414,7 @@ class WindowPainter extends CustomPainter {
             mullion.position,
           ),
         );
-        continue;
+        return;
       }
 
       if (!model.isDoubleFrameMullionAt(
@@ -2397,7 +2423,7 @@ class WindowPainter extends CustomPainter {
       )) {
         canvas.drawRect(mullion.rect, paint);
         canvas.drawRect(mullion.rect, border);
-        continue;
+        return;
       }
 
       // A "Cadre double" is two frame-140 style profiles coupled together.
@@ -2470,6 +2496,13 @@ class WindowPainter extends CustomPainter {
           separatorPaint,
         );
       }
+    }
+
+    for (final mullion in mullions.where((m) => !m.isPrimary)) {
+      drawMullion(mullion);
+    }
+    for (final mullion in mullions.where((m) => m.isPrimary)) {
+      drawMullion(mullion);
     }
 
     if (model.selection.type == SelectionType.mullion) {
@@ -6633,6 +6666,7 @@ class WindowPainter extends CustomPainter {
         innerStrokePath.lineTo(innerRect.right, yInnerR);
       }
       innerStrokePath.lineTo(innerRect.right, innerRect.bottom);
+      innerStrokePath.lineTo(innerRect.left, innerRect.bottom);
       canvas.drawPath(innerStrokePath, linePaint);
     } else {
       canvas.drawPath(innerPath, linePaint);

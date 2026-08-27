@@ -89,6 +89,7 @@ class _WindowViewState extends State<WindowView> {
 
   bool _isDraggingHandle = false;
   bool _isDraggingHinge = false;
+  bool _suppressHandleDragForLongPress = false;
   bool _isDraggingSlantLeft = false;
   bool _isDraggingSlantRight = false;
   bool _isDraggingArch = false;
@@ -108,7 +109,7 @@ class _WindowViewState extends State<WindowView> {
   final ScrollController _glassScrollController = ScrollController();
   final ScrollController _leftDrawerScrollController = ScrollController();
   final TextEditingController _leftSashWidthController =
-      TextEditingController();
+  TextEditingController();
   final FocusNode _leftSashFocusNode = FocusNode();
   late final TextEditingController _positionCtrl;
 
@@ -124,8 +125,7 @@ class _WindowViewState extends State<WindowView> {
   /// On Windows Flutter excludes a mouse from drag scrolling by default.
   /// Both drawing drawers contain horizontal option rows, so enable mouse and
   /// trackpad dragging here without changing the phone touch experience.
-  ScrollBehavior _drawerScrollBehavior(
-    BuildContext context, {
+  ScrollBehavior _drawerScrollBehavior(BuildContext context, {
     bool scrollbars = true,
   }) {
     return ScrollConfiguration.of(context).copyWith(
@@ -168,7 +168,7 @@ class _WindowViewState extends State<WindowView> {
   // ── حالة الضغط على منطقة الستار ──
   bool _isShutterSelected = false;
   int _activeShutterTab =
-      0; // 0: شائع, 1: الصندوق, 2: الشفرات, 3: السكك, 4: نوع الستار
+  0; // 0: شائع, 1: الصندوق, 2: الشفرات, 3: السكك, 4: نوع الستار
   List<Map<String, dynamic>> _shutterLamesOptions = [];
   List<Map<String, dynamic>> _shutterCoulisseOptions = [];
   List<Map<String, dynamic>> _shutterCaissonOptions = [];
@@ -185,6 +185,8 @@ class _WindowViewState extends State<WindowView> {
   List<Map<String, dynamic>> _sashProfiles = [];
   List<Map<String, dynamic>> _openingSashProfiles = [];
   List<Map<String, dynamic>> _slidingSashProfiles = [];
+  Set<int> _slidingLateralProfileIds = {};
+  Set<int> _slidingCentralProfileIds = {};
   int? _loadedSeriesId;
   int? _loadedOpeningFrameSeriesId;
   int? _loadedSlidingFrameSeriesId;
@@ -206,7 +208,9 @@ class _WindowViewState extends State<WindowView> {
 
   double? _caissonSizeMm(Map<String, dynamic> option) {
     final raw = getComponentSize(option);
-    if (raw == null || raw.trim().isEmpty) return null;
+    if (raw == null || raw
+        .trim()
+        .isEmpty) return null;
     var size = double.tryParse(raw.replaceAll(',', '.'));
     if (size == null || size <= 0) return null;
     if (size < 100) size *= 10;
@@ -224,6 +228,8 @@ class _WindowViewState extends State<WindowView> {
           _sashProfiles = [];
           _openingSashProfiles = [];
           _slidingSashProfiles = [];
+          _slidingLateralProfileIds = {};
+          _slidingCentralProfileIds = {};
           _loadedSeriesId = null;
           _loadedOpeningFrameSeriesId = null;
           _loadedSlidingFrameSeriesId = null;
@@ -237,7 +243,7 @@ class _WindowViewState extends State<WindowView> {
         widget.systemMode == 'mixed' && openingSeriesId != null;
     final needsSlidingFrames =
         (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
-        slidingSeriesId != null;
+            slidingSeriesId != null;
     if (_loadedSeriesId == seriesId &&
         (!needsOpeningFrames ||
             _loadedOpeningFrameSeriesId == openingSeriesId) &&
@@ -256,27 +262,46 @@ class _WindowViewState extends State<WindowView> {
       final sashes = await _loadSashProfilesForSeries(db, myDb, seriesId);
       final openingFrames = needsOpeningFrames
           ? (openingSeriesId == seriesId
-                ? frames
-                : await _loadFrameProfilesForSeries(db, myDb, openingSeriesId))
+          ? frames
+          : await _loadFrameProfilesForSeries(db, myDb, openingSeriesId))
           : <Map<String, dynamic>>[];
       final slidingFrames = needsSlidingFrames
           ? (slidingSeriesId == seriesId
-                ? frames
-                : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId))
+          ? frames
+          : await _loadFrameProfilesForSeries(db, myDb, slidingSeriesId))
           : <Map<String, dynamic>>[];
       final openingSashes = needsOpeningFrames
           ? (openingSeriesId == seriesId
-                ? sashes
-                : await _loadSashProfilesForSeries(db, myDb, openingSeriesId))
+          ? sashes
+          : await _loadSashProfilesForSeries(db, myDb, openingSeriesId))
           : <Map<String, dynamic>>[];
       final slidingSashes = needsSlidingFrames
           ? (slidingSeriesId == seriesId
-                ? sashes
-                : await _loadSashProfilesForSeries(db, myDb, slidingSeriesId))
+          ? sashes
+          : await _loadSashProfilesForSeries(db, myDb, slidingSeriesId))
           : <Map<String, dynamic>>[];
+      final montantRoleSeriesId = slidingSeriesId ?? seriesId;
+      final lateralRoleProfiles = await db.getDesignSectionsForRoles(
+        montantRoleSeriesId,
+        const ['sash_lateral', 'lateral'],
+      );
+      final centralRoleProfiles = await db.getDesignSectionsForRoles(
+        montantRoleSeriesId,
+        const ['sash_central', 'central'],
+      );
 
       // Ignore an old result when the user has already switched series.
       if (!mounted || activeSeriesForSystem?.id != seriesId) return;
+      Set<int> idsFrom(List<Map<String, dynamic>> rows) =>
+          rows
+              .map((row) {
+            final rawId = row['id'];
+            return rawId is num
+                ? rawId.toInt()
+                : int.tryParse('${rawId ?? ''}');
+          })
+              .whereType<int>()
+              .toSet();
       setState(() {
         _frameProfiles = frames;
         _openingFrameProfiles = openingFrames;
@@ -284,6 +309,8 @@ class _WindowViewState extends State<WindowView> {
         _sashProfiles = sashes;
         _openingSashProfiles = openingSashes;
         _slidingSashProfiles = slidingSashes;
+        _slidingLateralProfileIds = idsFrom(lateralRoleProfiles);
+        _slidingCentralProfileIds = idsFrom(centralRoleProfiles);
         _loadedSeriesId = seriesId;
         _loadedOpeningFrameSeriesId = needsOpeningFrames
             ? openingSeriesId
@@ -304,13 +331,13 @@ class _WindowViewState extends State<WindowView> {
             widget.systemMode == 'mixed' && currentOpeningSeriesId != null;
         final currentNeedsSlidingFrames =
             (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
-            currentSlidingSeriesId != null;
+                currentSlidingSeriesId != null;
         final profilesChangedWhileLoading =
             activeSeriesForSystem?.id != seriesId ||
-            (currentNeedsOpeningFrames &&
-                currentOpeningSeriesId != openingSeriesId) ||
-            (currentNeedsSlidingFrames &&
-                currentSlidingSeriesId != slidingSeriesId);
+                (currentNeedsOpeningFrames &&
+                    currentOpeningSeriesId != openingSeriesId) ||
+                (currentNeedsSlidingFrames &&
+                    currentSlidingSeriesId != slidingSeriesId);
         if (profilesChangedWhileLoading) {
           unawaited(_loadAvailableProfiles());
         }
@@ -318,11 +345,9 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _loadFrameProfilesForSeries(
-    SqlDatabase db,
-    dynamic myDb,
-    int seriesId,
-  ) async {
+  Future<List<Map<String, dynamic>>> _loadFrameProfilesForSeries(SqlDatabase db,
+      dynamic myDb,
+      int seriesId,) async {
     final allSections = await myDb.query(
       'Sections',
       where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
@@ -330,12 +355,12 @@ class _WindowViewState extends State<WindowView> {
     );
     final legacyFrames = allSections
         .where((s) {
-          final ty = s['type'].toString().toLowerCase().trim();
-          return ty.contains('frame') ||
-              ty.contains('cadre') ||
-              ty.contains('إطار') ||
-              ty.contains('فريم');
-        })
+      final ty = s['type'].toString().toLowerCase().trim();
+      return ty.contains('frame') ||
+          ty.contains('cadre') ||
+          ty.contains('إطار') ||
+          ty.contains('فريم');
+    })
         .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
         .toList();
     final configuredFrames = await db.getDesignSectionsForRoles(
@@ -345,11 +370,9 @@ class _WindowViewState extends State<WindowView> {
     return configuredFrames.isEmpty ? legacyFrames : configuredFrames;
   }
 
-  Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
-    SqlDatabase db,
-    dynamic myDb,
-    int seriesId,
-  ) async {
+  Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(SqlDatabase db,
+      dynamic myDb,
+      int seriesId,) async {
     final allSections = await myDb.query(
       'Sections',
       where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
@@ -357,33 +380,33 @@ class _WindowViewState extends State<WindowView> {
     );
     final legacySashes = allSections
         .where((s) {
-          final ty = s['type'].toString().toLowerCase().trim();
-          final name = s['name'].toString().toLowerCase().trim();
-          return ty.contains('sash') ||
-              ty.contains('ouvrant') ||
-              ty.contains('lateral') ||
-              ty.contains('central') ||
-              ty.contains('chicane') ||
-              ty.contains('traverse') ||
-              ty.contains('ضلفة') ||
-              ty.contains('ساش') ||
-              name.contains('lateral') ||
-              name.contains('central') ||
-              name.contains('chicane') ||
-              name.contains('جانبي') ||
-              name.contains('وسطي');
-        })
+      final ty = s['type'].toString().toLowerCase().trim();
+      final name = s['name'].toString().toLowerCase().trim();
+      return ty.contains('sash') ||
+          ty.contains('ouvrant') ||
+          ty.contains('lateral') ||
+          ty.contains('central') ||
+          ty.contains('chicane') ||
+          ty.contains('traverse') ||
+          ty.contains('ضلفة') ||
+          ty.contains('ساش') ||
+          name.contains('lateral') ||
+          name.contains('central') ||
+          name.contains('chicane') ||
+          name.contains('جانبي') ||
+          name.contains('وسطي');
+    })
         .map<Map<String, dynamic>>((s) => Map<String, dynamic>.from(s))
         .toList();
     final configuredSashes = await db
         .getDesignSectionsForRoles(seriesId, const [
-          'sash',
-          'sash_extension',
-          'sash_lateral',
-          'sash_central',
-          'sash_traverse',
-          'chicane',
-        ]);
+      'sash',
+      'sash_extension',
+      'sash_lateral',
+      'sash_central',
+      'sash_traverse',
+      'chicane',
+    ]);
     return configuredSashes.isEmpty ? legacySashes : configuredSashes;
   }
 
@@ -399,10 +422,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   List<Map<String, dynamic>> _filterFrameProfilesForDrawingRules(
-    List<Map<String, dynamic>> profiles, {
-    required AluminumSeries? series,
-    AccessoryDrawingMode? drawingMode,
-  }) {
+      List<Map<String, dynamic>> profiles, {
+        required AluminumSeries? series,
+        AccessoryDrawingMode? drawingMode,
+      }) {
     final seriesType = '${series?.name ?? ''} ${series?.type ?? ''}'
         .toLowerCase()
         .trim();
@@ -424,18 +447,18 @@ class _WindowViewState extends State<WindowView> {
     if (series == null) return const <Map<String, dynamic>>[];
     final profiles = series.sections
         .where((section) {
-          final type = section.type.toLowerCase().trim();
-          final name = section.name.toLowerCase().trim();
-          return section.isFrame ||
-              type.contains('frame') ||
-              type.contains('cadre') ||
-              type.contains('إطار') ||
-              type.contains('فريم') ||
-              name.contains('cadre') ||
-              name.contains('frame') ||
-              name.contains('إطار') ||
-              name.contains('فريم');
-        })
+      final type = section.type.toLowerCase().trim();
+      final name = section.name.toLowerCase().trim();
+      return section.isFrame ||
+          type.contains('frame') ||
+          type.contains('cadre') ||
+          type.contains('إطار') ||
+          type.contains('فريم') ||
+          name.contains('cadre') ||
+          name.contains('frame') ||
+          name.contains('إطار') ||
+          name.contains('فريم');
+    })
         .map((section) => section.toMap())
         .toList();
     return _filterFrameProfilesForDrawingRules(profiles, series: series);
@@ -452,33 +475,33 @@ class _WindowViewState extends State<WindowView> {
 
     final isWood =
         cleanName.contains('خشب') ||
-        cleanName.contains('wood') ||
-        cleanName.contains('bois') ||
-        cleanName.contains('╪«╪┤╪¿') ||
-        cleanName.contains('desert') ||
-        cleanName.contains('ديزر') ||
-        cleanName.contains('ديزير') ||
-        cleanName.contains('oak') ||
-        cleanName.contains('اوك') ||
-        cleanName.contains('chene') ||
-        cleanName.contains('chêne') ||
-        cleanName.contains('noyer') ||
-        cleanName.contains('acajou') ||
-        cleanName.contains('شين') ||
-        cleanName.contains('نويا') ||
-        cleanName.contains('اكاجو') ||
-        cleanName.contains('بوا') ||
-        cleanName.contains('faux') ||
-        cleanName.contains('فو') ||
-        cleanName.contains('antique') ||
-        cleanName.contains('انتيك') ||
-        cleanName.contains('onteak') ||
-        cleanName.contains('╪º┘å╪¬┘è┘â') ||
-        cleanName.contains('╪»┘è╪▓╪▒') ||
-        cleanName.contains('d0') ||
-        cleanName.contains('دي زيرو') ||
-        cleanName.contains('بلوط') ||
-        cleanName.contains('di zero');
+            cleanName.contains('wood') ||
+            cleanName.contains('bois') ||
+            cleanName.contains('╪«╪┤╪¿') ||
+            cleanName.contains('desert') ||
+            cleanName.contains('ديزر') ||
+            cleanName.contains('ديزير') ||
+            cleanName.contains('oak') ||
+            cleanName.contains('اوك') ||
+            cleanName.contains('chene') ||
+            cleanName.contains('chêne') ||
+            cleanName.contains('noyer') ||
+            cleanName.contains('acajou') ||
+            cleanName.contains('شين') ||
+            cleanName.contains('نويا') ||
+            cleanName.contains('اكاجو') ||
+            cleanName.contains('بوا') ||
+            cleanName.contains('faux') ||
+            cleanName.contains('فو') ||
+            cleanName.contains('antique') ||
+            cleanName.contains('انتيك') ||
+            cleanName.contains('onteak') ||
+            cleanName.contains('╪º┘å╪¬┘è┘â') ||
+            cleanName.contains('╪»┘è╪▓╪▒') ||
+            cleanName.contains('d0') ||
+            cleanName.contains('دي زيرو') ||
+            cleanName.contains('بلوط') ||
+            cleanName.contains('di zero');
 
     if (!isWood) return null;
 
@@ -605,40 +628,45 @@ class _WindowViewState extends State<WindowView> {
 
   Future<bool?> _askSlidingRebateCut(WindowZone zone) async {
     if (!widget.model.shouldAskSlidingRebateCut(zone)) return null;
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     return showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(Localization.translate('ركوب الزجاج للمنزلق', lang)),
-        content: Text(
-          Localization.translate(
-            'هذا المنزلق داخل إطار واحد مقسم. هل سيتم قطع وحساب ركوب الزجاج حول منطقة المنزلق؟',
-            lang,
+      builder: (dialogContext) =>
+          AlertDialog(
+            title: Text(Localization.translate('ركوب الزجاج للمنزلق', lang)),
+            content: Text(
+              Localization.translate(
+                'هذا المنزلق داخل إطار واحد مقسم. هل سيتم قطع وحساب ركوب الزجاج حول منطقة المنزلق؟',
+                lang,
+              ),
+              textDirection: TextDirection.rtl,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(Localization.translate('لا', lang)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(Localization.translate('نعم', lang)),
+              ),
+            ],
           ),
-          textDirection: TextDirection.rtl,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(Localization.translate('لا', lang)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(Localization.translate('نعم', lang)),
-          ),
-        ],
-      ),
     );
   }
 
   void _showSlidingUnsupportedSnack() {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -670,11 +698,10 @@ class _WindowViewState extends State<WindowView> {
     });
   }
 
-  Future<bool> _paintZoneContentFromUi(
-    WindowZone zone,
-    ZoneContent content, {
-    int? slidingSashesCount,
-  }) async {
+  Future<bool> _paintZoneContentFromUi(WindowZone zone,
+      ZoneContent content, {
+        int? slidingSashesCount,
+      }) async {
     bool? cutRebate;
     if (content == ZoneContent.slidingSash) {
       if (widget.model.hasArchOrSlant) {
@@ -711,8 +738,8 @@ class _WindowViewState extends State<WindowView> {
     final isDouble = zone.content == ZoneContent.doubleSash;
     final isSash =
         isDouble ||
-        zone.content == ZoneContent.singleSash ||
-        zone.content == ZoneContent.slidingSash;
+            zone.content == ZoneContent.singleSash ||
+            zone.content == ZoneContent.slidingSash;
 
     if (isDouble) {
       final splitX =
@@ -720,17 +747,17 @@ class _WindowViewState extends State<WindowView> {
       const separator = 4.0;
       target = (cellId ?? '').startsWith('right')
           ? Rect.fromLTRB(
-              splitX + separator / 2,
-              zone.boundary.top,
-              zone.boundary.right,
-              zone.boundary.bottom,
-            )
+        splitX + separator / 2,
+        zone.boundary.top,
+        zone.boundary.right,
+        zone.boundary.bottom,
+      )
           : Rect.fromLTRB(
-              zone.boundary.left,
-              zone.boundary.top,
-              splitX - separator / 2,
-              zone.boundary.bottom,
-            );
+        zone.boundary.left,
+        zone.boundary.top,
+        splitX - separator / 2,
+        zone.boundary.bottom,
+      );
     } else if (zone.content == ZoneContent.slidingSash) {
       final count = math.max(1, zone.slidingSashesCount);
       target = Rect.fromLTWH(
@@ -744,7 +771,7 @@ class _WindowViewState extends State<WindowView> {
     if (isSash) {
       final sashThickness =
           zone.sashThickness ??
-          widget.model.getSectionThickness('sash', fallback: 45.0);
+              widget.model.getSectionThickness('sash', fallback: 45.0);
       final width = math.max(0.0, target.width - 2 * sashThickness);
       final height = math.max(0.0, target.height - 2 * sashThickness);
       return Size(width, height);
@@ -756,14 +783,14 @@ class _WindowViewState extends State<WindowView> {
     final key = cellId ?? '';
     final hasLeftOrMain =
         zone.innerH > 0 ||
-        zone.innerV > 0 ||
-        zone.innerHPositions.isNotEmpty ||
-        zone.innerVPositions.isNotEmpty;
+            zone.innerV > 0 ||
+            zone.innerHPositions.isNotEmpty ||
+            zone.innerVPositions.isNotEmpty;
     final hasRight =
         zone.rightInnerH > 0 ||
-        zone.rightInnerV > 0 ||
-        zone.rightInnerHPositions.isNotEmpty ||
-        zone.rightInnerVPositions.isNotEmpty;
+            zone.rightInnerV > 0 ||
+            zone.rightInnerHPositions.isNotEmpty ||
+            zone.rightInnerVPositions.isNotEmpty;
     if (key.startsWith('right')) return hasRight;
     if (key.startsWith('left') || key.startsWith('main')) {
       return hasLeftOrMain;
@@ -781,10 +808,12 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final product = widget.model.getPanneauProductForSpec(spec);
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final decorWidth = product == null
         ? 0.0
         : _catalogNumber(product, 'visible_width');
@@ -794,23 +823,24 @@ class _WindowViewState extends State<WindowView> {
     if (product == null || decorWidth <= 0 || decorHeight <= 0) {
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(
-            Localization.translate('أبعاد البانو ديكور غير محددة', lang),
-          ),
-          content: Text(
-            Localization.translate(
-              'يجب تحديد عرض الديكور وطوله في منتج الزجاج أولاً.',
-              lang,
+        builder: (dialogContext) =>
+            AlertDialog(
+              title: Text(
+                Localization.translate('أبعاد البانو ديكور غير محددة', lang),
+              ),
+              content: Text(
+                Localization.translate(
+                  'يجب تحديد عرض الديكور وطوله في منتج الزجاج أولاً.',
+                  lang,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(Localization.translate('حسناً', lang)),
+                ),
+              ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(Localization.translate('حسناً', lang)),
-            ),
-          ],
-        ),
       );
       return _DecorPlacementResult(false, cellId);
     }
@@ -824,22 +854,28 @@ class _WindowViewState extends State<WindowView> {
     )) {
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(
-            Localization.translate('لا يمكن وضع هذا البانو هنا', lang),
-          ),
-          content: Text(
-            '${Localization.translate('حجم الديكور', lang)} ${decorWidth.toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(0)} ${Localization.translate('مم', lang)} '
-            '${Localization.translate('أكبر من المساحة المتاحة', lang)} ${available.width.toStringAsFixed(0)} × ${available.height.toStringAsFixed(0)} ${Localization.translate('مم', lang)}. '
-            '${Localization.translate('ينبغي اختيار بانو آخر.', lang)}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(Localization.translate('حسناً', lang)),
+        builder: (dialogContext) =>
+            AlertDialog(
+              title: Text(
+                Localization.translate('لا يمكن وضع هذا البانو هنا', lang),
+              ),
+              content: Text(
+                '${Localization.translate('حجم الديكور', lang)} ${decorWidth
+                    .toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(
+                    0)} ${Localization.translate('مم', lang)} '
+                    '${Localization.translate(
+                    'أكبر من المساحة المتاحة', lang)} ${available.width
+                    .toStringAsFixed(0)} × ${available.height.toStringAsFixed(
+                    0)} ${Localization.translate('مم', lang)}. '
+                    '${Localization.translate('ينبغي اختيار بانو آخر.', lang)}',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(Localization.translate('حسناً', lang)),
+                ),
+              ],
             ),
-          ],
-        ),
       );
       return _DecorPlacementResult(false, cellId);
     }
@@ -850,23 +886,26 @@ class _WindowViewState extends State<WindowView> {
 
     final removeDivisions = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(Localization.translate('إلغاء التقسيم؟', lang)),
-        content: Text(
-          '${Localization.translate('البانو ديكور لا يقبل أي تقسيمات.', lang)} '
-          '${Localization.translate('يجب إلغاء التقسيم الحالي لتفعيله. هل توافق؟', lang)}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(Localization.translate('لا', lang)),
+      builder: (dialogContext) =>
+          AlertDialog(
+            title: Text(Localization.translate('إلغاء التقسيم؟', lang)),
+            content: Text(
+              '${Localization.translate(
+                  'البانو ديكور لا يقبل أي تقسيمات.', lang)} '
+                  '${Localization.translate(
+                  'يجب إلغاء التقسيم الحالي لتفعيله. هل توافق؟', lang)}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(Localization.translate('لا', lang)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(Localization.translate('نعم', lang)),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(Localization.translate('نعم', lang)),
-          ),
-        ],
-      ),
     );
     if (removeDivisions != true) {
       return _DecorPlacementResult(false, cellId);
@@ -886,28 +925,28 @@ class _WindowViewState extends State<WindowView> {
     if (isDouble || isSingle || isSliding) {
       double splitX =
           tappedZ.boundary.left +
-          tappedZ.boundary.width * tappedZ.doubleSashRatio;
+              tappedZ.boundary.width * tappedZ.doubleSashRatio;
       bool isRight = isDouble && (modelPos.dx > splitX);
       Rect sashR = tappedZ.boundary;
       if (isDouble) {
         final sep = 4.0;
         sashR = isRight
             ? Rect.fromLTRB(
-                splitX + sep / 2,
-                tappedZ.boundary.top,
-                tappedZ.boundary.right,
-                tappedZ.boundary.bottom,
-              )
+          splitX + sep / 2,
+          tappedZ.boundary.top,
+          tappedZ.boundary.right,
+          tappedZ.boundary.bottom,
+        )
             : Rect.fromLTRB(
-                tappedZ.boundary.left,
-                tappedZ.boundary.top,
-                splitX - sep / 2,
-                tappedZ.boundary.bottom,
-              );
+          tappedZ.boundary.left,
+          tappedZ.boundary.top,
+          splitX - sep / 2,
+          tappedZ.boundary.bottom,
+        );
       }
       final sashT =
           tappedZ.sashThickness ??
-          widget.model.getSectionThickness('sash', fallback: 45.0);
+              widget.model.getSectionThickness('sash', fallback: 45.0);
       final glassR = sashR.deflate(sashT);
       if (glassR.contains(modelPos)) {
         int currentInnerH = isRight ? tappedZ.rightInnerH : tappedZ.innerH;
@@ -1011,7 +1050,7 @@ class _WindowViewState extends State<WindowView> {
         widget.systemMode == 'mixed' && openingSeriesId != null;
     final needsSlidingFrames =
         (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
-        slidingSeriesId != null;
+            slidingSeriesId != null;
     if (activeSeriesForSystem?.id != _loadedSeriesId ||
         (needsOpeningFrames &&
             _loadedOpeningFrameSeriesId != openingSeriesId) ||
@@ -1027,7 +1066,7 @@ class _WindowViewState extends State<WindowView> {
   void _syncDrawerGlassFromDrawing() {
     _tempGlassSpec =
         widget.model.getUniformGlassSpecification() ??
-        const GlassSpecification();
+            const GlassSpecification();
   }
 
   // ── تحميل خيارات الستار من قاعدة البيانات ──
@@ -1043,7 +1082,7 @@ class _WindowViewState extends State<WindowView> {
       final lames = await dbInstance.query(
         'ShutterComponents',
         where:
-            "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
+        "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
         orderBy: 'name ASC',
       );
 
@@ -1051,7 +1090,7 @@ class _WindowViewState extends State<WindowView> {
       final coulisses = await dbInstance.query(
         'ShutterComponents',
         where:
-            "LOWER(TRIM(component_type)) IN ('track', 'coulisse', 'coulisses', 'glissiere') AND (is_active = 1 OR is_active IS NULL)",
+        "LOWER(TRIM(component_type)) IN ('track', 'coulisse', 'coulisses', 'glissiere') AND (is_active = 1 OR is_active IS NULL)",
         orderBy: 'name ASC',
       );
 
@@ -1059,65 +1098,14 @@ class _WindowViewState extends State<WindowView> {
       final caissonRes = await dbInstance.query(
         'ShutterComponents',
         where:
-            "(LOWER(name) LIKE '%caisson%' OR name LIKE '%صندوق%' OR LOWER(component_type) LIKE '%caisson%' OR LOWER(component_type) LIKE '%box%') AND (is_active = 1 OR is_active IS NULL)",
+        "(LOWER(name) LIKE '%caisson%' OR name LIKE '%صندوق%' OR LOWER(component_type) LIKE '%caisson%' OR LOWER(component_type) LIKE '%box%') AND (is_active = 1 OR is_active IS NULL)",
         orderBy: 'name ASC',
       );
 
       final seriesId = activeSeriesForSystem?.id;
-      final designConfig = seriesId == null
-          ? null
-          : await db.getSeriesDesignConfig(seriesId);
       final shutterRules = seriesId == null
           ? <Map<String, dynamic>>[]
           : await db.getSeriesShutterRules(seriesId);
-
-      List<Map<String, dynamic>> configuredOptions(
-        List<Map<String, Object?>> source,
-        String role,
-      ) {
-        final rows = source
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList();
-        if (designConfig == null) return rows;
-        if (designConfig['supports_shutter'] != 1) {
-          return <Map<String, dynamic>>[];
-        }
-        final candidates = shutterRules.where((rule) {
-          if (rule['component_role'] != role) return false;
-          final mode = rule['selection_mode']?.toString() ?? 'always';
-          final mechanism = widget.model.shutterMechanism;
-          if (mode == 'motor' && mechanism != 'محرك') return false;
-          if (mode == 'manual' &&
-              !(mechanism.contains('مان') || mechanism.contains('منا'))) {
-            return false;
-          }
-          final width = widget.model.width;
-          final height = widget.model.height;
-          final minW = (rule['min_width_mm'] as num?)?.toDouble();
-          final maxW = (rule['max_width_mm'] as num?)?.toDouble();
-          final minH = (rule['min_height_mm'] as num?)?.toDouble();
-          final maxH = (rule['max_height_mm'] as num?)?.toDouble();
-          if (width > 0 &&
-              ((minW != null && width < minW) ||
-                  (maxW != null && width > maxW))) {
-            return false;
-          }
-          if (height > 0 &&
-              ((minH != null && height < minH) ||
-                  (maxH != null && height > maxH))) {
-            return false;
-          }
-          return true;
-        });
-        final ids = candidates
-            .map((rule) => (rule['component_id'] as num?)?.toInt())
-            .whereType<int>()
-            .toSet();
-        if (ids.isEmpty) return <Map<String, dynamic>>[];
-        return rows
-            .where((row) => ids.contains((row['id'] as num?)?.toInt()))
-            .toList();
-      }
 
       // The shutter is independent from the drawing series.  Do not apply
       // any series-specific profile rules to its catalogue choices.
@@ -1174,10 +1162,10 @@ class _WindowViewState extends State<WindowView> {
                 .fold<double>(0, (max, value) => value > max ? value : max);
             if (maxHeight <= 0) {
               unavailableCaissonReasons[id] =
-                  'هذا الصندوق غير مضبوط لهذه الشفرة في حدود الستار.';
+              'هذا الصندوق غير مضبوط لهذه الشفرة في حدود الستار.';
             } else if (widget.model.height > maxHeight) {
               unavailableCaissonReasons[id] =
-                  'الحد الأقصى لهذا الصندوق ${maxHeight.toStringAsFixed(0)} مم.';
+              'الحد الأقصى لهذا الصندوق ${maxHeight.toStringAsFixed(0)} مم.';
             }
           }
         } else {
@@ -1188,7 +1176,8 @@ class _WindowViewState extends State<WindowView> {
             if (id == null || size == null) continue;
             if (size + 0.5 < fallbackMinimumSize) {
               unavailableCaissonReasons[id] =
-                  'هذا الصندوق أصغر من الحد المطلوب ${fallbackMinimumSize.toStringAsFixed(0)} مم.';
+              'هذا الصندوق أصغر من الحد المطلوب ${fallbackMinimumSize
+                  .toStringAsFixed(0)} مم.';
             }
           }
         }
@@ -1284,9 +1273,10 @@ class _WindowViewState extends State<WindowView> {
     if (widget.model.archHeight > 0) {
       double yC =
           topOffset +
-          math.min(widget.model.topSlantLeftY, widget.model.topSlantRightY) -
-          (widget.model.archHeight * 2) +
-          t;
+              math.min(
+                  widget.model.topSlantLeftY, widget.model.topSlantRightY) -
+              (widget.model.archHeight * 2) +
+              t;
       return (1.0 - factor) * (1.0 - factor) * yL +
           2.0 * (1.0 - factor) * factor * yC +
           factor * factor * yR;
@@ -1295,13 +1285,11 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  double getSashTopY(
-    double x,
-    double sashTopFlat,
-    double t,
-    double topOffset,
-    bool isTopBound,
-  ) {
+  double getSashTopY(double x,
+      double sashTopFlat,
+      double t,
+      double topOffset,
+      bool isTopBound,) {
     if (!isTopBound) return sashTopFlat;
     double clearance = sashTopFlat - (topOffset + t);
     if (clearance < 0) clearance = 0;
@@ -1318,21 +1306,25 @@ class _WindowViewState extends State<WindowView> {
         ? (section == 1 ? (pos - inset) : (widget.model.height - pos - inset))
         : (section == 1 ? (pos - inset) : (widget.model.width - pos - inset));
     final ctrl = TextEditingController(text: currentValue.toInt().toString());
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     showDialog(
       context: context,
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final isDark = Theme
+            .of(context)
+            .brightness == Brightness.dark;
         String label = isH
             ? (section == 1
-                  ? 'تعديل الفراغ العلوي (mm)'
-                  : 'تعديل الفراغ السفلي (mm)')
+            ? 'تعديل الفراغ العلوي (mm)'
+            : 'تعديل الفراغ السفلي (mm)')
             : (section == 1
-                  ? 'تعديل الفراغ الأيسر (mm)'
-                  : 'تعديل الفراغ الأيمن (mm)');
+            ? 'تعديل الفراغ الأيسر (mm)'
+            : 'تعديل الفراغ الأيمن (mm)');
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -1398,16 +1390,14 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  bool _checkAndStartSashDividerDrag(
-    String zoneId,
-    bool isRight,
-    Rect glassR,
-    int innerH,
-    int innerV,
-    List<double> innerHPos,
-    List<double> innerVPos,
-    Offset touchScreen,
-  ) {
+  bool _checkAndStartSashDividerDrag(String zoneId,
+      bool isRight,
+      Rect glassR,
+      int innerH,
+      int innerV,
+      List<double> innerHPos,
+      List<double> innerVPos,
+      Offset touchScreen,) {
     if (innerH == 0 && innerV == 0) return false;
 
     // 🟢 تكبير مساحة التقاط اللمس لتسهيل التحديد والتحريك (Hit Slop)
@@ -1428,12 +1418,13 @@ class _WindowViewState extends State<WindowView> {
       }
     }
     final zone = widget.model.zones.firstWhere(
-      (candidate) => candidate.id == zoneId,
-      orElse: () => WindowZone(
-        id: zoneId,
-        boundary: Rect.zero,
-        sashColor: widget.model.frameColor,
-      ),
+          (candidate) => candidate.id == zoneId,
+      orElse: () =>
+          WindowZone(
+            id: zoneId,
+            boundary: Rect.zero,
+            sashColor: widget.model.frameColor,
+          ),
     );
     String getVKey(int r, int v) => isRight ? 'right_${r}_$v' : '${r}_$v';
     String getHKey(int c, int h) => isRight ? 'right_${c}_$h' : '${c}_$h';
@@ -1529,12 +1520,10 @@ class _WindowViewState extends State<WindowView> {
     return false;
   }
 
-  bool _checkAndStartGlassDecorDrag(
-    String zoneId,
-    Rect glassR,
-    GlassSpecification spec,
-    Offset touchScreen,
-  ) {
+  bool _checkAndStartGlassDecorDrag(String zoneId,
+      Rect glassR,
+      GlassSpecification spec,
+      Offset touchScreen,) {
     if (spec.structure != GlassStructure.double) return false;
     if (spec.decorH == 0 && spec.decorV == 0) return false;
 
@@ -1651,7 +1640,9 @@ class _WindowViewState extends State<WindowView> {
     });
     SharedPreferences.getInstance().then((prefs) {
       final name = prefs.getString('workshop_name');
-      if (name != null && name.trim().isNotEmpty) {
+      if (name != null && name
+          .trim()
+          .isNotEmpty) {
         widget.model.workshopName = name;
         widget.model.refreshUI();
       }
@@ -1691,8 +1682,8 @@ class _WindowViewState extends State<WindowView> {
       final canvasOrigin = Offset(widget.model.canvasDx, widget.model.canvasDy);
       _userPan =
           focalPoint -
-          canvasOrigin -
-          (focalPoint - canvasOrigin - _userPan) * scaleRatio;
+              canvasOrigin -
+              (focalPoint - canvasOrigin - _userPan) * scaleRatio;
       _userScale = nextScale;
     });
   }
@@ -1768,11 +1759,10 @@ class _WindowViewState extends State<WindowView> {
     return closest;
   }
 
-  Rect? _dimensionTextBounds(
-    String text,
-    Rect bounds, {
-    bool vertical = false,
-  }) {
+  Rect? _dimensionTextBounds(String text,
+      Rect bounds, {
+        bool vertical = false,
+      }) {
     final crossAxis = vertical ? bounds.width : bounds.height;
     final mainAxis = vertical ? bounds.height : bounds.width;
     if (crossAxis < 12 || mainAxis < 35) return null;
@@ -1786,7 +1776,8 @@ class _WindowViewState extends State<WindowView> {
           style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w800),
         ),
         textDirection: TextDirection.ltr,
-      )..layout();
+      )
+        ..layout();
       if (painter.width <= mainAxis - 8 || fontSize <= 10) break;
       fontSize -= 1.0;
     }
@@ -1794,15 +1785,15 @@ class _WindowViewState extends State<WindowView> {
 
     return vertical
         ? Rect.fromCenter(
-            center: bounds.center,
-            width: painter.height + 6,
-            height: painter.width + 8,
-          )
+      center: bounds.center,
+      width: painter.height + 6,
+      height: painter.width + 8,
+    )
         : Rect.fromCenter(
-            center: bounds.center,
-            width: painter.width + 8,
-            height: painter.height + 6,
-          );
+      center: bounds.center,
+      width: painter.width + 8,
+      height: painter.height + 6,
+    );
   }
 
   /// Hit-test only the visible number written in the selected frame profile.
@@ -1810,8 +1801,12 @@ class _WindowViewState extends State<WindowView> {
   InnerDimensionHit? _frameProfileDimensionHit(Offset modelPosition) {
     if (widget.model.zones.length < 2) return null;
     final thickness = widget.model.profileThickness;
-    final showWidthInside = widget.model.getVerticalFrameJoints().isEmpty;
-    final showHeightInside = widget.model.getHorizontalFrameJoints().isEmpty;
+    final showWidthInside = widget.model
+        .getVerticalFrameJoints()
+        .isEmpty;
+    final showHeightInside = widget.model
+        .getHorizontalFrameJoints()
+        .isEmpty;
     final frameRects = widget.model.getFrameRects();
     for (final outer in frameRects.reversed) {
       WindowZone? representativeZone;
@@ -1870,10 +1865,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _activateShutterFromDesign() {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     setState(() {
       widget.model.prepareShutterOnlyDrawing();
       _isShutterSelected = true;
@@ -1898,8 +1895,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   List<Widget> _buildWindowsAppBarDrawingControls(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider
+        .of<AppSettingsProvider>(context)
+        .language;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     final foreground = isDark ? Colors.blue.shade200 : Colors.blue.shade900;
     final buttonStyle = TextButton.styleFrom(
       foregroundColor: foreground,
@@ -1996,7 +1997,9 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.innerDivision;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
+      backgroundColor: Theme
+          .of(context)
+          .brightness == Brightness.dark
           ? const Color(0xFF1E1E2C)
           : const Color(0xFFE8EAF6),
       appBar: _buildAppBar(context),
@@ -2006,11 +2009,12 @@ class _WindowViewState extends State<WindowView> {
             children: [
               if (isInnerDivisionSelected)
                 _buildInnerDivisionToolbar(context)
-              else ...[
-                if (!_isWindowsDesktop && !isMullionSelected)
-                  _buildSplitToolbar(context, hasSelection),
-                if (isMullionSelected) _buildMullionToolbar(context),
-              ],
+              else
+                ...[
+                  if (!_isWindowsDesktop && !isMullionSelected)
+                    _buildSplitToolbar(context, hasSelection),
+                  if (isMullionSelected) _buildMullionToolbar(context),
+                ],
 
               Expanded(
                 child: LayoutBuilder(
@@ -2032,7 +2036,7 @@ class _WindowViewState extends State<WindowView> {
                             // a frame profile.  This is intentionally
                             // narrower than the surrounding profile.
                             InnerDimensionHit? individualTap =
-                                _frameProfileDimensionHit(modelPos);
+                            _frameProfileDimensionHit(modelPos);
                             if (widget.model.zones.length > 1) {
                               final double scW = widget.model.sideCoverWidth;
                               double offsetDistTop = 60.0;
@@ -2062,10 +2066,10 @@ class _WindowViewState extends State<WindowView> {
                               }
                               final bool isSlantedOrArched =
                                   widget.model.archHeight > 0 ||
-                                  widget.model.topSlantLeftY != 0 ||
-                                  widget.model.topSlantRightY != 0 ||
-                                  widget.model.bottomSlantLeftY != 0 ||
-                                  widget.model.bottomSlantRightY != 0;
+                                      widget.model.topSlantLeftY != 0 ||
+                                      widget.model.topSlantRightY != 0 ||
+                                      widget.model.bottomSlantLeftY != 0 ||
+                                      widget.model.bottomSlantRightY != 0;
 
                               // Layer-1 width tap
                               final vJoints = widget.model
@@ -2087,8 +2091,8 @@ class _WindowViewState extends State<WindowView> {
                                     );
                                     wY =
                                         widget.model.height +
-                                        maxBottomY +
-                                        offsetDistBottom;
+                                            maxBottomY +
+                                            offsetDistBottom;
                                   } else {
                                     wY = -offsetDistTop;
                                     if (widget.model.hasShutter &&
@@ -2104,14 +2108,14 @@ class _WindowViewState extends State<WindowView> {
                                     final targetZone = widget.model.zones
                                         .reduce(
                                           (a, b) =>
-                                              (a.boundary.center.dx - xCenter)
-                                                      .abs() <
-                                                  (b.boundary.center.dx -
-                                                          xCenter)
-                                                      .abs()
-                                              ? a
-                                              : b,
-                                        );
+                                      (a.boundary.center.dx - xCenter)
+                                          .abs() <
+                                          (b.boundary.center.dx -
+                                              xCenter)
+                                              .abs()
+                                          ? a
+                                          : b,
+                                    );
                                     individualTap = InnerDimensionHit(
                                       targetZone.id,
                                       true,
@@ -2135,31 +2139,31 @@ class _WindowViewState extends State<WindowView> {
                                         (yCoords[j] + yCoords[j + 1]) / 2;
                                     final individualX =
                                         widget.model.width +
-                                        offsetDistRight +
-                                        50.0;
+                                            offsetDistRight +
+                                            50.0;
                                     if ((modelPos.dy - yCenter).abs() < 85.0) {
                                       if ((modelPos.dx - individualX).abs() <
                                           28.0) {
                                         final rowZones = widget.model.zones
                                             .where(
                                               (z) =>
-                                                  z.boundary.top <=
-                                                      yCenter + 5 &&
-                                                  z.boundary.bottom >=
-                                                      yCenter - 5,
-                                            )
+                                          z.boundary.top <=
+                                              yCenter + 5 &&
+                                              z.boundary.bottom >=
+                                                  yCenter - 5,
+                                        )
                                             .toList();
                                         final targetZone =
-                                            (rowZones.isEmpty
-                                                    ? widget.model.zones
-                                                    : rowZones)
-                                                .reduce(
-                                                  (a, b) =>
-                                                      a.boundary.right >
-                                                          b.boundary.right
-                                                      ? a
-                                                      : b,
-                                                );
+                                        (rowZones.isEmpty
+                                            ? widget.model.zones
+                                            : rowZones)
+                                            .reduce(
+                                              (a, b) =>
+                                          a.boundary.right >
+                                              b.boundary.right
+                                              ? a
+                                              : b,
+                                        );
                                         individualTap = InnerDimensionHit(
                                           targetZone.id,
                                           false,
@@ -2196,7 +2200,7 @@ class _WindowViewState extends State<WindowView> {
                                     tappedZ,
                                     _activePaintZoneContent!,
                                     slidingSashesCount:
-                                        _activePaintSlidingSashesCount,
+                                    _activePaintSlidingSashesCount,
                                   );
                                   if (applied) {
                                     setState(() {
@@ -2208,12 +2212,12 @@ class _WindowViewState extends State<WindowView> {
                               }
                               final specToApply =
                                   _activePaintGlassSpec ??
-                                  (widget.model.selectedZone != null
-                                      ? widget.model.selectedZone!
-                                            .getGlassForCell(
-                                              widget.model.activeSubZone,
-                                            )
-                                      : _tempGlassSpec);
+                                      (widget.model.selectedZone != null
+                                          ? widget.model.selectedZone!
+                                          .getGlassForCell(
+                                        widget.model.activeSubZone,
+                                      )
+                                          : _tempGlassSpec);
                               if (specToApply != null) {
                                 WindowZone? tappedZ;
                                 for (var z in widget.model.zones) {
@@ -2230,14 +2234,14 @@ class _WindowViewState extends State<WindowView> {
                                       tappedZ.content == ZoneContent.singleSash;
                                   bool isSliding =
                                       tappedZ.content ==
-                                      ZoneContent.slidingSash;
+                                          ZoneContent.slidingSash;
                                   if (isDouble || isSingle || isSliding) {
                                     if (isSliding) {
                                       final count = tappedZ.slidingSashesCount;
                                       double chicaneT = 45.0;
                                       final series =
                                           widget.model.activeSlidingSeries ??
-                                          widget.model.activeSeries;
+                                              widget.model.activeSeries;
                                       if (series != null) {
                                         for (var sec in series.sections) {
                                           final secType = sec.type
@@ -2256,13 +2260,13 @@ class _WindowViewState extends State<WindowView> {
                                       final double sashWidth =
                                           (tappedZ.boundary.width +
                                               (count - 1) * chicaneT) /
-                                          count;
+                                              count;
 
                                       List<int> tracks;
                                       if (count == 2) {
                                         tracks =
-                                            (tappedZ.openDirection ==
-                                                OpenDirection.left)
+                                        (tappedZ.openDirection ==
+                                            OpenDirection.left)
                                             ? [1, 0]
                                             : [0, 1];
                                       } else if (count == 3) {
@@ -2272,7 +2276,7 @@ class _WindowViewState extends State<WindowView> {
                                       } else {
                                         tracks = List.generate(
                                           count,
-                                          (i) => i % 2,
+                                              (i) => i % 2,
                                         );
                                       }
 
@@ -2282,7 +2286,7 @@ class _WindowViewState extends State<WindowView> {
                                           if (tracks[i] == tg) {
                                             double left =
                                                 tappedZ.boundary.left +
-                                                i * (sashWidth - chicaneT);
+                                                    i * (sashWidth - chicaneT);
                                             Rect sashRect = Rect.fromLTRB(
                                               left,
                                               tappedZ.boundary.top,
@@ -2302,19 +2306,19 @@ class _WindowViewState extends State<WindowView> {
                                         double tX =
                                             (modelPos.dx -
                                                 tappedZ.boundary.left) /
-                                            tappedZ.boundary.width;
+                                                tappedZ.boundary.width;
                                         selectedSashIndex = (tX * count)
                                             .floor()
                                             .clamp(0, count - 1);
                                       }
 
                                       tappedCellId =
-                                          'main_cell_0_$selectedSashIndex';
+                                      'main_cell_0_$selectedSashIndex';
                                     } else {
                                       double splitX =
                                           tappedZ.boundary.left +
-                                          tappedZ.boundary.width *
-                                              tappedZ.doubleSashRatio;
+                                              tappedZ.boundary.width *
+                                                  tappedZ.doubleSashRatio;
                                       bool isRight =
                                           isDouble && (modelPos.dx > splitX);
                                       Rect sashR = tappedZ.boundary;
@@ -2322,24 +2326,24 @@ class _WindowViewState extends State<WindowView> {
                                         final sep = 4.0;
                                         sashR = isRight
                                             ? Rect.fromLTRB(
-                                                splitX + sep / 2,
-                                                tappedZ.boundary.top,
-                                                tappedZ.boundary.right,
-                                                tappedZ.boundary.bottom,
-                                              )
+                                          splitX + sep / 2,
+                                          tappedZ.boundary.top,
+                                          tappedZ.boundary.right,
+                                          tappedZ.boundary.bottom,
+                                        )
                                             : Rect.fromLTRB(
-                                                tappedZ.boundary.left,
-                                                tappedZ.boundary.top,
-                                                splitX - sep / 2,
-                                                tappedZ.boundary.bottom,
-                                              );
+                                          tappedZ.boundary.left,
+                                          tappedZ.boundary.top,
+                                          splitX - sep / 2,
+                                          tappedZ.boundary.bottom,
+                                        );
                                       }
                                       final sashT =
                                           tappedZ.sashThickness ??
-                                          widget.model.getSectionThickness(
-                                            'sash',
-                                            fallback: 45.0,
-                                          );
+                                              widget.model.getSectionThickness(
+                                                'sash',
+                                                fallback: 45.0,
+                                              );
                                       final glassR = sashR.deflate(sashT);
                                       if (glassR.contains(modelPos)) {
                                         int currentInnerH = isRight
@@ -2361,18 +2365,18 @@ class _WindowViewState extends State<WindowView> {
                                           glassR.bottom - 0.1,
                                         );
                                         int col =
-                                            ((clampedX - glassR.left) / cellW)
-                                                .clamp(0, currentInnerV)
-                                                .toInt();
+                                        ((clampedX - glassR.left) / cellW)
+                                            .clamp(0, currentInnerV)
+                                            .toInt();
                                         int row =
-                                            ((clampedY - glassR.top) / cellH)
-                                                .clamp(0, currentInnerH)
-                                                .toInt();
+                                        ((clampedY - glassR.top) / cellH)
+                                            .clamp(0, currentInnerH)
+                                            .toInt();
                                         String sidePrefix = isDouble
                                             ? (isRight ? 'right' : 'left')
                                             : 'main';
                                         tappedCellId =
-                                            '${sidePrefix}_cell_${row}_$col';
+                                        '${sidePrefix}_cell_${row}_$col';
                                       } else {
                                         tappedCellId = null;
                                       }
@@ -2405,11 +2409,11 @@ class _WindowViewState extends State<WindowView> {
                                   var targetCellId = tappedCellId;
                                   if (_isDecorPanelSpec(specToApply)) {
                                     final placement =
-                                        await _prepareDecorPanelPlacement(
-                                          zone: tappedZ,
-                                          cellId: tappedCellId,
-                                          spec: specToApply,
-                                        );
+                                    await _prepareDecorPanelPlacement(
+                                      zone: tappedZ,
+                                      cellId: tappedCellId,
+                                      spec: specToApply,
+                                    );
                                     if (!placement.allowed) return;
                                     targetCellId = placement.cellId;
                                   }
@@ -2440,12 +2444,12 @@ class _WindowViewState extends State<WindowView> {
                                       tappedZ.content == ZoneContent.singleSash;
                                   bool isSliding =
                                       tappedZ.content ==
-                                      ZoneContent.slidingSash;
+                                          ZoneContent.slidingSash;
                                   if (isDouble || isSingle || isSliding) {
                                     double splitX =
                                         tappedZ.boundary.left +
-                                        tappedZ.boundary.width *
-                                            tappedZ.doubleSashRatio;
+                                            tappedZ.boundary.width *
+                                                tappedZ.doubleSashRatio;
                                     bool isRight =
                                         isDouble && (modelPos.dx > splitX);
                                     Rect sashR = tappedZ.boundary;
@@ -2453,24 +2457,24 @@ class _WindowViewState extends State<WindowView> {
                                       final sep = 4.0;
                                       sashR = isRight
                                           ? Rect.fromLTRB(
-                                              splitX + sep / 2,
-                                              tappedZ.boundary.top,
-                                              tappedZ.boundary.right,
-                                              tappedZ.boundary.bottom,
-                                            )
+                                        splitX + sep / 2,
+                                        tappedZ.boundary.top,
+                                        tappedZ.boundary.right,
+                                        tappedZ.boundary.bottom,
+                                      )
                                           : Rect.fromLTRB(
-                                              tappedZ.boundary.left,
-                                              tappedZ.boundary.top,
-                                              splitX - sep / 2,
-                                              tappedZ.boundary.bottom,
-                                            );
+                                        tappedZ.boundary.left,
+                                        tappedZ.boundary.top,
+                                        splitX - sep / 2,
+                                        tappedZ.boundary.bottom,
+                                      );
                                     }
                                     final sashT =
                                         tappedZ.sashThickness ??
-                                        widget.model.getSectionThickness(
-                                          'sash',
-                                          fallback: 45.0,
-                                        );
+                                            widget.model.getSectionThickness(
+                                              'sash',
+                                              fallback: 45.0,
+                                            );
                                     final glassR = sashR.deflate(sashT);
                                     if (glassR.contains(modelPos)) {
                                       int currentInnerH = isRight
@@ -2484,18 +2488,18 @@ class _WindowViewState extends State<WindowView> {
                                       double cellH =
                                           glassR.height / (currentInnerH + 1);
                                       int col =
-                                          ((modelPos.dx - glassR.left) / cellW)
-                                              .clamp(0, currentInnerV)
-                                              .toInt();
+                                      ((modelPos.dx - glassR.left) / cellW)
+                                          .clamp(0, currentInnerV)
+                                          .toInt();
                                       int row =
-                                          ((modelPos.dy - glassR.top) / cellH)
-                                              .clamp(0, currentInnerH)
-                                              .toInt();
+                                      ((modelPos.dy - glassR.top) / cellH)
+                                          .clamp(0, currentInnerH)
+                                          .toInt();
                                       String sidePrefix = isDouble
                                           ? (isRight ? 'right' : 'left')
                                           : 'main';
                                       tappedCellId =
-                                          '${sidePrefix}_cell_${row}_$col';
+                                      '${sidePrefix}_cell_${row}_$col';
                                     }
                                   } else {
                                     // Non-sash zone (fixed glass, etc.)
@@ -2508,13 +2512,13 @@ class _WindowViewState extends State<WindowView> {
                                       double cellH =
                                           glassR.height / (currentInnerH + 1);
                                       int col =
-                                          ((modelPos.dx - glassR.left) / cellW)
-                                              .clamp(0, currentInnerV)
-                                              .toInt();
+                                      ((modelPos.dx - glassR.left) / cellW)
+                                          .clamp(0, currentInnerV)
+                                          .toInt();
                                       int row =
-                                          ((modelPos.dy - glassR.top) / cellH)
-                                              .clamp(0, currentInnerH)
-                                              .toInt();
+                                      ((modelPos.dy - glassR.top) / cellH)
+                                          .clamp(0, currentInnerH)
+                                          .toInt();
                                       tappedCellId = 'main_cell_${row}_$col';
                                     }
                                   }
@@ -2539,7 +2543,7 @@ class _WindowViewState extends State<WindowView> {
                                     tappedZ,
                                     _activePaintZoneContent!,
                                     slidingSashesCount:
-                                        _activePaintSlidingSashesCount,
+                                    _activePaintSlidingSashesCount,
                                   );
                                   if (applied) return;
                                 }
@@ -2598,7 +2602,8 @@ class _WindowViewState extends State<WindowView> {
                             // own edit dialog.
                             final innerTap =
                                 _frameProfileDimensionHit(modelPos) ??
-                                widget.model.checkInnerDimensionTap(modelPos);
+                                    widget.model.checkInnerDimensionTap(
+                                        modelPos);
                             final mullionDimTap = widget.model
                                 .checkMullionDimensionTap(modelPos);
 
@@ -2617,19 +2622,19 @@ class _WindowViewState extends State<WindowView> {
                             double hitSlop = 40.0;
                             final mullionT = widget.model.mullionThickness;
                             for (
-                              int i = 0;
-                              i < widget.model.zones.length;
-                              i++
+                            int i = 0;
+                            i < widget.model.zones.length;
+                            i++
                             ) {
                               for (
-                                int j = i + 1;
-                                j < widget.model.zones.length;
-                                j++
+                              int j = i + 1;
+                              j < widget.model.zones.length;
+                              j++
                               ) {
                                 final z1 = widget.model.zones[i].boundary;
                                 final z2 = widget.model.zones[j].boundary;
                                 if ((z1.bottom - z2.top).abs() <=
-                                        mullionT + 2 ||
+                                    mullionT + 2 ||
                                     (z2.bottom - z1.top).abs() <=
                                         mullionT + 2) {
                                   double yCenter = (z1.bottom + z2.top) / 2;
@@ -2660,7 +2665,7 @@ class _WindowViewState extends State<WindowView> {
                                   }
                                 }
                                 if ((z1.right - z2.left).abs() <=
-                                        mullionT + 2 ||
+                                    mullionT + 2 ||
                                     (z2.right - z1.left).abs() <=
                                         mullionT + 2) {
                                   double xCenter = (z1.right + z2.left) / 2;
@@ -2697,7 +2702,7 @@ class _WindowViewState extends State<WindowView> {
                                     const Duration(milliseconds: 300)) {
                               if (_lastTapPosition != null &&
                                   (details.localPosition - _lastTapPosition!)
-                                          .distance <
+                                      .distance <
                                       30.0) {
                                 isDoubleTap = true;
                               }
@@ -2715,6 +2720,15 @@ class _WindowViewState extends State<WindowView> {
                                   _isDrawerOpen = false;
                                   _isLeftDrawerOpen = false;
                                 });
+                                return;
+                              }
+                              if (_isBottomPanelExpanded ||
+                                  _isShutterSelected) {
+                                setState(() {
+                                  _isBottomPanelExpanded = false;
+                                  _isShutterSelected = false;
+                                });
+                                widget.model.clearSelection();
                                 return;
                               }
                             }
@@ -2762,7 +2776,7 @@ class _WindowViewState extends State<WindowView> {
                                 innerTap == null &&
                                 mullionDimTap == null) {
                               final double shutterTop =
-                                  -widget.model.shutterBoxHeight;
+                              -widget.model.shutterBoxHeight;
                               final double shutterBottom =
                                   widget.model.topSlantLeftY;
                               if (modelPos.dy >= shutterTop - 20 &&
@@ -2822,17 +2836,26 @@ class _WindowViewState extends State<WindowView> {
                                 break;
                               }
                             }
+                            if (tappedZ != null &&
+                                (tappedZ.content == ZoneContent.singleSash ||
+                                    tappedZ.content == ZoneContent.doubleSash ||
+                                    tappedZ.content ==
+                                        ZoneContent.slidingSash)) {
+                              _suppressHandleDragForLongPress = true;
+                              _isDraggingHandle = false;
+                              _isDraggingHinge = false;
+                            }
 
                             if (_isLeftDrawerOpen ||
                                 _paintbrushSecondsLeft > 0) {
                               final specToApply =
                                   _activePaintGlassSpec ??
-                                  (widget.model.selectedZone != null
-                                      ? widget.model.selectedZone!
-                                            .getGlassForCell(
-                                              widget.model.activeSubZone,
-                                            )
-                                      : _tempGlassSpec);
+                                      (widget.model.selectedZone != null
+                                          ? widget.model.selectedZone!
+                                          .getGlassForCell(
+                                        widget.model.activeSubZone,
+                                      )
+                                          : _tempGlassSpec);
                               if (specToApply != null && tappedZ != null) {
                                 widget.model.paintAllZonesSpec(specToApply);
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2875,31 +2898,31 @@ class _WindowViewState extends State<WindowView> {
                                 cellKey.contains('_cell_')) {
                               final hasSash =
                                   zone.cellIsSash[cellKey] == true ||
-                                  zone.cellIsDoubleSash[cellKey] == true;
+                                      zone.cellIsDoubleSash[cellKey] == true;
                               if (hasSash) {
                                 final selected =
-                                    await showDialog<Map<String, dynamic>>(
-                                      context: context,
-                                      builder: (context) =>
-                                          ProfileSelectorDialog(
-                                            profileType: 'sash',
-                                            seriesId: activeSeriesForSystem?.id,
-                                          ),
-                                    );
+                                await showDialog<Map<String, dynamic>>(
+                                  context: context,
+                                  builder: (context) =>
+                                      ProfileSelectorDialog(
+                                        profileType: 'sash',
+                                        seriesId: activeSeriesForSystem?.id,
+                                      ),
+                                );
                                 if (!mounted || selected == null) return;
                                 final mutableSelected =
-                                    Map<String, dynamic>.from(selected);
+                                Map<String, dynamic>.from(selected);
                                 mutableSelected['calculated_price'] =
-                                    await _sectionPriceForSelectedColor(
-                                      mutableSelected,
-                                    );
+                                await _sectionPriceForSelectedColor(
+                                  mutableSelected,
+                                );
                                 if (!mounted) return;
 
                                 setState(() {
                                   final newOverrides =
-                                      Map<String, Map<String, dynamic>>.from(
-                                        zone.cellSashOverrides,
-                                      );
+                                  Map<String, Map<String, dynamic>>.from(
+                                    zone.cellSashOverrides,
+                                  );
                                   newOverrides[cellKey] = mutableSelected;
                                   zone.cellSashOverrides = newOverrides;
                                   widget.model.refreshUI();
@@ -2941,9 +2964,9 @@ class _WindowViewState extends State<WindowView> {
                                 Offset(
                                   widget.model.width / 2,
                                   math.min(
-                                        widget.model.topSlantLeftY,
-                                        widget.model.topSlantRightY,
-                                      ) -
+                                    widget.model.topSlantLeftY,
+                                    widget.model.topSlantRightY,
+                                  ) -
                                       (widget.model.archHeight * 2),
                                 ),
                               );
@@ -2952,7 +2975,7 @@ class _WindowViewState extends State<WindowView> {
 
                               final isFrameSelected =
                                   widget.model.selection.type ==
-                                  SelectionType.frame;
+                                      SelectionType.frame;
                               final frameResizeHandle = _frameResizeHandleAt(
                                 touchScreen,
                               );
@@ -2998,15 +3021,15 @@ class _WindowViewState extends State<WindowView> {
                                 if (zone.content == ZoneContent.singleSash ||
                                     zone.content == ZoneContent.doubleSash) {
                                   final isLeftActive =
-                                      (zone.openDirection ==
+                                  (zone.openDirection ==
                                       OpenDirection.left);
                                   final activeIsRight =
-                                      !isLeftActive; // fallback/default
+                                  !isLeftActive; // fallback/default
 
                                   final sep = 4.0;
                                   final midX =
                                       bounds.left +
-                                      bounds.width * zone.doubleSashRatio;
+                                          bounds.width * zone.doubleSashRatio;
                                   final leftR = Rect.fromLTRB(
                                     bounds.left,
                                     bounds.top,
@@ -3021,15 +3044,15 @@ class _WindowViewState extends State<WindowView> {
                                   );
 
                                   final sashRect =
-                                      (zone.content == ZoneContent.doubleSash)
+                                  (zone.content == ZoneContent.doubleSash)
                                       ? (activeIsRight ? rightR : leftR)
                                       : bounds;
 
                                   final handleSide =
-                                      (zone.content == ZoneContent.doubleSash)
+                                  (zone.content == ZoneContent.doubleSash)
                                       ? (activeIsRight
-                                            ? OpenDirection.left
-                                            : OpenDirection.right)
+                                      ? OpenDirection.left
+                                      : OpenDirection.right)
                                       : zone.openDirection!;
 
                                   // Precise hit testing for handle
@@ -3049,8 +3072,8 @@ class _WindowViewState extends State<WindowView> {
                                     );
                                     hY =
                                         topYVal +
-                                        ((sashRect.bottom - topYVal) *
-                                            (1.0 - hRatio));
+                                            ((sashRect.bottom - topYVal) *
+                                                (1.0 - hRatio));
                                   } else if (handleSide ==
                                       OpenDirection.right) {
                                     hX = sashRect.right - 20;
@@ -3063,12 +3086,12 @@ class _WindowViewState extends State<WindowView> {
                                     );
                                     hY =
                                         topYVal +
-                                        ((sashRect.bottom - topYVal) *
-                                            (1.0 - hRatio));
+                                            ((sashRect.bottom - topYVal) *
+                                                (1.0 - hRatio));
                                   } else if (handleSide == OpenDirection.top) {
                                     hX =
                                         sashRect.left +
-                                        (sashRect.width * hRatio);
+                                            (sashRect.width * hRatio);
                                     double topYVal = getSashTopY(
                                       hX,
                                       sashRect.top,
@@ -3082,7 +3105,7 @@ class _WindowViewState extends State<WindowView> {
                                     hY = sashRect.bottom - 22;
                                     hX =
                                         sashRect.left +
-                                        (sashRect.width * hRatio);
+                                            (sashRect.width * hRatio);
                                   }
 
                                   final handleScreenPos = modelToScreen(
@@ -3105,16 +3128,16 @@ class _WindowViewState extends State<WindowView> {
                                     hingesOnRight = activeIsRight;
                                   } else {
                                     hingesOnLeft =
-                                        (zone.openDirection ==
+                                    (zone.openDirection ==
                                         OpenDirection.right);
                                     hingesOnRight =
-                                        (zone.openDirection ==
+                                    (zone.openDirection ==
                                         OpenDirection.left);
                                     hingesOnTop =
-                                        (zone.openDirection ==
+                                    (zone.openDirection ==
                                         OpenDirection.bottom);
                                     hingesOnBottom =
-                                        (zone.openDirection ==
+                                    (zone.openDirection ==
                                         OpenDirection.top);
                                   }
 
@@ -3127,9 +3150,9 @@ class _WindowViewState extends State<WindowView> {
                                     double hgX = 0;
                                     double hgY = 0;
                                     final hingeRevealOffset =
-                                        (widget.model.profileThickness * 0.28)
-                                            .clamp(9.0, 18.0)
-                                            .toDouble();
+                                    (widget.model.profileThickness * 0.28)
+                                        .clamp(9.0, 18.0)
+                                        .toDouble();
                                     if (hingesOnLeft || hingesOnRight) {
                                       hgX = hingesOnRight
                                           ? sashRect.right + hingeRevealOffset
@@ -3142,14 +3165,14 @@ class _WindowViewState extends State<WindowView> {
                                             topOffset,
                                             isTopBound,
                                           ) +
-                                          100;
+                                              100;
                                       double step =
                                           (sashRect.bottom - 100 - startY) /
-                                          (hingeCount - 1);
+                                              (hingeCount - 1);
                                       hgY =
                                           startY +
-                                          step +
-                                          zone.middleHingeDragOffset;
+                                              step +
+                                              zone.middleHingeDragOffset;
                                     } else if (hingesOnTop || hingesOnBottom) {
                                       hgY = hingesOnBottom
                                           ? sashRect.bottom + hingeRevealOffset
@@ -3157,11 +3180,11 @@ class _WindowViewState extends State<WindowView> {
                                       double startX = sashRect.left + 100;
                                       double step =
                                           (sashRect.right - 100 - startX) /
-                                          (hingeCount - 1);
+                                              (hingeCount - 1);
                                       hgX =
                                           startX +
-                                          step +
-                                          zone.middleHingeDragOffset;
+                                              step +
+                                              zone.middleHingeDragOffset;
                                       if (hingesOnTop) {
                                         hgY =
                                             getSashTopY(
@@ -3171,14 +3194,14 @@ class _WindowViewState extends State<WindowView> {
                                               topOffset,
                                               isTopBound,
                                             ) -
-                                            hingeRevealOffset;
+                                                hingeRevealOffset;
                                       }
                                     }
                                     final hingeScreenPos = modelToScreen(
                                       Offset(hgX, hgY),
                                     );
                                     if ((touchScreen - hingeScreenPos)
-                                            .distance <
+                                        .distance <
                                         45.0) {
                                       _isDraggingHinge = true;
                                       hitHinge = true;
@@ -3190,13 +3213,13 @@ class _WindowViewState extends State<WindowView> {
                                   if (count < 2) count = 2;
                                   double frameT =
                                       zone.sashThickness ??
-                                      widget.model.getSectionThickness(
-                                        'sash',
-                                        fallback: 45.0,
-                                      );
+                                          widget.model.getSectionThickness(
+                                            'sash',
+                                            fallback: 45.0,
+                                          );
                                   double sashWidth =
                                       (bounds.width + (count - 1) * frameT) /
-                                      count;
+                                          count;
 
                                   // Left sash (i=0)
                                   double left0 = bounds.left;
@@ -3210,7 +3233,7 @@ class _WindowViewState extends State<WindowView> {
                                   // Right sash (i=count-1)
                                   double leftN =
                                       bounds.left +
-                                      (count - 1) * (sashWidth - frameT);
+                                          (count - 1) * (sashWidth - frameT);
                                   Rect sashRectRight = Rect.fromLTRB(
                                     leftN,
                                     bounds.top,
@@ -3232,8 +3255,8 @@ class _WindowViewState extends State<WindowView> {
                                   );
                                   double hYLeft =
                                       topYLeft +
-                                      ((sashRectLeft.bottom - topYLeft) *
-                                          (1.0 - hRatio));
+                                          ((sashRectLeft.bottom - topYLeft) *
+                                              (1.0 - hRatio));
 
                                   // Right handle (OpenDirection.right on sashRectRight)
                                   double hXRight = sashRectRight.right - 20;
@@ -3246,8 +3269,8 @@ class _WindowViewState extends State<WindowView> {
                                   );
                                   double hYRight =
                                       topYRight +
-                                      ((sashRectRight.bottom - topYRight) *
-                                          (1.0 - hRatio));
+                                          ((sashRectRight.bottom - topYRight) *
+                                              (1.0 - hRatio));
 
                                   final handleScreenPosLeft = modelToScreen(
                                     Offset(hXLeft, hYLeft),
@@ -3257,10 +3280,10 @@ class _WindowViewState extends State<WindowView> {
                                   );
 
                                   if ((touchScreen - handleScreenPosLeft)
-                                              .distance <
-                                          45.0 ||
+                                      .distance <
+                                      45.0 ||
                                       (touchScreen - handleScreenPosRight)
-                                              .distance <
+                                          .distance <
                                           45.0) {
                                     _isDraggingHandle = true;
                                     hitHandle = true;
@@ -3272,7 +3295,7 @@ class _WindowViewState extends State<WindowView> {
                                 } else {
                                   final dividerX =
                                       bounds.left +
-                                      bounds.width * zone.doubleSashRatio;
+                                          bounds.width * zone.doubleSashRatio;
                                   final dividerTop = _modelToScreen(
                                     Offset(dividerX, bounds.top),
                                   );
@@ -3283,7 +3306,7 @@ class _WindowViewState extends State<WindowView> {
                                   final topScreenY = dividerTop.dy;
                                   final bottomScreenY = dividerBottom.dy;
                                   final double dist =
-                                      (touchScreen.dx - dividerScreenX).abs();
+                                  (touchScreen.dx - dividerScreenX).abs();
 
                                   if (zone.content == ZoneContent.doubleSash &&
                                       dist < 30.0 &&
@@ -3295,20 +3318,20 @@ class _WindowViewState extends State<WindowView> {
                                     );
                                     _isDraggingDoubleSashDivider = true;
                                   } else if ((zone.content ==
-                                              ZoneContent.singleSash ||
-                                          zone.content ==
-                                              ZoneContent.doubleSash) &&
+                                      ZoneContent.singleSash ||
+                                      zone.content ==
+                                          ZoneContent.doubleSash) &&
                                       (() {
                                         final sashT =
                                             zone.sashThickness ??
-                                            widget.model.profileThickness;
+                                                widget.model.profileThickness;
                                         if (zone.content ==
                                             ZoneContent.doubleSash) {
                                           final sep = 4.0;
                                           final midX =
                                               bounds.left +
-                                              bounds.width *
-                                                  zone.doubleSashRatio;
+                                                  bounds.width *
+                                                      zone.doubleSashRatio;
                                           final leftR = Rect.fromLTRB(
                                             bounds.left,
                                             bounds.top,
@@ -3326,15 +3349,15 @@ class _WindowViewState extends State<WindowView> {
                                           final rightGlassR = widget.model
                                               .getSafeGlassRect(rightR, sashT);
                                           return _checkAndStartSashDividerDrag(
-                                                zone.id,
-                                                false,
-                                                leftGlassR,
-                                                zone.innerH,
-                                                zone.innerV,
-                                                zone.innerHPositions,
-                                                zone.innerVPositions,
-                                                touchScreen,
-                                              ) ||
+                                            zone.id,
+                                            false,
+                                            leftGlassR,
+                                            zone.innerH,
+                                            zone.innerV,
+                                            zone.innerHPositions,
+                                            zone.innerVPositions,
+                                            touchScreen,
+                                          ) ||
                                               _checkAndStartSashDividerDrag(
                                                 zone.id,
                                                 true,
@@ -3366,13 +3389,14 @@ class _WindowViewState extends State<WindowView> {
                                         GlassStructure.double) {
                                       final sashT =
                                           zone.sashThickness ??
-                                          widget.model.profileThickness;
+                                              widget.model.profileThickness;
                                       if (zone.content ==
                                           ZoneContent.doubleSash) {
                                         final sep = 4.0;
                                         final midX =
                                             bounds.left +
-                                            bounds.width * zone.doubleSashRatio;
+                                                bounds.width *
+                                                    zone.doubleSashRatio;
                                         final leftR = Rect.fromLTRB(
                                           bounds.left,
                                           bounds.top,
@@ -3390,11 +3414,11 @@ class _WindowViewState extends State<WindowView> {
                                         final rightGlassR = widget.model
                                             .getSafeGlassRect(rightR, sashT);
                                         return _checkAndStartGlassDecorDrag(
-                                              zone.id,
-                                              leftGlassR,
-                                              zone.glass,
-                                              touchScreen,
-                                            ) ||
+                                          zone.id,
+                                          leftGlassR,
+                                          zone.glass,
+                                          touchScreen,
+                                        ) ||
                                             _checkAndStartGlassDecorDrag(
                                               zone.id,
                                               rightGlassR,
@@ -3431,10 +3455,10 @@ class _WindowViewState extends State<WindowView> {
                             if (details.pointerCount >= 2) {
                               setState(() {
                                 double newScale =
-                                    (_baseUserScale * details.scale).clamp(
-                                      0.5,
-                                      5.0,
-                                    );
+                                (_baseUserScale * details.scale).clamp(
+                                  0.5,
+                                  5.0,
+                                );
                                 _userScale = newScale;
                                 final canvasOrigin = Offset(
                                   widget.model.canvasDx,
@@ -3442,11 +3466,11 @@ class _WindowViewState extends State<WindowView> {
                                 );
                                 _userPan =
                                     details.localFocalPoint -
-                                    canvasOrigin -
-                                    (details.localFocalPoint -
+                                        canvasOrigin -
+                                        (details.localFocalPoint -
                                             canvasOrigin -
                                             _baseUserPan) *
-                                        (newScale / _baseUserScale);
+                                            (newScale / _baseUserScale);
                               });
                             } else {
                               final modelPos = _getModelPos(
@@ -3459,7 +3483,7 @@ class _WindowViewState extends State<WindowView> {
                                 final pending = widget.model.pendingDrawStart!;
                                 final screenPending = _modelToScreen(pending);
                                 if ((details.localFocalPoint - screenPending)
-                                        .distance >=
+                                    .distance >=
                                     5.0) {
                                   widget.model.startDrawing(pending);
                                 }
@@ -3471,26 +3495,26 @@ class _WindowViewState extends State<WindowView> {
                                 final handle = _draggedFrameResizeHandle!;
                                 final deltaX =
                                     details.focalPointDelta.dx /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 final deltaY =
                                     details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 widget.model.resizeFrameFromHandles(
                                   _draggedFrameZoneId!,
                                   moveLeft:
-                                      handle == _FrameResizeHandle.left ||
+                                  handle == _FrameResizeHandle.left ||
                                       handle == _FrameResizeHandle.topLeft ||
                                       handle == _FrameResizeHandle.bottomLeft,
                                   moveRight:
-                                      handle == _FrameResizeHandle.right ||
+                                  handle == _FrameResizeHandle.right ||
                                       handle == _FrameResizeHandle.topRight ||
                                       handle == _FrameResizeHandle.bottomRight,
                                   moveTop:
-                                      handle == _FrameResizeHandle.top ||
+                                  handle == _FrameResizeHandle.top ||
                                       handle == _FrameResizeHandle.topLeft ||
                                       handle == _FrameResizeHandle.topRight,
                                   moveBottom:
-                                      handle == _FrameResizeHandle.bottom ||
+                                  handle == _FrameResizeHandle.bottom ||
                                       handle == _FrameResizeHandle.bottomLeft ||
                                       handle == _FrameResizeHandle.bottomRight,
                                   deltaX: deltaX,
@@ -3501,7 +3525,7 @@ class _WindowViewState extends State<WindowView> {
                               } else if (_isDraggingSlantLeft) {
                                 double dy =
                                     details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 widget.model.updateTopSlantAndArch(
                                   leftSlant: (widget.model.topSlantLeftY + dy)
                                       .clamp(-500.0, 500.0),
@@ -3509,7 +3533,7 @@ class _WindowViewState extends State<WindowView> {
                               } else if (_isDraggingSlantRight) {
                                 double dy =
                                     details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 widget.model.updateTopSlantAndArch(
                                   rightSlant: (widget.model.topSlantRightY + dy)
                                       .clamp(-500.0, 500.0),
@@ -3517,7 +3541,7 @@ class _WindowViewState extends State<WindowView> {
                               } else if (_isDraggingArch) {
                                 double dy =
                                     details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 widget.model.updateTopSlantAndArch(
                                   arch: (widget.model.archHeight - dy / 2)
                                       .clamp(0.0, 800.0),
@@ -3526,18 +3550,18 @@ class _WindowViewState extends State<WindowView> {
                                   SelectionType.mullion) {
                                 widget.model.moveSelectedMullion(
                                   (widget.model.selection.isHorizontalMullion!
-                                          ? details.focalPointDelta.dy
-                                          : details.focalPointDelta.dx) /
+                                      ? details.focalPointDelta.dy
+                                      : details.focalPointDelta.dx) /
                                       (_userScale * widget.model.canvasScale),
                                 );
                               } else if (widget.model.selection.type ==
                                   SelectionType.innerDivision) {
                                 double deltaX =
                                     details.focalPointDelta.dx /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 double deltaY =
                                     details.focalPointDelta.dy /
-                                    (_userScale * widget.model.canvasScale);
+                                        (_userScale * widget.model.canvasScale);
                                 widget.model.moveSelectedInnerDivision(
                                   deltaX,
                                   deltaY,
@@ -3546,18 +3570,18 @@ class _WindowViewState extends State<WindowView> {
                                   _draggedDecorZoneId != null &&
                                   widget.model.isDrawingMode) {
                                 final zone = widget.model.zones.firstWhere(
-                                  (z) => z.id == _draggedDecorZoneId,
+                                      (z) => z.id == _draggedDecorZoneId,
                                 );
                                 final sashT =
                                     zone.sashThickness ??
-                                    widget.model.profileThickness;
+                                        widget.model.profileThickness;
                                 Rect parentR = zone.boundary;
                                 Rect sashR = parentR;
                                 if (zone.content == ZoneContent.doubleSash) {
                                   final sep = 4.0;
                                   final midX =
                                       parentR.left +
-                                      parentR.width * zone.doubleSashRatio;
+                                          parentR.width * zone.doubleSashRatio;
                                   if (modelPos.dx < midX) {
                                     sashR = Rect.fromLTRB(
                                       parentR.left,
@@ -3582,7 +3606,7 @@ class _WindowViewState extends State<WindowView> {
                                 if (_draggedDecorIsHorizontal) {
                                   double newRatio =
                                       (modelPos.dy - glassR.top) /
-                                      glassR.height;
+                                          glassR.height;
                                   newRatio = newRatio.clamp(0.02, 0.98);
                                   widget.model.updateZoneGlassDecorHPos(
                                     _draggedDecorZoneId!,
@@ -3592,7 +3616,7 @@ class _WindowViewState extends State<WindowView> {
                                 } else {
                                   double newRatio =
                                       (modelPos.dx - glassR.left) /
-                                      glassR.width;
+                                          glassR.width;
                                   newRatio = newRatio.clamp(0.02, 0.98);
                                   widget.model.updateZoneGlassDecorVPos(
                                     _draggedDecorZoneId!,
@@ -3616,19 +3640,19 @@ class _WindowViewState extends State<WindowView> {
                                   _draggedSashZoneId != null &&
                                   widget.model.isDrawingMode) {
                                 final zone = widget.model.zones.firstWhere(
-                                  (z) => z.id == _draggedSashZoneId,
+                                      (z) => z.id == _draggedSashZoneId,
                                 );
                                 final isRight = _draggedSashIsRight;
                                 final sashT =
                                     zone.sashThickness ??
-                                    widget.model.profileThickness;
+                                        widget.model.profileThickness;
                                 Rect parentR = zone.boundary;
                                 Rect sashR = parentR;
                                 if (zone.content == ZoneContent.doubleSash) {
                                   final sep = 4.0;
                                   final midX =
                                       parentR.left +
-                                      parentR.width * zone.doubleSashRatio;
+                                          parentR.width * zone.doubleSashRatio;
                                   if (!isRight) {
                                     sashR = Rect.fromLTRB(
                                       parentR.left,
@@ -3653,7 +3677,7 @@ class _WindowViewState extends State<WindowView> {
                                 if (_draggedSashIsHorizontal) {
                                   double newRatio =
                                       (modelPos.dy - glassR.top) /
-                                      glassR.height;
+                                          glassR.height;
                                   widget.model.updateZoneInnerHDivisionRatio(
                                     _draggedSashZoneId!,
                                     isRight,
@@ -3663,7 +3687,7 @@ class _WindowViewState extends State<WindowView> {
                                 } else {
                                   double newRatio =
                                       (modelPos.dx - glassR.left) /
-                                      glassR.width;
+                                          glassR.width;
                                   widget.model.updateZoneInnerVDivisionRatio(
                                     _draggedSashZoneId!,
                                     isRight,
@@ -3671,14 +3695,16 @@ class _WindowViewState extends State<WindowView> {
                                     newRatio,
                                   );
                                 }
-                              } else if (_isDraggingHinge &&
+                              } else if (!_suppressHandleDragForLongPress &&
+                                  _isDraggingHinge &&
                                   widget.model.selectedZone != null &&
                                   widget.model.isDrawingMode) {
                                 _handleHingeDrag(
                                   details.focalPointDelta,
                                   widget.model.selectedZone!,
                                 );
-                              } else if (_isDraggingHandle &&
+                              } else if (!_suppressHandleDragForLongPress &&
+                                  _isDraggingHandle &&
                                   widget.model.selectedZone != null &&
                                   widget.model.isDrawingMode) {
                                 _handleHandleDrag(
@@ -3689,8 +3715,8 @@ class _WindowViewState extends State<WindowView> {
                                 setState(() {
                                   _userPan =
                                       _baseUserPan +
-                                      (details.localFocalPoint -
-                                          _focalPointStart);
+                                          (details.localFocalPoint -
+                                              _focalPointStart);
                                 });
                               }
                             }
@@ -3701,18 +3727,19 @@ class _WindowViewState extends State<WindowView> {
                             }
                             bool wasDraggingProperty =
                                 _isDraggingSlantLeft ||
-                                _isDraggingSlantRight ||
-                                _isDraggingArch ||
-                                _isDraggingDoubleSashDivider ||
-                                _isDraggingSashDivision ||
-                                _isDraggingDecor ||
-                                _isDraggingHinge ||
-                                _isDraggingHandle;
+                                    _isDraggingSlantRight ||
+                                    _isDraggingArch ||
+                                    _isDraggingDoubleSashDivider ||
+                                    _isDraggingSashDivision ||
+                                    _isDraggingDecor ||
+                                    _isDraggingHinge ||
+                                    _isDraggingHandle;
                             if (wasDraggingProperty) {
                               widget.model.saveSnapshotOutside();
                             }
                             _isDraggingHandle = false;
                             _isDraggingHinge = false;
+                            _suppressHandleDragForLongPress = false;
                             _isDraggingSlantLeft = false;
                             _isDraggingSlantRight = false;
                             _isDraggingArch = false;
@@ -3736,8 +3763,10 @@ class _WindowViewState extends State<WindowView> {
                                 height: double.infinity,
                                 decoration: BoxDecoration(
                                   color:
-                                      Theme.of(context).brightness ==
-                                          Brightness.dark
+                                  Theme
+                                      .of(context)
+                                      .brightness ==
+                                      Brightness.dark
                                       ? const Color(0xFF232332)
                                       : const Color(0xFFF5F5F5),
                                 ),
@@ -3766,14 +3795,20 @@ class _WindowViewState extends State<WindowView> {
                                 color: Colors.transparent,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Theme.of(
+                                    color: Theme
+                                        .of(
                                       context,
-                                    ).cardColor.withValues(alpha: 0.94),
+                                    )
+                                        .cardColor
+                                        .withValues(alpha: 0.94),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: Theme.of(
+                                      color: Theme
+                                          .of(
                                         context,
-                                      ).dividerColor.withValues(alpha: 0.7),
+                                      )
+                                          .dividerColor
+                                          .withValues(alpha: 0.7),
                                     ),
                                     boxShadow: [
                                       BoxShadow(
@@ -3793,38 +3828,44 @@ class _WindowViewState extends State<WindowView> {
                                         label: 'تكبير الرسم',
                                         child: IconButton(
                                           icon: const Icon(Icons.add),
-                                          onPressed: () => _changeDrawingZoom(
-                                            _zoomStep,
-                                            Offset(
-                                              constraints.maxWidth / 2,
-                                              constraints.maxHeight / 2,
-                                            ),
-                                          ),
+                                          onPressed: () =>
+                                              _changeDrawingZoom(
+                                                _zoomStep,
+                                                Offset(
+                                                  constraints.maxWidth / 2,
+                                                  constraints.maxHeight / 2,
+                                                ),
+                                              ),
                                         ),
                                       ),
                                       Container(
                                         width: 26,
                                         height: 1,
-                                        color: Theme.of(context).dividerColor,
+                                        color: Theme
+                                            .of(context)
+                                            .dividerColor,
                                       ),
                                       Semantics(
                                         button: true,
                                         label: 'تصغير الرسم',
                                         child: IconButton(
                                           icon: const Icon(Icons.remove),
-                                          onPressed: () => _changeDrawingZoom(
-                                            1 / _zoomStep,
-                                            Offset(
-                                              constraints.maxWidth / 2,
-                                              constraints.maxHeight / 2,
-                                            ),
-                                          ),
+                                          onPressed: () =>
+                                              _changeDrawingZoom(
+                                                1 / _zoomStep,
+                                                Offset(
+                                                  constraints.maxWidth / 2,
+                                                  constraints.maxHeight / 2,
+                                                ),
+                                              ),
                                         ),
                                       ),
                                       Container(
                                         width: 26,
                                         height: 1,
-                                        color: Theme.of(context).dividerColor,
+                                        color: Theme
+                                            .of(context)
+                                            .dividerColor,
                                       ),
                                       Semantics(
                                         button: true,
@@ -3933,7 +3974,9 @@ class _WindowViewState extends State<WindowView> {
                   Container(
                     width: 330,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
+                      color: Theme
+                          .of(context)
+                          .brightness == Brightness.dark
                           ? const Color(0xFF1E1E2C)
                           : Colors.white,
                       borderRadius: const BorderRadius.only(
@@ -3959,7 +4002,10 @@ class _WindowViewState extends State<WindowView> {
                           _leftDrawerHandleTop = 0;
                         }
                         double maxTop =
-                            MediaQuery.of(context).size.height - 120 - 70 - 15;
+                            MediaQuery
+                                .of(context)
+                                .size
+                                .height - 120 - 70 - 15;
                         if (_leftDrawerHandleTop > maxTop) {
                           _leftDrawerHandleTop = maxTop;
                         }
@@ -3970,7 +4016,9 @@ class _WindowViewState extends State<WindowView> {
                       width: 40,
                       height: 70,
                       decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark
+                        color: Theme
+                            .of(context)
+                            .brightness == Brightness.dark
                             ? const Color(0xFF1E1E2C)
                             : Colors.white,
                         borderRadius: const BorderRadius.horizontal(
@@ -3988,7 +4036,9 @@ class _WindowViewState extends State<WindowView> {
                         _isLeftDrawerOpen
                             ? Icons.keyboard_double_arrow_left_rounded
                             : Icons.keyboard_double_arrow_right_rounded,
-                        color: Theme.of(context).brightness == Brightness.dark
+                        color: Theme
+                            .of(context)
+                            .brightness == Brightness.dark
                             ? Colors.blue.shade300
                             : Colors.blue.shade800,
                         size: 26,
@@ -4033,7 +4083,10 @@ class _WindowViewState extends State<WindowView> {
                         _rightDrawerHandleTop = 0;
                       }
                       double maxTop =
-                          MediaQuery.of(context).size.height - 120 - 70 - 15;
+                          MediaQuery
+                              .of(context)
+                              .size
+                              .height - 120 - 70 - 15;
                       if (_rightDrawerHandleTop > maxTop) {
                         _rightDrawerHandleTop = maxTop;
                       }
@@ -4045,7 +4098,9 @@ class _WindowViewState extends State<WindowView> {
                     width: 40,
                     height: 70,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
+                      color: Theme
+                          .of(context)
+                          .brightness == Brightness.dark
                           ? const Color(0xFF1E1E2C)
                           : Colors.white,
                       borderRadius: const BorderRadius.horizontal(
@@ -4063,7 +4118,9 @@ class _WindowViewState extends State<WindowView> {
                       _isDrawerOpen
                           ? Icons.keyboard_double_arrow_right_rounded
                           : Icons.keyboard_double_arrow_left_rounded,
-                      color: Theme.of(context).brightness == Brightness.dark
+                      color: Theme
+                          .of(context)
+                          .brightness == Brightness.dark
                           ? Colors.blue.shade300
                           : Colors.blue.shade800,
                       size: 26,
@@ -4073,7 +4130,9 @@ class _WindowViewState extends State<WindowView> {
                 Container(
                   width: 330,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: Theme
+                        .of(context)
+                        .brightness == Brightness.dark
                         ? const Color(0xFF1E1E2C)
                         : Colors.white,
                     borderRadius: const BorderRadius.only(
@@ -4103,8 +4162,12 @@ class _WindowViewState extends State<WindowView> {
       child: ListenableBuilder(
         listenable: widget.model,
         builder: (context, _) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          final lang = Provider.of<AppSettingsProvider>(context).language;
+          final isDark = Theme
+              .of(context)
+              .brightness == Brightness.dark;
+          final lang = Provider
+              .of<AppSettingsProvider>(context)
+              .language;
           final WindowZone? zone = widget.model.selectedZone;
           WindowZone? targetZone = zone;
           if (targetZone == null ||
@@ -4145,23 +4208,22 @@ class _WindowViewState extends State<WindowView> {
           // drawer from the neutral value and hide the panneau options.
           final GlassSpecification spec =
               zone?.getGlassForCell(widget.model.activeSubZone) ??
-              _tempGlassSpec;
+                  _tempGlassSpec;
           final structure = spec.structure;
 
           GlassSpecification fitDoubleGlassToParclose(
-            GlassSpecification candidate,
-          ) {
+              GlassSpecification candidate,) {
             if (candidate.structure != GlassStructure.double) {
               return candidate;
             }
             final suggested = widget.model
                 .suggestedIntercallThicknessForDoubleGlass(
-                  thicknessOuter:
-                      candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
-                  thicknessInner:
-                      candidate.thicknessInner ?? kDefaultGlassPaneThickness,
-                  jointTwoSides: candidate.jointTwoSides,
-                );
+              thicknessOuter:
+              candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
+              thicknessInner:
+              candidate.thicknessInner ?? kDefaultGlassPaneThickness,
+              jointTwoSides: candidate.jointTwoSides,
+            );
             return suggested == null
                 ? candidate
                 : candidate.copyWith(intercallThickness: suggested);
@@ -4184,10 +4246,13 @@ class _WindowViewState extends State<WindowView> {
                 ? Icons.check_circle_outline_rounded
                 : Icons.warning_amber_rounded;
             final message = isExact
-                ? 'سُمك الزجاج مطابق لسعة البيركلوز: ${total.toStringAsFixed(0)} مم'
+                ? 'سُمك الزجاج مطابق لسعة البيركلوز: ${total.toStringAsFixed(
+                0)} مم'
                 : isAbove
-                ? 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
-                : 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
+                ? 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(
+                0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
+                : 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(
+                0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
 
             return Container(
               margin: const EdgeInsets.only(top: 8),
@@ -4232,20 +4297,20 @@ class _WindowViewState extends State<WindowView> {
           );
           final requiredIntercall = structure == GlassStructure.double
               ? widget.model.suggestedIntercallThicknessForDoubleGlass(
-                  thicknessOuter:
-                      spec.thicknessOuter ?? kDefaultGlassPaneThickness,
-                  thicknessInner:
-                      spec.thicknessInner ?? kDefaultGlassPaneThickness,
-                  jointTwoSides: spec.jointTwoSides,
-                )
+            thicknessOuter:
+            spec.thicknessOuter ?? kDefaultGlassPaneThickness,
+            thicknessInner:
+            spec.thicknessInner ?? kDefaultGlassPaneThickness,
+            jointTwoSides: spec.jointTwoSides,
+          )
               : null;
           // Keep every spacer from the catalogue visible. The suggested
           // spacer is selected automatically, but a deliberate manual
           // selection remains possible after a compatibility warning.
           if (requiredIntercall != null &&
               !intercallChoices.any(
-                (item) =>
-                    (item['thickness'] as num?)?.toInt() == requiredIntercall,
+                    (item) =>
+                (item['thickness'] as num?)?.toInt() == requiredIntercall,
               )) {
             // A valid spacer may be absent from the catalogue list (for
             // example 9 mm for a 19 mm parclose). Keep the compatible size
@@ -4257,12 +4322,10 @@ class _WindowViewState extends State<WindowView> {
             });
           }
 
-          Widget buildProcessingChip(
-            String label,
-            GlassProcessing type,
-            bool isOuter,
-            void Function(GlassProcessing) onTap,
-          ) {
+          Widget buildProcessingChip(String label,
+              GlassProcessing type,
+              bool isOuter,
+              void Function(GlassProcessing) onTap,) {
             final currentProc = isOuter
                 ? spec.processingOuter
                 : spec.processingInner;
@@ -4296,9 +4359,9 @@ class _WindowViewState extends State<WindowView> {
 
             final isTempered = isOuter
                 ? (spec.temperedOuter ||
-                      spec.processingOuter == GlassProcessing.tempered)
+                spec.processingOuter == GlassProcessing.tempered)
                 : (spec.temperedInner ||
-                      spec.processingInner == GlassProcessing.tempered);
+                spec.processingInner == GlassProcessing.tempered);
 
             void updateProcessing(GlassProcessing t) {
               final newSpec = spec.copyWith(
@@ -4366,19 +4429,19 @@ class _WindowViewState extends State<WindowView> {
                       Localization.translate('Simple', lang),
                       GlassProcessing.none,
                       isOuter,
-                      (t) => updateProcessing(t),
+                          (t) => updateProcessing(t),
                     ),
                     buildProcessingChip(
                       Localization.translate('Feuillette', lang),
                       GlassProcessing.laminated,
                       isOuter,
-                      (t) => updateProcessing(t),
+                          (t) => updateProcessing(t),
                     ),
                     buildProcessingChip(
                       Localization.translate('Low-e', lang),
                       GlassProcessing.lowE,
                       isOuter,
-                      (t) => updateProcessing(t),
+                          (t) => updateProcessing(t),
                     ),
                     FilterChip(
                       label: Text(
@@ -4388,8 +4451,8 @@ class _WindowViewState extends State<WindowView> {
                           color: isDark
                               ? Colors.white
                               : (isTempered
-                                    ? Colors.blue.shade900
-                                    : Colors.black87),
+                              ? Colors.blue.shade900
+                              : Colors.black87),
                         ),
                       ),
                       selected: isTempered,
@@ -4417,69 +4480,75 @@ class _WindowViewState extends State<WindowView> {
                   spacing: 6,
                   runSpacing: 4,
                   children:
-                      [
-                            GlassFinish.clair,
-                            GlassFinish.stopSol,
-                            GlassFinish.sable,
-                            GlassFinish.delta,
-                            GlassFinish.tuC,
-                            GlassFinish.nevada,
-                            GlassFinish.cuisine,
-                            GlassFinish.aFleur,
-                          ]
-                          .map(
-                            (f) => Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _ContentButton(
-                                label: _getFinishName(f),
-                                icon: Icons.blur_on_rounded,
-                                selected: finish == f,
-                                showWarning:
-                                    widget.model.getPriceForFinish(f, color) ==
-                                    0.0,
-                                onPressed: () {
-                                  double defThick = widget.model
-                                      .getThicknessForFinish(
-                                        f,
-                                        isOuter
-                                            ? spec.colorOuter
-                                            : spec.colorInner,
-                                      );
-                                  if (defThick == 0.0) defThick = 5.0;
+                  [
+                    GlassFinish.clair,
+                    GlassFinish.stopSol,
+                    GlassFinish.sable,
+                    GlassFinish.delta,
+                    GlassFinish.tuC,
+                    GlassFinish.nevada,
+                    GlassFinish.cuisine,
+                    GlassFinish.aFleur,
+                  ]
+                      .map(
+                        (f) =>
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: _ContentButton(
+                            label: _getFinishName(f),
+                            icon: Icons.blur_on_rounded,
+                            selected: finish == f,
+                            showWarning:
+                            widget.model.getPriceForFinish(f, color) ==
+                                0.0,
+                            onPressed: () {
+                              final GlassColor nextColor =
+                              f == GlassFinish.stopSol
+                                  ? (isOuter
+                                  ? spec.colorOuter
+                                  : spec.colorInner)
+                                  : GlassColor.transparent;
+                              double defThick = widget.model
+                                  .getThicknessForFinish(f, nextColor);
+                              if (defThick == 0.0) defThick = 5.0;
 
-                                  final newSpec = fitDoubleGlassToParclose(
-                                    spec.copyWith(
-                                      finishOuter: isOuter ? f : null,
-                                      finishInner: !isOuter ? f : null,
-                                      thicknessOuter: isOuter ? defThick : null,
-                                      thicknessInner: !isOuter
-                                          ? defThick
-                                          : null,
-                                    ),
-                                  );
-                                  if (zone != null) {
-                                    widget.model.updateSelectedZoneGlass(
-                                      finishOuter: isOuter ? f : null,
-                                      finishInner: !isOuter ? f : null,
-                                      thicknessOuter: isOuter ? defThick : null,
-                                      thicknessInner: !isOuter
-                                          ? defThick
-                                          : null,
-                                    );
-                                  } else {
-                                    setState(() {
-                                      _tempGlassSpec = newSpec;
-                                    });
-                                  }
-                                  _startPaintbrushMode(glassSpec: newSpec);
-                                  if (f == GlassFinish.stopSol) {
-                                    _autoScrollDrawer();
-                                  }
-                                },
-                              ),
-                            ),
-                          )
-                          .toList(),
+                              final newSpec = fitDoubleGlassToParclose(
+                                spec.copyWith(
+                                  finishOuter: isOuter ? f : null,
+                                  finishInner: !isOuter ? f : null,
+                                  colorOuter: isOuter ? nextColor : null,
+                                  colorInner: !isOuter ? nextColor : null,
+                                  thicknessOuter: isOuter ? defThick : null,
+                                  thicknessInner: !isOuter
+                                      ? defThick
+                                      : null,
+                                ),
+                              );
+                              if (zone != null) {
+                                widget.model.updateSelectedZoneGlass(
+                                  finishOuter: isOuter ? f : null,
+                                  finishInner: !isOuter ? f : null,
+                                  colorOuter: isOuter ? nextColor : null,
+                                  colorInner: !isOuter ? nextColor : null,
+                                  thicknessOuter: isOuter ? defThick : null,
+                                  thicknessInner: !isOuter
+                                      ? defThick
+                                      : null,
+                                );
+                              } else {
+                                setState(() {
+                                  _tempGlassSpec = newSpec;
+                                });
+                              }
+                              _startPaintbrushMode(glassSpec: newSpec);
+                              if (f == GlassFinish.stopSol) {
+                                _autoScrollDrawer();
+                              }
+                            },
+                          ),
+                        ),
+                  )
+                      .toList(),
                 ),
                 if (finish == GlassFinish.stopSol) ...[
                   const Padding(
@@ -4499,26 +4568,27 @@ class _WindowViewState extends State<WindowView> {
                         runSpacing: 6,
                         children: GlassColor.values
                             .map(
-                              (c) => Padding(
+                              (c) =>
+                              Padding(
                                 padding: const EdgeInsets.only(right: 6),
                                 child: _ContentButton(
                                   label: _getColorName(c),
                                   icon: Icons.palette_rounded,
                                   selected: color == c,
                                   showWarning:
-                                      widget.model.getPriceForFinish(
-                                        finish,
-                                        c,
-                                      ) ==
+                                  widget.model.getPriceForFinish(
+                                    finish,
+                                    c,
+                                  ) ==
                                       0.0,
                                   onPressed: () {
                                     final double defThick = widget.model
                                         .getThicknessForFinish(
-                                          isOuter
-                                              ? spec.finishOuter
-                                              : spec.finishInner,
-                                          c,
-                                        );
+                                      isOuter
+                                          ? spec.finishOuter
+                                          : spec.finishInner,
+                                      c,
+                                    );
                                     double resolvedThick = defThick == 0.0
                                         ? 5.0
                                         : defThick;
@@ -4556,7 +4626,7 @@ class _WindowViewState extends State<WindowView> {
                                   },
                                 ),
                               ),
-                            )
+                        )
                             .toList(),
                       );
                     },
@@ -4582,8 +4652,8 @@ class _WindowViewState extends State<WindowView> {
                     final isSliding67Family = widget.model.isSliding67Family;
                     final isSliding =
                         widget.systemMode == 'sliding' ||
-                        widget.model.systemMode == 'sliding' ||
-                        zone?.content == ZoneContent.slidingSash;
+                            widget.model.systemMode == 'sliding' ||
+                            zone?.content == ZoneContent.slidingSash;
                     if (isSliding && isSliding67Family) {
                       final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
                       final double maxAllowed =
@@ -4591,15 +4661,15 @@ class _WindowViewState extends State<WindowView> {
                       if (spec.structure == GlassStructure.double) {
                         final double tOther = isOuter
                             ? (spec.thicknessInner ??
-                                  kDefaultGlassPaneThickness)
+                            kDefaultGlassPaneThickness)
                             : (spec.thicknessOuter ??
-                                  kDefaultGlassPaneThickness);
+                            kDefaultGlassPaneThickness);
                         final int intercall = spec.intercallThickness;
                         thicknesses = thicknesses
                             .where(
                               (thick) =>
-                                  (thick + intercall + tOther) <= maxAllowed,
-                            )
+                          (thick + intercall + tOther) <= maxAllowed,
+                        )
                             .toList();
                       } else {
                         thicknesses = thicknesses
@@ -4609,55 +4679,60 @@ class _WindowViewState extends State<WindowView> {
                     }
                     final double currentThickness = isOuter
                         ? (spec.thicknessOuter ??
-                              widget.model.getThicknessForFinish(finish, color))
+                        widget.model.getThicknessForFinish(finish, color))
                         : (spec.thicknessInner ??
-                              widget.model.getThicknessForFinish(
-                                finish,
-                                color,
-                              ));
+                        widget.model.getThicknessForFinish(
+                          finish,
+                          color,
+                        ));
 
                     return _HorizontalWheelScrollArea(
-                      builder: (context, controller) => SingleChildScrollView(
-                        controller: controller,
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: thicknesses.map((thickVal) {
-                            final isSelected = currentThickness == thickVal;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _ContentButton(
-                                label: '${thickVal.toStringAsFixed(0)} مم',
-                                icon: Icons.line_weight_rounded,
-                                selected: isSelected,
-                                onPressed: () {
-                                  final newSpec = fitDoubleGlassToParclose(
-                                    spec.copyWith(
-                                      thicknessOuter: isOuter ? thickVal : null,
-                                      thicknessInner: !isOuter
-                                          ? thickVal
-                                          : null,
-                                    ),
-                                  );
-                                  if (zone != null) {
-                                    widget.model.updateSelectedZoneGlass(
-                                      thicknessOuter: isOuter ? thickVal : null,
-                                      thicknessInner: !isOuter
-                                          ? thickVal
-                                          : null,
-                                    );
-                                  } else {
-                                    setState(() {
-                                      _tempGlassSpec = newSpec;
-                                    });
-                                  }
-                                  _startPaintbrushMode(glassSpec: newSpec);
-                                  _autoScrollDrawer();
-                                },
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
+                      builder: (context, controller) =>
+                          SingleChildScrollView(
+                            controller: controller,
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: thicknesses.map((thickVal) {
+                                final isSelected = currentThickness == thickVal;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: _ContentButton(
+                                    label: '${thickVal.toStringAsFixed(0)} مم',
+                                    icon: Icons.line_weight_rounded,
+                                    selected: isSelected,
+                                    onPressed: () {
+                                      final newSpec = fitDoubleGlassToParclose(
+                                        spec.copyWith(
+                                          thicknessOuter: isOuter
+                                              ? thickVal
+                                              : null,
+                                          thicknessInner: !isOuter
+                                              ? thickVal
+                                              : null,
+                                        ),
+                                      );
+                                      if (zone != null) {
+                                        widget.model.updateSelectedZoneGlass(
+                                          thicknessOuter: isOuter
+                                              ? thickVal
+                                              : null,
+                                          thicknessInner: !isOuter
+                                              ? thickVal
+                                              : null,
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _tempGlassSpec = newSpec;
+                                        });
+                                      }
+                                      _startPaintbrushMode(glassSpec: newSpec);
+                                      _autoScrollDrawer();
+                                    },
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
                     );
                   },
                 ),
@@ -4736,7 +4811,8 @@ class _WindowViewState extends State<WindowView> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'اليسرى: ${(targetZone.doubleSashRatio * 100).toInt()}%',
+                              'اليسرى: ${(targetZone.doubleSashRatio * 100)
+                                  .toInt()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -4744,7 +4820,8 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ),
                             Text(
-                              'اليمنى: ${((1.0 - targetZone.doubleSashRatio) * 100).toInt()}%',
+                              'اليمنى: ${((1.0 - targetZone.doubleSashRatio) *
+                                  100).toInt()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -4759,7 +4836,7 @@ class _WindowViewState extends State<WindowView> {
                           max: 0.85,
                           divisions: 70,
                           label:
-                              '${(targetZone.doubleSashRatio * 100).toInt()}%',
+                          '${(targetZone.doubleSashRatio * 100).toInt()}%',
                           onChanged: (val) {
                             widget.model.updateZoneDoubleSashRatio(
                               targetZone!.id,
@@ -4806,8 +4883,8 @@ class _WindowViewState extends State<WindowView> {
                             final double totalWidth =
                                 targetZone!.boundary.width;
                             final currentLeftWidth =
-                                (targetZone.doubleSashRatio * totalWidth)
-                                    .toInt();
+                            (targetZone.doubleSashRatio * totalWidth)
+                                .toInt();
                             if (!_leftSashFocusNode.hasFocus) {
                               _leftSashWidthController.text = currentLeftWidth
                                   .toString();
@@ -4834,7 +4911,8 @@ class _WindowViewState extends State<WindowView> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'القياس لا يمكن أن يتجاوز 80% من مجموع عرض الضلفات (${maxVal.toInt()} مم)',
+                                      'القياس لا يمكن أن يتجاوز 80% من مجموع عرض الضلفات (${maxVal
+                                          .toInt()} مم)',
                                     ),
                                     backgroundColor: Colors.red,
                                   ),
@@ -4847,7 +4925,8 @@ class _WindowViewState extends State<WindowView> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'القياس لا يمكن أن يقل عن 15% من مجموع عرض الضلفات (${minVal.toInt()} مم)',
+                                      'القياس لا يمكن أن يقل عن 15% من مجموع عرض الضلفات (${minVal
+                                          .toInt()} مم)',
                                     ),
                                     backgroundColor: Colors.red,
                                   ),
@@ -4882,10 +4961,10 @@ class _WindowViewState extends State<WindowView> {
                                           color: isDark ? Colors.white70 : null,
                                         ),
                                         contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
+                                        const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
                                         enabledBorder: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
                                             6,
@@ -4960,8 +5039,8 @@ class _WindowViewState extends State<WindowView> {
               if (!widget.model.isPVC &&
                   (zone?.content == ZoneContent.slidingSash ||
                       widget.model.zones.any(
-                        (candidate) =>
-                            candidate.content == ZoneContent.slidingSash,
+                            (candidate) =>
+                        candidate.content == ZoneContent.slidingSash,
                       ))) ...[
                 const Divider(),
                 Padding(
@@ -5011,21 +5090,21 @@ class _WindowViewState extends State<WindowView> {
                               spec.thicknessInner ?? kDefaultGlassPaneThickness;
                           final int intercall = spec.intercallThickness;
                           final bool isValid =
-                              spec.structure == GlassStructure.double
+                          spec.structure == GlassStructure.double
                               ? isDoubleGlassValid(
-                                  tOuter,
-                                  intercall,
-                                  tInner,
-                                  twoSides,
-                                  widget.model,
-                                  widget.systemMode,
-                                )
+                            tOuter,
+                            intercall,
+                            tInner,
+                            twoSides,
+                            widget.model,
+                            widget.systemMode,
+                          )
                               : isGlassThicknessValid(
-                                  tOuter,
-                                  spec.copyWith(jointTwoSides: twoSides),
-                                  widget.model,
-                                  widget.systemMode,
-                                );
+                            tOuter,
+                            spec.copyWith(jointTwoSides: twoSides),
+                            widget.model,
+                            widget.systemMode,
+                          );
 
                           if (!isValid) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -5072,161 +5151,188 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ),
               _HorizontalWheelScrollArea(
-                builder: (context, controller) => SingleChildScrollView(
-                  controller: controller,
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: GlassStructure.values
-                        .map(
-                          (s) => Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: _ContentButton(
-                              label: _getStructureName(s),
-                              icon: Icons.layers_rounded,
-                              selected: structure == s,
-                              onPressed: () async {
-                                String? defaultSubtype;
-                                String? defaultColor;
-                                if (s == GlassStructure.closed) {
-                                  final panneaux = widget.model.allGlassCache
-                                      .where(
-                                        (g) =>
-                                            g['type']
-                                                .toString()
-                                                .toLowerCase() ==
+                builder: (context, controller) =>
+                    SingleChildScrollView(
+                      controller: controller,
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: GlassStructure.values
+                            .map(
+                              (s) =>
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: _ContentButton(
+                                  label: _getStructureName(s),
+                                  icon: Icons.layers_rounded,
+                                  selected: structure == s,
+                                  onPressed: () async {
+                                    String? defaultSubtype;
+                                    String? defaultColor;
+                                    if (s == GlassStructure.closed) {
+                                      final panneaux = widget.model
+                                          .allGlassCache
+                                          .where(
+                                            (g) =>
+                                        g['type']
+                                            .toString()
+                                            .toLowerCase() ==
                                             'panneau',
                                       )
-                                      .toList();
-                                  final subtypes = panneaux
-                                      .map(
-                                        (g) => (g['subtype'] ?? '').toString(),
-                                      )
-                                      .where((s) => s.isNotEmpty)
-                                      .toSet()
-                                      .toList();
-                                  if (subtypes.isNotEmpty) {
-                                    final savedSubtype = spec.panneauSubtype;
-                                    defaultSubtype =
-                                        spec.structure ==
-                                                GlassStructure.closed &&
-                                            savedSubtype != null &&
-                                            subtypes.any(
-                                              (value) =>
-                                                  value.toLowerCase() ==
-                                                  savedSubtype.toLowerCase(),
-                                            )
-                                        ? savedSubtype
-                                        : subtypes.firstWhere(
-                                            (value) =>
-                                                !isDecorPanelSubtype(value),
-                                            orElse: () => subtypes.first,
-                                          );
-                                    final subRows = panneaux
-                                        .where(
-                                          (g) =>
-                                              (g['subtype'] ?? '')
-                                                  .toString()
-                                                  .toLowerCase() ==
-                                              defaultSubtype!.toLowerCase(),
-                                        )
-                                        .toList();
-                                    if (subRows.isNotEmpty) {
-                                      final colorsList = subRows
+                                          .toList();
+                                      final subtypes = panneaux
                                           .map(
-                                            (g) => (g['color'] ?? '')
-                                                .toString()
-                                                .trim(),
-                                          )
-                                          .where((c) => c.isNotEmpty)
+                                            (g) =>
+                                            (g['subtype'] ?? '').toString(),
+                                      )
+                                          .where((s) => s.isNotEmpty)
                                           .toSet()
                                           .toList();
-                                      if (colorsList.isNotEmpty) {
-                                        defaultColor =
-                                            spec.panneauColor ??
-                                            colorsList.first;
+                                      if (subtypes.isNotEmpty) {
+                                        final savedSubtype = spec
+                                            .panneauSubtype;
+                                        defaultSubtype =
+                                        spec.structure ==
+                                            GlassStructure.closed &&
+                                            savedSubtype != null &&
+                                            subtypes.any(
+                                                  (value) =>
+                                              value.toLowerCase() ==
+                                                  savedSubtype.toLowerCase(),
+                                            )
+                                            ? savedSubtype
+                                            : subtypes.firstWhere(
+                                              (value) =>
+                                          !isDecorPanelSubtype(value),
+                                          orElse: () => subtypes.first,
+                                        );
+                                        final subRows = panneaux
+                                            .where(
+                                              (g) =>
+                                          (g['subtype'] ?? '')
+                                              .toString()
+                                              .toLowerCase() ==
+                                              defaultSubtype!.toLowerCase(),
+                                        )
+                                            .toList();
+                                        if (subRows.isNotEmpty) {
+                                          final colorsList = subRows
+                                              .map(
+                                                (g) =>
+                                                (g['color'] ?? '')
+                                                    .toString()
+                                                    .trim(),
+                                          )
+                                              .where((c) => c.isNotEmpty)
+                                              .toSet()
+                                              .toList();
+                                          if (colorsList.isNotEmpty) {
+                                            defaultColor =
+                                                spec.panneauColor ??
+                                                    colorsList.first;
+                                          }
+                                        }
                                       }
                                     }
-                                  }
-                                }
 
-                                double? defaultThickOuter;
-                                double? defaultThickInner;
-                                if (s == GlassStructure.double) {
-                                  defaultThickOuter =
-                                      spec.thicknessOuter ??
-                                      widget.model.getThicknessForFinish(
-                                        spec.finishOuter,
-                                        spec.colorOuter,
-                                      );
-                                  defaultThickInner =
-                                      spec.thicknessInner ??
-                                      widget.model.getThicknessForFinish(
-                                        spec.finishInner,
-                                        spec.colorInner,
-                                      );
-                                  if (defaultThickOuter == 0.0) {
-                                    defaultThickOuter = 5.0;
-                                  }
-                                  if (defaultThickInner == 0.0) {
-                                    defaultThickInner = 5.0;
-                                  }
-                                } else if (s == GlassStructure.simple) {
-                                  defaultThickOuter =
-                                      spec.thicknessOuter ??
-                                      widget.model.getThicknessForFinish(
-                                        spec.finishOuter,
-                                        spec.colorOuter,
-                                      );
-                                  if (defaultThickOuter == 0.0) {
-                                    defaultThickOuter = 5.0;
-                                  }
-                                }
+                                    double? defaultThickOuter;
+                                    double? defaultThickInner;
+                                    final GlassColor? structureColorOuter =
+                                    s != GlassStructure.closed &&
+                                        spec.finishOuter != GlassFinish.stopSol
+                                        ? GlassColor.transparent
+                                        : null;
+                                    final GlassColor? structureColorInner =
+                                    s != GlassStructure.closed &&
+                                        spec.finishInner != GlassFinish.stopSol
+                                        ? GlassColor.transparent
+                                        : null;
+                                    if (s == GlassStructure.double) {
+                                      defaultThickOuter =
+                                          spec.thicknessOuter ??
+                                              widget.model
+                                                  .getThicknessForFinish(
+                                                spec.finishOuter,
+                                                structureColorOuter ??
+                                                    spec.colorOuter,
+                                              );
+                                      defaultThickInner =
+                                          spec.thicknessInner ??
+                                              widget.model
+                                                  .getThicknessForFinish(
+                                                spec.finishInner,
+                                                structureColorInner ??
+                                                    spec.colorInner,
+                                              );
+                                      if (defaultThickOuter == 0.0) {
+                                        defaultThickOuter = 5.0;
+                                      }
+                                      if (defaultThickInner == 0.0) {
+                                        defaultThickInner = 5.0;
+                                      }
+                                    } else if (s == GlassStructure.simple) {
+                                      defaultThickOuter =
+                                          spec.thicknessOuter ??
+                                              widget.model
+                                                  .getThicknessForFinish(
+                                                spec.finishOuter,
+                                                structureColorOuter ??
+                                                    spec.colorOuter,
+                                              );
+                                      if (defaultThickOuter == 0.0) {
+                                        defaultThickOuter = 5.0;
+                                      }
+                                    }
 
-                                final newSpec = fitDoubleGlassToParclose(
-                                  spec.copyWith(
-                                    structure: s,
-                                    hasGas:
+                                    final newSpec = fitDoubleGlassToParclose(
+                                      spec.copyWith(
+                                        structure: s,
+                                        hasGas:
                                         s == GlassStructure.double &&
                                             spec.structure !=
                                                 GlassStructure.double
-                                        ? true
-                                        : null,
-                                    panneauSubtype: defaultSubtype,
-                                    panneauColor: defaultColor,
-                                    thicknessOuter: defaultThickOuter,
-                                    thicknessInner: defaultThickInner,
-                                  ),
-                                );
-                                if (zone != null) {
-                                  await widget.model.updateSelectedZoneGlass(
-                                    structure: s,
-                                    hasGas:
+                                            ? true
+                                            : null,
+                                        panneauSubtype: defaultSubtype,
+                                        panneauColor: defaultColor,
+                                        colorOuter: structureColorOuter,
+                                        colorInner: structureColorInner,
+                                        thicknessOuter: defaultThickOuter,
+                                        thicknessInner: defaultThickInner,
+                                      ),
+                                    );
+                                    if (zone != null) {
+                                      await widget.model
+                                          .updateSelectedZoneGlass(
+                                        structure: s,
+                                        hasGas:
                                         s == GlassStructure.double &&
                                             spec.structure !=
                                                 GlassStructure.double
-                                        ? true
-                                        : null,
-                                    panneauSubtype: defaultSubtype,
-                                    panneauColor: defaultColor,
-                                    thicknessOuter: defaultThickOuter,
-                                    thicknessInner: defaultThickInner,
-                                  );
-                                } else {
-                                  setState(() {
-                                    _tempGlassSpec = newSpec;
-                                  });
-                                }
-                                _startPaintbrushMode(glassSpec: newSpec);
-                                if (s == GlassStructure.double) {
-                                  _autoScrollDrawer();
-                                }
-                              },
-                            ),
-                          ),
+                                            ? true
+                                            : null,
+                                        panneauSubtype: defaultSubtype,
+                                        panneauColor: defaultColor,
+                                        colorOuter: structureColorOuter,
+                                        colorInner: structureColorInner,
+                                        thicknessOuter: defaultThickOuter,
+                                        thicknessInner: defaultThickInner,
+                                      );
+                                    } else {
+                                      setState(() {
+                                        _tempGlassSpec = newSpec;
+                                      });
+                                    }
+                                    _startPaintbrushMode(glassSpec: newSpec);
+                                    if (s == GlassStructure.double) {
+                                      _autoScrollDrawer();
+                                    }
+                                  },
+                                ),
+                              ),
                         )
-                        .toList(),
-                  ),
-                ),
+                            .toList(),
+                      ),
+                    ),
               ),
               const SizedBox(height: 8),
               if (structure == GlassStructure.closed) ...[
@@ -5242,8 +5348,8 @@ class _WindowViewState extends State<WindowView> {
                     final panneaux = widget.model.allGlassCache
                         .where(
                           (g) =>
-                              g['type'].toString().toLowerCase() == 'panneau',
-                        )
+                      g['type'].toString().toLowerCase() == 'panneau',
+                    )
                         .toList();
                     final subtypes = panneaux
                         .map((g) => (g['subtype'] ?? '').toString())
@@ -5255,7 +5361,7 @@ class _WindowViewState extends State<WindowView> {
                     // تسعيره لاحقاً يكون بعدد قطع المخزون الكاملة.
                     const String bardageKey = 'bardage';
                     if (!subtypes.any(
-                      (s) => s.toLowerCase().contains('bardage'),
+                          (s) => s.toLowerCase().contains('bardage'),
                     )) {
                       subtypes.add(bardageKey);
                     }
@@ -5295,182 +5401,187 @@ class _WindowViewState extends State<WindowView> {
                     }
 
                     return _HorizontalWheelScrollArea(
-                      builder: (context, controller) => SingleChildScrollView(
-                        controller: controller,
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: subtypes.map((sub) {
-                            final isSelected =
-                                (spec.panneauSubtype ?? '').toLowerCase() ==
-                                sub.toLowerCase();
-                            final isBardage = sub.toLowerCase().contains(
-                              'bardage',
-                            );
-                            final isDecor = isDecorPanelSubtype(sub);
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _ContentButton(
-                                label: getArabicSubtypeName(sub),
-                                icon: getSubtypeIcon(sub),
-                                selected: isSelected,
-                                onPressed: () async {
-                                  final subRows = panneaux
-                                      .where(
-                                        (g) =>
-                                            (g['subtype'] ?? '')
-                                                .toString()
-                                                .toLowerCase() ==
+                      builder: (context, controller) =>
+                          SingleChildScrollView(
+                            controller: controller,
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: subtypes.map((sub) {
+                                final isSelected =
+                                    (spec.panneauSubtype ?? '').toLowerCase() ==
+                                        sub.toLowerCase();
+                                final isBardage = sub.toLowerCase().contains(
+                                  'bardage',
+                                );
+                                final isDecor = isDecorPanelSubtype(sub);
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: _ContentButton(
+                                    label: getArabicSubtypeName(sub),
+                                    icon: getSubtypeIcon(sub),
+                                    selected: isSelected,
+                                    onPressed: () async {
+                                      final subRows = panneaux
+                                          .where(
+                                            (g) =>
+                                        (g['subtype'] ?? '')
+                                            .toString()
+                                            .toLowerCase() ==
                                             sub.toLowerCase(),
                                       )
-                                      .toList();
-                                  final selectedFrameColor =
+                                          .toList();
+                                      final selectedFrameColor =
                                       (widget.model.selectedDbColor?['name'] ??
-                                              widget
-                                                  .model
-                                                  .selectedDbColor?['color_name'] ??
-                                              widget.model.frameColor.name)
+                                          widget
+                                              .model
+                                              .selectedDbColor?['color_name'] ??
+                                          widget.model.frameColor.name)
                                           .toString()
                                           .trim();
-                                  String firstColor = isBardage
-                                      ? selectedFrameColor
-                                      : 'أبيض';
-                                  if (!isBardage && subRows.isNotEmpty) {
-                                    final colorsList = subRows
-                                        .map(
-                                          (g) => (g['color'] ?? '')
-                                              .toString()
-                                              .trim(),
+                                      String firstColor = isBardage
+                                          ? selectedFrameColor
+                                          : 'أبيض';
+                                      if (!isBardage && subRows.isNotEmpty) {
+                                        final colorsList = subRows
+                                            .map(
+                                              (g) =>
+                                              (g['color'] ?? '')
+                                                  .toString()
+                                                  .trim(),
                                         )
-                                        .where((c) => c.isNotEmpty)
-                                        .toSet()
-                                        .toList();
-                                    if (colorsList.isNotEmpty) {
-                                      firstColor = colorsList.first;
-                                    }
-                                  }
+                                            .where((c) => c.isNotEmpty)
+                                            .toSet()
+                                            .toList();
+                                        if (colorsList.isNotEmpty) {
+                                          firstColor = colorsList.first;
+                                        }
+                                      }
 
-                                  final sLower = sub.toLowerCase();
-                                  final GlassFinish targetFinish;
-                                  if (isBardage) {
-                                    targetFinish = GlassFinish.bardage;
-                                  } else if (sLower.contains('resine') ||
-                                      sLower.contains('ارزين') ||
-                                      sLower.contains('أرزين')) {
-                                    targetFinish = GlassFinish.resine;
-                                  } else if (sLower.contains('plexi') ||
-                                      sLower.contains('بليكسي')) {
-                                    targetFinish = GlassFinish.plexyGlass;
-                                  } else if (sLower.contains('decor') ||
-                                      sLower.contains('ديكور')) {
-                                    targetFinish =
-                                        GlassFinish.paneauSandwitchDecore;
-                                  } else {
-                                    targetFinish = GlassFinish.paneauSandwitch;
-                                  }
+                                      final sLower = sub.toLowerCase();
+                                      final GlassFinish targetFinish;
+                                      if (isBardage) {
+                                        targetFinish = GlassFinish.bardage;
+                                      } else if (sLower.contains('resine') ||
+                                          sLower.contains('ارزين') ||
+                                          sLower.contains('أرزين')) {
+                                        targetFinish = GlassFinish.resine;
+                                      } else if (sLower.contains('plexi') ||
+                                          sLower.contains('بليكسي')) {
+                                        targetFinish = GlassFinish.plexyGlass;
+                                      } else if (sLower.contains('decor') ||
+                                          sLower.contains('ديكور')) {
+                                        targetFinish =
+                                            GlassFinish.paneauSandwitchDecore;
+                                      } else {
+                                        targetFinish =
+                                            GlassFinish.paneauSandwitch;
+                                      }
 
-                                  final bardageProfile = isBardage
-                                      ? widget
-                                            .model
-                                            .componentOverrides['البارداج (Bardage)']
-                                      : null;
-                                  final rawBardageThickness =
+                                      final bardageProfile = isBardage
+                                          ? widget
+                                          .model
+                                          .componentOverrides['البارداج (Bardage)']
+                                          : null;
+                                      final rawBardageThickness =
                                       bardageProfile?['thickness'];
-                                  final bardageThickness =
+                                      final bardageThickness =
                                       rawBardageThickness is num
-                                      ? rawBardageThickness.toDouble()
-                                      : double.tryParse(
-                                          rawBardageThickness?.toString() ?? '',
-                                        );
-                                  final rawBardageId = bardageProfile?['id'];
-                                  final bardageProfileId = rawBardageId is num
-                                      ? rawBardageId.toInt()
-                                      : int.tryParse(
-                                          rawBardageId?.toString() ?? '',
-                                        );
-                                  Map<String, dynamic>? decorProduct;
-                                  if (isDecor && subRows.isNotEmpty) {
-                                    decorProduct = subRows.firstWhere(
-                                      (row) =>
+                                          ? rawBardageThickness.toDouble()
+                                          : double.tryParse(
+                                        rawBardageThickness?.toString() ?? '',
+                                      );
+                                      final rawBardageId = bardageProfile?['id'];
+                                      final bardageProfileId = rawBardageId is num
+                                          ? rawBardageId.toInt()
+                                          : int.tryParse(
+                                        rawBardageId?.toString() ?? '',
+                                      );
+                                      Map<String, dynamic>? decorProduct;
+                                      if (isDecor && subRows.isNotEmpty) {
+                                        decorProduct = subRows.firstWhere(
+                                              (row) =>
                                           row['id']?.toString() ==
-                                          spec.panneauProductId?.toString(),
-                                      orElse: () => subRows.first,
-                                    );
-                                    final productColor =
+                                              spec.panneauProductId?.toString(),
+                                          orElse: () => subRows.first,
+                                        );
+                                        final productColor =
                                         (decorProduct['color'] ?? '')
                                             .toString()
                                             .trim();
-                                    if (productColor.isNotEmpty) {
-                                      firstColor = productColor;
-                                    }
-                                  }
-                                  final rawDecorId = decorProduct?['id'];
-                                  final decorProductId = rawDecorId is num
-                                      ? rawDecorId.toInt()
-                                      : int.tryParse(
-                                          rawDecorId?.toString() ?? '',
-                                        );
-                                  final decorThickness = decorProduct == null
-                                      ? null
-                                      : _catalogNumber(
-                                          decorProduct,
-                                          'thickness',
-                                        );
-                                  final newSpec = spec.copyWith(
-                                    panneauSubtype: sub,
-                                    panneauColor: firstColor,
-                                    bardageUsesFrameColor: isBardage
-                                        ? true
-                                        : spec.bardageUsesFrameColor,
-                                    structure: GlassStructure.closed,
-                                    finishOuter: targetFinish,
-                                    finishInner: targetFinish,
-                                    panneauProductId: isBardage
-                                        ? bardageProfileId
-                                        : decorProductId,
-                                    thicknessOuter: isBardage
-                                        ? bardageThickness
-                                        : decorThickness,
-                                  );
-                                  if (zone != null) {
-                                    if (isDecor) {
-                                      final placement =
+                                        if (productColor.isNotEmpty) {
+                                          firstColor = productColor;
+                                        }
+                                      }
+                                      final rawDecorId = decorProduct?['id'];
+                                      final decorProductId = rawDecorId is num
+                                          ? rawDecorId.toInt()
+                                          : int.tryParse(
+                                        rawDecorId?.toString() ?? '',
+                                      );
+                                      final decorThickness = decorProduct ==
+                                          null
+                                          ? null
+                                          : _catalogNumber(
+                                        decorProduct,
+                                        'thickness',
+                                      );
+                                      final newSpec = spec.copyWith(
+                                        panneauSubtype: sub,
+                                        panneauColor: firstColor,
+                                        bardageUsesFrameColor: isBardage
+                                            ? true
+                                            : spec.bardageUsesFrameColor,
+                                        structure: GlassStructure.closed,
+                                        finishOuter: targetFinish,
+                                        finishInner: targetFinish,
+                                        panneauProductId: isBardage
+                                            ? bardageProfileId
+                                            : decorProductId,
+                                        thicknessOuter: isBardage
+                                            ? bardageThickness
+                                            : decorThickness,
+                                      );
+                                      if (zone != null) {
+                                        if (isDecor) {
+                                          final placement =
                                           await _prepareDecorPanelPlacement(
                                             zone: zone,
                                             cellId: widget.model.activeSubZone,
                                             spec: newSpec,
                                           );
-                                      if (!placement.allowed) return;
-                                      widget.model.activeSubZone =
-                                          placement.cellId;
-                                    }
-                                    await widget.model.updateSelectedZoneGlass(
-                                      panneauSubtype: sub,
-                                      panneauColor: firstColor,
-                                      bardageUsesFrameColor: isBardage
-                                          ? true
-                                          : spec.bardageUsesFrameColor,
-                                      finishOuter: targetFinish,
-                                      finishInner: targetFinish,
-                                      structure: GlassStructure.closed,
-                                      panneauProductId: isBardage
-                                          ? bardageProfileId
-                                          : decorProductId,
-                                      thicknessOuter: isBardage
-                                          ? bardageThickness
-                                          : decorThickness,
-                                    );
-                                  } else {
-                                    setState(() {
-                                      _tempGlassSpec = newSpec;
-                                    });
-                                  }
-                                  _startPaintbrushMode(glassSpec: newSpec);
-                                },
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
+                                          if (!placement.allowed) return;
+                                          widget.model.activeSubZone =
+                                              placement.cellId;
+                                        }
+                                        await widget.model
+                                            .updateSelectedZoneGlass(
+                                          panneauSubtype: sub,
+                                          panneauColor: firstColor,
+                                          bardageUsesFrameColor: isBardage
+                                              ? true
+                                              : spec.bardageUsesFrameColor,
+                                          finishOuter: targetFinish,
+                                          finishInner: targetFinish,
+                                          structure: GlassStructure.closed,
+                                          panneauProductId: isBardage
+                                              ? bardageProfileId
+                                              : decorProductId,
+                                          thicknessOuter: isBardage
+                                              ? bardageThickness
+                                              : decorThickness,
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _tempGlassSpec = newSpec;
+                                        });
+                                      }
+                                      _startPaintbrushMode(glassSpec: newSpec);
+                                    },
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
                     );
                   },
                 ),
@@ -5490,7 +5601,7 @@ class _WindowViewState extends State<WindowView> {
                       final uniqueProducts = <String, Map<String, dynamic>>{};
                       for (final product in widget.model.allGlassCache) {
                         if (product['type'].toString().toLowerCase() !=
-                                'panneau' ||
+                            'panneau' ||
                             !isDecorPanelSubtype(
                               product['subtype']?.toString(),
                             )) {
@@ -5531,7 +5642,8 @@ class _WindowViewState extends State<WindowView> {
                           return DropdownMenuItem<String>(
                             value: product['id'].toString(),
                             child: Text(
-                              '$name - ${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} مم',
+                              '$name - ${width.toStringAsFixed(0)} × ${height
+                                  .toStringAsFixed(0)} مم',
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 10),
                             ),
@@ -5545,26 +5657,26 @@ class _WindowViewState extends State<WindowView> {
                           final colorsForProduct = widget.model.allGlassCache
                               .where(
                                 (row) =>
-                                    row['id']?.toString() == value &&
-                                    (row['color'] ?? '')
-                                        .toString()
-                                        .trim()
-                                        .isNotEmpty,
-                              )
+                            row['id']?.toString() == value &&
+                                (row['color'] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .isNotEmpty,
+                          )
                               .map(
                                 (row) => (row['color'] ?? '').toString().trim(),
-                              )
+                          )
                               .toList();
                           final selectedColor =
-                              colorsForProduct.any(
+                          colorsForProduct.any(
                                 (color) =>
-                                    color.toLowerCase() ==
-                                    (spec.panneauColor ?? '').toLowerCase(),
-                              )
+                            color.toLowerCase() ==
+                                (spec.panneauColor ?? '').toLowerCase(),
+                          )
                               ? spec.panneauColor
                               : (colorsForProduct.isEmpty
-                                    ? spec.panneauColor
-                                    : colorsForProduct.first);
+                              ? spec.panneauColor
+                              : colorsForProduct.first);
                           final newSpec = spec.copyWith(
                             panneauProductId: chosenId,
                             panneauColor: selectedColor,
@@ -5611,21 +5723,21 @@ class _WindowViewState extends State<WindowView> {
                       final panneaux = widget.model.allGlassCache
                           .where(
                             (g) =>
-                                g['type'].toString().toLowerCase() == 'panneau',
-                          )
+                        g['type'].toString().toLowerCase() == 'panneau',
+                      )
                           .toList();
                       final activeSub = spec.panneauSubtype ?? '';
                       final activeIsDecor = isDecorPanelSubtype(activeSub);
                       final subRows = panneaux
                           .where(
                             (g) =>
-                                (g['subtype'] ?? '').toString().toLowerCase() ==
-                                    activeSub.toLowerCase() &&
-                                (!activeIsDecor ||
-                                    spec.panneauProductId == null ||
-                                    g['id']?.toString() ==
-                                        spec.panneauProductId.toString()),
-                          )
+                        (g['subtype'] ?? '').toString().toLowerCase() ==
+                            activeSub.toLowerCase() &&
+                            (!activeIsDecor ||
+                                spec.panneauProductId == null ||
+                                g['id']?.toString() ==
+                                    spec.panneauProductId.toString()),
+                      )
                           .toList();
                       List<String> allowedColors = [];
                       if (subRows.isNotEmpty) {
@@ -5640,360 +5752,326 @@ class _WindowViewState extends State<WindowView> {
                       }
 
                       return _HorizontalWheelScrollArea(
-                        builder: (context, controller) => SingleChildScrollView(
-                          controller: controller,
-                          scrollDirection: Axis.horizontal,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: allowedColors.map((colorName) {
-                                final isSelected =
-                                    (spec.panneauColor ?? '').toLowerCase() ==
-                                    colorName.toLowerCase();
-                                final fakeDbColor = {'name': colorName};
-                                final woodImage = _getWoodTextureImage(
-                                  fakeDbColor,
-                                );
-                                final parsedColor = getEffectiveGradientColors(
-                                  FrameColor.white,
-                                  fakeDbColor,
-                                )[1];
+                        builder: (context, controller) =>
+                            SingleChildScrollView(
+                              controller: controller,
+                              scrollDirection: Axis.horizontal,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 4),
+                                child: Row(
+                                  children: allowedColors.map((colorName) {
+                                    final isSelected =
+                                        (spec.panneauColor ?? '')
+                                            .toLowerCase() ==
+                                            colorName.toLowerCase();
+                                    final fakeDbColor = {'name': colorName};
+                                    final woodImage = _getWoodTextureImage(
+                                      fakeDbColor,
+                                    );
+                                    final parsedColor = getEffectiveGradientColors(
+                                      FrameColor.white,
+                                      fakeDbColor,
+                                    )[1];
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 12),
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      final newSpec = spec.copyWith(
-                                        panneauColor: colorName,
-                                      );
-                                      if (zone != null) {
-                                        widget.model.updateSelectedZoneGlass(
-                                          panneauColor: colorName,
-                                        );
-                                      } else {
-                                        setState(() {
-                                          _tempGlassSpec = newSpec;
-                                        });
-                                      }
-                                      _startPaintbrushMode(glassSpec: newSpec);
-                                    },
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          width: isSelected ? 34 : 28,
-                                          height: isSelected ? 34 : 28,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: woodImage != null
-                                                ? null
-                                                : parsedColor,
-                                            image: woodImage,
-                                            border: Border.all(
-                                              color: isSelected
-                                                  ? Colors.blue
-                                                  : Colors.grey.shade400,
-                                              width: isSelected ? 2.5 : 1.0,
-                                            ),
-                                            boxShadow: [
-                                              if (isSelected)
-                                                BoxShadow(
-                                                  color: Colors.blue.withValues(
-                                                    alpha: 0.3,
-                                                  ),
-                                                  blurRadius: 4,
-                                                  spreadRadius: 1,
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 12),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          final newSpec = spec.copyWith(
+                                            panneauColor: colorName,
+                                          );
+                                          if (zone != null) {
+                                            widget.model
+                                                .updateSelectedZoneGlass(
+                                              panneauColor: colorName,
+                                            );
+                                          } else {
+                                            setState(() {
+                                              _tempGlassSpec = newSpec;
+                                            });
+                                          }
+                                          _startPaintbrushMode(
+                                              glassSpec: newSpec);
+                                        },
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: isSelected ? 34 : 28,
+                                              height: isSelected ? 34 : 28,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: woodImage != null
+                                                    ? null
+                                                    : parsedColor,
+                                                image: woodImage,
+                                                border: Border.all(
+                                                  color: isSelected
+                                                      ? Colors.blue
+                                                      : Colors.grey.shade400,
+                                                  width: isSelected ? 2.5 : 1.0,
                                                 ),
-                                            ],
-                                          ),
+                                                boxShadow: [
+                                                  if (isSelected)
+                                                    BoxShadow(
+                                                      color: Colors.blue
+                                                          .withValues(
+                                                        alpha: 0.3,
+                                                      ),
+                                                      blurRadius: 4,
+                                                      spreadRadius: 1,
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              colorName,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: isSelected
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                                color: isSelected
+                                                    ? Colors.blue.shade900
+                                                    : Colors.black87,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          colorName,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                            color: isSelected
-                                                ? Colors.blue.shade900
-                                                : Colors.black87,
-                                          ),
-                                        ),
-                                      ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                      );
+                    },
+                  ),
+                ] else
+                  ...[
+                    // اختيار مقاس البارداج المتوفر في قاعدة البيانات
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12, bottom: 6),
+                      child: Text(
+                        'مقاس وسماكة البارداج:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                    Builder(
+                      builder: (context) {
+                        // 1. نبحث أولاً في بروفيلات السيستم/السلسلة الحالية عن قطاع بارداج
+                        final bardageSections =
+                        (activeSeriesForSystem?.sections ?? []).where((s) {
+                          final t = s.type.toLowerCase().trim();
+                          final n = s.name.toLowerCase().trim();
+                          return t == 'bardage' ||
+                              t.contains('bardage') ||
+                              t.contains('بارداج') ||
+                              t.contains('بارداش') ||
+                              n.contains('bardage') ||
+                              n.contains('بارداج') ||
+                              n.contains('بارداش');
+                        }).toList();
+
+                        final List<Map<String, dynamic>> productsList = [];
+
+                        if (bardageSections.isNotEmpty) {
+                          for (var s in bardageSections) {
+                            productsList.add(
+                                {...s.toMap(), 'is_profile': true});
+                          }
+                        }
+
+                        final savedProductId = spec.panneauProductId;
+                        final int? currentProductId =
+                        productsList.any((p) => p['id'] == savedProductId)
+                            ? savedProductId
+                            : (productsList.isNotEmpty
+                            ? productsList.first['id'] as int?
+                            : null);
+
+                        if (productsList.isEmpty) {
+                          return Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.red.shade100),
+                            ),
+                            child: const Text(
+                              'أضف بروفيل بارداش إلى هذه السيري وحدد عرضه الظاهر وسمكه وطول بارته ليتم الحساب.',
+                              style: TextStyle(fontSize: 9, color: Colors.red),
+                            ),
+                          );
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: currentProductId,
+                              isExpanded: true,
+                              icon: const Icon(
+                                Icons.arrow_drop_down,
+                                color: Colors.blue,
+                              ),
+                              items: productsList.map((p) {
+                                final name = p['name']?.toString() ?? 'بارداج';
+                                final double dbVw =
+                                    (p['visible_width'] as num?)?.toDouble() ??
+                                        0.0;
+                                final double dbThick =
+                                    (p['thickness'] as num?)?.toDouble() ??
+                                        24.0;
+                                final double visibleW = dbVw > 0
+                                    ? dbVw
+                                    : dbThick;
+                                final double thickness = dbThick;
+                                return DropdownMenuItem<int>(
+                                  value: p['id'] as int?,
+                                  child: Text(
+                                    '$name - العرض: ${visibleW.toStringAsFixed(
+                                        0)} مم (السمك: ${thickness
+                                        .toStringAsFixed(0)} مم)',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 );
                               }).toList(),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ] else ...[
-                  // اختيار مقاس البارداج المتوفر في قاعدة البيانات
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12, bottom: 6),
-                    child: Text(
-                      'مقاس وسماكة البارداج:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                  Builder(
-                    builder: (context) {
-                      // 1. نبحث أولاً في بروفيلات السيستم/السلسلة الحالية عن قطاع بارداج
-                      final bardageSections =
-                          (activeSeriesForSystem?.sections ?? []).where((s) {
-                            final t = s.type.toLowerCase().trim();
-                            final n = s.name.toLowerCase().trim();
-                            return t == 'bardage' ||
-                                t.contains('bardage') ||
-                                t.contains('بارداج') ||
-                                t.contains('بارداش') ||
-                                n.contains('bardage') ||
-                                n.contains('بارداج') ||
-                                n.contains('بارداش');
-                          }).toList();
-
-                      final List<Map<String, dynamic>> productsList = [];
-
-                      if (bardageSections.isNotEmpty) {
-                        for (var s in bardageSections) {
-                          productsList.add({...s.toMap(), 'is_profile': true});
-                        }
-                      }
-
-                      final savedProductId = spec.panneauProductId;
-                      final int? currentProductId =
-                          productsList.any((p) => p['id'] == savedProductId)
-                          ? savedProductId
-                          : (productsList.isNotEmpty
-                                ? productsList.first['id'] as int?
-                                : null);
-
-                      if (productsList.isEmpty) {
-                        return Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade50,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.red.shade100),
-                          ),
-                          child: const Text(
-                            'أضف بروفيل بارداش إلى هذه السيري وحدد عرضه الظاهر وسمكه وطول بارته ليتم الحساب.',
-                            style: TextStyle(fontSize: 9, color: Colors.red),
-                          ),
-                        );
-                      }
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: currentProductId,
-                            isExpanded: true,
-                            icon: const Icon(
-                              Icons.arrow_drop_down,
-                              color: Colors.blue,
-                            ),
-                            items: productsList.map((p) {
-                              final name = p['name']?.toString() ?? 'بارداج';
-                              final double dbVw =
-                                  (p['visible_width'] as num?)?.toDouble() ??
-                                  0.0;
-                              final double dbThick =
-                                  (p['thickness'] as num?)?.toDouble() ?? 24.0;
-                              final double visibleW = dbVw > 0 ? dbVw : dbThick;
-                              final double thickness = dbThick;
-                              return DropdownMenuItem<int>(
-                                value: p['id'] as int?,
-                                child: Text(
-                                  '$name - العرض: ${visibleW.toStringAsFixed(0)} مم (السمك: ${thickness.toStringAsFixed(0)} مم)',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (val) async {
-                              if (val != null) {
-                                final chosen = productsList.firstWhere(
-                                  (p) => p['id'] == val,
-                                );
-                                final rawThickness = chosen['thickness'];
-                                final profileThickness = rawThickness is num
-                                    ? rawThickness.toDouble()
-                                    : double.tryParse(
-                                            rawThickness?.toString() ?? '',
-                                          ) ??
-                                          0.0;
-                                final newSpec = spec.copyWith(
-                                  panneauProductId: val,
-                                  thicknessOuter: profileThickness,
-                                );
-
-                                if (chosen['is_profile'] == true) {
-                                  final mutableChosen =
-                                      Map<String, dynamic>.from(chosen);
-                                  widget
-                                          .model
-                                          .componentOverrides['البارداج (Bardage)'] =
-                                      mutableChosen;
-                                  await widget.model
-                                      .refreshBardageColorPrices();
-                                } else {
-                                  widget.model.componentOverrides.remove(
-                                    'البارداج (Bardage)',
+                              onChanged: (val) async {
+                                if (val != null) {
+                                  final chosen = productsList.firstWhere(
+                                        (p) => p['id'] == val,
                                   );
-                                }
-
-                                if (zone != null) {
-                                  widget.model.updateSelectedZoneGlass(
+                                  final rawThickness = chosen['thickness'];
+                                  final profileThickness = rawThickness is num
+                                      ? rawThickness.toDouble()
+                                      : double.tryParse(
+                                    rawThickness?.toString() ?? '',
+                                  ) ??
+                                      0.0;
+                                  final newSpec = spec.copyWith(
                                     panneauProductId: val,
                                     thicknessOuter: profileThickness,
                                   );
-                                } else {
-                                  setState(() {
-                                    _tempGlassSpec = newSpec;
-                                  });
-                                }
-                                _startPaintbrushMode(glassSpec: newSpec);
-                              }
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
 
-                  // البارداج يأخذ ألوان البروفيلات (السيري)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8, bottom: 8),
-                    child: Text(
-                      'لون البارداج:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
+                                  if (chosen['is_profile'] == true) {
+                                    final mutableChosen =
+                                    Map<String, dynamic>.from(chosen);
+                                    widget
+                                        .model
+                                        .componentOverrides['البارداج (Bardage)'] =
+                                        mutableChosen;
+                                    await widget.model
+                                        .refreshBardageColorPrices();
+                                  } else {
+                                    widget.model.componentOverrides.remove(
+                                      'البارداج (Bardage)',
+                                    );
+                                  }
+
+                                  if (zone != null) {
+                                    widget.model.updateSelectedZoneGlass(
+                                      panneauProductId: val,
+                                      thicknessOuter: profileThickness,
+                                    );
+                                  } else {
+                                    setState(() {
+                                      _tempGlassSpec = newSpec;
+                                    });
+                                  }
+                                  _startPaintbrushMode(glassSpec: newSpec);
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+
+                    // البارداج يأخذ ألوان البروفيلات (السيري)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8, bottom: 8),
+                      child: Text(
+                        'لون البارداج:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
                       ),
                     ),
-                  ),
-                  Builder(
-                    builder: (context) {
-                      final colorList = widget.model.availableColors;
-                      final frameColorName =
-                          (widget.model.selectedDbColor?['name'] ??
-                                  widget.model.selectedDbColor?['color_name'] ??
-                                  widget.model.frameColor.name)
-                              .toString()
-                              .trim();
-                      final effectiveColorName = widget.model
-                          .getBardageColorNameForSpec(spec);
+                    Builder(
+                      builder: (context) {
+                        final colorList = widget.model.availableColors;
+                        final frameColorName =
+                        (widget.model.selectedDbColor?['name'] ??
+                            widget.model.selectedDbColor?['color_name'] ??
+                            widget.model.frameColor.name)
+                            .toString()
+                            .trim();
+                        final effectiveColorName = widget.model
+                            .getBardageColorNameForSpec(spec);
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _HorizontalWheelScrollArea(
-                            builder: (context, controller) =>
-                                SingleChildScrollView(
-                                  controller: controller,
-                                  scrollDirection: Axis.horizontal,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 4,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            right: 10,
-                                          ),
-                                          child: ChoiceChip(
-                                            label: Text(
-                                              'تلقائي: $frameColorName',
-                                              style: const TextStyle(
-                                                fontSize: 9,
-                                              ),
-                                            ),
-                                            avatar: const Icon(
-                                              Icons.sync_rounded,
-                                              size: 16,
-                                            ),
-                                            selected:
-                                                spec.bardageUsesFrameColor,
-                                            onSelected: (_) async {
-                                              final newSpec = spec.copyWith(
-                                                panneauColor: frameColorName,
-                                                bardageUsesFrameColor: true,
-                                              );
-                                              if (zone != null) {
-                                                await widget.model
-                                                    .updateSelectedZoneGlass(
-                                                      panneauColor:
-                                                          frameColorName,
-                                                      bardageUsesFrameColor:
-                                                          true,
-                                                    );
-                                              } else {
-                                                setState(() {
-                                                  _tempGlassSpec = newSpec;
-                                                });
-                                              }
-                                              _startPaintbrushMode(
-                                                glassSpec: newSpec,
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        ...colorList.map((colorMap) {
-                                          final colorName =
-                                              (colorMap['name'] ??
-                                                      colorMap['color_name'] ??
-                                                      '')
-                                                  .toString();
-                                          final isSelected =
-                                              !spec.bardageUsesFrameColor &&
-                                              effectiveColorName
-                                                      .toLowerCase() ==
-                                                  colorName.toLowerCase();
-                                          final woodImage =
-                                              _getWoodTextureImage(colorMap);
-                                          final parsedColor =
-                                              getEffectiveGradientColors(
-                                                FrameColor.white,
-                                                colorMap,
-                                              )[1];
-
-                                          return Padding(
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _HorizontalWheelScrollArea(
+                              builder: (context, controller) =>
+                                  SingleChildScrollView(
+                                    controller: controller,
+                                    scrollDirection: Axis.horizontal,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Padding(
                                             padding: const EdgeInsets.only(
                                               right: 10,
                                             ),
-                                            child: GestureDetector(
-                                              onTap: () async {
+                                            child: ChoiceChip(
+                                              label: Text(
+                                                'تلقائي: $frameColorName',
+                                                style: const TextStyle(
+                                                  fontSize: 9,
+                                                ),
+                                              ),
+                                              avatar: const Icon(
+                                                Icons.sync_rounded,
+                                                size: 16,
+                                              ),
+                                              selected:
+                                              spec.bardageUsesFrameColor,
+                                              onSelected: (_) async {
                                                 final newSpec = spec.copyWith(
-                                                  panneauColor: colorName,
-                                                  bardageUsesFrameColor: false,
+                                                  panneauColor: frameColorName,
+                                                  bardageUsesFrameColor: true,
                                                 );
                                                 if (zone != null) {
                                                   await widget.model
                                                       .updateSelectedZoneGlass(
-                                                        panneauColor: colorName,
-                                                        bardageUsesFrameColor:
-                                                            false,
-                                                      );
+                                                    panneauColor:
+                                                    frameColorName,
+                                                    bardageUsesFrameColor:
+                                                    true,
+                                                  );
                                                 } else {
                                                   setState(() {
                                                     _tempGlassSpec = newSpec;
@@ -6003,378 +6081,456 @@ class _WindowViewState extends State<WindowView> {
                                                   glassSpec: newSpec,
                                                 );
                                               },
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Container(
-                                                    width: isSelected ? 34 : 28,
-                                                    height: isSelected
-                                                        ? 34
-                                                        : 28,
-                                                    decoration: BoxDecoration(
-                                                      shape: BoxShape.circle,
-                                                      color: woodImage != null
-                                                          ? null
-                                                          : parsedColor,
-                                                      image: woodImage,
-                                                      border: Border.all(
-                                                        color: isSelected
-                                                            ? Colors.blue
-                                                            : Colors
-                                                                  .grey
-                                                                  .shade400,
-                                                        width: isSelected
-                                                            ? 2.5
-                                                            : 1.0,
-                                                      ),
-                                                      boxShadow: [
-                                                        if (isSelected)
-                                                          BoxShadow(
-                                                            color: Colors.blue
-                                                                .withOpacity(
-                                                                  0.3,
-                                                                ),
-                                                            blurRadius: 4,
-                                                            spreadRadius: 1,
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  SizedBox(
-                                                    width: 42,
-                                                    child: Text(
-                                                      colorName,
-                                                      textAlign:
-                                                          TextAlign.center,
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight: isSelected
-                                                            ? FontWeight.bold
-                                                            : FontWeight.normal,
-                                                        color: isSelected
-                                                            ? Colors
-                                                                  .blue
-                                                                  .shade900
-                                                            : Colors.black87,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
                                             ),
-                                          );
-                                        }),
-                                      ],
+                                          ),
+                                          ...colorList.map((colorMap) {
+                                            final colorName =
+                                            (colorMap['name'] ??
+                                                colorMap['color_name'] ??
+                                                '')
+                                                .toString();
+                                            final isSelected =
+                                                !spec.bardageUsesFrameColor &&
+                                                    effectiveColorName
+                                                        .toLowerCase() ==
+                                                        colorName.toLowerCase();
+                                            final woodImage =
+                                            _getWoodTextureImage(colorMap);
+                                            final parsedColor =
+                                            getEffectiveGradientColors(
+                                              FrameColor.white,
+                                              colorMap,
+                                            )[1];
+
+                                            return Padding(
+                                              padding: const EdgeInsets.only(
+                                                right: 10,
+                                              ),
+                                              child: GestureDetector(
+                                                onTap: () async {
+                                                  final newSpec = spec.copyWith(
+                                                    panneauColor: colorName,
+                                                    bardageUsesFrameColor: false,
+                                                  );
+                                                  if (zone != null) {
+                                                    await widget.model
+                                                        .updateSelectedZoneGlass(
+                                                      panneauColor: colorName,
+                                                      bardageUsesFrameColor:
+                                                      false,
+                                                    );
+                                                  } else {
+                                                    setState(() {
+                                                      _tempGlassSpec = newSpec;
+                                                    });
+                                                  }
+                                                  _startPaintbrushMode(
+                                                    glassSpec: newSpec,
+                                                  );
+                                                },
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize
+                                                      .min,
+                                                  children: [
+                                                    Container(
+                                                      width: isSelected
+                                                          ? 34
+                                                          : 28,
+                                                      height: isSelected
+                                                          ? 34
+                                                          : 28,
+                                                      decoration: BoxDecoration(
+                                                        shape: BoxShape.circle,
+                                                        color: woodImage != null
+                                                            ? null
+                                                            : parsedColor,
+                                                        image: woodImage,
+                                                        border: Border.all(
+                                                          color: isSelected
+                                                              ? Colors.blue
+                                                              : Colors
+                                                              .grey
+                                                              .shade400,
+                                                          width: isSelected
+                                                              ? 2.5
+                                                              : 1.0,
+                                                        ),
+                                                        boxShadow: [
+                                                          if (isSelected)
+                                                            BoxShadow(
+                                                              color: Colors.blue
+                                                                  .withOpacity(
+                                                                0.3,
+                                                              ),
+                                                              blurRadius: 4,
+                                                              spreadRadius: 1,
+                                                            ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    SizedBox(
+                                                      width: 42,
+                                                      child: Text(
+                                                        colorName,
+                                                        textAlign:
+                                                        TextAlign.center,
+                                                        maxLines: 2,
+                                                        overflow:
+                                                        TextOverflow.ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight: isSelected
+                                                              ? FontWeight.bold
+                                                              : FontWeight
+                                                              .normal,
+                                                          color: isSelected
+                                                              ? Colors
+                                                              .blue
+                                                              .shade900
+                                                              : Colors.black87,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                          ),
-                          if (colorList.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                'لا توجد ألوان مضافة لهذه السلسلة.',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.red,
-                                ),
-                              ),
                             ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'اتجاه شرائح البارداج:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _ContentButton(
-                                  label: 'أفقي',
-                                  icon: Icons.reorder_rounded,
-                                  selected: !(spec.isVerticalBardage),
-                                  onPressed: () {
-                                    final newSpec = spec.copyWith(
-                                      isVerticalBardage: false,
-                                    );
-                                    if (zone != null &&
-                                        widget.model.activeSubZone != null) {
-                                      widget.model.updateSelectedZoneGlass(
-                                        isVerticalBardage: false,
-                                      );
-                                    } else {
-                                      setState(() {
-                                        _tempGlassSpec = newSpec;
-                                      });
-                                    }
-                                    _startPaintbrushMode(glassSpec: newSpec);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _ContentButton(
-                                  label: 'عمودي',
-                                  icon: Icons.view_week_rounded,
-                                  selected: spec.isVerticalBardage,
-                                  onPressed: () {
-                                    final newSpec = spec.copyWith(
-                                      isVerticalBardage: true,
-                                    );
-                                    if (zone != null &&
-                                        widget.model.activeSubZone != null) {
-                                      widget.model.updateSelectedZoneGlass(
-                                        isVerticalBardage: true,
-                                      );
-                                    } else {
-                                      setState(() {
-                                        _tempGlassSpec = newSpec;
-                                      });
-                                    }
-                                    _startPaintbrushMode(glassSpec: newSpec);
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.orange.shade200),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.view_stream_rounded,
-                                  size: 12,
-                                  color: Colors.orange,
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'يُحسب بالمتر الطولي كبروفيل',
+                            if (colorList.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  'لا توجد ألوان مضافة لهذه السلسلة.',
                                   style: TextStyle(
                                     fontSize: 9,
-                                    color: Colors.orange,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'اتجاه شرائح البارداج:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _ContentButton(
+                                    label: 'أفقي',
+                                    icon: Icons.reorder_rounded,
+                                    selected: !(spec.isVerticalBardage),
+                                    onPressed: () {
+                                      final newSpec = spec.copyWith(
+                                        isVerticalBardage: false,
+                                      );
+                                      if (zone != null &&
+                                          widget.model.activeSubZone != null) {
+                                        widget.model.updateSelectedZoneGlass(
+                                          isVerticalBardage: false,
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _tempGlassSpec = newSpec;
+                                        });
+                                      }
+                                      _startPaintbrushMode(glassSpec: newSpec);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _ContentButton(
+                                    label: 'عمودي',
+                                    icon: Icons.view_week_rounded,
+                                    selected: spec.isVerticalBardage,
+                                    onPressed: () {
+                                      final newSpec = spec.copyWith(
+                                        isVerticalBardage: true,
+                                      );
+                                      if (zone != null &&
+                                          widget.model.activeSubZone != null) {
+                                        widget.model.updateSelectedZoneGlass(
+                                          isVerticalBardage: true,
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _tempGlassSpec = newSpec;
+                                        });
+                                      }
+                                      _startPaintbrushMode(glassSpec: newSpec);
+                                    },
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ] else if (structure == GlassStructure.double) ...[
-                const Divider(),
-                const Text(
-                  "الوجه الخارجي",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                    fontSize: 12,
-                  ),
-                ),
-                buildGlassLayer(true),
-                const SizedBox(height: 8),
-                const Divider(),
-                const Text(
-                  "الوجه الداخلي",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                    fontSize: 12,
-                  ),
-                ),
-                buildGlassLayer(false),
-                const SizedBox(height: 12),
-                const Text(
-                  "سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                if (requiredIntercall == null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.',
-                      style: TextStyle(
-                        color: Colors.red.shade700,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                    color: Colors.orange.shade200),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.view_stream_rounded,
+                                    size: 12,
+                                    color: Colors.orange,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'يُحسب بالمتر الطولي كبروفيل',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+              ] else
+                if (structure == GlassStructure.double) ...[
+                  const Divider(),
+                  const Text(
+                    "الوجه الخارجي",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                      fontSize: 12,
                     ),
                   ),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: intercallChoices.map((g) {
-                    int val = (g['thickness'] as num?)?.toInt() ?? 0;
-                    return _IntercallButton(
-                      thickness: val,
-                      selected: spec.intercallThickness == val,
-                      showWarning:
-                          widget.model.getPriceForIntercall(val) == 0.0,
-                      onPressed: () {
-                        final double tOuter =
-                            spec.thicknessOuter ?? kDefaultGlassPaneThickness;
-                        final double tInner =
-                            spec.thicknessInner ?? kDefaultGlassPaneThickness;
-                        String? warning;
-                        if (requiredIntercall == null) {
-                          warning =
-                              'تنبيه: لا توجد Parclose مطابقة تلقائياً لسماكة لوحي الزجاج. تحقق من الطلب قبل اعتماده.';
-                        } else if (val != requiredIntercall) {
-                          warning =
-                              'تنبيه: السماكة المقترحة مع Parclose هي $requiredIntercall مم، وتم اختيار $val مم يدوياً.';
-                        }
-                        if (!isDoubleGlassValid(
-                          tOuter,
-                          val,
-                          tInner,
-                          spec.jointTwoSides,
-                          widget.model,
-                          widget.systemMode,
-                        )) {
-                          warning =
-                              '${warning == null ? '' : '$warning\n'}تنبيه: سماكة الزجاج المختارة (${tOuter + val + tInner} مم) تتجاوز قيود الجوان في السلسلة.';
-                        }
-                        final newSpec = spec.copyWith(intercallThickness: val);
-                        if (zone != null) {
-                          widget.model.updateSelectedZoneGlass(
-                            intercallThickness: val,
-                          );
-                        } else {
-                          setState(() {
-                            _tempGlassSpec = newSpec;
-                          });
-                        }
-                        _startPaintbrushMode(glassSpec: newSpec);
-                        if (warning != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(warning),
-                              backgroundColor: Colors.orange.shade800,
-                            ),
-                          );
-                        }
-                      },
-                    );
-                  }).toList(),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.air_rounded,
-                        color: Colors.blue,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'يحتوي على غاز (Gas)',
+                  buildGlassLayer(true),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const Text(
+                    "الوجه الداخلي",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                      fontSize: 12,
+                    ),
+                  ),
+                  buildGlassLayer(false),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (requiredIntercall == null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.',
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                          color: Colors.red.shade700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const Spacer(),
-                      Switch(
-                        value: spec.hasGas,
-                        activeThumbColor: Colors.blue,
-                        onChanged: (val) {
-                          final newSpec = spec.copyWith(hasGas: val);
+                    ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: intercallChoices.map((g) {
+                      int val = (g['thickness'] as num?)?.toInt() ?? 0;
+                      return _IntercallButton(
+                        thickness: val,
+                        selected: spec.intercallThickness == val,
+                        showWarning:
+                        widget.model.getPriceForIntercall(val) == 0.0,
+                        onPressed: () {
+                          final double tOuter =
+                              spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+                          final double tInner =
+                              spec.thicknessInner ?? kDefaultGlassPaneThickness;
+                          String? warning;
+                          if (requiredIntercall == null) {
+                            warning =
+                            'تنبيه: لا توجد Parclose مطابقة تلقائياً لسماكة لوحي الزجاج. تحقق من الطلب قبل اعتماده.';
+                          } else if (val != requiredIntercall) {
+                            warning =
+                            'تنبيه: السماكة المقترحة مع Parclose هي $requiredIntercall مم، وتم اختيار $val مم يدوياً.';
+                          }
+                          if (!isDoubleGlassValid(
+                            tOuter,
+                            val,
+                            tInner,
+                            spec.jointTwoSides,
+                            widget.model,
+                            widget.systemMode,
+                          )) {
+                            warning =
+                            '${warning == null
+                                ? ''
+                                : '$warning\n'}تنبيه: سماكة الزجاج المختارة (${tOuter +
+                                val +
+                                tInner} مم) تتجاوز قيود الجوان في السلسلة.';
+                          }
+                          final newSpec = spec.copyWith(
+                              intercallThickness: val);
                           if (zone != null) {
-                            widget.model.updateSelectedZoneGlass(hasGas: val);
+                            widget.model.updateSelectedZoneGlass(
+                              intercallThickness: val,
+                            );
                           } else {
                             setState(() {
                               _tempGlassSpec = newSpec;
                             });
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
+                          if (warning != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(warning),
+                                backgroundColor: Colors.orange.shade800,
+                              ),
+                            );
+                          }
                         },
-                      ),
-                    ],
+                      );
+                    }).toList(),
                   ),
-                ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "ديكور الزجاج المزدوج (ورود):",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                        fontSize: 12,
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                    child: Row(
                       children: [
+                        const Icon(
+                          Icons.air_rounded,
+                          color: Colors.blue,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
                         const Text(
-                          "وردات",
+                          'يحتوي على غاز (Gas)',
                           style: TextStyle(
-                            fontSize: 11,
                             fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
                         ),
-                        Checkbox(
-                          value: spec.hasRosettes,
-                          activeColor: Colors.blue,
-                          visualDensity: VisualDensity.compact,
+                        const Spacer(),
+                        Switch(
+                          value: spec.hasGas,
+                          activeThumbColor: Colors.blue,
                           onChanged: (val) {
-                            if (val != null) {
-                              final newSpec = spec.copyWith(hasRosettes: val);
-                              if (zone != null) {
-                                widget.model.updateSelectedZoneGlassDecor(
-                                  hasRosettes: val,
-                                );
-                              } else {
-                                setState(() => _tempGlassSpec = newSpec);
-                              }
-                              _startPaintbrushMode(glassSpec: newSpec);
+                            final newSpec = spec.copyWith(hasGas: val);
+                            if (zone != null) {
+                              widget.model.updateSelectedZoneGlass(hasGas: val);
+                            } else {
+                              setState(() {
+                                _tempGlassSpec = newSpec;
+                              });
                             }
+                            _startPaintbrushMode(glassSpec: newSpec);
                           },
                         ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Text(
-                      Localization.translate('أفقي:', lang),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.remove, size: 16),
-                      onPressed: () {
-                        if (spec.decorH > 0) {
+                  ),
+                  const Divider(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "ديكور الزجاج المزدوج (ورود):",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "وردات",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Checkbox(
+                            value: spec.hasRosettes,
+                            activeColor: Colors.blue,
+                            visualDensity: VisualDensity.compact,
+                            onChanged: (val) {
+                              if (val != null) {
+                                final newSpec = spec.copyWith(hasRosettes: val);
+                                if (zone != null) {
+                                  widget.model.updateSelectedZoneGlassDecor(
+                                    hasRosettes: val,
+                                  );
+                                } else {
+                                  setState(() => _tempGlassSpec = newSpec);
+                                }
+                                _startPaintbrushMode(glassSpec: newSpec);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Text(
+                        Localization.translate('أفقي:', lang),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.remove, size: 16),
+                        onPressed: () {
+                          if (spec.decorH > 0) {
+                            final newSpec = spec.copyWith(
+                              decorH: spec.decorH - 1,
+                            );
+                            if (zone != null) {
+                              widget.model.updateSelectedZoneGlassDecor(
+                                decorH: newSpec.decorH,
+                              );
+                            } else {
+                              setState(() => _tempGlassSpec = newSpec);
+                            }
+                            _startPaintbrushMode(glassSpec: newSpec);
+                          }
+                        },
+                      ),
+                      Text(
+                        '${spec.decorH}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, size: 16),
+                        onPressed: () {
                           final newSpec = spec.copyWith(
-                            decorH: spec.decorH - 1,
-                          );
+                              decorH: spec.decorH + 1);
                           if (zone != null) {
                             widget.model.updateSelectedZoneGlassDecor(
                               decorH: newSpec.decorH,
@@ -6383,43 +6539,44 @@ class _WindowViewState extends State<WindowView> {
                             setState(() => _tempGlassSpec = newSpec);
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
-                        }
-                      },
-                    ),
-                    Text(
-                      '${spec.decorH}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 16),
-                      onPressed: () {
-                        final newSpec = spec.copyWith(decorH: spec.decorH + 1);
-                        if (zone != null) {
-                          widget.model.updateSelectedZoneGlassDecor(
-                            decorH: newSpec.decorH,
-                          );
-                        } else {
-                          setState(() => _tempGlassSpec = newSpec);
-                        }
-                        _startPaintbrushMode(glassSpec: newSpec);
-                      },
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Text(
-                      Localization.translate('عمودي:', lang),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.remove, size: 16),
-                      onPressed: () {
-                        if (spec.decorV > 0) {
+                        },
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        Localization.translate('عمودي:', lang),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.remove, size: 16),
+                        onPressed: () {
+                          if (spec.decorV > 0) {
+                            final newSpec = spec.copyWith(
+                              decorV: spec.decorV - 1,
+                            );
+                            if (zone != null) {
+                              widget.model.updateSelectedZoneGlassDecor(
+                                decorV: newSpec.decorV,
+                              );
+                            } else {
+                              setState(() => _tempGlassSpec = newSpec);
+                            }
+                            _startPaintbrushMode(glassSpec: newSpec);
+                          }
+                        },
+                      ),
+                      Text(
+                        '${spec.decorV}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, size: 16),
+                        onPressed: () {
                           final newSpec = spec.copyWith(
-                            decorV: spec.decorV - 1,
-                          );
+                              decorV: spec.decorV + 1);
                           if (zone != null) {
                             widget.model.updateSelectedZoneGlassDecor(
                               decorV: newSpec.decorV,
@@ -6428,266 +6585,80 @@ class _WindowViewState extends State<WindowView> {
                             setState(() => _tempGlassSpec = newSpec);
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
-                        }
-                      },
-                    ),
-                    Text(
-                      '${spec.decorV}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 16),
-                      onPressed: () {
-                        final newSpec = spec.copyWith(decorV: spec.decorV + 1);
-                        if (zone != null) {
-                          widget.model.updateSelectedZoneGlassDecor(
-                            decorV: newSpec.decorV,
-                          );
-                        } else {
-                          setState(() => _tempGlassSpec = newSpec);
-                        }
-                        _startPaintbrushMode(glassSpec: newSpec);
-                      },
-                    ),
-                  ],
-                ),
-                Builder(
-                  builder: (context) {
-                    final baguettes = widget.model.allGlassCache
-                        .where(
-                          (g) => g['type'].toString().toLowerCase().contains(
-                            'baguette',
-                          ),
-                        )
-                        .toList();
-
-                    if (baguettes.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8.0),
-                        child: Text(
-                          'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
-                          style: TextStyle(color: Colors.red, fontSize: 11),
-                        ),
-                      );
-                    }
-
-                    // Safe int id extraction
-                    int? specBaguetteId = (spec.decorBaguetteId is int)
-                        ? spec.decorBaguetteId as int
-                        : int.tryParse(spec.decorBaguetteId?.toString() ?? '');
-
-                    var selectedBaguette = baguettes.firstWhere(
-                      (b) => (b['id'] as num?)?.toInt() == specBaguetteId,
-                      orElse: () => baguettes.first,
-                    );
-
-                    final int selectedBaguetteId =
-                        (selectedBaguette['id'] as num?)?.toInt() ??
-                        (baguettes.first['id'] as num?)?.toInt() ??
-                        0;
-
-                    List<String> allowedColors = widget.model.allGlassCache
-                        .where(
-                          (g) =>
-                              (g['id'] as num?)?.toInt() == selectedBaguetteId,
-                        )
-                        .map((g) => g['color']?.toString() ?? '')
-                        .where((c) => c.isNotEmpty)
-                        .toList();
-                    if (allowedColors.isEmpty) {
-                      allowedColors = ['أبيض', 'ذهبي', 'فضي', 'رمادي'];
-                    }
-
-                    String currentDecorColor = spec.decorColor;
-                    if (!allowedColors.contains(currentDecorColor)) {
-                      currentDecorColor = allowedColors.first;
-                    }
-
-                    // Build unique items lists (no duplicate ids)
-                    final List<int> baguetteIds = [];
-                    final List<Map<String, dynamic>> uniqueBaguettes = [];
-                    for (final b in baguettes) {
-                      final id = (b['id'] as num?)?.toInt();
-                      if (id != null && !baguetteIds.contains(id)) {
-                        baguetteIds.add(id);
-                        uniqueBaguettes.add(b);
-                      }
-                    }
-
-                    // Ensure selected value is in list
-                    final int safeSelectedId =
-                        baguetteIds.contains(selectedBaguetteId)
-                        ? selectedBaguetteId
-                        : (baguetteIds.isNotEmpty ? baguetteIds.first : 0);
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'نوع الباجيت:',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<int>(
-                                  isExpanded: true,
-                                  value: safeSelectedId,
-                                  items: uniqueBaguettes.map((b) {
-                                    final id = (b['id'] as num?)?.toInt() ?? 0;
-                                    return DropdownMenuItem<int>(
-                                      value: id,
-                                      child: Text(
-                                        '${b['name']} (${b['thickness']} مم)',
-                                        style: const TextStyle(fontSize: 12),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (val) {
-                                    if (val != null) {
-                                      final newBaguette = uniqueBaguettes
-                                          .firstWhere(
-                                            (b) =>
-                                                (b['id'] as num?)?.toInt() ==
-                                                val,
-                                            orElse: () => uniqueBaguettes.first,
-                                          );
-                                      final double newThickness =
-                                          (newBaguette['thickness'] as num?)
-                                              ?.toDouble() ??
-                                          0.0;
-                                      final allowedColorsList =
-                                          (newBaguette['color']?.toString() ??
-                                                  '')
-                                              .split(',')
-                                              .map((c) => c.trim())
-                                              .where((c) => c.isNotEmpty)
-                                              .toList();
-                                      final String newColor =
-                                          allowedColorsList.isNotEmpty
-                                          ? allowedColorsList.first
-                                          : 'أبيض';
-
-                                      final newSpec = spec.copyWith(
-                                        decorBaguetteId: val,
-                                        decorThickness: newThickness,
-                                        decorColor: newColor,
-                                      );
-
-                                      if (zone != null) {
-                                        widget.model
-                                            .updateSelectedZoneGlassDecor(
-                                              decorBaguetteId: val,
-                                              decorThickness: newThickness,
-                                              decorColor: newColor,
-                                            );
-                                      } else {
-                                        setState(
-                                          () => _tempGlassSpec = newSpec,
-                                        );
-                                      }
-                                      _startPaintbrushMode(glassSpec: newSpec);
-                                    }
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            const Text(
-                              'اللون:',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            const Spacer(),
-                            DropdownButton<String>(
-                              value: currentDecorColor,
-                              items: allowedColors.map((colorName) {
-                                return DropdownMenuItem<String>(
-                                  value: colorName,
-                                  child: Text(
-                                    colorName,
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  final newSpec = spec.copyWith(
-                                    decorColor: val,
-                                  );
-                                  if (zone != null) {
-                                    widget.model.updateSelectedZoneGlassDecor(
-                                      decorColor: val,
-                                    );
-                                  } else {
-                                    setState(() => _tempGlassSpec = newSpec);
-                                  }
-                                  _startPaintbrushMode(glassSpec: newSpec);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                if (spec.hasRosettes) ...[
-                  const SizedBox(height: 8),
+                        },
+                      ),
+                    ],
+                  ),
                   Builder(
                     builder: (context) {
-                      final rosettes = widget.model.allGlassCache
+                      final baguettes = widget.model.allGlassCache
                           .where(
-                            (g) => g['type'].toString().toLowerCase().contains(
-                              'rosette',
+                            (g) =>
+                            g['type'].toString().toLowerCase().contains(
+                              'baguette',
                             ),
-                          )
+                      )
                           .toList();
 
-                      if (rosettes.isEmpty) {
+                      if (baguettes.isEmpty) {
                         return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 4.0),
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
                           child: Text(
-                            'لا يوجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                            'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
                             style: TextStyle(color: Colors.red, fontSize: 11),
                           ),
                         );
                       }
 
-                      // Safe int id extraction for rosette
-                      int? specRosetteId = (spec.decorRosetteId is int)
-                          ? spec.decorRosetteId as int
-                          : int.tryParse(spec.decorRosetteId?.toString() ?? '');
+                      // Safe int id extraction
+                      int? specBaguetteId = (spec.decorBaguetteId is int)
+                          ? spec.decorBaguetteId as int
+                          : int.tryParse(spec.decorBaguetteId?.toString() ??
+                          '');
 
-                      // Build unique rosette items (no duplicate ids)
-                      final List<int> rosetteIds = [];
-                      final List<Map<String, dynamic>> uniqueRosettes = [];
-                      for (final r in rosettes) {
-                        final id = (r['id'] as num?)?.toInt();
-                        if (id != null && !rosetteIds.contains(id)) {
-                          rosetteIds.add(id);
-                          uniqueRosettes.add(r);
+                      var selectedBaguette = baguettes.firstWhere(
+                            (b) => (b['id'] as num?)?.toInt() == specBaguetteId,
+                        orElse: () => baguettes.first,
+                      );
+
+                      final int selectedBaguetteId =
+                          (selectedBaguette['id'] as num?)?.toInt() ??
+                              (baguettes.first['id'] as num?)?.toInt() ??
+                              0;
+
+                      List<String> allowedColors = widget.model.allGlassCache
+                          .where(
+                            (g) =>
+                        (g['id'] as num?)?.toInt() == selectedBaguetteId,
+                      )
+                          .map((g) => g['color']?.toString() ?? '')
+                          .where((c) => c.isNotEmpty)
+                          .toList();
+                      if (allowedColors.isEmpty) {
+                        allowedColors = ['أبيض', 'ذهبي', 'فضي', 'رمادي'];
+                      }
+
+                      String currentDecorColor = spec.decorColor;
+                      if (!allowedColors.contains(currentDecorColor)) {
+                        currentDecorColor = allowedColors.first;
+                      }
+
+                      // Build unique items lists (no duplicate ids)
+                      final List<int> baguetteIds = [];
+                      final List<Map<String, dynamic>> uniqueBaguettes = [];
+                      for (final b in baguettes) {
+                        final id = (b['id'] as num?)?.toInt();
+                        if (id != null && !baguetteIds.contains(id)) {
+                          baguetteIds.add(id);
+                          uniqueBaguettes.add(b);
                         }
                       }
 
-                      var selectedRosette = uniqueRosettes.firstWhere(
-                        (r) => (r['id'] as num?)?.toInt() == specRosetteId,
-                        orElse: () => uniqueRosettes.first,
-                      );
-
-                      final int selectedRosetteId =
-                          (selectedRosette['id'] as num?)?.toInt() ??
-                          (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
-
-                      final int safeRosetteId =
-                          rosetteIds.contains(selectedRosetteId)
-                          ? selectedRosetteId
-                          : (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
+                      // Ensure selected value is in list
+                      final int safeSelectedId =
+                      baguetteIds.contains(selectedBaguetteId)
+                          ? selectedBaguetteId
+                          : (baguetteIds.isNotEmpty ? baguetteIds.first : 0);
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6695,7 +6666,7 @@ class _WindowViewState extends State<WindowView> {
                           Row(
                             children: [
                               const Text(
-                                'نوع الوردة:',
+                                'نوع الباجيت:',
                                 style: TextStyle(fontSize: 12),
                               ),
                               const SizedBox(width: 8),
@@ -6703,14 +6674,14 @@ class _WindowViewState extends State<WindowView> {
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<int>(
                                     isExpanded: true,
-                                    value: safeRosetteId,
-                                    items: uniqueRosettes.map((r) {
-                                      final id =
-                                          (r['id'] as num?)?.toInt() ?? 0;
+                                    value: safeSelectedId,
+                                    items: uniqueBaguettes.map((b) {
+                                      final id = (b['id'] as num?)?.toInt() ??
+                                          0;
                                       return DropdownMenuItem<int>(
                                         value: id,
                                         child: Text(
-                                          r['name'].toString(),
+                                          '${b['name']} (${b['thickness']} مم)',
                                           style: const TextStyle(fontSize: 12),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -6718,22 +6689,49 @@ class _WindowViewState extends State<WindowView> {
                                     }).toList(),
                                     onChanged: (val) {
                                       if (val != null) {
-                                        final newSpec = spec.copyWith(
-                                          decorRosetteId: val,
+                                        final newBaguette = uniqueBaguettes
+                                            .firstWhere(
+                                              (b) =>
+                                          (b['id'] as num?)?.toInt() ==
+                                              val,
+                                          orElse: () => uniqueBaguettes.first,
                                         );
+                                        final double newThickness =
+                                            (newBaguette['thickness'] as num?)
+                                                ?.toDouble() ??
+                                                0.0;
+                                        final allowedColorsList =
+                                        (newBaguette['color']?.toString() ??
+                                            '')
+                                            .split(',')
+                                            .map((c) => c.trim())
+                                            .where((c) => c.isNotEmpty)
+                                            .toList();
+                                        final String newColor =
+                                        allowedColorsList.isNotEmpty
+                                            ? allowedColorsList.first
+                                            : 'أبيض';
+
+                                        final newSpec = spec.copyWith(
+                                          decorBaguetteId: val,
+                                          decorThickness: newThickness,
+                                          decorColor: newColor,
+                                        );
+
                                         if (zone != null) {
                                           widget.model
                                               .updateSelectedZoneGlassDecor(
-                                                decorRosetteId: val,
-                                              );
+                                            decorBaguetteId: val,
+                                            decorThickness: newThickness,
+                                            decorColor: newColor,
+                                          );
                                         } else {
                                           setState(
-                                            () => _tempGlassSpec = newSpec,
+                                                () => _tempGlassSpec = newSpec,
                                           );
                                         }
                                         _startPaintbrushMode(
-                                          glassSpec: newSpec,
-                                        );
+                                            glassSpec: newSpec);
                                       }
                                     },
                                   ),
@@ -6741,71 +6739,39 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
                           Row(
                             children: [
                               const Text(
-                                'شكل الوردة:',
+                                'اللون:',
                                 style: TextStyle(fontSize: 12),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<int>(
-                                    isExpanded: true,
-                                    value: spec.rosetteShape,
-                                    items: const [
-                                      DropdownMenuItem(
-                                        value: 1,
-                                        child: Text(
-                                          'شكل 1 (نجمة)',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 2,
-                                        child: Text(
-                                          'شكل 2 (منحني)',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 3,
-                                        child: Text(
-                                          'شكل 3 (باروكي)',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 4,
-                                        child: Text(
-                                          'شكل 4 (معين مصمت)',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                      ),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) {
-                                        final newSpec = spec.copyWith(
-                                          rosetteShape: val,
-                                        );
-                                        if (zone != null) {
-                                          widget.model
-                                              .updateSelectedZoneGlassDecor(
-                                                rosetteShape: val,
-                                              );
-                                        } else {
-                                          setState(
-                                            () => _tempGlassSpec = newSpec,
-                                          );
-                                        }
-                                        _startPaintbrushMode(
-                                          glassSpec: newSpec,
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
+                              const Spacer(),
+                              DropdownButton<String>(
+                                value: currentDecorColor,
+                                items: allowedColors.map((colorName) {
+                                  return DropdownMenuItem<String>(
+                                    value: colorName,
+                                    child: Text(
+                                      colorName,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    final newSpec = spec.copyWith(
+                                      decorColor: val,
+                                    );
+                                    if (zone != null) {
+                                      widget.model.updateSelectedZoneGlassDecor(
+                                        decorColor: val,
+                                      );
+                                    } else {
+                                      setState(() => _tempGlassSpec = newSpec);
+                                    }
+                                    _startPaintbrushMode(glassSpec: newSpec);
+                                  }
+                                },
                               ),
                             ],
                           ),
@@ -6813,11 +6779,194 @@ class _WindowViewState extends State<WindowView> {
                       );
                     },
                   ),
-                ],
-              ] else ...[
-                const SizedBox(height: 8),
-                buildGlassLayer(true),
-              ],
+                  if (spec.hasRosettes) ...[
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final rosettes = widget.model.allGlassCache
+                            .where(
+                              (g) =>
+                              g['type'].toString().toLowerCase().contains(
+                                'rosette',
+                              ),
+                        )
+                            .toList();
+
+                        if (rosettes.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 4.0),
+                            child: Text(
+                              'لا يوجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                              style: TextStyle(color: Colors.red, fontSize: 11),
+                            ),
+                          );
+                        }
+
+                        // Safe int id extraction for rosette
+                        int? specRosetteId = (spec.decorRosetteId is int)
+                            ? spec.decorRosetteId as int
+                            : int.tryParse(
+                            spec.decorRosetteId?.toString() ?? '');
+
+                        // Build unique rosette items (no duplicate ids)
+                        final List<int> rosetteIds = [];
+                        final List<Map<String, dynamic>> uniqueRosettes = [];
+                        for (final r in rosettes) {
+                          final id = (r['id'] as num?)?.toInt();
+                          if (id != null && !rosetteIds.contains(id)) {
+                            rosetteIds.add(id);
+                            uniqueRosettes.add(r);
+                          }
+                        }
+
+                        var selectedRosette = uniqueRosettes.firstWhere(
+                              (r) =>
+                          (r['id'] as num?)?.toInt() == specRosetteId,
+                          orElse: () => uniqueRosettes.first,
+                        );
+
+                        final int selectedRosetteId =
+                            (selectedRosette['id'] as num?)?.toInt() ??
+                                (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
+
+                        final int safeRosetteId =
+                        rosetteIds.contains(selectedRosetteId)
+                            ? selectedRosetteId
+                            : (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  'نوع الوردة:',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<int>(
+                                      isExpanded: true,
+                                      value: safeRosetteId,
+                                      items: uniqueRosettes.map((r) {
+                                        final id =
+                                            (r['id'] as num?)?.toInt() ?? 0;
+                                        return DropdownMenuItem<int>(
+                                          value: id,
+                                          child: Text(
+                                            r['name'].toString(),
+                                            style: const TextStyle(
+                                                fontSize: 12),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          final newSpec = spec.copyWith(
+                                            decorRosetteId: val,
+                                          );
+                                          if (zone != null) {
+                                            widget.model
+                                                .updateSelectedZoneGlassDecor(
+                                              decorRosetteId: val,
+                                            );
+                                          } else {
+                                            setState(
+                                                  () =>
+                                              _tempGlassSpec = newSpec,
+                                            );
+                                          }
+                                          _startPaintbrushMode(
+                                            glassSpec: newSpec,
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Text(
+                                  'شكل الوردة:',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<int>(
+                                      isExpanded: true,
+                                      value: spec.rosetteShape,
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 1,
+                                          child: Text(
+                                            'شكل 1 (نجمة)',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 2,
+                                          child: Text(
+                                            'شكل 2 (منحني)',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 3,
+                                          child: Text(
+                                            'شكل 3 (باروكي)',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 4,
+                                          child: Text(
+                                            'شكل 4 (معين مصمت)',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          final newSpec = spec.copyWith(
+                                            rosetteShape: val,
+                                          );
+                                          if (zone != null) {
+                                            widget.model
+                                                .updateSelectedZoneGlassDecor(
+                                              rosetteShape: val,
+                                            );
+                                          } else {
+                                            setState(
+                                                  () =>
+                                              _tempGlassSpec = newSpec,
+                                            );
+                                          }
+                                          _startPaintbrushMode(
+                                            glassSpec: newSpec,
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ] else
+                  ...[
+                    const SizedBox(height: 8),
+                    buildGlassLayer(true),
+                  ],
             ],
           );
         },
@@ -6831,7 +6980,9 @@ class _WindowViewState extends State<WindowView> {
       child: ListenableBuilder(
         listenable: widget.model,
         builder: (context, _) {
-          final lang = Provider.of<AppSettingsProvider>(context).language;
+          final lang = Provider
+              .of<AppSettingsProvider>(context)
+              .language;
           final slidingZones = widget.model.zones
               .where((z) => z.content == ZoneContent.slidingSash)
               .toList();
@@ -6915,12 +7066,16 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   decoration: BoxDecoration(
                     color: widget.model.isInternalView
-                        ? (Theme.of(context).brightness == Brightness.dark
-                              ? Colors.blue.shade900.withValues(alpha: 0.3)
-                              : Colors.blue.shade50)
-                        : (Theme.of(context).brightness == Brightness.dark
-                              ? Colors.orange.shade900.withValues(alpha: 0.3)
-                              : Colors.orange.shade50),
+                        ? (Theme
+                        .of(context)
+                        .brightness == Brightness.dark
+                        ? Colors.blue.shade900.withValues(alpha: 0.3)
+                        : Colors.blue.shade50)
+                        : (Theme
+                        .of(context)
+                        .brightness == Brightness.dark
+                        ? Colors.orange.shade900.withValues(alpha: 0.3)
+                        : Colors.orange.shade50),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: widget.model.isInternalView
@@ -6938,12 +7093,16 @@ class _WindowViewState extends State<WindowView> {
                             : Icons.flip_camera_android,
                         size: 20,
                         color: widget.model.isInternalView
-                            ? (Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.blue.shade300
-                                  : Colors.blue.shade900)
-                            : (Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.orange.shade300
-                                  : Colors.orange.shade900),
+                            ? (Theme
+                            .of(context)
+                            .brightness == Brightness.dark
+                            ? Colors.blue.shade300
+                            : Colors.blue.shade900)
+                            : (Theme
+                            .of(context)
+                            .brightness == Brightness.dark
+                            ? Colors.orange.shade300
+                            : Colors.orange.shade900),
                       ),
                       const SizedBox(width: 10),
                       Text(
@@ -6954,12 +7113,16 @@ class _WindowViewState extends State<WindowView> {
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                           color: widget.model.isInternalView
-                              ? (Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.blue.shade300
-                                    : Colors.blue.shade900)
-                              : (Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.orange.shade300
-                                    : Colors.orange.shade900),
+                              ? (Theme
+                              .of(context)
+                              .brightness == Brightness.dark
+                              ? Colors.blue.shade300
+                              : Colors.blue.shade900)
+                              : (Theme
+                              .of(context)
+                              .brightness == Brightness.dark
+                              ? Colors.orange.shade300
+                              : Colors.orange.shade900),
                         ),
                       ),
                     ],
@@ -6970,7 +7133,8 @@ class _WindowViewState extends State<WindowView> {
 
               Text(
                 widget.model.selectedDbColor != null
-                    ? '${Localization.translate('اللون:', lang)} ${widget.model.selectedDbColor!['name']}'
+                    ? '${Localization.translate('اللون:', lang)} ${widget.model
+                    .selectedDbColor!['name']}'
                     : Localization.translate('لون الألمنيوم', lang),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
@@ -6984,7 +7148,7 @@ class _WindowViewState extends State<WindowView> {
                 children: widget.model.availableColors.map((dbColor) {
                   final isSelected =
                       widget.model.selectedDbColor != null &&
-                      widget.model.selectedDbColor!['id'] == dbColor['id'];
+                          widget.model.selectedDbColor!['id'] == dbColor['id'];
                   Color parsedColor = getEffectiveGradientColors(
                     FrameColor.white,
                     dbColor,
@@ -7017,7 +7181,9 @@ class _WindowViewState extends State<WindowView> {
 
               Text(
                 widget.model.selectedAccessoryColor != null
-                    ? '${Localization.translate('لون الإكسسوارات:', lang)} ${widget.model.selectedAccessoryColor!['name']}'
+                    ? '${Localization.translate(
+                    'لون الإكسسوارات:', lang)} ${widget.model
+                    .selectedAccessoryColor!['name']}'
                     : Localization.translate('لون الإكسسوارات (افتراضي)', lang),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
@@ -7031,8 +7197,8 @@ class _WindowViewState extends State<WindowView> {
                 children: widget.model.availableAccessoryColors.map((dbColor) {
                   final isSelected =
                       widget.model.selectedAccessoryColor != null &&
-                      widget.model.selectedAccessoryColor!['id'] ==
-                          dbColor['id'];
+                          widget.model.selectedAccessoryColor!['id'] ==
+                              dbColor['id'];
                   Color parsedColor = getEffectiveGradientColors(
                     FrameColor.white,
                     dbColor,
@@ -7217,15 +7383,17 @@ class _WindowViewState extends State<WindowView> {
                     ),
                   ),
                   value: widget.model.hasSideCovers,
-                  activeColor: Colors.blue,
+                  activeThumbColor: Colors.blue,
                   onChanged: (value) => widget.model.toggleSideCovers(value),
                 );
               }()),
-              if (widget.model.hasSideCovers &&
-                  widget.model.canUseStandaloneSideCover) ...[
-                if ((widget.model.getSectionByType('frame')?.couvreJointWidth ??
-                            0) ==
-                        0 &&
+              if (widget.model.hasSideCovers) ...[
+                if ((widget.model
+                    .getSectionByType('frame')
+                    ?.couvreJointWidth ??
+                    0) ==
+                    0 &&
+                    widget.model.canUseStandaloneSideCover &&
                     widget.model.availableSideCovers.length > 1)
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -7245,9 +7413,9 @@ class _WindowViewState extends State<WindowView> {
                         ),
                       ),
                       value:
-                          widget.model.availableSideCovers.any(
+                      widget.model.availableSideCovers.any(
                             (c) => c.id == widget.model.selectedSideCover?.id,
-                          )
+                      )
                           ? widget.model.selectedSideCover?.id
                           : widget.model.availableSideCovers.first.id,
                       items: widget.model.availableSideCovers.map((cover) {
@@ -7266,6 +7434,10 @@ class _WindowViewState extends State<WindowView> {
                                 .model
                                 .availableSideCovers
                                 .firstWhere((c) => c.id == val);
+                            widget.model.sideCoverOverride = widget
+                                .model
+                                .selectedSideCover!
+                                .toMap();
                             widget.model.refreshUI();
                           });
                         }
@@ -7284,7 +7456,9 @@ class _WindowViewState extends State<WindowView> {
                 if (widget.model.integratedFrameSideCoverWidth == 0 &&
                     (widget.model.selectedSideCover?.couvreJointWidth ?? 0) >
                         0 &&
-                    (widget.model.selectedSideCover?.visibleWidth ?? 0) > 0)
+                    ((widget.model.selectedSideCover?.visibleWidth ?? 0) > 0 ||
+                        (widget.model.selectedSideCover?.visibleWidth2 ?? 0) >
+                            0))
                   Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 4),
                     child: OutlinedButton.icon(
@@ -7306,9 +7480,16 @@ class _WindowViewState extends State<WindowView> {
                         color: Colors.blue.shade700,
                       ),
                       label: Text(
-                        widget.model.sideCoverUseSecondWidth
-                            ? '${widget.model.selectedSideCover!.visibleWidth.toStringAsFixed(0)} mm'
-                            : '${widget.model.selectedSideCover!.couvreJointWidth.toStringAsFixed(0)} mm',
+                        (() {
+                          final cover = widget.model.selectedSideCover!;
+                          final secondWidth = cover.visibleWidth > 0
+                              ? cover.visibleWidth
+                              : cover.visibleWidth2;
+                          final width = widget.model.sideCoverUseSecondWidth
+                              ? secondWidth
+                              : cover.couvreJointWidth;
+                          return '${width.toStringAsFixed(0)} mm';
+                        })(),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.blue.shade700,
@@ -7321,8 +7502,8 @@ class _WindowViewState extends State<WindowView> {
                 (() {
                   final isArchedOrSlanted =
                       widget.model.archHeight > 0 ||
-                      widget.model.topSlantLeftY != 0 ||
-                      widget.model.topSlantRightY != 0;
+                          widget.model.topSlantLeftY != 0 ||
+                          widget.model.topSlantRightY != 0;
                   return SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
@@ -7334,15 +7515,15 @@ class _WindowViewState extends State<WindowView> {
                     ),
                     subtitle: isArchedOrSlanted
                         ? Text(
-                            Localization.translate(
-                              'الستار غير مدعوم للأشكال المقوسة أو المائلة',
-                              lang,
-                            ),
-                            style: const TextStyle(
-                              color: Colors.red,
-                              fontSize: 11,
-                            ),
-                          )
+                      Localization.translate(
+                        'الستار غير مدعوم للأشكال المقوسة أو المائلة',
+                        lang,
+                      ),
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 11,
+                      ),
+                    )
                         : null,
                     value: widget.model.hasShutter,
                     activeThumbColor: Colors.blue,
@@ -7514,7 +7695,7 @@ class _WindowViewState extends State<WindowView> {
                       selected: widget.model.shutterMechanism == 'منايفال',
                       onPressed: () {
                         setState(
-                          () => widget.model.shutterMechanism = 'منايفال',
+                              () => widget.model.shutterMechanism = 'منايفال',
                         );
                         widget.model.refreshUI();
                         unawaited(widget.model.updateShutterDefaultsIfNeeded());
@@ -7555,7 +7736,7 @@ class _WindowViewState extends State<WindowView> {
                         onPressed: () {
                           setState(() {
                             widget.model.motorHasInterrupteur =
-                                !widget.model.motorHasInterrupteur;
+                            !widget.model.motorHasInterrupteur;
                             widget.model.refreshUI();
                           });
                         },
@@ -7567,7 +7748,7 @@ class _WindowViewState extends State<WindowView> {
                         onPressed: () {
                           setState(() {
                             widget.model.motorHasTelecommande =
-                                !widget.model.motorHasTelecommande;
+                            !widget.model.motorHasTelecommande;
                             widget.model.refreshUI();
                           });
                         },
@@ -7687,7 +7868,7 @@ class _WindowViewState extends State<WindowView> {
                     },
                   ),
                 if (widget.model.zones.any(
-                  (z) => z.content == ZoneContent.doubleSash,
+                      (z) => z.content == ZoneContent.doubleSash,
                 ))
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -7702,7 +7883,7 @@ class _WindowViewState extends State<WindowView> {
                       ),
                     ),
                     value: widget.model.useVerrouCentral,
-                    activeColor: Colors.blue,
+                    activeThumbColor: Colors.blue,
                     onChanged: (value) {
                       widget.model.toggleVerrouCentral(value);
                     },
@@ -7728,12 +7909,12 @@ class _WindowViewState extends State<WindowView> {
                   final montantProfiles = <Map<String, dynamic>>[
                     ..._sashProfiles,
                     ...?widget.model.activeSlidingSeries?.sections.map(
-                      (section) => section.toMap(),
+                          (section) => section.toMap(),
                     ),
                   ];
                   final bool isSupported = montantProfiles.any(
-                    (item) =>
-                        _isSlidingMontantCandidate(item, central: false) ||
+                        (item) =>
+                    _isSlidingMontantCandidate(item, central: false) ||
                         _isSlidingMontantCandidate(item, central: true),
                   );
 
@@ -7841,7 +8022,7 @@ class _WindowViewState extends State<WindowView> {
       final isRight = hit.isDoubleSashRight;
       final sashT =
           zone.sashThickness ??
-          widget.model.getSectionThickness('sash', fallback: 45.0);
+              widget.model.getSectionThickness('sash', fallback: 45.0);
       final dividerT = widget.model.getSectionThickness(
         'mullion',
         fallback: sashT,
@@ -7934,15 +8115,19 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final ctrl = TextEditingController(text: _shownDimensionText(currentValue));
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
 
     showDialog(
       context: context,
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final isDark = Theme
+            .of(context)
+            .brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -7999,10 +8184,10 @@ class _WindowViewState extends State<WindowView> {
                       final isRight = hit.isDoubleSashRight;
                       final sashT =
                           zone.sashThickness ??
-                          widget.model.getSectionThickness(
-                            'sash',
-                            fallback: 45.0,
-                          );
+                              widget.model.getSectionThickness(
+                                'sash',
+                                fallback: 45.0,
+                              );
                       final dividerT = widget.model.getSectionThickness(
                         'mullion',
                         fallback: sashT,
@@ -8070,12 +8255,12 @@ class _WindowViewState extends State<WindowView> {
                           double rightAdjusted = leftAdjusted + val;
                           double right =
                               rightAdjusted +
-                              (col < cols - 1 ? dividerT / 2 : 0);
+                                  (col < cols - 1 ? dividerT / 2 : 0);
                           double newRightRatio =
-                              ((right - glassR.left) / glassR.width).clamp(
-                                0.05,
-                                0.95,
-                              );
+                          ((right - glassR.left) / glassR.width).clamp(
+                            0.05,
+                            0.95,
+                          );
                           widget.model.updateZoneInnerVDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -8092,10 +8277,10 @@ class _WindowViewState extends State<WindowView> {
                           double leftNew =
                               leftAdjusted - (col > 0 ? dividerT / 2 : 0);
                           double newLeftRatio =
-                              ((leftNew - glassR.left) / glassR.width).clamp(
-                                0.05,
-                                0.95,
-                              );
+                          ((leftNew - glassR.left) / glassR.width).clamp(
+                            0.05,
+                            0.95,
+                          );
                           widget.model.updateZoneInnerVDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -8114,12 +8299,12 @@ class _WindowViewState extends State<WindowView> {
                           double bottomAdjusted = topAdjusted + val;
                           double bottom =
                               bottomAdjusted +
-                              (row < rows - 1 ? dividerT / 2 : 0);
+                                  (row < rows - 1 ? dividerT / 2 : 0);
                           double newBottomRatio =
-                              ((bottom - glassR.top) / glassR.height).clamp(
-                                0.05,
-                                0.95,
-                              );
+                          ((bottom - glassR.top) / glassR.height).clamp(
+                            0.05,
+                            0.95,
+                          );
                           widget.model.updateZoneInnerHDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -8136,10 +8321,10 @@ class _WindowViewState extends State<WindowView> {
                           double topNew =
                               topAdjusted - (row > 0 ? dividerT / 2 : 0);
                           double newTopRatio =
-                              ((topNew - glassR.top) / glassR.height).clamp(
-                                0.05,
-                                0.95,
-                              );
+                          ((topNew - glassR.top) / glassR.height).clamp(
+                            0.05,
+                            0.95,
+                          );
                           widget.model.updateZoneInnerHDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -8154,12 +8339,12 @@ class _WindowViewState extends State<WindowView> {
                         val + (widget.model.isPVC ? 5.0 : 0.0);
                     final totalCutWidth =
                         zone.boundary.width +
-                        _openingSashOverlapForDrawing() * 2;
+                            _openingSashOverlapForDrawing() * 2;
                     final visualLeftRatio =
-                        (hit.isDoubleSashLeft
-                                ? rawVisualSashSize / totalCutWidth
-                                : 1.0 - (rawVisualSashSize / totalCutWidth))
-                            .clamp(0.15, 0.85);
+                    (hit.isDoubleSashLeft
+                        ? rawVisualSashSize / totalCutWidth
+                        : 1.0 - (rawVisualSashSize / totalCutWidth))
+                        .clamp(0.15, 0.85);
                     final ratio = widget.model.isInternalView
                         ? visualLeftRatio
                         : 1.0 - visualLeftRatio;
@@ -8191,24 +8376,36 @@ class _WindowViewState extends State<WindowView> {
   void _showFrameResizeDialog(BuildContext context, InnerDimensionHit hit) {
     final zone = widget.model.zones.firstWhere((z) => z.id == hit.zoneId);
     final double pt = widget.model.profileThickness;
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     double outerVal;
     String title;
     if (hit.isWidth) {
-      outerVal = zone.boundary.width + 2 * pt;
+      outerVal =
+          widget.model
+              .frameRectForZone(hit.zoneId)
+              ?.width ??
+              zone.boundary.width + 2 * pt;
       title = 'تعديل عرض الإطار (خارجي)';
     } else {
-      outerVal = zone.boundary.height + 2 * pt;
+      outerVal =
+          widget.model
+              .frameRectForZone(hit.zoneId)
+              ?.height ??
+              zone.boundary.height + 2 * pt;
       title = 'تعديل ارتفاع الإطار (خارجي)';
     }
     final ctrl = TextEditingController(text: outerVal.toInt().toString());
     showDialog(
       context: context,
       builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final isDark = Theme
+            .of(ctx)
+            .brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -8262,15 +8459,10 @@ class _WindowViewState extends State<WindowView> {
               onPressed: () {
                 final val = double.tryParse(ctrl.text);
                 if (val != null && val >= 200) {
-                  final delta = val - outerVal;
-                  widget.model.resizeFrameFromHandles(
+                  widget.model.resizeFrameOuterDimensionForZone(
                     hit.zoneId,
-                    moveLeft: false,
-                    moveRight: hit.isWidth,
-                    moveTop: false,
-                    moveBottom: !hit.isWidth,
-                    deltaX: hit.isWidth ? delta : 0.0,
-                    deltaY: hit.isWidth ? 0.0 : delta,
+                    isWidth: hit.isWidth,
+                    outerSize: val,
                   );
                 }
                 Navigator.pop(ctx);
@@ -8287,10 +8479,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _showResizeDialog(BuildContext context, {required bool focusWidth}) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final widthCtrl = TextEditingController(
       text: widget.model.width.toInt().toString(),
     );
@@ -8300,7 +8494,9 @@ class _WindowViewState extends State<WindowView> {
     showDialog(
       context: context,
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final isDark = Theme
+            .of(context)
+            .brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -8424,23 +8620,23 @@ class _WindowViewState extends State<WindowView> {
       final type = (raw['type'] ?? '').toString().toLowerCase();
       final isFrameFlag =
           raw['is_frame'] == 1 ||
-          raw['isFrame'] == true ||
-          raw['is_frame']?.toString() == '1';
+              raw['isFrame'] == true ||
+              raw['is_frame']?.toString() == '1';
       final isFrame =
           isFrameFlag ||
-          type == 'frame' ||
-          type == 'cadre' ||
-          type == 'dormant' ||
-          type == 'إطار';
+              type == 'frame' ||
+              type == 'cadre' ||
+              type == 'dormant' ||
+              type == 'إطار';
       if (!isFrame) return;
       final coverWidth = readDimension(raw, 'couvre_joint_width');
       final hasIntegratedCover =
           coverWidth > 0.5 ||
-          name.toLowerCase().contains('مدمج') ||
-          name.toLowerCase().contains('intégré') ||
-          name.toLowerCase().contains('integre') ||
-          name.toLowerCase().contains('monobloc') ||
-          type.contains('monobloc');
+              name.toLowerCase().contains('مدمج') ||
+              name.toLowerCase().contains('intégré') ||
+              name.toLowerCase().contains('integre') ||
+              name.toLowerCase().contains('monobloc') ||
+              type.contains('monobloc');
       if (hasIntegratedCover) return;
       final idKey = (raw['id'] ?? '$code:$name').toString();
       if (!seenIds.add(idKey)) return;
@@ -8466,10 +8662,8 @@ class _WindowViewState extends State<WindowView> {
     return frames;
   }
 
-  bool _selectedMullionFrameMatches(
-    Map<String, dynamic> frame,
-    MullionProfileType type,
-  ) {
+  bool _selectedMullionFrameMatches(Map<String, dynamic> frame,
+      MullionProfileType type,) {
     final selection = widget.model.selection;
     if (selection.type != SelectionType.mullion ||
         selection.isHorizontalMullion == null ||
@@ -8477,7 +8671,8 @@ class _WindowViewState extends State<WindowView> {
       return false;
     }
     final key =
-        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection.mullionPosition!.toStringAsFixed(1)}';
+        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection
+        .mullionPosition!.toStringAsFixed(1)}';
     final currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
     final current = widget.model.mullionSectionOverrides[key];
@@ -8485,10 +8680,8 @@ class _WindowViewState extends State<WindowView> {
     return current['id']?.toString() == frame['id']?.toString();
   }
 
-  Future<void> _applyMullionFrameSection(
-    MullionProfileType type,
-    Map<String, dynamic> frame,
-  ) async {
+  Future<void> _applyMullionFrameSection(MullionProfileType type,
+      Map<String, dynamic> frame,) async {
     final mutable = Map<String, dynamic>.from(frame);
     mutable['calculated_price'] = await _sectionPriceForSelectedColor(mutable);
     if (!mounted) return;
@@ -8497,10 +8690,8 @@ class _WindowViewState extends State<WindowView> {
     });
   }
 
-  Future<void> _showMullionFrameSelectorDialog(
-    BuildContext context,
-    MullionProfileType type,
-  ) async {
+  Future<void> _showMullionFrameSelectorDialog(BuildContext context,
+      MullionProfileType type,) async {
     final frames = _availableMullionFrameSections();
     final title = type == MullionProfileType.flat
         ? 'Cadre doublé - اختر إطار التقسيم'
@@ -8508,59 +8699,63 @@ class _WindowViewState extends State<WindowView> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(title),
-        children: [
-          if (frames.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'لا توجد إطارات متوفرة لهذه السلسلة',
-                textDirection: TextDirection.rtl,
-              ),
-            )
-          else
-            ...frames.map((frame) {
-              final code = (frame['code'] ?? '').toString();
-              final name = (frame['name'] ?? 'بدون اسم').toString();
-              final label = code.isEmpty ? name : '$code - $name';
-              final selected = _selectedMullionFrameMatches(frame, type);
-              return SimpleDialogOption(
-                onPressed: () async {
-                  Navigator.pop(dialogContext);
-                  await _applyMullionFrameSection(type, frame);
-                },
-                child: Row(
-                  children: [
-                    SectionImageWidget(
-                      code: code,
-                      imagePath: frame['image_path']?.toString(),
-                      size: 28,
-                      fallbackIcon: type == MullionProfileType.flat
-                          ? Icons.splitscreen_rounded
-                          : Icons.view_headline_rounded,
-                      fallbackColor: selected
-                          ? Colors.blue.shade700
-                          : Colors.grey.shade500,
+      builder: (dialogContext) =>
+          SimpleDialog(
+            title: Text(title),
+            children: [
+              if (frames.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'لا توجد إطارات متوفرة لهذه السلسلة',
+                    textDirection: TextDirection.rtl,
+                  ),
+                )
+              else
+                ...frames.map((frame) {
+                  final code = (frame['code'] ?? '').toString();
+                  final name = (frame['name'] ?? 'بدون اسم').toString();
+                  final label = code.isEmpty ? name : '$code - $name';
+                  final selected = _selectedMullionFrameMatches(frame, type);
+                  return SimpleDialogOption(
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      await _applyMullionFrameSection(type, frame);
+                    },
+                    child: Row(
+                      children: [
+                        SectionImageWidget(
+                          code: code,
+                          imagePath: frame['image_path']?.toString(),
+                          size: 28,
+                          fallbackIcon: type == MullionProfileType.flat
+                              ? Icons.splitscreen_rounded
+                              : Icons.view_headline_rounded,
+                          fallbackColor: selected
+                              ? Colors.blue.shade700
+                              : Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(label)),
+                        if (selected)
+                          Icon(
+                              Icons.check_circle, color: Colors.green.shade700),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(label)),
-                    if (selected)
-                      Icon(Icons.check_circle, color: Colors.green.shade700),
-                  ],
-                ),
-              );
-            }),
-        ],
-      ),
+                  );
+                }),
+            ],
+          ),
     );
   }
 
   Future<void> _showMullionTypeDialog(BuildContext context) async {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final selection = widget.model.selection;
     if (selection.type != SelectionType.mullion ||
         selection.isHorizontalMullion == null ||
@@ -8569,15 +8764,14 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final key =
-        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection.mullionPosition!.toStringAsFixed(1)}';
+        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection
+        .mullionPosition!.toStringAsFixed(1)}';
     final currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
 
-    SimpleDialogOption typeOption(
-      MullionProfileType type,
-      String label,
-      IconData icon,
-    ) {
+    SimpleDialogOption typeOption(MullionProfileType type,
+        String label,
+        IconData icon,) {
       return SimpleDialogOption(
         onPressed: () {
           Navigator.pop(context);
@@ -8608,53 +8802,57 @@ class _WindowViewState extends State<WindowView> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(Localization.translate('نوع التقسيم', lang)),
-        children: [
-          typeOption(
-            MullionProfileType.standard,
-            Localization.translate('Traverse — تقسيم عادي', lang),
-            Icons.horizontal_rule_rounded,
-          ),
-          typeOption(
-            MullionProfileType.flat,
-            Localization.translate('Cadre double — إطار مزدوج', lang),
-            Icons.splitscreen_rounded,
-          ),
-          typeOption(
-            MullionProfileType.grooved,
-            Localization.translate('Cadre 140 — إطار بتجويف واحد', lang),
-            Icons.view_headline_rounded,
-          ),
-          if (currentType == MullionProfileType.grooved)
-            SimpleDialogOption(
-              onPressed: () {
-                widget.model.toggleGroovedMullionCavity(
-                  selection.isHorizontalMullion!,
-                  selection.mullionPosition!,
-                );
-                Navigator.pop(dialogContext);
-              },
-              child: Row(
-                children: [
-                  const Icon(Icons.swap_horiz_rounded, color: Colors.blue),
-                  const SizedBox(width: 12),
-                  Text(Localization.translate('عكس اتجاه التجويف', lang)),
-                ],
+      builder: (dialogContext) =>
+          SimpleDialog(
+            title: Text(Localization.translate('نوع التقسيم', lang)),
+            children: [
+              typeOption(
+                MullionProfileType.standard,
+                Localization.translate('Traverse — تقسيم عادي', lang),
+                Icons.horizontal_rule_rounded,
               ),
-            ),
-        ],
-      ),
+              typeOption(
+                MullionProfileType.flat,
+                Localization.translate('Cadre double — إطار مزدوج', lang),
+                Icons.splitscreen_rounded,
+              ),
+              typeOption(
+                MullionProfileType.grooved,
+                Localization.translate('Cadre 140 — إطار بتجويف واحد', lang),
+                Icons.view_headline_rounded,
+              ),
+              if (currentType == MullionProfileType.grooved)
+                SimpleDialogOption(
+                  onPressed: () {
+                    widget.model.toggleGroovedMullionCavity(
+                      selection.isHorizontalMullion!,
+                      selection.mullionPosition!,
+                    );
+                    Navigator.pop(dialogContext);
+                  },
+                  child: Row(
+                    children: [
+                      const Icon(Icons.swap_horiz_rounded, color: Colors.blue),
+                      const SizedBox(width: 12),
+                      Text(Localization.translate('عكس اتجاه التجويف', lang)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
     );
   }
 
   Widget _buildMullionToolbar(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     String key =
-        "${widget.model.selection.isHorizontalMullion! ? 'H' : 'V'}_${widget.model.selection.mullionPosition!.toStringAsFixed(1)}";
+        "${widget.model.selection.isHorizontalMullion! ? 'H' : 'V'}_${widget
+        .model.selection.mullionPosition!.toStringAsFixed(1)}";
     MullionProfileType currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
     Widget toolbarButton({
@@ -8712,29 +8910,32 @@ class _WindowViewState extends State<WindowView> {
                     label: 'Traverse',
                     icon: Icons.horizontal_rule_rounded,
                     selected: currentType == MullionProfileType.standard,
-                    onPressed: () => widget.model.setMullionProfile(
-                      MullionProfileType.standard,
-                    ),
+                    onPressed: () =>
+                        widget.model.setMullionProfile(
+                          MullionProfileType.standard,
+                        ),
                   ),
                   toolbarButton(
                     label: 'Cadre doublé',
                     icon: Icons.splitscreen_rounded,
                     selected: currentType == MullionProfileType.flat,
                     showSubmenuIndicator: true,
-                    onPressed: () => _showMullionFrameSelectorDialog(
-                      context,
-                      MullionProfileType.flat,
-                    ),
+                    onPressed: () =>
+                        _showMullionFrameSelectorDialog(
+                          context,
+                          MullionProfileType.flat,
+                        ),
                   ),
                   toolbarButton(
                     label: 'Cadre 140',
                     icon: Icons.view_headline_rounded,
                     selected: currentType == MullionProfileType.grooved,
                     showSubmenuIndicator: true,
-                    onPressed: () => _showMullionFrameSelectorDialog(
-                      context,
-                      MullionProfileType.grooved,
-                    ),
+                    onPressed: () =>
+                        _showMullionFrameSelectorDialog(
+                          context,
+                          MullionProfileType.grooved,
+                        ),
                   ),
                   if (currentType == MullionProfileType.grooved)
                     toolbarButton(
@@ -8742,13 +8943,14 @@ class _WindowViewState extends State<WindowView> {
                       icon: Icons.swap_horiz_rounded,
                       selected: widget.model
                           .isGroovedMullionCavityOnPositiveSide(
-                            widget.model.selection.isHorizontalMullion!,
-                            widget.model.selection.mullionPosition!,
-                          ),
-                      onPressed: () => widget.model.toggleGroovedMullionCavity(
                         widget.model.selection.isHorizontalMullion!,
                         widget.model.selection.mullionPosition!,
                       ),
+                      onPressed: () =>
+                          widget.model.toggleGroovedMullionCavity(
+                            widget.model.selection.isHorizontalMullion!,
+                            widget.model.selection.mullionPosition!,
+                          ),
                     ),
                   const SizedBox(width: 15),
                   ElevatedButton.icon(
@@ -8776,10 +8978,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildInnerDivisionToolbar(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: Colors.blue.shade900.withValues(alpha: 0.8),
@@ -8808,11 +9012,9 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  Widget buildSideCoverSegmentsControl(
-    BuildContext context,
-    WindowModel model,
-    AppLanguage lang,
-  ) {
+  Widget buildSideCoverSegmentsControl(BuildContext context,
+      WindowModel model,
+      AppLanguage lang,) {
     if (!model.hasSideCovers) return const SizedBox.shrink();
 
     String labelFor(String side) {
@@ -8832,8 +9034,6 @@ class _WindowViewState extends State<WindowView> {
 
     Widget sideButton(String side) {
       final enabled = model.isSideCoverSegmentEnabled(side);
-      final disabledBottom =
-          side == 'bottom' && (!model.hasBottomFrame || !model.showBottomWall);
       return Tooltip(
         message: Localization.translate(
           'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
@@ -8844,7 +9044,7 @@ class _WindowViewState extends State<WindowView> {
             FilterChip(
               labelStyle: const TextStyle(fontSize: 10),
               label: Text(labelFor(side)),
-              selected: enabled && !disabledBottom,
+              selected: enabled,
               onSelected: (_) {},
             ),
             // This transparent layer is deliberately above the chip so one
@@ -8854,15 +9054,10 @@ class _WindowViewState extends State<WindowView> {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: disabledBottom
-                    ? null
-                    : () => model.toggleSideCoverSegment(side),
-                onLongPress: disabledBottom
-                    ? null
-                    : () => _showSideCoverSegmentDialog(context, side),
-                onSecondaryTap: disabledBottom
-                    ? null
-                    : () => _showSideCoverSegmentDialog(context, side),
+                onTap: () => model.toggleSideCoverSegment(side),
+                onLongPress: () => _showSideCoverSegmentDialog(context, side),
+                onSecondaryTap: () =>
+                    _showSideCoverSegmentDialog(context, side),
               ),
             ),
           ],
@@ -8895,10 +9090,8 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  Future<void> _showSideCoverSegmentDialog(
-    BuildContext context,
-    String side,
-  ) async {
+  Future<void> _showSideCoverSegmentDialog(BuildContext context,
+      String side,) async {
     // Long-press callbacks can finish after WindowView has been removed
     // (for example when the user confirms another dialog or leaves the page).
     // Keep one live page context and never use the callback's stale context
@@ -8906,10 +9099,12 @@ class _WindowViewState extends State<WindowView> {
     if (!mounted || !context.mounted) return;
     final pageContext = this.context;
     final model = widget.model;
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       pageContext,
       listen: false,
-    ).language;
+    )
+        .language;
     final sideLength = model.sideCoverSideLength(side);
     if (sideLength <= 0) return;
 
@@ -8938,198 +9133,224 @@ class _WindowViewState extends State<WindowView> {
     try {
       await showDialog<void>(
         context: pageContext,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            final startLabel = fromTrailing ? trailing : leading;
-            final endLabel = fromTrailing ? leading : trailing;
-            return AlertDialog(
-              title: Text(
-                '${Localization.translate('تخصيص غطاء الجهة', lang)} ${Localization.translate(sideLabel, lang)}',
-              ),
-              content: SingleChildScrollView(
-                child: SizedBox(
-                  width: 330,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
+        builder: (dialogContext) =>
+            StatefulBuilder(
+              builder: (dialogContext, setDialogState) {
+                final startLabel = fromTrailing ? trailing : leading;
+                final endLabel = fromTrailing ? leading : trailing;
+                return AlertDialog(
+                  title: Text(
+                    '${Localization.translate(
+                        'تخصيص غطاء الجهة', lang)} ${Localization.translate(
+                        sideLabel, lang)}',
+                  ),
+                  content: SingleChildScrollView(
+                    child: SizedBox(
+                      width: 330,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ChoiceChip(
-                            label: Text(
-                              '${Localization.translate('من', lang)} ${Localization.translate(leading, lang)}',
-                            ),
-                            selected: !fromTrailing,
-                            onSelected: (_) => setDialogState(() {
-                              fromTrailing = false;
-                            }),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              ChoiceChip(
+                                label: Text(
+                                  '${Localization.translate(
+                                      'من', lang)} ${Localization.translate(
+                                      leading, lang)}',
+                                ),
+                                selected: !fromTrailing,
+                                onSelected: (_) =>
+                                    setDialogState(() {
+                                      fromTrailing = false;
+                                    }),
+                              ),
+                              ChoiceChip(
+                                label: Text(
+                                  '${Localization.translate(
+                                      'من', lang)} ${Localization.translate(
+                                      trailing, lang)}',
+                                ),
+                                selected: fromTrailing,
+                                onSelected: (_) =>
+                                    setDialogState(() {
+                                      fromTrailing = true;
+                                    }),
+                              ),
+                            ],
                           ),
-                          ChoiceChip(
-                            label: Text(
-                              '${Localization.translate('من', lang)} ${Localization.translate(trailing, lang)}',
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: Text(
+                              Localization.translate(
+                                'إدخال النهاية بدل الطول',
+                                lang,
+                              ),
                             ),
-                            selected: fromTrailing,
-                            onSelected: (_) => setDialogState(() {
-                              fromTrailing = true;
-                            }),
+                            value: useEndOffset,
+                            onChanged: (value) =>
+                                setDialogState(() {
+                                  useEndOffset = value;
+                                }),
+                          ),
+                          TextField(
+                            controller: startController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText:
+                              '${Localization.translate(
+                                  'بداية الغطاء من', lang)} ${Localization
+                                  .translate(startLabel, lang)} (${Localization
+                                  .translate('مم', lang)})',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: secondController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: useEndOffset
+                                  ? '${Localization.translate(
+                                  'نهاية الغطاء قبل', lang)} ${Localization
+                                  .translate(endLabel, lang)} (${Localization
+                                  .translate('مم', lang)})'
+                                  : Localization.translate(
+                                'طول الغطاء على الإطار (مم)',
+                                lang,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: visibleController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: Localization.translate(
+                                'العرض الظاهر خارج الإطار (مم)',
+                                lang,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '${Localization.translate(
+                                'طول الجهة:', lang)} ${sideLength
+                                .toStringAsFixed(0)} ${Localization.translate(
+                                'مم', lang)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.blueGrey,
+                            ),
                           ),
                         ],
                       ),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(
-                          Localization.translate('إدخال النهاية بدل الطول', lang),
-                        ),
-                        value: useEndOffset,
-                        onChanged: (value) => setDialogState(() {
-                          useEndOffset = value;
-                        }),
-                      ),
-                      TextField(
-                        controller: startController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText:
-                              '${Localization.translate('بداية الغطاء من', lang)} ${Localization.translate(startLabel, lang)} (${Localization.translate('مم', lang)})',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: secondController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: useEndOffset
-                              ? '${Localization.translate('نهاية الغطاء قبل', lang)} ${Localization.translate(endLabel, lang)} (${Localization.translate('مم', lang)})'
-                              : Localization.translate(
-                                  'طول الغطاء على الإطار (مم)',
-                                  lang,
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: visibleController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: Localization.translate(
-                            'العرض الظاهر خارج الإطار (مم)',
-                            lang,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${Localization.translate('طول الجهة:', lang)} ${sideLength.toStringAsFixed(0)} ${Localization.translate('مم', lang)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.blueGrey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                if (existing != null)
-                  TextButton.icon(
-                    onPressed: () {
-                      if (!dialogContext.mounted) return;
-                      Navigator.of(dialogContext).pop();
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) model.removeSideCoverSegment(side);
-                      });
-                    },
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    label: Text(
-                      Localization.translate('حذف', lang),
-                      style: const TextStyle(color: Colors.red),
                     ),
                   ),
-                TextButton(
-                  onPressed: () {
-                    if (dialogContext.mounted) {
-                      Navigator.of(dialogContext).pop();
-                    }
-                  },
-                  child: Text(Localization.translate('إلغاء', lang)),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final first = readValue(startController);
-                    final second = readValue(secondController);
-                    final visible = readValue(visibleController);
-                    if (first < 0 || second < 0 || visible < 0) {
-                      if (pageContext.mounted) {
-                        ScaffoldMessenger.maybeOf(pageContext)?.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              Localization.translate(
-                                'أدخل قياسات صحيحة',
-                                lang,
+                  actions: [
+                    if (existing != null)
+                      TextButton.icon(
+                        onPressed: () {
+                          if (!dialogContext.mounted) return;
+                          Navigator.of(dialogContext).pop();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) model.removeSideCoverSegment(side);
+                          });
+                        },
+                        icon: const Icon(
+                            Icons.delete_outline, color: Colors.red),
+                        label: Text(
+                          Localization.translate('حذف', lang),
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    TextButton(
+                      onPressed: () {
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                      },
+                      child: Text(Localization.translate('إلغاء', lang)),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        final first = readValue(startController);
+                        final second = readValue(secondController);
+                        final visible = readValue(visibleController);
+                        if (first < 0 || second < 0 || visible < 0) {
+                          if (pageContext.mounted) {
+                            ScaffoldMessenger
+                                .maybeOf(pageContext)
+                                ?.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  Localization.translate(
+                                      'أدخل قياسات صحيحة', lang),
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      }
-                      return;
-                    }
+                            );
+                          }
+                          return;
+                        }
 
-                    double start;
-                    double end;
-                    if (!fromTrailing) {
-                      start = first;
-                      end = useEndOffset ? sideLength - second : start + second;
-                    } else {
-                      end = sideLength - first;
-                      start = useEndOffset ? second : end - second;
-                    }
-                    start = start.clamp(0.0, sideLength).toDouble();
-                    end = end.clamp(0.0, sideLength).toDouble();
-                    if (end <= start) {
-                      if (pageContext.mounted) {
-                        ScaffoldMessenger.maybeOf(pageContext)?.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              Localization.translate(
-                                'يجب أن تكون نهاية الغطاء بعد بدايته',
-                                lang,
+                        double start;
+                        double end;
+                        if (!fromTrailing) {
+                          start = first;
+                          end =
+                          useEndOffset ? sideLength - second : start + second;
+                        } else {
+                          end = sideLength - first;
+                          start = useEndOffset ? second : end - second;
+                        }
+                        start = start.clamp(0.0, sideLength).toDouble();
+                        end = end.clamp(0.0, sideLength).toDouble();
+                        if (end <= start) {
+                          if (pageContext.mounted) {
+                            ScaffoldMessenger
+                                .maybeOf(pageContext)
+                                ?.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  Localization.translate(
+                                    'يجب أن تكون نهاية الغطاء بعد بدايته',
+                                    lang,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      }
-                      return;
-                    }
+                            );
+                          }
+                          return;
+                        }
 
-                    if (!mounted || !dialogContext.mounted) return;
-                    final segment = SideCoverSegment(
-                      side: side,
-                      startOffset: start,
-                      endOffset: end,
-                      visibleWidth: visible,
-                    );
-                    Navigator.of(dialogContext).pop();
-                    // Let the route finish dismissing before notifyListeners()
-                    // rebuilds WindowView. This prevents a transient rebuild
-                    // of the dialog with a context that is already closing.
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) model.saveSideCoverSegment(segment);
-                    });
-                  },
-                  child: Text(Localization.translate('حفظ', lang)),
-                ),
-              ],
-            );
-          },
-        ),
+                        if (!mounted || !dialogContext.mounted) return;
+                        final segment = SideCoverSegment(
+                          side: side,
+                          startOffset: start,
+                          endOffset: end,
+                          visibleWidth: visible,
+                        );
+                        Navigator.of(dialogContext).pop();
+                        // Let the route finish dismissing before notifyListeners()
+                        // rebuilds WindowView. This prevents a transient rebuild
+                        // of the dialog with a context that is already closing.
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) model.saveSideCoverSegment(segment);
+                        });
+                      },
+                      child: Text(Localization.translate('حفظ', lang)),
+                    ),
+                  ],
+                );
+              },
+            ),
       );
     } finally {
       startController.dispose();
@@ -9138,11 +9359,9 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  Widget buildShutterSidesControl(
-    BuildContext context,
-    WindowModel model,
-    AppLanguage lang,
-  ) {
+  Widget buildShutterSidesControl(BuildContext context,
+      WindowModel model,
+      AppLanguage lang,) {
     if (!model.hasSideCovers && !model.hasShutter) {
       return const SizedBox.shrink();
     }
@@ -9175,7 +9394,7 @@ class _WindowViewState extends State<WindowView> {
               labelStyle: const TextStyle(fontSize: 10),
               label: Text(Localization.translate('سفلية', lang)),
               selected:
-                  model.hasBottomFrame &&
+              model.hasBottomFrame &&
                   model.showBottomWall &&
                   !model.removedShutterSides.contains('bottom'),
               onSelected: model.hasBottomFrame && model.showBottomWall
@@ -9189,11 +9408,33 @@ class _WindowViewState extends State<WindowView> {
   }
 
   AppBar _buildAppBar(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    )
+        .language;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
+    final isShutterContext =
+        widget.model.isShutterOnly ||
+            widget.model.drawNextShapeAsShutterOnly ||
+            _isShutterSelected;
+    final shutterColorItems = widget.model.availableAccessoryColors.isNotEmpty
+        ? widget.model.availableAccessoryColors
+        : widget.model.availableColors;
+    Map<String, dynamic>? selectedShutterColor;
+    final selectedShutterColorId =
+        widget.model.selectedAccessoryColor?['id'] ??
+            widget.model.selectedDbColor?['id'];
+    for (final color in shutterColorItems) {
+      if (selectedShutterColorId != null &&
+          color['id']?.toString() == selectedShutterColorId.toString()) {
+        selectedShutterColor = color;
+        break;
+      }
+    }
     final primarySeries = widget.systemMode == 'sliding'
         ? widget.model.activeSlidingSeries
         : widget.model.activeSeries;
@@ -9203,26 +9444,27 @@ class _WindowViewState extends State<WindowView> {
       for (var system in widget.model.availableSystems) {
         final filtered = widget.systemMode == 'mixed'
             ? system.series.where((series) {
-                final name = series.name.toLowerCase();
-                final type = series.type.toLowerCase();
-                return name.contains('frappe') ||
-                    name.contains('battant') ||
-                    name.contains('فتح') ||
-                    name.contains('فرنسي') ||
-                    name.contains('ouvrant') ||
-                    type.contains('frappe') ||
-                    type.contains('battant') ||
-                    type.contains('فتح') ||
-                    type.contains('فرنسي') ||
-                    type.contains('ouvrant');
-              })
+          final name = series.name.toLowerCase();
+          final type = series.type.toLowerCase();
+          return name.contains('frappe') ||
+              name.contains('battant') ||
+              name.contains('فتح') ||
+              name.contains('فرنسي') ||
+              name.contains('ouvrant') ||
+              type.contains('frappe') ||
+              type.contains('battant') ||
+              type.contains('فتح') ||
+              type.contains('فرنسي') ||
+              type.contains('ouvrant');
+        })
             : system.series;
         final selectorMode = widget.systemMode == 'sliding'
             ? 'sliding'
             : 'french';
         list.addAll(
           filtered.where(
-            (series) => seriesMatchesDrawingMode(series, system, selectorMode),
+                (series) =>
+                seriesMatchesDrawingMode(series, system, selectorMode),
           ),
         );
         for (final series in system.series) {
@@ -9246,8 +9488,8 @@ class _WindowViewState extends State<WindowView> {
     }();
 
     final safePrimaryValue =
-        (primarySeries != null &&
-            primaryItemsList.any((s) => s.id == primarySeries.id))
+    (primarySeries != null &&
+        primaryItemsList.any((s) => s.id == primarySeries.id))
         ? primaryItemsList.firstWhere((s) => s.id == primarySeries.id)
         : null;
 
@@ -9257,7 +9499,7 @@ class _WindowViewState extends State<WindowView> {
         return <AluminumSeries>[];
       }
       final systemMatches = widget.model.availableSystems.where(
-        (sys) => sys.id == activeSystemId,
+            (sys) => sys.id == activeSystemId,
       );
       if (systemMatches.isEmpty) return <AluminumSeries>[];
       final system = systemMatches.first;
@@ -9294,13 +9536,13 @@ class _WindowViewState extends State<WindowView> {
     }();
 
     final safeSlidingValue =
-        (widget.model.activeSlidingSeries != null &&
-            slidingItemsList.any(
+    (widget.model.activeSlidingSeries != null &&
+        slidingItemsList.any(
               (s) => s.id == widget.model.activeSlidingSeries!.id,
-            ))
+        ))
         ? slidingItemsList.firstWhere(
-            (s) => s.id == widget.model.activeSlidingSeries!.id,
-          )
+          (s) => s.id == widget.model.activeSlidingSeries!.id,
+    )
         : null;
 
     return AppBar(
@@ -9312,7 +9554,100 @@ class _WindowViewState extends State<WindowView> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            if (widget.model.availableSystems.isNotEmpty) ...[
+            if (isShutterContext && shutterColorItems.isNotEmpty) ...[
+              Container(
+                constraints: const BoxConstraints(maxWidth: 170),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.orange.shade900.withValues(alpha: 0.3)
+                      : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.orange.shade800
+                        : Colors.orange.shade200,
+                  ),
+                ),
+                child: DropdownButton<Map<String, dynamic>>(
+                  isExpanded: true,
+                  value: selectedShutterColor,
+                  dropdownColor: isDark
+                      ? const Color(0xFF1E1E2C)
+                      : Colors.white,
+                  hint: Text(
+                    Localization.translate('لون الستار', lang),
+                    style: TextStyle(
+                      color: isDark
+                          ? Colors.orange.shade300
+                          : Colors.orange.shade800,
+                      fontSize: 12,
+                    ),
+                  ),
+                  underline: const SizedBox(),
+                  icon: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: isDark
+                        ? Colors.orange.shade300
+                        : Colors.orange.shade800,
+                    size: 18,
+                  ),
+                  items: shutterColorItems.map((colorData) {
+                    final colorName =
+                    (colorData['name'] ?? colorData['color_name'] ?? '')
+                        .toString();
+                    final parsedColor = getEffectiveGradientColors(
+                      FrameColor.white,
+                      colorData,
+                    )[1];
+                    final woodImage = _getWoodTextureImage(colorData);
+                    return DropdownMenuItem<Map<String, dynamic>>(
+                      value: colorData,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: woodImage != null ? null : parsedColor,
+                              image: woodImage,
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.white38
+                                    : Colors.grey.shade400,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              colorName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDark
+                                    ? Colors.orange.shade300
+                                    : Colors.orange.shade800,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (newColor) {
+                    if (newColor == null) return;
+                    widget.model.selectedAccessoryColor = newColor;
+                    widget.model.selectedDbColor = newColor;
+                    widget.model.refreshUI();
+                  },
+                ),
+              ),
+            ],
+            if (!isShutterContext &&
+                widget.model.availableSystems.isNotEmpty) ...[
               Container(
                 constraints: const BoxConstraints(maxWidth: 160),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
@@ -9348,7 +9683,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   items: primaryItemsList.map((series) {
                     final systemMatches = widget.model.availableSystems.where(
-                      (sys) => sys.series.any((s) => s.id == series.id),
+                          (sys) => sys.series.any((s) => s.id == series.id),
                     );
                     final systemName = systemMatches.isNotEmpty
                         ? systemMatches.first.name
@@ -9417,7 +9752,7 @@ class _WindowViewState extends State<WindowView> {
                     ),
                     items: slidingItemsList.map((series) {
                       final systemMatches = widget.model.availableSystems.where(
-                        (s) => s.series.any((ser) => ser.id == series.id),
+                            (s) => s.series.any((ser) => ser.id == series.id),
                       );
                       final systemName = systemMatches.isNotEmpty
                           ? systemMatches.first.name
@@ -9487,9 +9822,9 @@ class _WindowViewState extends State<WindowView> {
               ),
               tooltip: widget.model.copyPreviousFrameSize
                   ? Localization.translate(
-                      'نسخ قياس الإطار السابق: مفعّل',
-                      lang,
-                    )
+                'نسخ قياس الإطار السابق: مفعّل',
+                lang,
+              )
                   : Localization.translate('نسخ قياس الإطار السابق', lang),
               onPressed: widget.model.toggleCopyPreviousFrameSize,
             ),
@@ -9509,8 +9844,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildSplitToolbar(BuildContext context, bool hasSelection) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider
+        .of<AppSettingsProvider>(context)
+        .language;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
@@ -9538,7 +9877,8 @@ class _WindowViewState extends State<WindowView> {
                   ),
                 ),
                 child: Text(
-                  'Dim: ${widget.model.width.toInt()} * ${widget.model.height.toInt()}',
+                  'Dim: ${widget.model.width.toInt()} * ${widget.model.height
+                      .toInt()}',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,
@@ -9654,46 +9994,49 @@ class _WindowViewState extends State<WindowView> {
   void _showClearAllDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Colors.red),
-            SizedBox(width: 8),
-            Text(
-              'مسح الرسم',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+      builder: (context) =>
+          AlertDialog(
+            backgroundColor: Colors.white,
+            title: Row(
+              children: const [
+                Icon(Icons.warning_amber_rounded, color: Colors.red),
+                SizedBox(width: 8),
+                Text(
+                  'مسح الرسم',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.red),
+                ),
+              ],
             ),
-          ],
-        ),
-        content: const Text(
-          'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'إلغاء',
-              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            content: const Text(
+              'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              widget.model.clearAll();
-              Navigator.pop(context);
-            },
-            child: const Text(
-              'نعم، امسح',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'إلغاء',
+                  style: TextStyle(
+                      color: Colors.grey, fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () {
+                  widget.model.clearAll();
+                  Navigator.pop(context);
+                },
+                child: const Text(
+                  'نعم، امسح',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -9709,11 +10052,15 @@ class _WindowViewState extends State<WindowView> {
     TextEditingController part1Ctrl = TextEditingController();
     TextEditingController part2Ctrl = TextEditingController();
 
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    )
+        .language;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : Colors.black;
     final subtextColor = isDark ? Colors.white70 : Colors.black87;
     final bgColor = isDark ? const Color(0xFF1E1E2C) : Colors.white;
@@ -9722,11 +10069,14 @@ class _WindowViewState extends State<WindowView> {
     String getRemainingText() {
       if (parts == 2) {
         double p1 = double.tryParse(part1Ctrl.text) ?? 0;
-        return '${Localization.translate('المتبقي', lang)}: ${(totalNetSize - p1).toStringAsFixed(1)} mm';
+        return '${Localization.translate('المتبقي', lang)}: ${(totalNetSize -
+            p1).toStringAsFixed(1)} mm';
       } else if (parts == 3) {
         double p1 = double.tryParse(part1Ctrl.text) ?? 0;
         double p2 = double.tryParse(part2Ctrl.text) ?? 0;
-        return '${Localization.translate('القطعة الوسطى', lang)}: ${(totalNetSize - p1 - p2).toStringAsFixed(1)} mm';
+        return '${Localization.translate(
+            'القطعة الوسطى', lang)}: ${(totalNetSize - p1 - p2).toStringAsFixed(
+            1)} mm';
       }
       return '';
     }
@@ -9778,11 +10128,12 @@ class _WindowViewState extends State<WindowView> {
                       ),
                       value: false,
                       groupValue: isEqualSplit,
-                      onChanged: (v) => setState(() {
-                        isEqualSplit = v!;
-                        part1Ctrl.clear();
-                        part2Ctrl.clear();
-                      }),
+                      onChanged: (v) =>
+                          setState(() {
+                            isEqualSplit = v!;
+                            part1Ctrl.clear();
+                            part2Ctrl.clear();
+                          }),
                       activeColor: Colors.blue,
                     ),
                     Divider(
@@ -9816,13 +10167,15 @@ class _WindowViewState extends State<WindowView> {
                             ),
                             items: List.generate(9, (index) => index + 2)
                                 .map(
-                                  (e) => DropdownMenuItem(
+                                  (e) =>
+                                  DropdownMenuItem(
                                     value: e,
                                     child: Text(
-                                      '$e ${Localization.translate('قطع', lang)}',
+                                      '$e ${Localization.translate(
+                                          'قطع', lang)}',
                                     ),
                                   ),
-                                )
+                            )
                                 .toList(),
                             onChanged: (v) => setState(() => parts = v!),
                           ),
@@ -9855,25 +10208,30 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                                 items: [2, 3]
                                     .map(
-                                      (e) => DropdownMenuItem(
+                                      (e) =>
+                                      DropdownMenuItem(
                                         value: e,
                                         child: Text(
-                                          '$e ${Localization.translate('قطع', lang)}',
+                                          '$e ${Localization.translate(
+                                              'قطع', lang)}',
                                         ),
                                       ),
-                                    )
+                                )
                                     .toList(),
-                                onChanged: (v) => setState(() {
-                                  parts = v!;
-                                  part1Ctrl.clear();
-                                  part2Ctrl.clear();
-                                }),
+                                onChanged: (v) =>
+                                    setState(() {
+                                      parts = v!;
+                                      part1Ctrl.clear();
+                                      part2Ctrl.clear();
+                                    }),
                               ),
                             ],
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            '${Localization.translate('إجمالي القياس الصافي', lang)}: ${totalNetSize.toStringAsFixed(1)} mm',
+                            '${Localization.translate(
+                                'إجمالي القياس الصافي', lang)}: ${totalNetSize
+                                .toStringAsFixed(1)} mm',
                             style: const TextStyle(
                               color: Colors.red,
                               fontWeight: FontWeight.bold,
@@ -9910,13 +10268,13 @@ class _WindowViewState extends State<WindowView> {
                                       child: Text(
                                         isHorizontal
                                             ? Localization.translate(
-                                                'من الأعلى',
-                                                lang,
-                                              )
+                                          'من الأعلى',
+                                          lang,
+                                        )
                                             : Localization.translate(
-                                                'من اليسار',
-                                                lang,
-                                              ),
+                                          'من اليسار',
+                                          lang,
+                                        ),
                                       ),
                                     ),
                                     DropdownMenuItem(
@@ -9924,13 +10282,13 @@ class _WindowViewState extends State<WindowView> {
                                       child: Text(
                                         isHorizontal
                                             ? Localization.translate(
-                                                'من الأسفل',
-                                                lang,
-                                              )
+                                          'من الأسفل',
+                                          lang,
+                                        )
                                             : Localization.translate(
-                                                'من اليمين',
-                                                lang,
-                                              ),
+                                          'من اليمين',
+                                          lang,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -9979,83 +10337,84 @@ class _WindowViewState extends State<WindowView> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ] else if (parts == 3) ...[
-                            TextField(
-                              controller: part1Ctrl,
-                              onChanged: (_) => setState(() {}),
-                              style: TextStyle(
-                                color: textColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  isHorizontal
-                                      ? 'القطعة العلوية (mm)'
-                                      : 'القطعة اليسرى (mm)',
-                                  lang,
+                          ] else
+                            if (parts == 3) ...[
+                              TextField(
+                                controller: part1Ctrl,
+                                onChanged: (_) => setState(() {}),
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
                                 ),
-                                labelStyle: TextStyle(
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.black54,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    isHorizontal
+                                        ? 'القطعة العلوية (mm)'
+                                        : 'القطعة اليسرى (mm)',
+                                    lang,
+                                  ),
+                                  labelStyle: TextStyle(
                                     color: isDark
-                                        ? Colors.white24
-                                        : Colors.grey,
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(
+                                      color: isDark
+                                          ? Colors.white24
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                                  focusedBorder: const OutlineInputBorder(
+                                    borderSide: BorderSide(color: Colors.blue),
                                   ),
                                 ),
-                                focusedBorder: const OutlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.blue),
-                                ),
+                                keyboardType: TextInputType.number,
                               ),
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              controller: part2Ctrl,
-                              onChanged: (_) => setState(() {}),
-                              style: TextStyle(
-                                color: textColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: Localization.translate(
-                                  isHorizontal
-                                      ? 'القطعة السفلية (mm)'
-                                      : 'القطعة اليمنى (mm)',
-                                  lang,
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: part2Ctrl,
+                                onChanged: (_) => setState(() {}),
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
                                 ),
-                                labelStyle: TextStyle(
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.black54,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
+                                decoration: InputDecoration(
+                                  labelText: Localization.translate(
+                                    isHorizontal
+                                        ? 'القطعة السفلية (mm)'
+                                        : 'القطعة اليمنى (mm)',
+                                    lang,
+                                  ),
+                                  labelStyle: TextStyle(
                                     color: isDark
-                                        ? Colors.white24
-                                        : Colors.grey,
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(
+                                      color: isDark
+                                          ? Colors.white24
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                                  focusedBorder: const OutlineInputBorder(
+                                    borderSide: BorderSide(color: Colors.blue),
                                   ),
                                 ),
-                                focusedBorder: const OutlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.blue),
+                                keyboardType: TextInputType.number,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                getRemainingText(),
+                                style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              getRemainingText(),
-                              style: const TextStyle(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                            ],
                         ],
                       ),
                   ],
@@ -10072,13 +10431,13 @@ class _WindowViewState extends State<WindowView> {
                   },
                   child: Text(
                     (zone.content != ZoneContent.empty &&
-                            zone.content != ZoneContent.fixedGlass)
+                        zone.content != ZoneContent.fixedGlass)
                         ? Localization.translate('حذف التقسيم', lang)
                         : Localization.translate('إلغاء', lang),
                     style: TextStyle(
                       color:
-                          (zone.content != ZoneContent.empty &&
-                              zone.content != ZoneContent.fixedGlass)
+                      (zone.content != ZoneContent.empty &&
+                          zone.content != ZoneContent.fixedGlass)
                           ? Colors.red
                           : (isDark ? Colors.white60 : Colors.grey),
                       fontWeight: FontWeight.bold,
@@ -10099,7 +10458,7 @@ class _WindowViewState extends State<WindowView> {
                       if (parts == 2) {
                         double val =
                             double.tryParse(part1Ctrl.text) ??
-                            (totalNetSize / 2);
+                                (totalNetSize / 2);
                         customSizes.add(val);
                         if (isHorizontal) {
                           widget.model.splitSelectedZoneHorizontal(
@@ -10117,10 +10476,10 @@ class _WindowViewState extends State<WindowView> {
                       } else if (parts == 3) {
                         double val1 =
                             double.tryParse(part1Ctrl.text) ??
-                            (totalNetSize / 3);
+                                (totalNetSize / 3);
                         double val2 =
                             double.tryParse(part2Ctrl.text) ??
-                            (totalNetSize / 3);
+                                (totalNetSize / 3);
                         customSizes.addAll([val1, val2]);
                         if (isHorizontal) {
                           widget.model.splitSelectedZoneHorizontal(
@@ -10155,10 +10514,12 @@ class _WindowViewState extends State<WindowView> {
 
   Widget _buildContentToolbar(BuildContext context) {
     final zone = widget.model.selectedZone!;
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     String seriesName = activeSeriesForSystem != null
         ? activeSeriesForSystem!.name.toLowerCase()
         : '';
@@ -10169,7 +10530,10 @@ class _WindowViewState extends State<WindowView> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.40,
+        maxHeight: MediaQuery
+            .of(context)
+            .size
+            .height * 0.40,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -10201,50 +10565,54 @@ class _WindowViewState extends State<WindowView> {
                 children: [
                   _ContentButton(
                     label:
-                        ((zone.content == ZoneContent.slidingSash ||
-                                    widget.systemMode == 'sliding')
-                                ? widget.model.slidingFrameOverride
-                                : widget.model.frameOverride) !=
-                            null
-                        ? '${((zone.content == ZoneContent.slidingSash || widget.systemMode == 'sliding') ? widget.model.slidingFrameOverride : widget.model.frameOverride)!['name']}'
+                    ((zone.content == ZoneContent.slidingSash ||
+                        widget.systemMode == 'sliding')
+                        ? widget.model.slidingFrameOverride
+                        : widget.model.frameOverride) !=
+                        null
+                        ? '${((zone.content == ZoneContent.slidingSash ||
+                        widget.systemMode == 'sliding') ? widget.model
+                        .slidingFrameOverride : widget.model
+                        .frameOverride)!['name']}'
                         : Localization.translate('اختر الإطار (Cadre)', lang),
                     icon: Icons.border_outer_rounded,
                     selected:
-                        ((zone.content == ZoneContent.slidingSash ||
-                                widget.systemMode == 'sliding')
-                            ? widget.model.slidingFrameOverride
-                            : widget.model.frameOverride) !=
+                    ((zone.content == ZoneContent.slidingSash ||
+                        widget.systemMode == 'sliding')
+                        ? widget.model.slidingFrameOverride
+                        : widget.model.frameOverride) !=
                         null,
                     onPressed: () async {
                       final useSlidingProfiles =
                           zone.content == ZoneContent.slidingSash ||
-                          widget.systemMode == 'sliding';
+                              widget.systemMode == 'sliding';
                       final selected = await showDialog<Map<String, dynamic>>(
                         context: context,
-                        builder: (context) => ProfileSelectorDialog(
-                          profileType: 'Frame',
-                          seriesId: useSlidingProfiles
-                              ? widget.model.activeSlidingSeries?.id
-                              : widget.model.activeSeries?.id,
-                          materialType: useSlidingProfiles
-                              ? (widget.model.isSlidingPVC
-                                    ? 'PVC'
-                                    : 'Aluminium')
-                              : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
-                          hasShutter: widget.model.hasShutter,
-                          accessoryDrawingMode: useSlidingProfiles
-                              ? AccessoryDrawingMode.sliding
-                              : AccessoryDrawingMode.opening,
-                        ),
+                        builder: (context) =>
+                            ProfileSelectorDialog(
+                              profileType: 'Frame',
+                              seriesId: useSlidingProfiles
+                                  ? widget.model.activeSlidingSeries?.id
+                                  : widget.model.activeSeries?.id,
+                              materialType: useSlidingProfiles
+                                  ? (widget.model.isSlidingPVC
+                                  ? 'PVC'
+                                  : 'Aluminium')
+                                  : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
+                              hasShutter: widget.model.hasShutter,
+                              accessoryDrawingMode: useSlidingProfiles
+                                  ? AccessoryDrawingMode.sliding
+                                  : AccessoryDrawingMode.opening,
+                            ),
                       );
                       if (selected != null) {
                         final mutableSelected = Map<String, dynamic>.from(
                           selected,
                         );
                         mutableSelected['calculated_price'] =
-                            await _sectionPriceForSelectedColor(
-                              mutableSelected,
-                            );
+                        await _sectionPriceForSelectedColor(
+                          mutableSelected,
+                        );
 
                         setState(() {
                           widget.model.applyFrameOverride(
@@ -10264,49 +10632,55 @@ class _WindowViewState extends State<WindowView> {
                     const SizedBox(width: 8),
                     _ContentButton(
                       label:
-                          ((zone.content == ZoneContent.slidingSash ||
-                                      widget.systemMode == 'sliding')
-                                  ? widget.model.slidingSashOverride
-                                  : widget.model.sashOverride) !=
-                              null
-                          ? '${((zone.content == ZoneContent.slidingSash || widget.systemMode == 'sliding') ? widget.model.slidingSashOverride : widget.model.sashOverride)!['name']}'
+                      ((zone.content == ZoneContent.slidingSash ||
+                          widget.systemMode == 'sliding')
+                          ? widget.model.slidingSashOverride
+                          : widget.model.sashOverride) !=
+                          null
+                          ? '${((zone.content == ZoneContent.slidingSash ||
+                          widget.systemMode == 'sliding') ? widget.model
+                          .slidingSashOverride : widget.model
+                          .sashOverride)!['name']}'
                           : Localization.translate('اختر الظلفة (Sash)', lang),
                       icon: Icons.format_paint_rounded,
                       selected:
-                          ((zone.content == ZoneContent.slidingSash ||
-                                  widget.systemMode == 'sliding')
-                              ? widget.model.slidingSashOverride
-                              : widget.model.sashOverride) !=
+                      ((zone.content == ZoneContent.slidingSash ||
+                          widget.systemMode == 'sliding')
+                          ? widget.model.slidingSashOverride
+                          : widget.model.sashOverride) !=
                           null,
                       onPressed: () async {
                         final useSlidingProfiles =
                             zone.content == ZoneContent.slidingSash ||
-                            widget.systemMode == 'sliding';
+                                widget.systemMode == 'sliding';
                         final selected = await showDialog<Map<String, dynamic>>(
                           context: context,
-                          builder: (context) => ProfileSelectorDialog(
-                            profileType: 'sash',
-                            seriesId: useSlidingProfiles
-                                ? widget.model.activeSlidingSeries?.id
-                                : widget.model.activeSeries?.id,
-                            materialType: useSlidingProfiles
-                                ? (widget.model.isSlidingPVC
-                                      ? 'PVC'
-                                      : 'Aluminium')
-                                : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
-                            accessoryDrawingMode: useSlidingProfiles
-                                ? AccessoryDrawingMode.sliding
-                                : AccessoryDrawingMode.opening,
-                          ),
+                          builder: (context) =>
+                              ProfileSelectorDialog(
+                                profileType: 'sash',
+                                seriesId: useSlidingProfiles
+                                    ? widget.model.activeSlidingSeries?.id
+                                    : widget.model.activeSeries?.id,
+                                materialType: useSlidingProfiles
+                                    ? (widget.model.isSlidingPVC
+                                    ? 'PVC'
+                                    : 'Aluminium')
+                                    : (widget.model.isPVC
+                                    ? 'PVC'
+                                    : 'Aluminium'),
+                                accessoryDrawingMode: useSlidingProfiles
+                                    ? AccessoryDrawingMode.sliding
+                                    : AccessoryDrawingMode.opening,
+                              ),
                         );
                         if (selected != null) {
                           final mutableSelected = Map<String, dynamic>.from(
                             selected,
                           );
                           mutableSelected['calculated_price'] =
-                              await _sectionPriceForSelectedColor(
-                                mutableSelected,
-                              );
+                          await _sectionPriceForSelectedColor(
+                            mutableSelected,
+                          );
 
                           setState(() {
                             widget.model.applySashOverride(
@@ -10336,21 +10710,23 @@ class _WindowViewState extends State<WindowView> {
                     ],
                     const SizedBox(width: 8),
                     ...(zone.content == ZoneContent.doubleSash ||
-                                zone.content == ZoneContent.slidingSash
-                            ? [OpenDirection.left, OpenDirection.right]
-                            : OpenDirection.values)
+                        zone.content == ZoneContent.slidingSash
+                        ? [OpenDirection.left, OpenDirection.right]
+                        : OpenDirection.values)
                         .map(
-                          (dir) => Padding(
+                          (dir) =>
+                          Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: _ContentButton(
                               label: _getDirectionName(dir),
                               icon: Icons.open_with_rounded,
                               selected: zone.openDirection == dir,
-                              onPressed: () => widget.model
-                                  .setSelectedZoneOpenDirection(dir),
+                              onPressed: () =>
+                                  widget.model
+                                      .setSelectedZoneOpenDirection(dir),
                             ),
                           ),
-                        ),
+                    ),
                   ],
                 ],
               ),
@@ -10420,7 +10796,7 @@ class _WindowViewState extends State<WindowView> {
                         label: 'منزلق 2',
                         icon: Icons.sync_alt_rounded,
                         selected:
-                            zone.content == ZoneContent.slidingSash &&
+                        zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 2,
                         onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
@@ -10449,7 +10825,7 @@ class _WindowViewState extends State<WindowView> {
                           label: 'منزلق 3',
                           icon: Icons.sync_alt_rounded,
                           selected:
-                              zone.content == ZoneContent.slidingSash &&
+                          zone.content == ZoneContent.slidingSash &&
                               zone.slidingSashesCount == 3,
                           onPressed: () async {
                             if (widget.model.hasArchOrSlant) {
@@ -10475,7 +10851,7 @@ class _WindowViewState extends State<WindowView> {
                           label: 'منزلق 4',
                           icon: Icons.sync_alt_rounded,
                           selected:
-                              zone.content == ZoneContent.slidingSash &&
+                          zone.content == ZoneContent.slidingSash &&
                               zone.slidingSashesCount == 4,
                           onPressed: () async {
                             if (widget.model.hasArchOrSlant) {
@@ -10501,7 +10877,7 @@ class _WindowViewState extends State<WindowView> {
                       label: 'منزلق 2',
                       icon: Icons.sync_alt_rounded,
                       selected:
-                          zone.content == ZoneContent.slidingSash &&
+                      zone.content == ZoneContent.slidingSash &&
                           zone.slidingSashesCount == 2,
                       onPressed: () async {
                         if (widget.model.hasArchOrSlant) {
@@ -10530,7 +10906,7 @@ class _WindowViewState extends State<WindowView> {
                         label: 'منزلق 3',
                         icon: Icons.sync_alt_rounded,
                         selected:
-                            zone.content == ZoneContent.slidingSash &&
+                        zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 3,
                         onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
@@ -10556,7 +10932,7 @@ class _WindowViewState extends State<WindowView> {
                         label: 'منزلق 4',
                         icon: Icons.sync_alt_rounded,
                         selected:
-                            zone.content == ZoneContent.slidingSash &&
+                        zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 4,
                         onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
@@ -10602,12 +10978,12 @@ class _WindowViewState extends State<WindowView> {
                             zone.content == ZoneContent.doubleSash)) ...[
                       _ContentButton(
                         label:
-                            zone.cellIsSash[widget.model.activeSubZone!] == true
+                        zone.cellIsSash[widget.model.activeSubZone!] == true
                             ? 'دلفة داخلية (نشطة)'
                             : 'إضافة دلفة داخلية',
                         icon: Icons.window,
                         selected:
-                            zone.cellIsSash[widget.model.activeSubZone!] ==
+                        zone.cellIsSash[widget.model.activeSubZone!] ==
                             true,
                         onPressed: () {
                           setState(() {
@@ -10618,17 +10994,17 @@ class _WindowViewState extends State<WindowView> {
                       const SizedBox(width: 8),
                       _ContentButton(
                         label:
-                            zone.cellIsDoubleSash[widget
-                                    .model
-                                    .activeSubZone!] ==
-                                true
+                        zone.cellIsDoubleSash[widget
+                            .model
+                            .activeSubZone!] ==
+                            true
                             ? 'ضلفتان داخليتان (نشطة)'
                             : 'إضافة ضلفتان داخليتان',
                         icon: Icons.window,
                         selected:
-                            zone.cellIsDoubleSash[widget
-                                .model
-                                .activeSubZone!] ==
+                        zone.cellIsDoubleSash[widget
+                            .model
+                            .activeSubZone!] ==
                             true,
                         onPressed: () {
                           setState(() {
@@ -10637,7 +11013,7 @@ class _WindowViewState extends State<WindowView> {
                         },
                       ),
                       if (zone.cellIsSash[widget.model.activeSubZone!] ==
-                              true ||
+                          true ||
                           zone.cellIsDoubleSash[widget.model.activeSubZone!] ==
                               true) ...[
                         const SizedBox(width: 8),
@@ -10646,18 +11022,18 @@ class _WindowViewState extends State<WindowView> {
                             final cellKey = widget.model.activeSubZone!;
                             bool isCellSash105 = false;
                             final currentOverride =
-                                zone.cellSashOverrides[cellKey];
+                            zone.cellSashOverrides[cellKey];
                             if (currentOverride != null) {
                               final code =
                                   currentOverride['code']
                                       ?.toString()
                                       .toLowerCase() ??
-                                  '';
+                                      '';
                               final name =
                                   currentOverride['name']
                                       ?.toString()
                                       .toLowerCase() ??
-                                  '';
+                                      '';
                               if (code.contains('104') ||
                                   name.contains('104')) {
                                 isCellSash105 = false;
@@ -10715,7 +11091,7 @@ class _WindowViewState extends State<WindowView> {
                                 zone.cellIsDoubleSash[cellKey] == true;
                             final currentDir = () {
                               final currentOverride =
-                                  zone.cellSashOverrides[cellKey];
+                              zone.cellSashOverrides[cellKey];
                               final defaultDir = isDouble
                                   ? OpenDirection.right
                                   : OpenDirection.left;
@@ -10724,7 +11100,7 @@ class _WindowViewState extends State<WindowView> {
                                 final dirStr = currentOverride['openDirection']
                                     .toString();
                                 return OpenDirection.values.firstWhere(
-                                  (d) => d.name == dirStr,
+                                      (d) => d.name == dirStr,
                                   orElse: () => defaultDir,
                                 );
                               }
@@ -10735,13 +11111,14 @@ class _WindowViewState extends State<WindowView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 ...(isDouble
-                                        ? [
-                                            OpenDirection.left,
-                                            OpenDirection.right,
-                                          ]
-                                        : OpenDirection.values)
+                                    ? [
+                                  OpenDirection.left,
+                                  OpenDirection.right,
+                                ]
+                                    : OpenDirection.values)
                                     .map(
-                                      (dir) => Padding(
+                                      (dir) =>
+                                      Padding(
                                         padding: const EdgeInsets.only(left: 8),
                                         child: _ContentButton(
                                           label: _getDirectionName(dir),
@@ -10751,14 +11128,14 @@ class _WindowViewState extends State<WindowView> {
                                             setState(() {
                                               widget.model
                                                   .setCellSashOpenDirection(
-                                                    cellKey,
-                                                    dir,
-                                                  );
+                                                cellKey,
+                                                dir,
+                                              );
                                             });
                                           },
                                         ),
                                       ),
-                                    ),
+                                ),
                               ],
                             );
                           },
@@ -10776,10 +11153,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getStructureName(GlassStructure s) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     switch (s) {
       case GlassStructure.simple:
         return Localization.translate('عادي', lang);
@@ -10791,10 +11170,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getFinishName(GlassFinish f) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     String name = '';
     switch (f) {
       case GlassFinish.clair:
@@ -10850,10 +11231,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getColorName(GlassColor c) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     String name = '';
     switch (c) {
       case GlassColor.transparent:
@@ -10882,10 +11265,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getClosedColoreName(ClosedGlassColor d) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     String name = '';
     switch (d) {
       case ClosedGlassColor.transparent:
@@ -10923,10 +11308,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getDirectionName(OpenDirection d) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     String name = '';
     switch (d) {
       case OpenDirection.left:
@@ -10956,8 +11343,7 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Future<double> _sectionPriceForSelectedColor(
-    Map<String, dynamic> item,
-  ) async {
+      Map<String, dynamic> item,) async {
     final sectionId = _catalogRowId(item);
     final colorId = _selectedProfileColorId();
     if (sectionId == null || colorId == null) return 0.0;
@@ -10969,8 +11355,7 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  bool _isReinforcedMontant(
-    Map<String, dynamic> item, {
+  bool _isReinforcedMontant(Map<String, dynamic> item, {
     required bool central,
   }) {
     final code = (item['code'] ?? '').toString().trim().toLowerCase();
@@ -10982,10 +11367,19 @@ class _WindowViewState extends State<WindowView> {
         type.contains('renforc');
   }
 
-  bool _isSlidingMontantCandidate(
-    Map<String, dynamic> item, {
+  bool _isSlidingMontantCandidate(Map<String, dynamic> item, {
     required bool central,
   }) {
+    final id = _catalogRowId(item);
+    if (id != null) {
+      final inCentralRole = _slidingCentralProfileIds.contains(id);
+      final inLateralRole = _slidingLateralProfileIds.contains(id);
+      if (central && inCentralRole) return true;
+      if (!central && inLateralRole) return true;
+      if (central && inLateralRole) return false;
+      if (!central && inCentralRole) return false;
+    }
+
     final code = (item['code'] ?? '').toString().trim().toLowerCase();
     final name = (item['name'] ?? '').toString().toLowerCase();
     final type = (item['type'] ?? '').toString().toLowerCase();
@@ -11012,29 +11406,34 @@ class _WindowViewState extends State<WindowView> {
   }) async {
     final reinforced = central
         ? widget.model.zones.any(
-            (zone) => zone.slidingMontantReinforced.entries.any(
-              (entry) => entry.key.startsWith('central_') && entry.value,
-            ),
-          )
+          (zone) =>
+          zone.slidingMontantReinforced.entries.any(
+                (entry) => entry.key.startsWith('central_') && entry.value,
+          ),
+    )
         : widget.model.zones.any(
-            (zone) =>
-                zone.slidingMontantReinforced['lateral_0'] == true ||
-                zone.slidingMontantReinforced['lateral_1'] == true,
-          );
+          (zone) =>
+      zone.slidingMontantReinforced['lateral_0'] == true ||
+          zone.slidingMontantReinforced['lateral_1'] == true,
+    );
 
-    final candidates =
-        <Map<String, dynamic>>[
-              ..._sashProfiles,
-              ...?widget.model.activeSlidingSeries?.sections.map(
-                (s) => s.toMap(),
-              ),
-            ]
-            .where((item) => _isSlidingMontantCandidate(item, central: central))
-            .where(
-              (item) =>
-                  _isReinforcedMontant(item, central: central) == reinforced,
-            )
-            .toList();
+    final allCandidates =
+    <Map<String, dynamic>>[
+      ..._sashProfiles,
+      ...?widget.model.activeSlidingSeries?.sections.map(
+            (s) => s.toMap(),
+      ),
+    ]
+        .where((item) => _isSlidingMontantCandidate(item, central: central))
+        .toList();
+    var candidates = allCandidates
+        .where(
+          (item) => _isReinforcedMontant(item, central: central) == reinforced,
+    )
+        .toList();
+    if (candidates.isEmpty && allCandidates.isNotEmpty) {
+      candidates = allCandidates;
+    }
     if (candidates.isEmpty) return;
 
     final selected = Map<String, dynamic>.from(candidates.first);
@@ -11105,7 +11504,7 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
 
     // ── إذا تم تحديد الستار → اعرض لوحة الستار ──
-    if (widget.model.isShutterOnly ||
+    if ((widget.model.isShutterOnly && _isBottomPanelExpanded) ||
         (_isShutterSelected &&
             (widget.model.hasShutter ||
                 widget.model.drawNextShapeAsShutterOnly))) {
@@ -11116,7 +11515,9 @@ class _WindowViewState extends State<WindowView> {
     // available to open it manually when nothing is selected.
     final showExpanded = _isBottomPanelExpanded;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
@@ -11173,9 +11574,10 @@ class _WindowViewState extends State<WindowView> {
 
             if (showExpanded) ...[
               GestureDetector(
-                onTap: () => setState(() {
-                  _isBottomPanelExpanded = false;
-                }),
+                onTap: () =>
+                    setState(() {
+                      _isBottomPanelExpanded = false;
+                    }),
                 child: Container(
                   width: double.infinity,
                   color: Colors.transparent,
@@ -11201,23 +11603,25 @@ class _WindowViewState extends State<WindowView> {
                     vertical: 8,
                   ),
                   child: _HorizontalWheelScrollArea(
-                    builder: (context, controller) => SingleChildScrollView(
-                      controller: controller,
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _arrangeInTwoRows(
-                          _buildTier2Options(context, isMullionSelected),
+                    builder: (context, controller) =>
+                        SingleChildScrollView(
+                          controller: controller,
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _arrangeInTwoRows(
+                              _buildTier2Options(context, isMullionSelected),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
                   ),
                 ),
               ] else
                 _buildZoneContentPaintPicker(context),
-            ] else ...[
-              // Collapsed state: Show original Status Bar & Calculations
-              _buildCollapsedStatusBar(context),
-            ],
+            ] else
+              ...[
+                // Collapsed state: Show original Status Bar & Calculations
+                _buildCollapsedStatusBar(context),
+              ],
           ],
         ),
       ),
@@ -11231,20 +11635,21 @@ class _WindowViewState extends State<WindowView> {
   /// selected. Choosing an item arms the paint tool; the next click on a
   /// frame applies the type instead of opening the panel automatically.
   Widget _buildZoneContentPaintPicker(BuildContext context) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final canUseOpening = widget.systemMode != 'sliding';
     final canUseSliding =
         widget.systemMode == 'mixed' || widget.systemMode == 'sliding';
 
-    Widget option(
-      String label,
-      IconData icon,
-      ZoneContent content, {
-      int? slidingSashesCount,
-    }) {
+    Widget option(String label,
+        IconData icon,
+        ZoneContent content, {
+          int? slidingSashesCount,
+        }) {
       return Padding(
         padding: const EdgeInsetsDirectional.only(end: 8),
         child: _ContentButton(
@@ -11278,40 +11683,42 @@ class _WindowViewState extends State<WindowView> {
           const SizedBox(height: 6),
           Expanded(
             child: _HorizontalWheelScrollArea(
-              builder: (context, controller) => SingleChildScrollView(
-                controller: controller,
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    option('فارغة', Icons.crop_free_rounded, ZoneContent.empty),
-                    if (canUseOpening)
-                      option(
-                        'زجاج ثابت',
-                        Icons.window_rounded,
-                        ZoneContent.fixedGlass,
-                      ),
-                    if (canUseOpening)
-                      option(
-                        'ضلفة واحدة',
-                        Icons.door_back_door_rounded,
-                        ZoneContent.singleSash,
-                      ),
-                    if (canUseOpening)
-                      option(
-                        'ضلفتان',
-                        Icons.garage_rounded,
-                        ZoneContent.doubleSash,
-                      ),
-                    if (canUseSliding)
-                      option(
-                        'منزلق 2',
-                        Icons.sync_alt_rounded,
-                        ZoneContent.slidingSash,
-                        slidingSashesCount: 2,
-                      ),
-                  ],
-                ),
-              ),
+              builder: (context, controller) =>
+                  SingleChildScrollView(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        option('فارغة', Icons.crop_free_rounded,
+                            ZoneContent.empty),
+                        if (canUseOpening)
+                          option(
+                            'زجاج ثابت',
+                            Icons.window_rounded,
+                            ZoneContent.fixedGlass,
+                          ),
+                        if (canUseOpening)
+                          option(
+                            'ضلفة واحدة',
+                            Icons.door_back_door_rounded,
+                            ZoneContent.singleSash,
+                          ),
+                        if (canUseOpening)
+                          option(
+                            'ضلفتان',
+                            Icons.garage_rounded,
+                            ZoneContent.doubleSash,
+                          ),
+                        if (canUseSliding)
+                          option(
+                            'منزلق 2',
+                            Icons.sync_alt_rounded,
+                            ZoneContent.slidingSash,
+                            slidingSashesCount: 2,
+                          ),
+                      ],
+                    ),
+                  ),
             ),
           ),
         ],
@@ -11322,7 +11729,9 @@ class _WindowViewState extends State<WindowView> {
   Widget _buildShutterBottomPanel(BuildContext context) {
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
@@ -11359,29 +11768,30 @@ class _WindowViewState extends State<WindowView> {
               height: 110,
               child: _loadingShutterOptions
                   ? const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
                   : _HorizontalWheelScrollArea(
-                      builder: (context, controller) => SingleChildScrollView(
-                        controller: controller,
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          // Caissons, blades and tracks can have long labels.
-                          // Keep every shutter option on one horizontally
-                          // scrollable row instead of forcing two tall rows
-                          // into the fixed bottom-panel height.
-                          children: _buildShutterTier2Options(context),
-                        ),
+                builder: (context, controller) =>
+                    SingleChildScrollView(
+                      controller: controller,
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        // Caissons, blades and tracks can have long labels.
+                        // Keep every shutter option on one horizontally
+                        // scrollable row instead of forcing two tall rows
+                        // into the fixed bottom-panel height.
+                        children: _buildShutterTier2Options(context),
                       ),
                     ),
+              ),
             ),
           ],
         ),
@@ -11390,10 +11800,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildShutterTier1TabBar() {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final tabs = [
       {'id': 0, 'label': 'شائع', 'icon': Icons.tune_rounded},
       {'id': 1, 'label': 'الصندوق', 'icon': Icons.inbox_rounded},
@@ -11405,57 +11817,58 @@ class _WindowViewState extends State<WindowView> {
     return SizedBox(
       height: 44,
       child: _HorizontalWheelScrollArea(
-        builder: (context, controller) => ListView.builder(
-          controller: controller,
-          scrollDirection: Axis.horizontal,
-          itemCount: tabs.length,
-          itemBuilder: (context, index) {
-            final tab = tabs[index];
-            final id = tab['id'] as int;
-            final isSelected = _activeShutterTab == id;
-            return InkWell(
-              onTap: () => setState(() => _activeShutterTab = id),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: isSelected
-                          ? Colors.orange.shade700
-                          : Colors.transparent,
-                      width: 2.5,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      tab['icon'] as IconData,
-                      size: 15,
-                      color: isSelected
-                          ? Colors.orange.shade700
-                          : Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      Localization.translate(tab['label'] as String, lang),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isSelected
-                            ? Colors.orange.shade700
-                            : Colors.grey.shade700,
+        builder: (context, controller) =>
+            ListView.builder(
+              controller: controller,
+              scrollDirection: Axis.horizontal,
+              itemCount: tabs.length,
+              itemBuilder: (context, index) {
+                final tab = tabs[index];
+                final id = tab['id'] as int;
+                final isSelected = _activeShutterTab == id;
+                return InkWell(
+                  onTap: () => setState(() => _activeShutterTab = id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isSelected
+                              ? Colors.orange.shade700
+                              : Colors.transparent,
+                          width: 2.5,
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          tab['icon'] as IconData,
+                          size: 15,
+                          color: isSelected
+                              ? Colors.orange.shade700
+                              : Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          Localization.translate(tab['label'] as String, lang),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isSelected
+                                ? Colors.orange.shade700
+                                : Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
       ),
     );
   }
@@ -11574,8 +11987,8 @@ class _WindowViewState extends State<WindowView> {
       final isSelected = isTunnelOption
           ? widget.model.isCaissonTunnel
           : (!widget.model.isCaissonTunnel &&
-                currentId != null &&
-                opt['id'] == currentId);
+          currentId != null &&
+          opt['id'] == currentId);
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -11666,15 +12079,15 @@ class _WindowViewState extends State<WindowView> {
     final requiredTrackMeasurement = selectedBlade == null
         ? null
         : WindowModel.shutterMeasurementKey(
-            Map<String, dynamic>.from(selectedBlade),
-            preferTrackMeasurement: true,
-          );
+      Map<String, dynamic>.from(selectedBlade),
+      preferTrackMeasurement: true,
+    );
     final compatibleOptions = selectedBlade == null
         ? _shutterCoulisseOptions
         : WindowModel.compatibleShutterTracks(
-            Map<String, dynamic>.from(selectedBlade),
-            _shutterCoulisseOptions,
-          );
+      Map<String, dynamic>.from(selectedBlade),
+      _shutterCoulisseOptions,
+    );
     final options = requiredTrackMeasurement == null
         ? _shutterCoulisseOptions
         : compatibleOptions;
@@ -11736,9 +12149,9 @@ class _WindowViewState extends State<WindowView> {
       final val = mech['value'] as String;
       final isSelected =
           widget.model.shutterMechanism == val ||
-          (val == 'مانيفال' &&
-              (widget.model.shutterMechanism == 'منايفال' ||
-                  widget.model.shutterMechanism == 'مانيفر'));
+              (val == 'مانيفال' &&
+                  (widget.model.shutterMechanism == 'منايفال' ||
+                      widget.model.shutterMechanism == 'مانيفر'));
       items.add(
         _ShutterChip(
           label: mech['label'] as String,
@@ -11773,7 +12186,7 @@ class _WindowViewState extends State<WindowView> {
           onTap: () {
             setState(() {
               widget.model.motorHasInterrupteur =
-                  !widget.model.motorHasInterrupteur;
+              !widget.model.motorHasInterrupteur;
               widget.model.refreshUI();
             });
           },
@@ -11791,7 +12204,7 @@ class _WindowViewState extends State<WindowView> {
           onTap: () {
             setState(() {
               widget.model.motorHasTelecommande =
-                  !widget.model.motorHasTelecommande;
+              !widget.model.motorHasTelecommande;
               widget.model.refreshUI();
             });
           },
@@ -11803,10 +12216,12 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildTier1TabBar(bool isMullionSelected) {
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final List<Map<String, dynamic>> tabs = [
       {'id': 0, 'label': 'شائع', 'icon': Icons.tune_rounded},
       {'id': 1, 'label': 'إطار', 'icon': Icons.border_outer_rounded},
@@ -11822,92 +12237,97 @@ class _WindowViewState extends State<WindowView> {
     return SizedBox(
       height: 44,
       child: _HorizontalWheelScrollArea(
-        builder: (context, controller) => ListView.builder(
-          controller: controller,
-          scrollDirection: Axis.horizontal,
-          itemCount: tabs.length,
-          itemBuilder: (context, index) {
-            final tab = tabs[index];
-            final id = tab['id'] as int;
-            final isSelected = _isShutterSelected
-                ? (id == 6)
-                : (_activeBottomTab == id);
+        builder: (context, controller) =>
+            ListView.builder(
+              controller: controller,
+              scrollDirection: Axis.horizontal,
+              itemCount: tabs.length,
+              itemBuilder: (context, index) {
+                final tab = tabs[index];
+                final id = tab['id'] as int;
+                final isSelected = _isShutterSelected
+                    ? (id == 6)
+                    : (_activeBottomTab == id);
 
-            return InkWell(
-              onTap: () {
-                setState(() {
-                  _isBottomPanelExpanded = true;
-                  if (id == 6) {
-                    _isShutterSelected = true;
-                    _activeShutterTab = 0;
-                    _loadShutterOptions();
-                  } else {
-                    _isShutterSelected = false;
-                    _activeBottomTab = id;
-                    if (widget.model.selectedZone == null &&
-                        widget.model.zones.isNotEmpty) {
-                      widget.model.selection = SelectionInfo.zone(
-                        widget.model.zones.first.id,
-                      );
-                    }
-                  }
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: isSelected ? Colors.blue : Colors.transparent,
-                      width: 2.5,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      tab['icon'] as IconData,
-                      size: 16,
-                      color: isSelected
-                          ? Colors.blue
-                          : (Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white54
-                                : Colors.grey.shade600),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      Localization.translate(tab['label'] as String, lang),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isSelected
-                            ? Colors.blue
-                            : (Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white60
-                                  : Colors.grey.shade700),
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isBottomPanelExpanded = true;
+                      if (id == 6) {
+                        _isShutterSelected = true;
+                        _activeShutterTab = 0;
+                        _loadShutterOptions();
+                      } else {
+                        _isShutterSelected = false;
+                        _activeBottomTab = id;
+                        if (widget.model.selectedZone == null &&
+                            widget.model.zones.isNotEmpty) {
+                          widget.model.selection = SelectionInfo.zone(
+                            widget.model.zones.first.id,
+                          );
+                        }
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isSelected ? Colors.blue : Colors.transparent,
+                          width: 2.5,
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          tab['icon'] as IconData,
+                          size: 16,
+                          color: isSelected
+                              ? Colors.blue
+                              : (Theme
+                              .of(context)
+                              .brightness == Brightness.dark
+                              ? Colors.white54
+                              : Colors.grey.shade600),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          Localization.translate(tab['label'] as String, lang),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isSelected
+                                ? Colors.blue
+                                : (Theme
+                                .of(context)
+                                .brightness == Brightness.dark
+                                ? Colors.white60
+                                : Colors.grey.shade700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
       ),
     );
   }
 
-  List<Widget> _buildTier2Options(
-    BuildContext context,
-    bool isMullionSelected,
-  ) {
-    final lang = Provider.of<AppSettingsProvider>(
+  List<Widget> _buildTier2Options(BuildContext context,
+      bool isMullionSelected,) {
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
     final zone = widget.model.selectedZone;
     if (zone == null) return [];
 
@@ -12022,7 +12442,7 @@ class _WindowViewState extends State<WindowView> {
                 label: Localization.translate('منزلق 2', lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
-                    zone.content == ZoneContent.slidingSash &&
+                zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 2,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -12057,7 +12477,7 @@ class _WindowViewState extends State<WindowView> {
                   label: Localization.translate('منزلق 3', lang),
                   icon: Icons.sync_alt_rounded,
                   selected:
-                      zone.content == ZoneContent.slidingSash &&
+                  zone.content == ZoneContent.slidingSash &&
                       zone.slidingSashesCount == 3,
                   onPressed: () async {
                     if (widget.model.hasArchOrSlant) {
@@ -12089,7 +12509,7 @@ class _WindowViewState extends State<WindowView> {
                   label: Localization.translate('منزلق 4', lang),
                   icon: Icons.sync_alt_rounded,
                   selected:
-                      zone.content == ZoneContent.slidingSash &&
+                  zone.content == ZoneContent.slidingSash &&
                       zone.slidingSashesCount == 4,
                   onPressed: () async {
                     if (widget.model.hasArchOrSlant) {
@@ -12119,7 +12539,7 @@ class _WindowViewState extends State<WindowView> {
               label: 'منزلق 2',
               icon: Icons.sync_alt_rounded,
               selected:
-                  zone.content == ZoneContent.slidingSash &&
+              zone.content == ZoneContent.slidingSash &&
                   zone.slidingSashesCount == 2,
               onPressed: () async {
                 if (widget.model.hasArchOrSlant) {
@@ -12151,7 +12571,7 @@ class _WindowViewState extends State<WindowView> {
                 label: 'منزلق 3',
                 icon: Icons.sync_alt_rounded,
                 selected:
-                    zone.content == ZoneContent.slidingSash &&
+                zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 3,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -12180,7 +12600,7 @@ class _WindowViewState extends State<WindowView> {
                 label: 'منزلق 4',
                 icon: Icons.sync_alt_rounded,
                 selected:
-                    zone.content == ZoneContent.slidingSash &&
+                zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 4,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -12226,26 +12646,26 @@ class _WindowViewState extends State<WindowView> {
       case 1: // إطار (Frame settings)
         final bool selectedZoneUsesSlidingFrame =
             zone.content == ZoneContent.slidingSash ||
-            widget.systemMode == 'sliding';
+                widget.systemMode == 'sliding';
         final bool selectedZoneUsesOpeningFrame =
             !selectedZoneUsesSlidingFrame &&
-            (zone.content == ZoneContent.singleSash ||
-                zone.content == ZoneContent.doubleSash ||
-                zone.content == ZoneContent.fixedGlass ||
-                zone.content == ZoneContent.empty);
+                (zone.content == ZoneContent.singleSash ||
+                    zone.content == ZoneContent.doubleSash ||
+                    zone.content == ZoneContent.fixedGlass ||
+                    zone.content == ZoneContent.empty);
         final bool hasSlidingFrameInDrawing =
             widget.systemMode == 'sliding' ||
-            (widget.systemMode == 'mixed' &&
-                widget.model.zones.any(
-                  (z) => z.content == ZoneContent.slidingSash,
-                ));
+                (widget.systemMode == 'mixed' &&
+                    widget.model.zones.any(
+                          (z) => z.content == ZoneContent.slidingSash,
+                    ));
         final rawOpeningProfiles =
-            selectedZoneUsesOpeningFrame && widget.systemMode != 'sliding'
+        selectedZoneUsesOpeningFrame && widget.systemMode != 'sliding'
             ? (widget.systemMode == 'mixed'
-                  ? (_openingFrameProfiles.isNotEmpty
-                        ? _openingFrameProfiles
-                        : _frameProfilesFromSeries(widget.model.activeSeries))
-                  : _frameProfiles)
+            ? (_openingFrameProfiles.isNotEmpty
+            ? _openingFrameProfiles
+            : _frameProfilesFromSeries(widget.model.activeSeries))
+            : _frameProfiles)
             : <Map<String, dynamic>>[];
         final openingProfiles = _filterFrameProfilesForDrawingRules(
           rawOpeningProfiles,
@@ -12253,10 +12673,10 @@ class _WindowViewState extends State<WindowView> {
           drawingMode: AccessoryDrawingMode.opening,
         );
         final rawSlidingProfiles =
-            selectedZoneUsesSlidingFrame && hasSlidingFrameInDrawing
+        selectedZoneUsesSlidingFrame && hasSlidingFrameInDrawing
             ? (_slidingFrameProfiles.isNotEmpty
-                  ? _slidingFrameProfiles
-                  : _frameProfilesFromSeries(widget.model.activeSlidingSeries))
+            ? _slidingFrameProfiles
+            : _frameProfilesFromSeries(widget.model.activeSlidingSeries))
             : <Map<String, dynamic>>[];
         final slidingProfiles = _filterFrameProfilesForDrawingRules(
           rawSlidingProfiles,
@@ -12264,13 +12684,12 @@ class _WindowViewState extends State<WindowView> {
           drawingMode: AccessoryDrawingMode.sliding,
         );
 
-        Future<void> selectFrameProfile(
-          Map<String, dynamic> item, {
+        Future<void> selectFrameProfile(Map<String, dynamic> item, {
           required bool sliding,
         }) async {
           final mutableSelected = Map<String, dynamic>.from(item);
           mutableSelected['calculated_price'] =
-              await _sectionPriceForSelectedColor(mutableSelected);
+          await _sectionPriceForSelectedColor(mutableSelected);
           setState(() {
             widget.model.applyFrameOverride(
               mutableSelected,
@@ -12284,14 +12703,15 @@ class _WindowViewState extends State<WindowView> {
           if (mounted) setState(() {});
         }
 
-        void addFrameProfileButtons(
-          List<Map<String, dynamic>> profiles, {
+        void addFrameProfileButtons(List<Map<String, dynamic>> profiles, {
           required bool sliding,
           required String prefix,
         }) {
           for (var item in profiles) {
             final codeStr =
-                (item['code'] != null && item['code'].toString().isNotEmpty)
+            (item['code'] != null && item['code']
+                .toString()
+                .isNotEmpty)
                 ? '${item['code']} - '
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
@@ -12374,10 +12794,10 @@ class _WindowViewState extends State<WindowView> {
         } else {
           final canToggleSideCover =
               widget.model.hasSideCovers ||
-              widget.model.isSideCoverAllowed ||
-              widget.model.isIntegratedFrame ||
-              widget.model.integratedFrameSideCoverWidth > 0 ||
-              widget.model.canUseStandaloneSideCover;
+                  widget.model.isSideCoverAllowed ||
+                  widget.model.isIntegratedFrame ||
+                  widget.model.integratedFrameSideCoverWidth > 0 ||
+                  widget.model.canUseStandaloneSideCover;
           children.add(
             _ContentButton(
               label: widget.model.hasSideCovers
@@ -12414,22 +12834,22 @@ class _WindowViewState extends State<WindowView> {
       case 2: // ورقة (Sash settings)
         final bool isSliding =
             widget.systemMode == 'sliding' ||
-            (widget.systemMode == 'mixed' &&
-                zone.content == ZoneContent.slidingSash);
+                (widget.systemMode == 'mixed' &&
+                    zone.content == ZoneContent.slidingSash);
         final expectedSashSeriesId = isSliding
             ? widget.model.activeSlidingSeries?.id
             : widget.model.activeSeries?.id;
         final sashProfiles = isSliding
             ? (_slidingSashProfiles.isNotEmpty
-                  ? _slidingSashProfiles
-                  : (_loadedSeriesId == expectedSashSeriesId
-                        ? _sashProfiles
-                        : const <Map<String, dynamic>>[]))
+            ? _slidingSashProfiles
+            : (_loadedSeriesId == expectedSashSeriesId
+            ? _sashProfiles
+            : const <Map<String, dynamic>>[]))
             : (_openingSashProfiles.isNotEmpty
-                  ? _openingSashProfiles
-                  : (_loadedSeriesId == expectedSashSeriesId
-                        ? _sashProfiles
-                        : const <Map<String, dynamic>>[]));
+            ? _openingSashProfiles
+            : (_loadedSeriesId == expectedSashSeriesId
+            ? _sashProfiles
+            : const <Map<String, dynamic>>[]));
         if (!isSliding) {
           children.add(
             _ContentButton(
@@ -12464,44 +12884,29 @@ class _WindowViewState extends State<WindowView> {
             ),
           );
         } else if (isSliding) {
-          final lateralProfiles = sashProfiles.where((s) {
-            final name = s['name'].toString().toLowerCase();
-            final type = s['type'].toString().toLowerCase();
-            final code = s['code'].toString().toLowerCase();
-            return type.contains('lateral') ||
-                type.contains('جانبي') ||
-                name.contains('lateral') ||
-                name.contains('جانبي') ||
-                code.contains('104') ||
-                code.contains('108');
-          }).toList();
+          final lateralProfiles = sashProfiles
+              .where((s) => _isSlidingMontantCandidate(s, central: false))
+              .toList();
 
-          final centralProfiles = sashProfiles.where((s) {
-            final name = s['name'].toString().toLowerCase();
-            final type = s['type'].toString().toLowerCase();
-            final code = s['code'].toString().toLowerCase();
-            return type.contains('central') ||
-                type.contains('وسطي') ||
-                name.contains('central') ||
-                name.contains('وسطي') ||
-                code.contains('105') ||
-                code.contains('107');
-          }).toList();
+          final centralProfiles = sashProfiles
+              .where((s) => _isSlidingMontantCandidate(s, central: true))
+              .toList();
 
           bool isLateralSelected(Map<String, dynamic> item) {
             final current =
                 widget
                     .model
                     .componentOverrides['قائم جانبي معزز (Sash Lateral Renforcé)'] ??
-                widget.model.componentOverrides['قائم جانبي (Sash Lateral)'] ??
-                widget.model.componentOverrides['قائم جانبي (Lateral)'];
+                    widget.model
+                        .componentOverrides['قائم جانبي (Sash Lateral)'] ??
+                    widget.model.componentOverrides['قائم جانبي (Lateral)'];
             if (current is Map &&
                 current['id']?.toString() == '${item['id']}') {
               return true;
             }
             bool isLateralReinforced = widget.model.zones.any(
-              (z) =>
-                  z.slidingMontantReinforced['lateral_0'] == true ||
+                  (z) =>
+              z.slidingMontantReinforced['lateral_0'] == true ||
                   z.slidingMontantReinforced['lateral_1'] == true,
             );
             final String code = item['code']?.toString() ?? '';
@@ -12509,9 +12914,9 @@ class _WindowViewState extends State<WindowView> {
             final String type = item['type']?.toString().toLowerCase() ?? '';
             bool itemIsReinforced =
                 code.endsWith('108') ||
-                name.contains('معزز') ||
-                name.contains('renforc') ||
-                type.contains('renforc');
+                    name.contains('معزز') ||
+                    name.contains('renforc') ||
+                    type.contains('renforc');
             return isLateralReinforced == itemIsReinforced;
           }
 
@@ -12520,32 +12925,34 @@ class _WindowViewState extends State<WindowView> {
                 widget
                     .model
                     .componentOverrides['قائم وسطي معزز (Sash Central Renforcé)'] ??
-                widget.model.componentOverrides['قائم وسطي (Sash Central)'] ??
-                widget.model.componentOverrides['قائم وسطي (Central)'];
+                    widget.model
+                        .componentOverrides['قائم وسطي (Sash Central)'] ??
+                    widget.model.componentOverrides['قائم وسطي (Central)'];
             if (current is Map &&
                 current['id']?.toString() == '${item['id']}') {
               return true;
             }
             bool isCentralReinforced = widget.model.zones.any(
-              (z) => z.slidingMontantReinforced.entries.any(
-                (e) => e.key.startsWith('central_') && e.value == true,
-              ),
+                  (z) =>
+                  z.slidingMontantReinforced.entries.any(
+                        (e) => e.key.startsWith('central_') && e.value == true,
+                  ),
             );
             final String code = item['code']?.toString() ?? '';
             final String name = item['name']?.toString().toLowerCase() ?? '';
             final String type = item['type']?.toString().toLowerCase() ?? '';
             bool itemIsReinforced =
                 code.endsWith('107') ||
-                name.contains('معزز') ||
-                name.contains('renforc') ||
-                type.contains('renforc');
+                    name.contains('معزز') ||
+                    name.contains('renforc') ||
+                    type.contains('renforc');
             return isCentralReinforced == itemIsReinforced;
           }
 
           void selectLateral(Map<String, dynamic> item) async {
             final mutableSelected = Map<String, dynamic>.from(item);
             mutableSelected['calculated_price'] =
-                await _sectionPriceForSelectedColor(mutableSelected);
+            await _sectionPriceForSelectedColor(mutableSelected);
 
             setState(() {
               widget.model.applySlidingMontantOverride(
@@ -12560,7 +12967,7 @@ class _WindowViewState extends State<WindowView> {
           void selectCentral(Map<String, dynamic> item) async {
             final mutableSelected = Map<String, dynamic>.from(item);
             mutableSelected['calculated_price'] =
-                await _sectionPriceForSelectedColor(mutableSelected);
+            await _sectionPriceForSelectedColor(mutableSelected);
 
             setState(() {
               widget.model.applySlidingMontantOverride(
@@ -12589,7 +12996,9 @@ class _WindowViewState extends State<WindowView> {
 
           for (var item in lateralProfiles) {
             final codeStr =
-                (item['code'] != null && item['code'].toString().isNotEmpty)
+            (item['code'] != null && item['code']
+                .toString()
+                .isNotEmpty)
                 ? '${item['code']} - '
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
@@ -12629,7 +13038,9 @@ class _WindowViewState extends State<WindowView> {
 
           for (var item in centralProfiles) {
             final codeStr =
-                (item['code'] != null && item['code'].toString().isNotEmpty)
+            (item['code'] != null && item['code']
+                .toString()
+                .isNotEmpty)
                 ? '${item['code']} - '
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
@@ -12652,14 +13063,16 @@ class _WindowViewState extends State<WindowView> {
         } else {
           for (var item in sashProfiles) {
             final codeStr =
-                (item['code'] != null && item['code'].toString().isNotEmpty)
+            (item['code'] != null && item['code']
+                .toString()
+                .isNotEmpty)
                 ? '${item['code']} - '
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
             final label = '$codeStr$nameStr';
             final isSelected =
                 widget.model.sashOverride != null &&
-                widget.model.sashOverride!['id'] == item['id'];
+                    widget.model.sashOverride!['id'] == item['id'];
 
             children.add(
               Padding(
@@ -12672,7 +13085,7 @@ class _WindowViewState extends State<WindowView> {
                   onPressed: () async {
                     final mutableSelected = Map<String, dynamic>.from(item);
                     mutableSelected['calculated_price'] =
-                        await _sectionPriceForSelectedColor(mutableSelected);
+                    await _sectionPriceForSelectedColor(mutableSelected);
                     setState(() {
                       widget.model.applySashOverride(
                         mutableSelected,
@@ -12693,24 +13106,25 @@ class _WindowViewState extends State<WindowView> {
             zone.content == ZoneContent.slidingSash) {
           children.add(const SizedBox(width: 8));
           final allowedDirections =
-              (zone.content == ZoneContent.doubleSash ||
-                  zone.content == ZoneContent.slidingSash ||
-                  !widget.model.hasBottomFrame)
+          (zone.content == ZoneContent.doubleSash ||
+              zone.content == ZoneContent.slidingSash ||
+              !widget.model.hasBottomFrame)
               ? [OpenDirection.left, OpenDirection.right]
               : OpenDirection.values;
 
           children.addAll(
             allowedDirections.map(
-              (dir) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _ContentButton(
-                  label: _getDirectionName(dir),
-                  icon: Icons.open_with_rounded,
-                  selected: zone.openDirection == dir,
-                  onPressed: () =>
-                      widget.model.setSelectedZoneOpenDirection(dir),
-                ),
-              ),
+                  (dir) =>
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _ContentButton(
+                      label: _getDirectionName(dir),
+                      icon: Icons.open_with_rounded,
+                      selected: zone.openDirection == dir,
+                      onPressed: () =>
+                          widget.model.setSelectedZoneOpenDirection(dir),
+                    ),
+                  ),
             ),
           );
         }
@@ -12924,7 +13338,7 @@ class _WindowViewState extends State<WindowView> {
                       final dirStr = currentOverride['openDirection']
                           .toString();
                       return OpenDirection.values.firstWhere(
-                        (d) => d.name == dirStr,
+                            (d) => d.name == dirStr,
                         orElse: () => defaultDir,
                       );
                     }
@@ -12935,10 +13349,11 @@ class _WindowViewState extends State<WindowView> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ...(isDouble
-                              ? [OpenDirection.left, OpenDirection.right]
-                              : OpenDirection.values)
+                          ? [OpenDirection.left, OpenDirection.right]
+                          : OpenDirection.values)
                           .map(
-                            (dir) => Padding(
+                            (dir) =>
+                            Padding(
                               padding: const EdgeInsets.only(left: 8),
                               child: _ContentButton(
                                 label: _getDirectionName(dir),
@@ -12954,7 +13369,7 @@ class _WindowViewState extends State<WindowView> {
                                 },
                               ),
                             ),
-                          ),
+                      ),
                     ],
                   );
                 },
@@ -12987,13 +13402,16 @@ class _WindowViewState extends State<WindowView> {
       case 3: // عامود (Mullion settings)
         if (isMullionSelected) {
           String key =
-              "${widget.model.selection.isHorizontalMullion! ? 'H' : 'V'}_${widget.model.selection.mullionPosition!.toStringAsFixed(1)}";
+              "${widget.model.selection.isHorizontalMullion!
+              ? 'H'
+              : 'V'}_${widget.model.selection.mullionPosition!.toStringAsFixed(
+              1)}";
           MullionProfileType currentType =
               widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
           final canFlipGroove =
               currentType == MullionProfileType.grooved &&
-              widget.model.selection.isHorizontalMullion != null &&
-              widget.model.selection.mullionPosition != null;
+                  widget.model.selection.isHorizontalMullion != null &&
+                  widget.model.selection.mullionPosition != null;
 
           children.add(
             _ContentButton(
@@ -13029,10 +13447,11 @@ class _WindowViewState extends State<WindowView> {
               icon: Icons.splitscreen_rounded,
               selected: currentType == MullionProfileType.flat,
               showSubmenuIndicator: true,
-              onPressed: () => _showMullionFrameSelectorDialog(
-                context,
-                MullionProfileType.flat,
-              ),
+              onPressed: () =>
+                  _showMullionFrameSelectorDialog(
+                    context,
+                    MullionProfileType.flat,
+                  ),
             ),
           );
           children.add(const SizedBox(width: 8));
@@ -13043,10 +13462,11 @@ class _WindowViewState extends State<WindowView> {
               icon: Icons.view_headline_rounded,
               selected: currentType == MullionProfileType.grooved,
               showSubmenuIndicator: true,
-              onPressed: () => _showMullionFrameSelectorDialog(
-                context,
-                MullionProfileType.grooved,
-              ),
+              onPressed: () =>
+                  _showMullionFrameSelectorDialog(
+                    context,
+                    MullionProfileType.grooved,
+                  ),
             ),
           );
           if (canFlipGroove) {
@@ -13083,20 +13503,22 @@ class _WindowViewState extends State<WindowView> {
       case 4: // زجاج / حشوات (Glass settings)
         final GlassSpecification spec = zone != null
             ? (widget.model.activeSubZone != null
-                  ? zone.getGlassForCell(widget.model.activeSubZone)
-                  : zone.glass)
+            ? zone.getGlassForCell(widget.model.activeSubZone)
+            : zone.glass)
             : const GlassSpecification();
 
         final bool isSliding =
             widget.systemMode == 'sliding' ||
-            (widget.systemMode == 'mixed' &&
-                zone != null &&
-                zone.content == ZoneContent.slidingSash);
+                (widget.systemMode == 'mixed' &&
+                    zone != null &&
+                    zone.content == ZoneContent.slidingSash);
         if (!isSliding) {
           final parcloseOverride =
-              widget.model.componentOverrides['باكيت الزجاج (Parclose)'];
+          widget.model.componentOverrides['باكيت الزجاج (Parclose)'];
           final parcloseLabel = parcloseOverride != null
-              ? '${Localization.translate('Parclose', lang)}: ${parcloseOverride['code']} (${(parcloseOverride['max_glass_thickness'] as num?)?.toDouble() ?? 0.0} ${Localization.translate('مم', lang)})'
+              ? '${Localization.translate('Parclose',
+              lang)}: ${parcloseOverride['code']} (${(parcloseOverride['max_glass_thickness'] as num?)
+              ?.toDouble() ?? 0.0} ${Localization.translate('مم', lang)})'
               : Localization.translate('Choisir la parclose', lang);
           children.add(
             Padding(
@@ -13160,7 +13582,9 @@ class _WindowViewState extends State<WindowView> {
           return structName;
         }
 
-        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final isDark = Theme
+            .of(context)
+            .brightness == Brightness.dark;
         final String glassDesc = getGlassDescription(spec, lang);
 
         children.add(
@@ -13188,7 +13612,8 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${Localization.translate('الزجاج الحالي', lang)}: $glassDesc',
+                    '${Localization.translate(
+                        'الزجاج الحالي', lang)}: $glassDesc',
                     style: TextStyle(
                       color: isDark ? Colors.white : Colors.blue.shade900,
                       fontSize: 12,
@@ -13335,7 +13760,7 @@ class _WindowViewState extends State<WindowView> {
                   label: Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
-                      zone.lockType == LockType.none &&
+                  zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -13403,7 +13828,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض نافذة', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle != true,
                     onPressed: () {
                       setState(() {
@@ -13419,7 +13844,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض نافذة', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle != true,
                     onPressed: () {
                       setState(() {
@@ -13435,7 +13860,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض أوكتو', lang),
                     icon: Icons.radio_button_checked_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle == true,
                     onPressed: () {
                       setState(() {
@@ -13459,7 +13884,7 @@ class _WindowViewState extends State<WindowView> {
                       : Localization.translate('مقبض كريمون', lang),
                   icon: Icons.door_back_door_rounded,
                   selected:
-                      zone.lockType == LockType.none &&
+                  zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu != true,
                   onPressed: () {
@@ -13516,7 +13941,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض أوكتو', lang),
                     icon: Icons.radio_button_checked_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle == true,
                     onPressed: () {
                       setState(() {
@@ -13583,7 +14008,7 @@ class _WindowViewState extends State<WindowView> {
                       : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
-                      zone.lockType == LockType.none &&
+                  zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -13605,7 +14030,7 @@ class _WindowViewState extends State<WindowView> {
                       : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
-                      zone.lockType == LockType.none &&
+                  zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -13626,7 +14051,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض كريمون', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle != true &&
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
@@ -13643,7 +14068,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض كريمون', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle != true &&
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
@@ -13661,7 +14086,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض أوكتو', lang),
                     icon: Icons.radio_button_checked_rounded,
                     selected:
-                        zone.lockType == LockType.none &&
+                    zone.lockType == LockType.none &&
                         zone.useOctoHandle == true &&
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
@@ -13722,9 +14147,13 @@ class _WindowViewState extends State<WindowView> {
 
   Widget _buildCollapsedStatusBar(BuildContext context) {
     final zone = widget.model.selectedZone;
-    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final lang = Provider
+        .of<AppSettingsProvider>(context)
+        .language;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
@@ -13746,10 +14175,14 @@ class _WindowViewState extends State<WindowView> {
                 Text(
                   zone == null
                       ? Localization.translate(
-                          'انقر لتحديد وتعديل أي منطقة',
-                          lang,
-                        )
-                      : '${Localization.translate('المنطقة المحددة', lang)}: ${Localization.translate(zone.content.name, lang)}  |  ${Localization.translate('الأبعاد', lang)}: ${zone.boundary.width.toInt()} × ${zone.boundary.height.toInt()} mm',
+                    'انقر لتحديد وتعديل أي منطقة',
+                    lang,
+                  )
+                      : '${Localization.translate(
+                      'المنطقة المحددة', lang)}: ${Localization.translate(
+                      zone.content.name, lang)}  |  ${Localization.translate(
+                      'الأبعاد', lang)}: ${zone.boundary.width.toInt()} × ${zone
+                      .boundary.height.toInt()} mm',
                   style: TextStyle(
                     color: isDark ? Colors.white70 : Colors.black54,
                     fontSize: 12,
@@ -13772,83 +14205,10 @@ class _WindowViewState extends State<WindowView> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          onPressed: () async {
-                            if (!widget.model.isShutterOnly &&
-                                widget.model.zones.every(
-                                  (z) => z.content == ZoneContent.empty,
-                                )) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    Localization.translate(
-                                      'الرجاء رسم أو إضافة جزء في النافذة أولاً قبل حساب التكلفة!',
-                                      lang,
-                                    ),
-                                  ),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                              return;
-                            }
-                            widget.model.clearSelection();
-                            // The frame picked in the drawing is the source
-                            // of truth. Do not replace it merely because side
-                            // covers are enabled: a standalone cover is valid
-                            // with a non-integrated frame.
-                            try {
-                              final activeFrame =
-                                  widget.model.activeFrameOverride;
-                              final cId = _selectedProfileColorId();
-                              if (activeFrame != null && cId != null) {
-                                final rawFrameId = activeFrame['id'];
-                                final sId = rawFrameId is num
-                                    ? rawFrameId.toInt()
-                                    : int.tryParse(
-                                        rawFrameId?.toString() ?? '',
-                                      );
-                                if (sId != null) {
-                                  final db = SqlDatabase();
-                                  double updatedPrice = await db
-                                      .getSectionPrice(sId, cId);
-                                  final pricedFrame = Map<String, dynamic>.from(
-                                    activeFrame,
-                                  );
-                                  pricedFrame['calculated_price'] =
-                                      updatedPrice;
-                                  if (widget.model.usesSlidingPrimaryProfiles) {
-                                    widget.model.slidingFrameOverride =
-                                        pricedFrame;
-                                  } else {
-                                    widget.model.frameOverride = pricedFrame;
-                                    widget.model.selectedFrameCode =
-                                        pricedFrame['code']?.toString();
-                                  }
-                                  widget.model.updateProfileThickness();
-                                }
-                              }
-                            } catch (error) {
-                              debugPrint(
-                                'Failed to refresh frame price before material table: $error',
-                              );
-                            }
-                            if (!context.mounted) return;
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => MaterialConsumptionScreen(
-                                  model: widget.model,
-                                ),
-                              ),
-                            ).then((res) {
-                              if (res != null) {
-                                if (context.mounted) {
-                                  Navigator.pop(context, widget.model);
-                                }
-                              }
-                            });
-                          },
+                          onPressed: () =>
+                              _openMaterialConsumptionScreen(context),
                           child: Text(
-                            Localization.translate('الالكمية والتكلفة', lang),
+                            Localization.translate('الكمية والتكلفة', lang),
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.white,
@@ -13869,6 +14229,82 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
+  Future<void> _openMaterialConsumptionScreen(BuildContext context) async {
+    final lang = Provider
+        .of<AppSettingsProvider>(
+      context,
+      listen: false,
+    )
+        .language;
+    final hasWindowContent = widget.model.zones.any(
+          (z) => z.content != ZoneContent.empty,
+    );
+    final hasReadyShutterOnly =
+        widget.model.isShutterOnly &&
+            widget.model.width > 0 &&
+            widget.model.height > 0;
+
+    if (!hasReadyShutterOnly && !hasWindowContent) {
+      final message = widget.model.drawNextShapeAsShutterOnly
+          ? 'ارسم مستطيل الستار على اللوحة أولاً قبل حساب الكمية والتكلفة.'
+          : 'الرجاء رسم أو إضافة جزء في النافذة أولاً قبل حساب التكلفة!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate(message, lang)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    widget.model.clearSelection();
+
+    if (!widget.model.isShutterOnly) {
+      // The frame picked in the drawing is the source of truth. Do not replace
+      // it merely because side covers are enabled: a standalone cover is valid
+      // with a non-integrated frame.
+      try {
+        final activeFrame = widget.model.activeFrameOverride;
+        final cId = _selectedProfileColorId();
+        if (activeFrame != null && cId != null) {
+          final rawFrameId = activeFrame['id'];
+          final sId = rawFrameId is num
+              ? rawFrameId.toInt()
+              : int.tryParse(rawFrameId?.toString() ?? '');
+          if (sId != null) {
+            final db = SqlDatabase();
+            double updatedPrice = await db.getSectionPrice(sId, cId);
+            final pricedFrame = Map<String, dynamic>.from(activeFrame);
+            pricedFrame['calculated_price'] = updatedPrice;
+            if (widget.model.usesSlidingPrimaryProfiles) {
+              widget.model.slidingFrameOverride = pricedFrame;
+            } else {
+              widget.model.frameOverride = pricedFrame;
+              widget.model.selectedFrameCode = pricedFrame['code']?.toString();
+            }
+            widget.model.updateProfileThickness();
+          }
+        }
+      } catch (error) {
+        debugPrint(
+          'Failed to refresh frame price before material table: $error',
+        );
+      }
+    }
+
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MaterialConsumptionScreen(model: widget.model),
+      ),
+    ).then((res) {
+      if (res != null && context.mounted) {
+        Navigator.pop(context, widget.model);
+      }
+    });
+  }
+
   void _showParcloseSelectorDialog(BuildContext context) async {
     final dbInstance = SqlDatabase();
     final d = await dbInstance.db;
@@ -13877,7 +14313,7 @@ class _WindowViewState extends State<WindowView> {
     final List<Map<String, dynamic>> res = await d.query(
       'Sections',
       where:
-          'series_id = ? AND (type = ? OR type LIKE ? OR name LIKE ? OR TRIM(code) = ?)',
+      'series_id = ? AND (type = ? OR type LIKE ? OR name LIKE ? OR TRIM(code) = ?)',
       whereArgs: [
         activeSeriesForSystem!.id,
         'parclose',
@@ -13909,23 +14345,25 @@ class _WindowViewState extends State<WindowView> {
         .toList();
     final availableParcloses = requiredDoubleThickness > 0
         ? res.where((item) {
-            final raw = item['max_glass_thickness'];
-            final capacity = raw is num
-                ? raw.toDouble()
-                : double.tryParse(raw?.toString() ?? '');
-            return (capacity ?? 0) >=
-                (requiredDoubleThickness > 10.0
-                    ? requiredDoubleThickness
-                    : 10.0);
-          }).toList()
+      final raw = item['max_glass_thickness'];
+      final capacity = raw is num
+          ? raw.toDouble()
+          : double.tryParse(raw?.toString() ?? '');
+      return (capacity ?? 0) >=
+          (requiredDoubleThickness > 10.0
+              ? requiredDoubleThickness
+              : 10.0);
+    }).toList()
         : (simple514.isNotEmpty ? simple514 : res);
 
     if (!context.mounted) return;
 
-    final lang = Provider.of<AppSettingsProvider>(
+    final lang = Provider
+        .of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    )
+        .language;
 
     showDialog(
       context: context,
@@ -13934,58 +14372,61 @@ class _WindowViewState extends State<WindowView> {
           title: Text(Localization.translate('Choisir la parclose', lang)),
           content: availableParcloses.isEmpty
               ? Text(
-                  Localization.translate(
-                    'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات',
-                    lang,
-                  ),
-                )
+            Localization.translate(
+              'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات',
+              lang,
+            ),
+          )
               : SizedBox(
-                  width: double.maxFinite,
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: availableParcloses.length,
-                    itemBuilder: (context, index) {
-                      final item = availableParcloses[index];
-                      final double maxThickness =
-                          (item['max_glass_thickness'] as num?)?.toDouble() ??
-                          0.0;
-                      return ListTile(
-                        title: Text('${item['code']} - ${item['name']}'),
-                        subtitle: Text(
-                          '${Localization.translate('السمك الأقصى للزجاج', lang)}: $maxThickness ${Localization.translate('مم', lang)}',
-                        ),
-                        trailing: Icon(
-                          widget.model.componentOverrides['باكيت الزجاج (Parclose)']?['id'] ==
-                                  item['id']
-                              ? Icons.check_circle
-                              : Icons.circle_outlined,
-                          color: Colors.green,
-                        ),
-                        onTap: () async {
-                          final mutableItem = Map<String, dynamic>.from(item);
-                          final colorId = widget.model.selectedDbColor?['id'];
-                          final double price = await dbInstance.getSectionPrice(
-                            item['id'] as int,
-                            colorId,
-                          );
-                          mutableItem['calculated_price'] = price;
-
-                          setState(() {
-                            widget
-                                    .model
-                                    .componentOverrides['باكيت الزجاج (Parclose)'] =
-                                mutableItem;
-                          });
-                          widget.model
-                              .fitDoubleGlassIntercallsToSelectedParclose();
-                          await widget.model.updateGlassGasket();
-                          widget.model.refreshUI();
-                          if (context.mounted) Navigator.pop(context);
-                        },
-                      );
-                    },
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: availableParcloses.length,
+              itemBuilder: (context, index) {
+                final item = availableParcloses[index];
+                final double maxThickness =
+                    (item['max_glass_thickness'] as num?)?.toDouble() ??
+                        0.0;
+                return ListTile(
+                  title: Text('${item['code']} - ${item['name']}'),
+                  subtitle: Text(
+                    '${Localization.translate('السمك الأقصى للزجاج',
+                        lang)}: $maxThickness ${Localization.translate(
+                        'مم', lang)}',
                   ),
-                ),
+                  trailing: Icon(
+                    widget.model
+                        .componentOverrides['باكيت الزجاج (Parclose)']?['id'] ==
+                        item['id']
+                        ? Icons.check_circle
+                        : Icons.circle_outlined,
+                    color: Colors.green,
+                  ),
+                  onTap: () async {
+                    final mutableItem = Map<String, dynamic>.from(item);
+                    final colorId = widget.model.selectedDbColor?['id'];
+                    final double price = await dbInstance.getSectionPrice(
+                      item['id'] as int,
+                      colorId,
+                    );
+                    mutableItem['calculated_price'] = price;
+
+                    setState(() {
+                      widget
+                          .model
+                          .componentOverrides['باكيت الزجاج (Parclose)'] =
+                          mutableItem;
+                    });
+                    widget.model
+                        .fitDoubleGlassIntercallsToSelectedParclose();
+                    await widget.model.updateGlassGasket();
+                    widget.model.refreshUI();
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -14065,7 +14506,7 @@ class _HorizontalWheelScrollAreaState
           controller: _controller,
           interactive: true,
           thumbVisibility:
-              !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
           child: widget.builder(context, _controller),
         ),
       ),
@@ -14088,7 +14529,9 @@ class _IntercallButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     return GestureDetector(
       onTap: onPressed,
       child: AnimatedContainer(
@@ -14097,8 +14540,8 @@ class _IntercallButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? (isDark
-                    ? Colors.blue.shade900.withValues(alpha: 0.3)
-                    : Colors.blue.shade50)
+              ? Colors.blue.shade900.withValues(alpha: 0.3)
+              : Colors.blue.shade50)
               : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
@@ -14187,7 +14630,9 @@ class _ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     final disabledBg = isDark ? const Color(0xFF2E2E3E) : Colors.grey.shade200;
     final disabledFg = isDark ? Colors.white38 : Colors.grey;
     return ElevatedButton.icon(
@@ -14300,7 +14745,9 @@ class _ContentButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme
+        .of(context)
+        .brightness == Brightness.dark;
     return GestureDetector(
       onTap: onPressed,
       child: AnimatedContainer(
@@ -14309,8 +14756,8 @@ class _ContentButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? (isDark
-                    ? Colors.blue.shade900.withValues(alpha: 0.3)
-                    : Colors.blue.shade50)
+              ? Colors.blue.shade900.withValues(alpha: 0.3)
+              : Colors.blue.shade50)
               : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
@@ -14486,8 +14933,8 @@ class AppWorkspacePainter extends CustomPainter {
     }
 
     if ((model.zones.isEmpty ||
-            model.drawingMode == 'add_frame' ||
-            model.drawingMode == 'shutter_only') &&
+        model.drawingMode == 'add_frame' ||
+        model.drawingMode == 'shutter_only') &&
         model.isDrawingMode &&
         model.drawingStart != null &&
         model.drawingCurrent != null) {
@@ -14542,14 +14989,13 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _paintZoneRegionLabel(
-    Canvas canvas,
-    String text,
-    Offset center,
-    double maxMainAxis, {
-    bool vertical = false,
-    required bool editable,
-  }) {
+  void _paintZoneRegionLabel(Canvas canvas,
+      String text,
+      Offset center,
+      double maxMainAxis, {
+        bool vertical = false,
+        required bool editable,
+      }) {
     double fontSize = math.min(34.0, math.max(16.0, maxMainAxis * 0.18));
     late TextPainter painter;
     while (true) {
@@ -14571,7 +15017,8 @@ class AppWorkspacePainter extends CustomPainter {
           ),
         ),
         textDirection: TextDirection.ltr,
-      )..layout();
+      )
+        ..layout();
       if (painter.width <= maxMainAxis || fontSize <= 10) break;
       fontSize -= 1.0;
     }
@@ -14624,12 +15071,12 @@ class AppWorkspacePainter extends CustomPainter {
     final integratedCoverWidth = model.integratedFrameSideCoverWidth;
     final hasIntegratedCover =
         model.isIntegratedFrame &&
-        model.isSideCoverAllowed &&
-        integratedCoverWidth > 0;
+            model.isSideCoverAllowed &&
+            integratedCoverWidth > 0;
     final hasSeparateCover =
         !hasIntegratedCover &&
-        model.hasSideCovers &&
-        model.canUseStandaloneSideCover;
+            model.hasSideCovers &&
+            model.canUseStandaloneSideCover;
     final separateCover = model.selectedSideCover;
     final separateCoverWidth = model.standaloneSideCoverWidth;
     final separateCoverThickness = model.standaloneSideCoverThickness;
@@ -14669,7 +15116,7 @@ class AppWorkspacePainter extends CustomPainter {
     if (!hasIntegratedCover) {
       for (final frame in frameRects) {
         final effectiveFrameCode =
-            frameIsSlidingOnly(frame) && slidingFrameCode.isNotEmpty
+        frameIsSlidingOnly(frame) && slidingFrameCode.isNotEmpty
             ? slidingFrameCode
             : frameCode;
         final isOnlyFrame = frameRects.length == 1;
@@ -14678,26 +15125,26 @@ class AppWorkspacePainter extends CustomPainter {
             : model.height;
         final frameWidth =
             (isOnlyFrame ? model.width : frame.width) +
-            weldAllowance -
-            (hasSeparateCoverLeft &&
+                weldAllowance -
+                (hasSeparateCoverLeft &&
                     (isOnlyFrame || (frame.left - minFrameLeft).abs() < 0.1)
-                ? separateCoverThickness
-                : 0.0) -
-            (hasSeparateCoverRight &&
+                    ? separateCoverThickness
+                    : 0.0) -
+                (hasSeparateCoverRight &&
                     (isOnlyFrame || (frame.right - maxFrameRight).abs() < 0.1)
-                ? separateCoverThickness
-                : 0.0);
+                    ? separateCoverThickness
+                    : 0.0);
         final frameHeight =
             (isOnlyFrame ? netHeight : frame.height) +
-            weldAllowance -
-            (hasSeparateCoverTop &&
+                weldAllowance -
+                (hasSeparateCoverTop &&
                     (isOnlyFrame || (frame.top - minFrameTop).abs() < 0.1)
-                ? separateCoverThickness
-                : 0.0) -
-            (hasSeparateCoverBottom &&
+                    ? separateCoverThickness
+                    : 0.0) -
+                (hasSeparateCoverBottom &&
                     (isOnlyFrame || (frame.bottom - maxFrameBottom).abs() < 0.1)
-                ? separateCoverThickness
-                : 0.0);
+                    ? separateCoverThickness
+                    : 0.0);
         _paintProfileDimensionLabel(
           canvas,
           cutLabel(frameWidth, effectiveFrameCode),
@@ -14744,8 +15191,8 @@ class AppWorkspacePainter extends CustomPainter {
         final isInternal = model.isInternalView;
         final hasLeft = hasIntegratedCover
             ? (isInternal
-                  ? !model.removedShutterSides.contains('left')
-                  : !model.removedShutterSides.contains('right'))
+            ? !model.removedShutterSides.contains('left')
+            : !model.removedShutterSides.contains('right'))
             : (isInternal ? hasSeparateCoverLeft : hasSeparateCoverRight);
         final hasTop = hasIntegratedCover
             ? !model.removedShutterSides.contains('top')
@@ -14799,13 +15246,12 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _paintProfileDimensionLabel(
-    Canvas canvas,
-    String text,
-    Rect bounds, {
-    bool vertical = false,
-    bool alignStart = false,
-  }) {
+  void _paintProfileDimensionLabel(Canvas canvas,
+      String text,
+      Rect bounds, {
+        bool vertical = false,
+        bool alignStart = false,
+      }) {
     final crossAxis = vertical ? bounds.width : bounds.height;
     final mainAxis = vertical ? bounds.height : bounds.width;
     if (crossAxis < 12 || mainAxis < 35) return;
@@ -14831,7 +15277,8 @@ class AppWorkspacePainter extends CustomPainter {
           ),
         ),
         textDirection: TextDirection.ltr,
-      )..layout();
+      )
+        ..layout();
       if (painter.width <= mainAxis - 8 || fontSize <= 10) break;
       fontSize -= 1.0;
     }
@@ -14869,10 +15316,10 @@ class AppWorkspacePainter extends CustomPainter {
 
     final bool isSlantedOrArched =
         model.archHeight > 0 ||
-        model.topSlantLeftY != 0 ||
-        model.topSlantRightY != 0 ||
-        model.bottomSlantLeftY != 0 ||
-        model.bottomSlantRightY != 0;
+            model.topSlantLeftY != 0 ||
+            model.topSlantRightY != 0 ||
+            model.bottomSlantLeftY != 0 ||
+            model.bottomSlantRightY != 0;
 
     double widthY;
     if (isSlantedOrArched) {
@@ -14990,9 +15437,9 @@ class AppWorkspacePainter extends CustomPainter {
     } else {
       final bool isSlanted =
           model.topSlantLeftY != 0 ||
-          model.topSlantRightY != 0 ||
-          model.bottomSlantLeftY != 0 ||
-          model.bottomSlantRightY != 0;
+              model.topSlantRightY != 0 ||
+              model.bottomSlantLeftY != 0 ||
+              model.bottomSlantRightY != 0;
 
       double leftH =
           model.height - model.topSlantLeftY - model.bottomSlantLeftY;
@@ -15028,14 +15475,13 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _drawDimension(
-    Canvas canvas,
-    String text,
-    Offset p1,
-    Offset p2, {
-    bool isVerticalLine = false,
-    bool isSmall = false,
-  }) {
+  void _drawDimension(Canvas canvas,
+      String text,
+      Offset p1,
+      Offset p2, {
+        bool isVerticalLine = false,
+        bool isSmall = false,
+      }) {
     final double midX = (p1.dx + p2.dx) / 2;
     final double midY = (p1.dy + p2.dy) / 2;
     final Offset center = Offset(midX, midY);
@@ -15057,13 +15503,12 @@ class AppWorkspacePainter extends CustomPainter {
     );
   }
 
-  double _drawText(
-    Canvas canvas,
-    String text,
-    Offset center, {
-    bool isVertical = false,
-    bool isSmall = false,
-  }) {
+  double _drawText(Canvas canvas,
+      String text,
+      Offset center, {
+        bool isVertical = false,
+        bool isSmall = false,
+      }) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -15082,7 +15527,8 @@ class AppWorkspacePainter extends CustomPainter {
         ),
       ),
       textDirection: TextDirection.ltr,
-    )..layout();
+    )
+      ..layout();
     canvas.save();
     canvas.translate(center.dx, center.dy);
     if (isVertical) canvas.rotate(-math.pi / 2);
@@ -15091,13 +15537,12 @@ class AppWorkspacePainter extends CustomPainter {
     return tp.width;
   }
 
-  void _drawArrow(
-    Canvas canvas,
-    Offset p1,
-    Offset p2, {
-    bool isVerticalLine = false,
-    double textGap = 100.0,
-  }) {
+  void _drawArrow(Canvas canvas,
+      Offset p1,
+      Offset p2, {
+        bool isVerticalLine = false,
+        double textGap = 100.0,
+      }) {
     final p = Paint()
       ..color = Colors.blueGrey.shade700
       ..strokeWidth = 2.2;
@@ -15200,15 +15645,17 @@ class _ProfileButton extends StatelessWidget {
       onTap: onPressed,
       child: Builder(
         builder: (context) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final isDark = Theme
+              .of(context)
+              .brightness == Brightness.dark;
           return AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: selected
                   ? (isDark
-                        ? Colors.blue.shade900.withValues(alpha: 0.3)
-                        : Colors.blue.shade50)
+                  ? Colors.blue.shade900.withValues(alpha: 0.3)
+                  : Colors.blue.shade50)
                   : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
@@ -15229,8 +15676,8 @@ class _ProfileButton extends StatelessWidget {
                     color: isDark
                         ? Colors.white
                         : (selected
-                              ? Colors.blue.shade900
-                              : Colors.grey.shade800),
+                        ? Colors.blue.shade900
+                        : Colors.grey.shade800),
                     fontSize: 12,
                     fontWeight: selected ? FontWeight.bold : FontWeight.normal,
                   ),
@@ -15245,16 +15692,14 @@ class _ProfileButton extends StatelessWidget {
 }
 
 // Helper validation functions for sliding system glass/gasket thickness constraints (e.g. TPR 67000)
-bool isGlassThicknessValid(
-  double thickVal,
-  GlassSpecification spec,
-  WindowModel model,
-  String systemMode,
-) {
+bool isGlassThicknessValid(double thickVal,
+    GlassSpecification spec,
+    WindowModel model,
+    String systemMode,) {
   final isSliding =
       systemMode == 'sliding' ||
-      model.systemMode == 'sliding' ||
-      model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+          model.systemMode == 'sliding' ||
+          model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
   if (isSliding && model.isSliding67Family) {
     final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
     final double maxAllowed = 24.0 - minGasket; // 20.0 or 22.0
@@ -15263,18 +15708,16 @@ bool isGlassThicknessValid(
   return true;
 }
 
-bool isDoubleGlassValid(
-  double thickOuter,
-  int intercall,
-  double thickInner,
-  bool jointTwoSides,
-  WindowModel model,
-  String systemMode,
-) {
+bool isDoubleGlassValid(double thickOuter,
+    int intercall,
+    double thickInner,
+    bool jointTwoSides,
+    WindowModel model,
+    String systemMode,) {
   final isSliding =
       systemMode == 'sliding' ||
-      model.systemMode == 'sliding' ||
-      model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+          model.systemMode == 'sliding' ||
+          model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
   if (isSliding && model.isSliding67Family) {
     final double minGasket = jointTwoSides ? 4.0 : 2.0;
     final double maxAllowed = 24.0 - minGasket; // 20.0 or 22.0

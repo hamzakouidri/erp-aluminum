@@ -29,10 +29,28 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   bool _isLoading = true;
 
+  bool get _canAdjust => Provider.of<AppSettingsProvider>(
+    context,
+    listen: false,
+  ).canAdjustInventory();
+
   @override
   void initState() {
     super.initState();
     _loadStockData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    if (!settings.canAdjustInventory()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
   }
 
   Future<void> _loadStockData() async {
@@ -60,7 +78,9 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
         );
         _minQtyControllers[i] = TextEditingController(
           text: ((data[i]['min_qty'] ?? 0.0) as num).toDouble().toStringAsFixed(
-            ((data[i]['min_qty'] ?? 0.0) as num).toDouble().truncateToDouble() ==
+            ((data[i]['min_qty'] ?? 0.0) as num)
+                        .toDouble()
+                        .truncateToDouble() ==
                     ((data[i]['min_qty'] ?? 0.0) as num).toDouble()
                 ? 0
                 : 2,
@@ -87,6 +107,7 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
   }
 
   Future<void> _saveAdjustments() async {
+    if (!_canAdjust) return;
     setState(() => _isLoading = true);
 
     // Find all changed quantities
@@ -125,12 +146,17 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
           colorId: item['color_id'] as int?,
           locationId: widget.locationId,
           minQty: newMinQty,
+          alertEnabled:
+              ((item['low_stock_alert_enabled'] as num?)?.toInt() ?? 0) == 1,
         );
       }
     }
 
     if (mounted) {
-      final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -146,6 +172,7 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    final settings = Provider.of<AppSettingsProvider>(context);
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -157,7 +184,9 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
           actions: [
             IconButton(
               icon: const Icon(Icons.save),
-              onPressed: _saveAdjustments,
+              onPressed: settings.canAdjustInventory()
+                  ? _saveAdjustments
+                  : null,
               tooltip: Localization.translate('حفظ التعديلات', lang),
             ),
           ],
@@ -172,7 +201,10 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
                       controller: _searchCtrl,
                       onChanged: (_) => _filterStock(),
                       decoration: InputDecoration(
-                        hintText: Localization.translate('البحث عن عنصر، مقطع، لون...', lang),
+                        hintText: Localization.translate(
+                          'البحث عن عنصر، مقطع، لون...',
+                          lang,
+                        ),
                         prefixIcon: const Icon(Icons.search),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -213,28 +245,43 @@ class _InventoryAdjustmentScreenState extends State<InventoryAdjustmentScreen> {
                                       keyboardType: TextInputType.number,
                                       textAlign: TextAlign.center,
                                       decoration: InputDecoration(
-                                        labelText: Localization.translate('الكمية', lang),
-                                        labelStyle: const TextStyle(fontSize: 10, fontFamily: 'Cairo'),
-                                        border: const OutlineInputBorder(),
-                                        contentPadding: const EdgeInsets.symmetric(
-                                          vertical: 8,
+                                        labelText: Localization.translate(
+                                          'الكمية',
+                                          lang,
                                         ),
+                                        labelStyle: const TextStyle(
+                                          fontSize: 10,
+                                          fontFamily: 'Cairo',
+                                        ),
+                                        border: const OutlineInputBorder(),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: TextField(
-                                      controller: _minQtyControllers[originalIndex],
+                                      controller:
+                                          _minQtyControllers[originalIndex],
                                       keyboardType: TextInputType.number,
                                       textAlign: TextAlign.center,
                                       decoration: InputDecoration(
-                                        labelText: Localization.translate('الحد الأدنى', lang),
-                                        labelStyle: const TextStyle(fontSize: 10, fontFamily: 'Cairo'),
-                                        border: const OutlineInputBorder(),
-                                        contentPadding: const EdgeInsets.symmetric(
-                                          vertical: 8,
+                                        labelText: Localization.translate(
+                                          'الحد الأدنى',
+                                          lang,
                                         ),
+                                        labelStyle: const TextStyle(
+                                          fontSize: 10,
+                                          fontFamily: 'Cairo',
+                                        ),
+                                        border: const OutlineInputBorder(),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
                                       ),
                                     ),
                                   ),

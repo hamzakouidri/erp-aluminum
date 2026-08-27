@@ -144,8 +144,12 @@ class SupabaseWorkshopSyncService {
       await _ensureReady();
       _subscribeToPermissionChanges();
       await refreshCurrentPermissions();
+      final needsFullBootstrap = await _needsFullBootstrapDownload();
+      await downloadWorkshopData(full: needsFullBootstrap);
+      if (needsFullBootstrap) {
+        await _markFullBootstrapComplete();
+      }
       await uploadPendingChanges();
-      await downloadWorkshopData();
       _pollTimer?.cancel();
       _pollTimer = Timer.periodic(_pollInterval, (_) {
         unawaited(downloadWorkshopData());
@@ -383,10 +387,23 @@ class SupabaseWorkshopSyncService {
       data['SyncTombstones'] = tombstones;
     }
 
+    final shouldReplaceLocalWorkshop = full && downloadedRows > 0;
+    if (shouldReplaceLocalWorkshop) {
+      for (final table in SqlDatabase.workshopTables) {
+        data.putIfAbsent(table, () => <Map<String, dynamic>>[]);
+      }
+    }
+
     if (data.isNotEmpty) {
       _isApplyingRemoteData = true;
       try {
-        await _db.importWorkshopData(data);
+        await _db.importWorkshopData(
+          data,
+          replaceAllData: shouldReplaceLocalWorkshop,
+        );
+        if (shouldReplaceLocalWorkshop) {
+          await _db.clearPendingCloudChanges();
+        }
       } finally {
         _isApplyingRemoteData = false;
       }
@@ -618,6 +635,26 @@ class SupabaseWorkshopSyncService {
     if (code == null || code.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('supabase_workshop_last_sync_$code', value);
+  }
+
+  String? _bootstrapKey() {
+    final code = _workshopCode;
+    if (code == null || code.isEmpty) return null;
+    return 'supabase_workshop_full_bootstrap_v2_$code';
+  }
+
+  Future<bool> _needsFullBootstrapDownload() async {
+    final key = _bootstrapKey();
+    if (key == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(key) ?? false);
+  }
+
+  Future<void> _markFullBootstrapComplete() async {
+    final key = _bootstrapKey();
+    if (key == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, true);
   }
 
   bool _isWorkshopTable(String table) {

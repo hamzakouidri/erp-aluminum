@@ -18,10 +18,8 @@ class CatalogManagerScreen extends StatefulWidget {
 }
 
 class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
-  AppLanguage get _lang => Provider.of<AppSettingsProvider>(
-    context,
-    listen: false,
-  ).language;
+  AppLanguage get _lang =>
+      Provider.of<AppSettingsProvider>(context, listen: false).language;
 
   String _tr(String key) => Localization.translate(key, _lang);
 
@@ -46,10 +44,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              _tr('إلغاء'),
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: Text(_tr('إلغاء'), style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -1920,10 +1915,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          Localization.translate(
-            'إدارة الكتالوج (Profiles & Sections)',
-            lang,
-          ),
+          Localization.translate('إدارة الكتالوج (Profiles & Sections)', lang),
         ),
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).appBarTheme.backgroundColor
@@ -1955,9 +1947,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       ),
                       ElevatedButton(
                         onPressed: () => Navigator.pop(ctx, true),
-                        child: Text(
-                          Localization.translate('نعم، انسخ', lang),
-                        ),
+                        child: Text(Localization.translate('نعم، انسخ', lang)),
                       ),
                     ],
                   ),
@@ -2126,10 +2116,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          Localization.translate(
-                            'تم نسخ المقاطع بنجاح!',
-                            lang,
-                          ),
+                          Localization.translate('تم نسخ المقاطع بنجاح!', lang),
                         ),
                       ),
                     );
