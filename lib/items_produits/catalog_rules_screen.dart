@@ -116,8 +116,19 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('assembly_screw', 'براغي التجميع', 'Vis assemblage'),
           _RuleRole('installation_screw', 'براغي التركيب', 'Vis pose'),
           _RuleRole('accessory_screw', 'براغي الإكسسوارات', 'Vis accessoires'),
+          _RuleRole('gache_simple', 'قاش بسيط', 'Gâche simple'),
+          _RuleRole('gache_double', 'قاش مزدوج', 'Gâche double'),
+          _RuleRole('gache_door', 'قاش باب', 'Gâche porte'),
+          _RuleRole('lock_clef', 'قفل بمفتاح', 'Serrure à clé'),
+          _RuleRole(
+            'lock_condamnation',
+            'قفل كونداناسيون',
+            'Serrure condamnation',
+          ),
           _RuleRole('sliding_clamp', 'كلام منزلق', 'Clam coulissant'),
           _RuleRole('sliding_lock', 'قفل/قاش منزلق', 'Gâche coulissant'),
+          _RuleRole('verrou', 'فيرو', 'Verrou'),
+          _RuleRole('cremone', 'كريمون', 'Crémone'),
           _RuleRole('handle', 'مقبض', 'Poignée'),
           _RuleRole('hinge', 'مفاصل', 'Paumelles'),
           _RuleRole('other', 'أخرى', 'Autre'),
@@ -129,6 +140,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('joint_frappe', 'جوان فراب', 'Joint frappe'),
           _RuleRole('joint_central', 'جوان سنترال', 'Joint central'),
           _RuleRole('joint_brosse', 'جوان بروس', 'Joint brosse'),
+          _RuleRole(
+            'shutter_joint_brosse',
+            'جوان بروس الستار',
+            'Joint brosse volet',
+          ),
           _RuleRole('other', 'أخرى', 'Autre'),
         ];
       default:
@@ -234,6 +250,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (flag('is_assembly_screw')) return 'assembly_screw';
       if (flag('is_installation_screw')) return 'installation_screw';
       if (flag('is_accessory_screw')) return 'accessory_screw';
+      if (flag('is_gache_simple')) return 'gache_simple';
+      if (flag('is_gache_double')) return 'gache_double';
+      if (flag('is_gache_porte')) return 'gache_door';
+      if (flag('is_lock_clef')) return 'lock_clef';
+      if (flag('is_lock_condamnation')) return 'lock_condamnation';
       if (text.contains('kit') &&
           (text.contains('vis') || text.contains('براغ'))) {
         return 'kit_screw';
@@ -243,8 +264,21 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         return 'box_screw';
       }
       if (text.contains('clam')) return 'sliding_clamp';
-      if (text.contains('gache') || text.contains('gâche')) {
+      if (text.contains('gache couliss') || text.contains('gâche couliss')) {
         return 'sliding_lock';
+      }
+      if (text.contains('gache') || text.contains('gâche')) {
+        if (text.contains('double') || text.contains('d.t')) {
+          return 'gache_double';
+        }
+        if (text.contains('porte')) return 'gache_door';
+        return 'gache_simple';
+      }
+      if (text.contains('verrou') || text.contains('فيرو')) return 'verrou';
+      if (text.contains('cremone') ||
+          text.contains('crémone') ||
+          text.contains('كريمون')) {
+        return 'cremone';
       }
       if (text.contains('poign') || text.contains('مقبض')) return 'handle';
       if (text.contains('paum') || text.contains('مفصل')) return 'hinge';
@@ -262,6 +296,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       }
       if (text.contains('central') || text.contains('سنترال')) {
         return 'joint_central';
+      }
+      if ((text.contains('bross') || text.contains('بروس')) &&
+          (text.contains('shutter') ||
+              text.contains('volet') ||
+              text.contains('ستار'))) {
+        return 'shutter_joint_brosse';
       }
       if (text.contains('bross') || text.contains('بروس')) {
         return 'joint_brosse';

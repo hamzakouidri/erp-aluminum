@@ -24,9 +24,13 @@ bool _isScrewSelectorType(String profileType) {
 bool _isShutterScrewSelectorType(String profileType) {
   final lower = profileType.toLowerCase();
   return lower == 'is_kit_screw' ||
+      lower == 'kit_screw' ||
       lower == 'is_caisson_screw' ||
+      lower == 'box_screw' ||
       lower == 'is_moteur_screw' ||
+      lower == 'motor_screw' ||
       lower == 'is_manivelle_screw' ||
+      lower == 'manivelle_screw' ||
       (profileType.contains('براغي') &&
           (profileType.contains('الكيت') ||
               profileType.contains('الصندوق') ||
@@ -323,6 +327,9 @@ bool accessoryMatchesSelectorType(
   if (selectorHasAny(const ['verrou', 'فيرو'])) {
     return hasAny(const ['verrou', 'verro', 'viro', 'فيرو']);
   }
+  if (selectorHasAny(const ['cremone', 'crémone', 'كريمون'])) {
+    return hasAny(const ['cremone', 'crémone', 'كريمون']);
+  }
   if (selectorHasAny(const ['مقبض', 'handle', 'poignée', 'poignee'])) {
     return isHandle();
   }
@@ -338,6 +345,30 @@ bool accessoryMatchesSelectorType(
 
 List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   final tLower = normalizeArabic(selectorType.toLowerCase().trim());
+  const directRoles = {
+    'kit_screw',
+    'box_screw',
+    'motor_screw',
+    'batmo_screw',
+    'bouchon_batmo_screw',
+    'renfort_screw',
+    'manivelle_screw',
+    'assembly_screw',
+    'installation_screw',
+    'accessory_screw',
+    'gache_simple',
+    'gache_double',
+    'gache_door',
+    'lock_clef',
+    'lock_condamnation',
+    'sliding_clamp',
+    'sliding_lock',
+    'verrou',
+    'cremone',
+    'handle',
+    'hinge',
+  };
+  if (directRoles.contains(tLower)) return [tLower];
   if (tLower == 'is_kit_screw') return const ['kit_screw'];
   if (tLower == 'is_caisson_screw') return const ['box_screw'];
   if (tLower == 'is_moteur_screw') return const ['motor_screw'];
@@ -361,6 +392,19 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
       tLower.contains('gâche couliss') ||
       tLower.contains('كاش كوليسون')) {
     return const ['sliding_lock'];
+  }
+  if (tLower == 'is_gache_simple') return const ['gache_simple'];
+  if (tLower == 'is_gache_double') return const ['gache_double'];
+  if (tLower == 'is_gache_porte') return const ['gache_door'];
+  if (tLower == 'is_lock_clef') return const ['lock_clef'];
+  if (tLower == 'is_lock_condamnation') return const ['lock_condamnation'];
+  if (tLower == 'فيرو' || tLower.contains('verrou')) {
+    return const ['verrou'];
+  }
+  if (tLower == 'cremone' ||
+      tLower.contains('crémone') ||
+      tLower.contains('كريمون')) {
+    return const ['cremone'];
   }
   if (tLower == 'is_window_handle' ||
       tLower.contains('poignee') ||
@@ -402,6 +446,20 @@ List<String> catalogFlagColumnsForAccessorySelectorType(String selectorType) {
 
 List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
   final tLower = normalizeArabic(selectorType.toLowerCase().trim());
+  const directRoles = {
+    'joint_vitrage',
+    'joint_bourrage',
+    'joint_frappe',
+    'joint_central',
+    'joint_brosse',
+    'shutter_joint_brosse',
+  };
+  if (directRoles.contains(tLower)) return [tLower];
+  if (tLower.contains('shutter') ||
+      tLower.contains('volet') ||
+      tLower.contains('للستار')) {
+    return const ['shutter_joint_brosse'];
+  }
   if (tLower.contains('vitrage') ||
       tLower.contains('فيتراج') ||
       tLower.contains('زجاج')) {
@@ -453,6 +511,11 @@ bool jointCatalogItemMatchesRole(Map<String, dynamic> joint, String roleKey) {
       return rawType == 'joint_brosse' ||
           rawType == 'joint_bross' ||
           rawType == 'جوان بروس';
+    case 'shutter_joint_brosse':
+      return rawType == 'shutter_joint_brosse' ||
+          rawType == 'joint_brosse_shutter' ||
+          rawType == 'جوان بروس ستار' ||
+          rawType == 'جوان بروس للستار';
   }
   return false;
 }
@@ -729,718 +792,65 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
     if (widget.category == 'accessory' || widget.category == 'other') {
       final myDb = myDbInstance;
-      if (myDb != null) {
-        // الإكسسوار المرتبط بسلسلة يظهر لتلك السلسلة فقط. أما الإكسسوار
-        // العام (بلا سلسلة) فيظهر لكل سلسلة تتطابق مادتها معه.
-        Future<List<Map<String, dynamic>>> queryAccessories(
-          String customWhere,
-          List<dynamic> baseArgs,
-        ) async {
-          // A selector without a selected series must not become a catalogue
-          // wide selector.  Showing unrelated parts is worse than showing an
-          // empty list and prompting the user to choose a series first.
-          if (widget.seriesId == null) {
-            return const <Map<String, dynamic>>[];
-          }
-
-          List<dynamic> args = List.from(baseArgs);
-          String where = customWhere;
-
-          // يظهر إذا كان مرتبطاً بالسلسلة مباشرة أو ضمن قائمة سلاسلها.
-          // REPLACE handles old catalogues that stored "12, 13" with spaces.
-          const linkedSeriesConstraint =
-              "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
-          final seriesConstraint =
-              "$linkedSeriesConstraint OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))";
-          where += ' AND ($seriesConstraint)';
-          args.add(widget.seriesId);
-          args.add('%,' + widget.seriesId.toString() + ',%');
-
-          final profileTypeLower = widget.profileType.toLowerCase();
-          final isScrewLookup = _isScrewSelectorType(widget.profileType);
-          final isShutterScrewLookup = _isShutterScrewSelectorType(
-            widget.profileType,
-          );
-
-          if (widget.materialType != null && !isShutterScrewLookup) {
-            final mat = widget.materialType!.toLowerCase().trim();
-            if (mat == 'pvc') {
-              // PVC: يظهر فقط ما هو pvc أو both. الـ NULL/فارغ = ألمنيوم بالافتراضي → لا يظهر في PVC
-              where +=
-                  " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')";
-            } else {
-              // Aluminium: يظهر ما هو aluminium أو both أو NULL/فارغ (الافتراضي = ألمنيوم)
-              where +=
-                  " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
-            }
-          }
-
-          String? orderBy;
-          if (widget.seriesId != null) {
-            final sid = widget.seriesId;
-            orderBy =
-                'CASE WHEN series_id = $sid OR (series_ids IS NOT NULL AND TRIM(series_ids) != \'\' AND \',\' || REPLACE(series_ids, \' \', \'\') || \',\' LIKE \'%,$sid,%\') THEN 0 ELSE 1 END ASC, id ASC';
-          }
-
-          final rawRows = await myDb.query(
-            'Accessories',
-            where: where,
-            whereArgs: args,
-            orderBy: orderBy,
-          );
-          var scopedRows = rawRows
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList();
-          final exactSeriesRows = scopedRows
-              .where((row) => catalogItemMatchesSeries(row, widget.seriesId!))
-              .toList();
-          if (!isShutterScrewLookup && exactSeriesRows.isNotEmpty) {
-            scopedRows = exactSeriesRows;
-          }
-
-          return scopedRows.where((a) {
-            if (!catalogItemMatchesSeriesOrGlobal(a, widget.seriesId!)) {
-              return false;
-            }
-
-            final n = a['name'].toString().toLowerCase();
-            final ty = (a['type'] ?? '').toString().toLowerCase();
-            final isClampLookup =
-                profileTypeLower.contains('clamp') ||
-                profileTypeLower.contains('clam') ||
-                widget.profileType.contains('كلامب') ||
-                widget.profileType.contains('كلام') ||
-                widget.profileType.contains('كلان');
-
-            final drawingMode =
-                widget.accessoryDrawingMode ??
-                ((activeSeriesType.contains('couliss') ||
-                        activeSeriesType.contains('sliding') ||
-                        activeSeriesType.contains('منزلق') ||
-                        activeSeriesType.contains('جرار'))
-                    ? AccessoryDrawingMode.sliding
-                    : AccessoryDrawingMode.opening);
-            if (!isScrewLookup &&
-                !accessoryMatchesDrawingMode(a, drawingMode)) {
-              return false;
-            }
-
-            // 1. Material Exclusions
-            final mat = (widget.materialType ?? '').toLowerCase().trim();
-            if (isShutterScrewLookup) {
-              // Screws of the shutter kit/box/motor are stock accessories of
-              // the shutter itself. They must not disappear when the selected
-              // window material changes from PVC to Aluminium or the opposite.
-            } else if (mat == 'pvc') {
-              if (n.contains('aluminium') ||
-                  n.contains('aluminum') ||
-                  n.contains('alu') ||
-                  n.contains('ألمنيوم') ||
-                  ty.contains('aluminium') ||
-                  ty.contains('aluminum') ||
-                  ty.contains('alu') ||
-                  ty.contains('ألمنيوم')) {
-                return false;
-              }
-            } else {
-              // Aluminium
-              if (n.contains('pvc') ||
-                  ty.contains('pvc') ||
-                  (!isClampLookup &&
-                      (n.contains('clan') ||
-                          ty.contains('clan') ||
-                          n.contains('clane') ||
-                          ty.contains('clane') ||
-                          n.contains('كلان') ||
-                          ty.contains('كلان')))) {
-                return false;
-              }
-            }
-
-            // 2. Series Name Exclusions
-            if (activeSeriesName.isNotEmpty) {
-              final sName = activeSeriesName;
-              if (sName.contains('67000') || sName.contains('67')) {
-                if (n.contains('76000') ||
-                    n.contains('76') ||
-                    ty.contains('76000') ||
-                    ty.contains('76') ||
-                    n.contains('60000') ||
-                    n.contains('60') ||
-                    ty.contains('60000') ||
-                    ty.contains('60') ||
-                    n.contains('52000') ||
-                    n.contains('52') ||
-                    ty.contains('52000') ||
-                    ty.contains('52') ||
-                    n.contains('45000') ||
-                    n.contains('45') ||
-                    ty.contains('45000') ||
-                    ty.contains('45')) {
-                  return false;
-                }
-              } else if (sName.contains('76000') || sName.contains('76')) {
-                if (n.contains('67000') ||
-                    n.contains('67') ||
-                    ty.contains('67000') ||
-                    ty.contains('67') ||
-                    n.contains('60000') ||
-                    n.contains('60') ||
-                    ty.contains('60000') ||
-                    ty.contains('60') ||
-                    n.contains('52000') ||
-                    n.contains('52') ||
-                    ty.contains('52000') ||
-                    ty.contains('52') ||
-                    n.contains('45000') ||
-                    n.contains('45') ||
-                    ty.contains('45000') ||
-                    ty.contains('45')) {
-                  return false;
-                }
-              } else if (sName.contains('60000') || sName.contains('60')) {
-                if (n.contains('67000') ||
-                    n.contains('67') ||
-                    ty.contains('67000') ||
-                    ty.contains('67') ||
-                    n.contains('76000') ||
-                    n.contains('76') ||
-                    ty.contains('76000') ||
-                    ty.contains('76') ||
-                    n.contains('52000') ||
-                    n.contains('52') ||
-                    ty.contains('52000') ||
-                    ty.contains('52') ||
-                    n.contains('45000') ||
-                    n.contains('45') ||
-                    ty.contains('45000') ||
-                    ty.contains('45')) {
-                  return false;
-                }
-              }
-            }
-
-            // 4. Kit Clamp/Clan Exclusions (Exclude clamp from kit matching, and vice versa)
-            final isScrewQuery = isScrewLookup;
-            final isKitQuery =
-                !isScrewQuery &&
-                (profileTypeLower.contains('kit') ||
-                    widget.profileType.contains('كيت'));
-            final isClampQuery = isClampLookup;
-
-            final hasKitName =
-                n.contains('kit') ||
-                ty.contains('kit') ||
-                n.contains('كيت') ||
-                ty.contains('كيت');
-            final hasClampName =
-                n.contains('clamp') ||
-                n.contains('clam') ||
-                ty.contains('clamp') ||
-                ty.contains('clam') ||
-                n.contains('كلامب') ||
-                n.contains('كلام') ||
-                n.contains('كلان') ||
-                ty.contains('كلامب') ||
-                ty.contains('كلام') ||
-                ty.contains('كلان') ||
-                n.contains('clan') ||
-                ty.contains('clan');
-
-            if (isKitQuery && hasClampName) return false;
-            if (isClampQuery && hasKitName) return false;
-
-            return true;
-          }).toList();
-        }
-
-        // Column-based filtering for Gache/Lock types
-        const colMap = {
-          'is_gache_simple': 'is_gache_simple',
-          'is_gache_double': 'is_gache_double',
-          'is_gache_porte': 'is_gache_porte',
-          'is_lock_clef': 'is_lock_clef',
-          'is_lock_condamnation': 'is_lock_condamnation',
-          'is_moteur_screw': 'is_moteur_screw',
-          'is_caisson_screw': 'is_caisson_screw',
-          'is_batmo_screw': 'is_batmo_screw',
-          'is_bouchon_batmo_screw': 'is_bouchon_batmo_screw',
-          'is_renfort_screw': 'is_renfort_screw',
-          'is_manivelle_screw': 'is_manivelle_screw',
-          'is_tandem_screw': 'is_tandem_screw',
-          'is_kit_screw': 'is_kit_screw',
-          'is_assembly_screw': 'is_assembly_screw',
-          'is_installation_screw': 'is_installation_screw',
-          'is_accessory_screw': 'is_accessory_screw',
-        };
-        final t = widget.profileType;
-        final ruleKeys = catalogRuleKeysForAccessorySelectorType(t);
-        final typedColumns = catalogFlagColumnsForAccessorySelectorType(t);
-        if (ruleKeys.isNotEmpty && widget.seriesId != null) {
+      if (myDb != null && widget.seriesId != null) {
+        final ruleKeys = catalogRuleKeysForAccessorySelectorType(
+          widget.profileType,
+        );
+        if (ruleKeys.isNotEmpty) {
           final rules = await db.getCatalogItemRules(
             itemTable: 'Accessories',
             seriesId: widget.seriesId,
             roleKeys: ruleKeys,
           );
-          final visibleRules = rules
+          final ruleIds = rules
               .where((rule) => rule['show_in_dialog'] != 0)
-              .toList();
-          final ruleIds = visibleRules
               .map((rule) => (rule['item_id'] as num?)?.toInt())
               .whereType<int>()
               .toList();
           if (ruleIds.isNotEmpty) {
-            final rows = await queryAccessories(
-              'id IN (${List.filled(ruleIds.length, '?').join(',')}) AND (is_active = 1 OR is_active IS NULL)',
-              ruleIds,
+            final rows = await myDb.query(
+              'Accessories',
+              where:
+                  'id IN (${List.filled(ruleIds.length, '?').join(',')}) AND (is_active = 1 OR is_active IS NULL)',
+              whereArgs: ruleIds,
             );
+            final isShutterScrew = _isShutterScrewSelectorType(
+              widget.profileType,
+            );
+            bool materialMatches(Map<String, dynamic> row) {
+              if (isShutterScrew || widget.materialType == null) return true;
+              final material = (row['material_type'] ?? '')
+                  .toString()
+                  .toLowerCase()
+                  .trim();
+              final requested = widget.materialType!.toLowerCase().trim();
+              if (requested == 'pvc') {
+                return material == 'pvc' || material == 'both';
+              }
+              return material == 'aluminium' ||
+                  material == 'aluminum' ||
+                  material == 'both' ||
+                  material.isEmpty;
+            }
             final byId = {
-              for (final row in rows)
+              for (final row in rows.where(materialMatches))
                 if (row['id'] is num) (row['id'] as num).toInt(): row,
             };
             data = [
               for (final itemId in ruleIds)
-                if (byId[itemId] != null) byId[itemId]!,
+                if (byId[itemId] != null)
+                  Map<String, dynamic>.from(byId[itemId]!),
             ];
           }
         }
-        if (data.isEmpty && typedColumns.isNotEmpty) {
-          final columnWhere = typedColumns
-              .map((column) => '$column = 1')
-              .join(' OR ');
-          data = await queryAccessories(
-            '($columnWhere) AND (is_active = 1 OR is_active IS NULL)',
-            [],
-          );
-        }
-        final customTypes = [
-          'is_lock',
-          'is_canon',
-          'is_poign_clef',
-          'is_poign_condamnation',
-        ];
-        if (data.isEmpty && t == 'is_lock') {
-          final customWhere =
-              '(is_lock_clef = 1 OR is_lock_condamnation = 1) AND (is_active = 1 OR is_active IS NULL)';
-          data = await queryAccessories(customWhere, []);
-        } else if (data.isEmpty && t == 'is_canon') {
-          data = [];
-        } else if (data.isEmpty && t == 'is_poign_clef') {
-          data = [];
-        } else if (data.isEmpty && t == 'is_poign_condamnation') {
-          data = [];
-        } else if (data.isEmpty && colMap.containsKey(t)) {
-          // Use column-based query
-          final customWhere =
-              '${colMap[t]} = 1 AND (is_active = 1 OR is_active IS NULL)';
-          data = await queryAccessories(customWhere, []);
-        }
-
-        if (customTypes.contains(t) ||
-            colMap.containsKey(t) ||
-            ruleKeys.isNotEmpty ||
-            typedColumns.isNotEmpty) {
-          // Typed selectors are strict: no name/type fallback.
-        } else {
-          // Fall back to name/type text matching
-          final allAcc = await queryAccessories(
-            'is_active = 1 OR is_active IS NULL',
-            [],
-          );
-          final tLower = t.toLowerCase();
-          data = allAcc.where((a) {
-            final n = a['name'].toString().toLowerCase();
-            final ty = (a['type'] ?? '').toString().toLowerCase();
-
-            if (tLower == 'is_window_handle') {
-              return isWindowHandleAccessory(a);
-            }
-
-            if (tLower == 'فيرو' || tLower == 'verrou' || tLower == 'viro') {
-              return n.contains('verrou') ||
-                  ty.contains('verrou') ||
-                  n.contains('verro') ||
-                  ty.contains('verro') ||
-                  n.contains('viro') ||
-                  ty.contains('viro') ||
-                  n.contains('فيرو') ||
-                  ty.contains('فيرو');
-            }
-
-            if (tLower == 'اسبانيوليت' ||
-                tLower == 'espagnolette' ||
-                tLower.contains('اسبانيول') ||
-                tLower.contains('إسبانيول')) {
-              final isEspagnolette =
-                  n.contains('espagnol') ||
-                  ty.contains('espagnol') ||
-                  n.contains('اسبانيول') ||
-                  ty.contains('اسبانيول') ||
-                  n.contains('سبانيول') ||
-                  ty.contains('سبانيول');
-              if (!isEspagnolette) return false;
-              final maxLength = widget.maxAccessoryLength;
-              if (maxLength == null || maxLength <= 0) return true;
-              final rawSize = (a['measurement'] ?? '').toString();
-              final sizeMatch = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(
-                rawSize.isNotEmpty
-                    ? rawSize
-                    : '${a['name'] ?? ''} ${a['type'] ?? ''}',
-              );
-              final length = sizeMatch == null
-                  ? null
-                  : double.tryParse(sizeMatch.group(1)!.replaceAll(',', '.'));
-              // القيم بلا طول صريح لا تعد بديلاً آمناً لإسبانيوليت محسوب.
-              return length != null && length <= maxLength;
-            }
-            if (tLower == 'clamp' ||
-                tLower.contains('clamp') ||
-                tLower.contains('clam') ||
-                tLower.contains('كلامب') ||
-                tLower.contains('كلام') ||
-                tLower.contains('كلان')) {
-              final isClamp =
-                  n.contains('clamp') ||
-                  n.contains('clam') ||
-                  ty.contains('clamp') ||
-                  ty.contains('clam') ||
-                  n.contains('كلامب') ||
-                  n.contains('كلام') ||
-                  n.contains('كلان') ||
-                  ty.contains('كلامب') ||
-                  ty.contains('كلام') ||
-                  ty.contains('كلان') ||
-                  n.contains('clan') ||
-                  ty.contains('clan');
-              final isKit =
-                  n.contains('kit') ||
-                  ty.contains('kit') ||
-                  n.contains('كيت') ||
-                  ty.contains('كيت');
-              return isClamp && !isKit;
-            }
-            if (tLower == 'kit' || tLower.contains('كيت')) {
-              final isKit =
-                  n.contains('kit') ||
-                  ty.contains('kit') ||
-                  n.contains('كيت') ||
-                  ty.contains('كيت');
-              final isClamp =
-                  n.contains('clamp') ||
-                  n.contains('clam') ||
-                  ty.contains('clamp') ||
-                  ty.contains('clam') ||
-                  n.contains('كلامب') ||
-                  n.contains('كلام') ||
-                  ty.contains('كلامب') ||
-                  ty.contains('كلام') ||
-                  n.contains('كلان') ||
-                  ty.contains('كلان') ||
-                  n.contains('clan') ||
-                  ty.contains('clan');
-              return isKit && !isClamp;
-            }
-            if (tLower == 'كاش كوليسون' ||
-                tLower == 'gache coulisse' ||
-                tLower == 'gâche coulisse' ||
-                tLower == 'gache coulissante' ||
-                tLower == 'gâche coulissante' ||
-                tLower == 'gache coulissant' ||
-                tLower == 'gâche coulissant') {
-              return n.contains('couliss') ||
-                  ty.contains('couliss') ||
-                  n.contains('كاش') ||
-                  ty.contains('كاش') ||
-                  n.contains('gache') ||
-                  ty.contains('gache') ||
-                  n.contains('gâche') ||
-                  ty.contains('gâche');
-            }
-            if (tLower == 'poignee coulissante' ||
-                tLower == 'poignée coulissante' ||
-                tLower == 'مقبض منزلق') {
-              final isHandle =
-                  n.contains('poignée') ||
-                  ty.contains('poignée') ||
-                  n.contains('poignee') ||
-                  ty.contains('poignee') ||
-                  n.contains('handle') ||
-                  ty.contains('handle') ||
-                  n.contains('مقبض') ||
-                  ty.contains('مقبض');
-              final isSliding =
-                  n.contains('couliss') ||
-                  ty.contains('couliss') ||
-                  n.contains('sliding') ||
-                  ty.contains('sliding') ||
-                  n.contains('منزلق') ||
-                  ty.contains('منزلق') ||
-                  n.contains('جرار') ||
-                  ty.contains('جرار');
-              return isHandle && isSliding;
-            }
-            if (tLower == 'tasso') {
-              return n.contains('tasso') ||
-                  n.contains('tasseau') ||
-                  n.contains('طاسو') ||
-                  n.contains('طاصو') ||
-                  ty.contains('tasso') ||
-                  ty.contains('tasseau') ||
-                  ty.contains('طاسو') ||
-                  ty.contains('طاصو');
-            }
-            if (tLower == 'batmo') {
-              return (n.contains('batmo') || ty.contains('batmo')) &&
-                  !n.contains('bouchon') &&
-                  !ty.contains('bouchon') &&
-                  !n.contains('bochon') &&
-                  !ty.contains('bochon');
-            }
-            if (tLower == 'bouchon batmo' ||
-                tLower == 'bouchon' ||
-                tLower == 'bochon batment' ||
-                tLower == 'bochon') {
-              return n.contains('bouchon') ||
-                  ty.contains('bouchon') ||
-                  n.contains('bochon') ||
-                  ty.contains('bochon') ||
-                  n.contains('batment') ||
-                  ty.contains('batment');
-            }
-            if (tLower == 'system ob') {
-              return n.contains('system ob') ||
-                  ty.contains('system ob') ||
-                  n.contains('سيستم أو بي') ||
-                  n.contains('سيستم او بي') ||
-                  ty.contains('سيستم أو بي') ||
-                  ty.contains('سيستم او بي');
-            }
-            if (tLower == 'entrematique') {
-              return n.contains('entrematique') ||
-                  n.contains('أونتروماتيك') ||
-                  n.contains('انتراميتيك') ||
-                  n.contains('intra') ||
-                  ty.contains('entrematique') ||
-                  ty.contains('أونتروماتيك') ||
-                  ty.contains('انتراميتيك') ||
-                  ty.contains('intra');
-            }
-            if (tLower == 'demi system ob' || tLower == 'demi ob') {
-              return n.contains('demi') ||
-                  ty.contains('demi') ||
-                  n.contains('ديمي') ||
-                  ty.contains('ديمي');
-            }
-            if (tLower == 'verrou central') {
-              return n.contains('verrou central') ||
-                  ty.contains('verrou central') ||
-                  n.contains('فيرو سنترال') ||
-                  ty.contains('فيرو سنترال') ||
-                  n.contains('فيرو سونترال') ||
-                  ty.contains('فيرو سونترال') ||
-                  n.contains('central') ||
-                  ty.contains('central') ||
-                  n.contains('سنترال') ||
-                  ty.contains('سنترال') ||
-                  n.contains('سونترال') ||
-                  ty.contains('سونترال');
-            }
-
-            if (tLower == 'مفاصل' ||
-                tLower == 'hinges' ||
-                tLower == 'paumelle' ||
-                tLower == 'paumelles') {
-              return isHingeAccessory(a);
-            }
-            if (tLower == 'مقبض' ||
-                tLower == 'handle' ||
-                tLower == 'poignée' ||
-                tLower == 'poignée fenêtre' ||
-                tLower == 'poignee fenetre' ||
-                tLower == 'poignée tpr' ||
-                tLower == 'poignee tpr' ||
-                tLower == 'poignee') {
-              return n.contains('poignée') ||
-                  ty.contains('poignée') ||
-                  n.contains('poignee') ||
-                  ty.contains('poignee') ||
-                  n.contains('handle') ||
-                  ty.contains('handle') ||
-                  n.contains('مقبض') ||
-                  ty.contains('مقبض') ||
-                  n.contains('بواني') ||
-                  ty.contains('بواني') ||
-                  n.contains('بوانيي') ||
-                  ty.contains('بوانيي');
-            }
-            if (tLower == 'serrure' || tLower == 'lock' || tLower == 'قفل') {
-              return n.contains('serrure') ||
-                  ty.contains('serrure') ||
-                  n.contains('lock') ||
-                  ty.contains('lock') ||
-                  n.contains('قفل') ||
-                  ty.contains('قفل');
-            }
-            if (tLower == 'canon' ||
-                tLower == 'cylinder' ||
-                tLower == 'الأسطوانة' ||
-                tLower == 'الاسطوانة' ||
-                tLower == 'اسطوانة' ||
-                tLower == 'أسطوانة') {
-              return n.contains('canon') ||
-                  ty.contains('canon') ||
-                  n.contains('cylinder') ||
-                  ty.contains('cylinder') ||
-                  n.contains('اسطوانة') ||
-                  ty.contains('اسطوانة') ||
-                  n.contains('أسطوانة') ||
-                  ty.contains('أسطوانة');
-            }
-            if (tLower == 'cache porte' ||
-                tLower == 'gache porte' ||
-                tLower == 'كاش بورت' ||
-                tLower == 'كاش بورت (cache porte)') {
-              return n.contains('cache') ||
-                  ty.contains('cache') ||
-                  n.contains('gache') ||
-                  ty.contains('gache') ||
-                  n.contains('كاش') ||
-                  ty.contains('كاش');
-            }
-            if (tLower == 'roulette' ||
-                tLower == 'roulettes' ||
-                tLower == 'عجلات') {
-              return n.contains('roulette') ||
-                  ty.contains('roulette') ||
-                  n.contains('رول') ||
-                  ty.contains('رول') ||
-                  n.contains('عجل') ||
-                  ty.contains('عجل');
-            }
-            if (tLower == 'clamp' ||
-                tLower.contains('clamp') ||
-                tLower.contains('clam') ||
-                tLower.contains('كلامب') ||
-                tLower.contains('كلام') ||
-                tLower.contains('كلان')) {
-              final isClamp =
-                  n.contains('clamp') ||
-                  n.contains('clam') ||
-                  ty.contains('clamp') ||
-                  ty.contains('clam') ||
-                  n.contains('كلامب') ||
-                  n.contains('كلام') ||
-                  n.contains('كلان') ||
-                  ty.contains('كلامب') ||
-                  ty.contains('كلام') ||
-                  ty.contains('كلان') ||
-                  n.contains('clan') ||
-                  ty.contains('clan');
-              final isKit =
-                  n.contains('kit') ||
-                  ty.contains('kit') ||
-                  n.contains('كيت') ||
-                  ty.contains('كيت');
-              return isClamp && !isKit;
-            }
-            if (tLower == 'kit' || tLower.contains('كيت')) {
-              final isKit =
-                  n.contains('kit') ||
-                  ty.contains('kit') ||
-                  n.contains('كيت') ||
-                  ty.contains('كيت');
-              final isClamp =
-                  n.contains('clamp') ||
-                  n.contains('clam') ||
-                  ty.contains('clamp') ||
-                  ty.contains('clam') ||
-                  n.contains('كلامب') ||
-                  n.contains('كلام') ||
-                  ty.contains('كلامب') ||
-                  ty.contains('كلام') ||
-                  n.contains('كلان') ||
-                  ty.contains('كلان');
-              return isKit && !isClamp;
-            }
-
-            final normN = normalizeArabic(n);
-            final normTy = normalizeArabic(ty);
-            final normTLower = normalizeArabic(tLower);
-            bool match =
-                normN.contains(normTLower) ||
-                normTy.contains(normTLower) ||
-                normTLower.contains(normN) ||
-                normTLower.contains(normTy);
-
-            // Defensive exclusion for generic matches
-            if (match) {
-              final searchHasKit =
-                  normTLower.contains('kit') || normTLower.contains('كيت');
-              final searchHasClamp =
-                  normTLower.contains('clamp') ||
-                  normTLower.contains('clam') ||
-                  normTLower.contains('كلامب') ||
-                  normTLower.contains('كلام') ||
-                  normTLower.contains('كلان');
-              final itemHasKit =
-                  normN.contains('kit') ||
-                  normTy.contains('kit') ||
-                  normN.contains('كيت') ||
-                  normTy.contains('كيت');
-              final itemHasClamp =
-                  normN.contains('clamp') ||
-                  normN.contains('clam') ||
-                  normTy.contains('clamp') ||
-                  normTy.contains('clam') ||
-                  normN.contains('كلامب') ||
-                  normN.contains('كلام') ||
-                  normN.contains('كلان') ||
-                  normTy.contains('كلامب') ||
-                  normTy.contains('كلام') ||
-                  normTy.contains('كلان');
-
-              if (searchHasKit && itemHasClamp) return false;
-              if (searchHasClamp && itemHasKit) return false;
-            }
-
-            // For Central accessories (like Verrou Central), enforce that the matched db item also contains 'central'
-            if (match && tLower.contains('central')) {
-              if (!n.contains('central') &&
-                  !ty.contains('central') &&
-                  !n.contains('سنترال') &&
-                  !ty.contains('سنترال') &&
-                  !n.contains('سونترال') &&
-                  !ty.contains('سونترال')) {
-                return false;
-              }
-            }
-
-            // For Espagnolettes, enforce exact number match if a number exists in both
-            if (match &&
-                (tLower.contains('espagnolette') ||
-                    tLower.contains('اسبانيوليت') ||
-                    tLower.contains('إسبانيوليت') ||
-                    tLower.contains('سبانيوليت'))) {
-              final tMatch = RegExp(r'\d+').firstMatch(tLower);
-              final nMatch =
-                  RegExp(r'\d+').firstMatch(n) ?? RegExp(r'\d+').firstMatch(ty);
-              if (tMatch != null && nMatch != null) {
-                if (tMatch.group(0) != nMatch.group(0)) {
-                  return false; // Numbers don't match!
-                }
-              }
-            }
-
-            return match;
-          }).toList();
-        }
-      }
-    } else if (widget.category == 'joint') {
+      }    } else if (widget.category == 'joint') {
       final myDb = await db.db;
       if (myDb != null) {
         // Apply the exact same scope rule used for accessories: a joint that
         // has one or more series is exclusive to them; a joint without a
         // series is global only for its material.
+        final t = widget.profileType.toLowerCase();
+        final roleKeys = catalogRuleKeysForJointSelectorType(t);
         if (widget.seriesId != null) {
           final isPvc = widget.materialType?.trim().toLowerCase() == 'pvc';
           const seriesConstraint =
@@ -1453,8 +863,6 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             where: '($seriesConstraint) AND ($materialConstraint)',
             whereArgs: [widget.seriesId, '%,${widget.seriesId},%'],
           );
-          final t = widget.profileType.toLowerCase();
-          final roleKeys = catalogRuleKeysForJointSelectorType(t);
           var matchingTypeRows = <Map<String, dynamic>>[];
           if (roleKeys.isNotEmpty) {
             final rules = await db.getCatalogItemRules(
@@ -1475,22 +883,6 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                   .map((joint) => Map<String, dynamic>.from(joint))
                   .toList();
             }
-            if (matchingTypeRows.isEmpty) {
-              matchingTypeRows = allJoints
-                  .where(
-                    (joint) =>
-                        catalogItemMatchesSeriesOrGlobal(
-                          joint,
-                          widget.seriesId!,
-                        ) &&
-                        roleKeys.any(
-                          (roleKey) =>
-                              jointCatalogItemMatchesRole(joint, roleKey),
-                        ),
-                  )
-                  .map((joint) => Map<String, dynamic>.from(joint))
-                  .toList();
-            }
           }
           final exactSeriesRows = matchingTypeRows
               .where((row) => catalogItemMatchesSeries(row, widget.seriesId!))
@@ -1498,6 +890,27 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           data = exactSeriesRows.isNotEmpty
               ? exactSeriesRows
               : matchingTypeRows;
+        } else if (roleKeys.isNotEmpty) {
+          final allJoints = await myDb.query(
+            'Joints',
+            where:
+                "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
+          );
+          final rules = await db.getCatalogItemRules(
+            itemTable: 'Joints',
+            roleKeys: roleKeys,
+          );
+          final ruleIds = rules
+              .where((rule) => rule['show_in_dialog'] != 0)
+              .map((rule) => (rule['item_id'] as num?)?.toInt())
+              .whereType<int>()
+              .toSet();
+          data = allJoints
+              .where(
+                (joint) => ruleIds.contains((joint['id'] as num?)?.toInt()),
+              )
+              .map((joint) => Map<String, dynamic>.from(joint))
+              .toList();
         }
       }
     } else if (widget.category == 'shutter') {

@@ -62,7 +62,7 @@ class BomEngineV2 {
     final sections = await _db.getDesignSectionsForRoles(
       seriesId,
       roleKeys,
-      requireDialog: false,
+      requireDialog: true,
       requireQuantity: true,
     );
     if (sections.isEmpty) return;
@@ -110,45 +110,32 @@ class BomEngineV2 {
       if ((item.roleKey ?? '').trim().isNotEmpty) item.roleKey!.trim(),
       ...catalogRuleKeysForAccessorySelectorType(selectorType),
     }.toList();
-    final typedColumns = catalogFlagColumnsForAccessorySelectorType(
-      selectorType,
-    );
-    if (ruleKeys.isEmpty && typedColumns.isEmpty) return;
+    if (ruleKeys.isEmpty) return;
 
     final seriesId = _seriesIdForItem(window, item);
     final materialType = _materialTypeForItem(window, item);
     final isShutterScrew = _isShutterScrewSelectorType(selectorType);
     Map<String, dynamic>? selected;
 
-    if (ruleKeys.isNotEmpty) {
-      final rules = await _db.getCatalogItemRules(
-        itemTable: 'Accessories',
-        seriesId: seriesId,
-        roleKeys: ruleKeys,
-      );
-      for (final rule in rules) {
-        if (rule['show_in_quantity'] == 0) continue;
-        final itemId = _catalogInt(rule['item_id']);
-        if (itemId == null) continue;
-        selected = await _firstAccessory(
-          database: database,
-          seriesId: seriesId,
-          materialType: materialType,
-          applyMaterialFilter: !isShutterScrew,
-          predicate: (row) => _catalogInt(row['id']) == itemId,
-        );
-        if (selected != null) break;
+    final rules = await _db.getCatalogItemRules(
+      itemTable: 'Accessories',
+      seriesId: seriesId,
+      roleKeys: ruleKeys,
+    );
+    for (final rule in rules) {
+      if (rule['show_in_quantity'] == 0 || rule['show_in_dialog'] == 0) {
+        continue;
       }
-    }
-
-    if (selected == null && typedColumns.isNotEmpty) {
+      final itemId = _catalogInt(rule['item_id']);
+      if (itemId == null) continue;
       selected = await _firstAccessory(
         database: database,
         seriesId: seriesId,
         materialType: materialType,
         applyMaterialFilter: !isShutterScrew,
-        predicate: (row) => typedColumns.any((column) => _flag(row[column])),
+        predicate: (row) => _catalogInt(row['id']) == itemId,
       );
+      if (selected != null) break;
     }
 
     if (selected == null) return;
@@ -172,7 +159,9 @@ class BomEngineV2 {
     if (roleKeys.isEmpty) return;
 
     final seriesId = _seriesIdForItem(window, item);
-    if (seriesId == null) return;
+    if (seriesId == null && !roleKeys.contains('shutter_joint_brosse')) {
+      return;
+    }
 
     Map<String, dynamic>? selected;
     final rules = await _db.getCatalogItemRules(
@@ -181,7 +170,9 @@ class BomEngineV2 {
       roleKeys: roleKeys,
     );
     for (final rule in rules) {
-      if (rule['show_in_quantity'] == 0) continue;
+      if (rule['show_in_quantity'] == 0 || rule['show_in_dialog'] == 0) {
+        continue;
+      }
       final itemId = _catalogInt(rule['item_id']);
       if (itemId == null) continue;
       selected = await _firstJoint(
@@ -191,13 +182,6 @@ class BomEngineV2 {
       );
       if (selected != null) break;
     }
-
-    selected ??= await _firstJoint(
-      database: database,
-      seriesId: seriesId,
-      predicate: (row) =>
-          roleKeys.any((roleKey) => jointCatalogItemMatchesRole(row, roleKey)),
-    );
 
     if (selected == null) return;
     selected['calculated_price'] = _safeDouble(
@@ -255,14 +239,26 @@ class BomEngineV2 {
 
   Future<Map<String, dynamic>?> _firstJoint({
     required Database database,
-    required int seriesId,
+    required int? seriesId,
     required bool Function(Map<String, dynamic> row) predicate,
   }) async {
+    final where = <String>['is_active = 1 OR is_active IS NULL'];
+    final args = <Object?>[];
+    if (seriesId != null) {
+      where.add(
+        "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')))",
+      );
+      args.add(seriesId);
+      args.add('%,$seriesId,%');
+    } else {
+      where.add(
+        "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
+      );
+    }
     final rows = (await database.query(
       'Joints',
-      where:
-          "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))) AND (is_active = 1 OR is_active IS NULL)",
-      whereArgs: [seriesId, '%,$seriesId,%'],
+      where: where.map((part) => '($part)').join(' AND '),
+      whereArgs: args,
       orderBy: 'id ASC',
     )).map((row) => Map<String, dynamic>.from(row)).where(predicate).toList();
     if (rows.isEmpty) return null;
@@ -298,6 +294,10 @@ class BomEngineV2 {
   }
 
   int? _seriesIdForItem(WindowModel window, BomItem item) {
+    if ((item.roleKey ?? '').trim() == 'shutter_joint_brosse' ||
+        (item.materialType ?? '').toLowerCase().trim() == 'shutter') {
+      return item.sourceSeriesId;
+    }
     if (item.sourceSeriesId != null) return item.sourceSeriesId;
     final mode = _drawingModeForItem(window, item);
     if (mode == AccessoryDrawingMode.sliding) {
@@ -352,9 +352,13 @@ class BomEngineV2 {
   bool _isShutterScrewSelectorType(String selectorType) {
     final lower = selectorType.toLowerCase();
     return lower == 'is_kit_screw' ||
+        lower == 'kit_screw' ||
         lower == 'is_caisson_screw' ||
+        lower == 'box_screw' ||
         lower == 'is_moteur_screw' ||
+        lower == 'motor_screw' ||
         lower == 'is_manivelle_screw';
+        lower == 'manivelle_screw';
   }
 
   bool _flag(Object? value) {

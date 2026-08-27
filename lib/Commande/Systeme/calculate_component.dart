@@ -529,6 +529,9 @@ class ComponentCalculator {
     if (_textHasAny(originalName, const ['قاش سامبل', 'gache simple'])) {
       return 'is_gache_simple';
     }
+    if (_textHasAny(originalName, const ['قاش بورت', 'gache porte'])) {
+      return 'is_gache_porte';
+    }
     if (_textHasAny(originalName, const [
       'gache coulisse',
       'gâche coulisse',
@@ -698,9 +701,9 @@ class ComponentCalculator {
       case 'is_kit_screw':
         return 'kit_screw';
       case 'is_caisson_screw':
-        return 'caisson_screw';
+        return 'box_screw';
       case 'is_moteur_screw':
-        return 'moteur_screw';
+        return 'motor_screw';
       case 'is_batmo_screw':
         return 'batmo_screw';
       case 'is_bouchon_batmo_screw':
@@ -716,11 +719,20 @@ class ComponentCalculator {
       case 'is_installation_screw':
         return 'installation_screw';
       case 'clamp':
-        return 'clamp';
+        return 'sliding_clamp';
       case 'is_gache_simple':
         return 'gache_simple';
       case 'is_gache_double':
         return 'gache_double';
+      case 'is_gache_porte':
+        return 'gache_door';
+      case 'كاش كوليسون':
+        return 'sliding_lock';
+      case 'poignee coulissante':
+        return 'handle';
+      case 'فيرو':
+      case 'verrou':
+        return 'verrou';
       case 'is_lock_clef':
         return 'lock_clef';
       case 'is_lock_condamnation':
@@ -1585,6 +1597,12 @@ class ComponentCalculator {
       double qty = 0,
       String unit = 'بارة',
     }) {
+      final selectorType = _selectorTypeForJoint(originalName);
+      final isShutterJoint = _textHasAny(originalName, const [
+        'للستار',
+        'shutter',
+        'volet',
+      ]);
       final exactQty = ((qty * window.quantity) * 100).round() / 100.0;
       final normalizedUnit = unit.toLowerCase().trim();
       final purchaseQty =
@@ -1604,12 +1622,18 @@ class ComponentCalculator {
         catalogItemId: catalogueId(window.componentOverrides[originalName]),
         overrideKey: originalName,
         selectorCategory: 'joint',
-        selectorType: _selectorTypeForJoint(originalName),
-        roleKey: _roleKeyForJointSelector(_selectorTypeForJoint(originalName)),
-        sourceSeriesId: window.systemMode == 'sliding'
+        selectorType: selectorType,
+        roleKey: isShutterJoint
+            ? 'shutter_joint_brosse'
+            : _roleKeyForJointSelector(selectorType),
+        sourceSeriesId: isShutterJoint
+            ? null
+            : window.systemMode == 'sliding'
             ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
             : window.activeSeries?.id,
-        materialType: window.systemMode == 'sliding'
+        materialType: isShutterJoint
+            ? 'shutter'
+            : window.systemMode == 'sliding'
             ? (window.isSlidingPVC ? 'pvc' : 'aluminium')
             : (window.isPVC ? 'pvc' : 'aluminium'),
       );
@@ -6325,8 +6349,8 @@ class ComponentCalculator {
       final double doublePerim = parcloseDoublePieces.fold(
         0.0,
         (s, p) => s + p,
-      ); // محيط زجاج مزدوج (×2)
-      final double vitrageQty = simplePerim * 1.0 + doublePerim * 2.0;
+      ); // طول باكلوز الزجاج المزدوج
+      final double vitrageQty = simplePerim + doublePerim;
 
       if (vitrageQty > 0) {
         items.add(

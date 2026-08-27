@@ -11009,11 +11009,20 @@ class WindowModel extends ChangeNotifier {
     final zIdx = zones.indexWhere((z) => z.id == zoneId);
     if (zIdx == -1) return 0;
     final r = zones[zIdx].boundary;
-    final sep = divisionThickness / 2;
     if (isWidth) {
       final bool isRightmost = !zones.any((z) => z.boundary.left > r.right - 2);
       if (isRightmost) {
         double oldX = r.left;
+        double sep = mullionThickness / 2;
+        for (var n in zones) {
+          if (n.boundary.right <= oldX + 1 &&
+              (oldX - n.boundary.right) <= divisionThickness + 4 &&
+              math.max(r.top, n.boundary.top) <
+                  math.min(r.bottom, n.boundary.bottom) - 2) {
+            sep = (oldX - n.boundary.right) / 2;
+            break;
+          }
+        }
         double minAllowedX = profileThickness * 2;
         double divisionX = oldX - sep;
         for (var z in zones) {
@@ -11026,6 +11035,16 @@ class WindowModel extends ChangeNotifier {
         return r.width + (oldX - (minAllowedX + sep));
       } else {
         double oldX = r.right;
+        double sep = mullionThickness / 2;
+        for (var n in zones) {
+          if (n.boundary.left >= oldX - 1 &&
+              (n.boundary.left - oldX) <= divisionThickness + 4 &&
+              math.max(r.top, n.boundary.top) <
+                  math.min(r.bottom, n.boundary.bottom) - 2) {
+            sep = (n.boundary.left - oldX) / 2;
+            break;
+          }
+        }
         double maxAllowedX = width - profileThickness * 2;
         double divisionX = oldX + sep;
         for (var z in zones) {
@@ -11043,6 +11062,16 @@ class WindowModel extends ChangeNotifier {
       );
       if (isBottommost) {
         double oldY = r.top;
+        double sep = mullionThickness / 2;
+        for (var n in zones) {
+          if (n.boundary.bottom <= oldY + 1 &&
+              (oldY - n.boundary.bottom) <= divisionThickness + 4 &&
+              math.max(r.left, n.boundary.left) <
+                  math.min(r.right, n.boundary.right) - 2) {
+            sep = (oldY - n.boundary.bottom) / 2;
+            break;
+          }
+        }
         double minAllowedY = profileThickness * 2;
         double divisionY = oldY - sep;
         for (var z in zones) {
@@ -11055,6 +11084,16 @@ class WindowModel extends ChangeNotifier {
         return r.height + (oldY - (minAllowedY + sep));
       } else {
         double oldY = r.bottom;
+        double sep = mullionThickness / 2;
+        for (var n in zones) {
+          if (n.boundary.top >= oldY - 1 &&
+              (n.boundary.top - oldY) <= divisionThickness + 4 &&
+              math.max(r.left, n.boundary.left) <
+                  math.min(r.right, n.boundary.right) - 2) {
+            sep = (n.boundary.top - oldY) / 2;
+            break;
+          }
+        }
         double maxAllowedY = height - profileThickness * 2;
         double divisionY = oldY + sep;
         for (var z in zones) {
@@ -11427,22 +11466,47 @@ class WindowModel extends ChangeNotifier {
   }
 
   void _moveInternalBoundaryX(double oldX, double diff) {
-    // Coupled frames have a double frame gap, not a simple mullion gap.  Use
-    // the same half-gap as creation so resizing moves both adjoining frames
-    // together instead of leaving a blank space or creating an overlap.
-    final sep = divisionThickness / 2;
+    // Detect the actual boundary gap dynamically: it could be a single mullion
+    // (mullionThickness) or coupled frames (divisionThickness).
+    double sep = mullionThickness / 2;
     double divisionX = oldX;
     bool foundRight = false;
+
+    // Check if oldX is the right edge of a left zone, find its right neighbor
+    // to measure the exact gap.
     for (var z in zones) {
       if ((z.boundary.right - oldX).abs() < 2) {
+        for (var n in zones) {
+          if (n.boundary.left >= oldX - 1 &&
+              (n.boundary.left - oldX) <= divisionThickness + 4 &&
+              math.max(z.boundary.top, n.boundary.top) <
+                  math.min(z.boundary.bottom, n.boundary.bottom) - 2) {
+            final actualGap = n.boundary.left - z.boundary.right;
+            sep = actualGap / 2;
+            break;
+          }
+        }
         divisionX = oldX + sep;
         foundRight = true;
         break;
       }
     }
+
+    // If not found, check if oldX is the left edge of a right zone, find its
+    // left neighbor.
     if (!foundRight) {
       for (var z in zones) {
         if ((z.boundary.left - oldX).abs() < 2) {
+          for (var n in zones) {
+            if (n.boundary.right <= oldX + 1 &&
+                (oldX - n.boundary.right) <= divisionThickness + 4 &&
+                math.max(z.boundary.top, n.boundary.top) <
+                    math.min(z.boundary.bottom, n.boundary.bottom) - 2) {
+              final actualGap = z.boundary.left - n.boundary.right;
+              sep = actualGap / 2;
+              break;
+            }
+          }
           divisionX = oldX - sep;
           break;
         }
@@ -11511,21 +11575,46 @@ class WindowModel extends ChangeNotifier {
   }
 
   void _moveInternalBoundaryY(double oldY, double diff) {
-    // See _moveInternalBoundaryX: coupled frames are separated by
-    // [divisionThickness], so their common boundary is its midpoint.
-    final sep = divisionThickness / 2;
+    // Detect the actual boundary gap dynamically (see _moveInternalBoundaryX).
+    double sep = mullionThickness / 2;
     double divisionY = oldY;
     bool foundBottom = false;
+
+    // Check if oldY is the bottom edge of a top zone, find its bottom neighbor
+    // to measure the exact gap.
     for (var z in zones) {
       if ((z.boundary.bottom - oldY).abs() < 2) {
+        for (var n in zones) {
+          if (n.boundary.top >= oldY - 1 &&
+              (n.boundary.top - oldY) <= divisionThickness + 4 &&
+              math.max(z.boundary.left, n.boundary.left) <
+                  math.min(z.boundary.right, n.boundary.right) - 2) {
+            final actualGap = n.boundary.top - z.boundary.bottom;
+            sep = actualGap / 2;
+            break;
+          }
+        }
         divisionY = oldY + sep;
         foundBottom = true;
         break;
       }
     }
+
+    // If not found, check if oldY is the top edge of a bottom zone, find its
+    // top neighbor.
     if (!foundBottom) {
       for (var z in zones) {
         if ((z.boundary.top - oldY).abs() < 2) {
+          for (var n in zones) {
+            if (n.boundary.bottom <= oldY + 1 &&
+                (oldY - n.boundary.bottom) <= divisionThickness + 4 &&
+                math.max(z.boundary.left, n.boundary.left) <
+                    math.min(z.boundary.right, n.boundary.right) - 2) {
+              final actualGap = z.boundary.top - n.boundary.bottom;
+              sep = actualGap / 2;
+              break;
+            }
+          }
           divisionY = oldY - sep;
           break;
         }
