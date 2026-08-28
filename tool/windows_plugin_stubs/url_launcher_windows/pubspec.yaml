@@ -1,0 +1,19 @@
+name: url_launcher_windows
+description: Local Windows stub used during development when Smart App Control blocks unsigned plugin DLLs.
+version: 3.1.5
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  url_launcher_platform_interface: ^2.3.0
+
+flutter:
+  plugin:
+    implements: url_launcher
+    platforms:
+      windows:
+        dartPluginClass: UrlLauncherWindows

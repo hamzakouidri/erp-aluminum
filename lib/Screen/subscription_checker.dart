@@ -218,6 +218,9 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                   : (rawRole == 'co_manager' ? 'co_manager' : 'worker'));
         final workshopId = data['workshopId']?.toString() ?? '';
         final workshopName = data['workshopName']?.toString() ?? '';
+        final initialWorkshopName = workshopName == workshopId
+            ? ''
+            : workshopName;
 
         final String displayName =
             (data['displayName'] as String?)?.trim().isNotEmpty == true
@@ -249,7 +252,7 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
               data['workshopLogoUrl']?.toString() ??
               data['logoUrl']?.toString() ??
               '';
-          String resolvedWorkshopName = workshopName;
+          String resolvedWorkshopName = initialWorkshopName;
           if (resolvedWorkshopName == workshopId) {
             resolvedWorkshopName =
                 ''; // إذا كان اسم الورشة مساوياً للكود، نعيد تعيينه لجلبه الصحيح من حساب المدير
@@ -321,7 +324,12 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 
         // 0. التحقق من الإدارة العليا (الأدمن يدخل دائماً)
         if (isAdmin) {
-          return const SyncGateway(key: ValueKey('sync_gateway'));
+          return SyncGateway(
+            key: const ValueKey('sync_gateway'),
+            initialWorkshopId: workshopId.isNotEmpty ? workshopId : user.uid,
+            initialWorkshopName: initialWorkshopName,
+            initialUserRole: role,
+          );
         }
 
         // 1. التحقق من الحظر الشخصي
@@ -492,8 +500,11 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
                     await prefs.setString('workshop_name', wName);
                   }
                 });
-                return const SyncGateway(
-                  key: ValueKey('sync_gateway'),
+                return SyncGateway(
+                  key: const ValueKey('sync_gateway'),
+                  initialWorkshopId: managerId,
+                  initialWorkshopName: wName,
+                  initialUserRole: role,
                 ); // المدير مشترك = العامل يدخل
               } else {
                 // واجهة مخصصة للعامل تخبره بأن المشكلة من اشتراك مديره
@@ -556,7 +567,12 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
         // 3. معالجة حالة المدير (يفحص اشتراكه الشخصي)
         // -------------------------------------------------------------
         if (_hasActiveSubscription(data)) {
-          return const SyncGateway(key: ValueKey('sync_gateway'));
+          return SyncGateway(
+            key: const ValueKey('sync_gateway'),
+            initialWorkshopId: workshopId.isNotEmpty ? workshopId : user.uid,
+            initialWorkshopName: initialWorkshopName,
+            initialUserRole: role,
+          );
         }
 
         return const SubscriptionExpiredScreen();
@@ -569,7 +585,16 @@ class _SubscriptionCheckerState extends State<SubscriptionChecker> {
 // SyncGateway: بوابّة المزامنة للتأكد من تعبئة البيانات الفارغة عند الإقلاع
 // ─────────────────────────────────────────────────────────────────────────────
 class SyncGateway extends StatefulWidget {
-  const SyncGateway({super.key});
+  const SyncGateway({
+    super.key,
+    this.initialWorkshopId,
+    this.initialWorkshopName,
+    this.initialUserRole,
+  });
+
+  final String? initialWorkshopId;
+  final String? initialWorkshopName;
+  final String? initialUserRole;
 
   @override
   State<SyncGateway> createState() => _SyncGatewayState();
@@ -589,6 +614,7 @@ class _SyncGatewayState extends State<SyncGateway> {
   Future<void> _checkAndSync() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await _primeCloudIdentity(prefs);
       final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
       final activeUid = prefs.getString('active_cloud_user_uid') ?? '';
       final activeWorkshop = _storedActiveWorkshop(prefs);
@@ -669,13 +695,35 @@ class _SyncGatewayState extends State<SyncGateway> {
     } catch (e) {
       debugPrint('Sync gateway error: $e');
       if (!mounted) return;
+      final failureReason = e
+          .toString()
+          .replaceFirst('Exception: ', '')
+          .trim();
+      final restoreSummary = CloudSyncService().lastRestoreSummary.trim();
       setState(() {
         _isSyncing = false;
         _syncError =
             'تعذر تنزيل بيانات الورشة. لم يتم إنشاء أو حذف أي بيانات.\n'
             'تحقق من الاتصال ثم اضغط «إعادة المحاولة».\n\n'
-            '${CloudSyncService().lastRestoreSummary}';
+            'السبب: $failureReason'
+            '${restoreSummary.isEmpty ? '' : '\n\n$restoreSummary'}';
       });
+    }
+  }
+
+  Future<void> _primeCloudIdentity(SharedPreferences prefs) async {
+    final workshopId = widget.initialWorkshopId?.trim() ?? '';
+    final workshopName = widget.initialWorkshopName?.trim() ?? '';
+    final userRole = widget.initialUserRole?.trim() ?? '';
+
+    if (workshopId.isNotEmpty) {
+      await prefs.setString('workshop_code', workshopId);
+    }
+    if (workshopName.isNotEmpty) {
+      await prefs.setString('workshop_name', workshopName);
+    }
+    if (userRole.isNotEmpty) {
+      await prefs.setString('user_role', userRole);
     }
   }
 

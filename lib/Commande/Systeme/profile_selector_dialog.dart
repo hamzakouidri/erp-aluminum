@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite_sqlcipher/sqflite.dart';
 import '../../widgets/section_image.dart';
 import '../../sql_database.dart';
 import 'model.dart';
@@ -13,13 +14,6 @@ String _accessorySearchText(Map<String, dynamic> accessory) =>
 
 bool _containsAny(String value, Iterable<String> terms) =>
     terms.any((term) => value.contains(term));
-
-bool _isScrewSelectorType(String profileType) {
-  final lower = profileType.toLowerCase();
-  return lower.contains('_screw') ||
-      lower.contains('screw') ||
-      profileType.contains('براغي');
-}
 
 bool _isShutterScrewSelectorType(String profileType) {
   final lower = profileType.toLowerCase();
@@ -36,6 +30,11 @@ bool _isShutterScrewSelectorType(String profileType) {
               profileType.contains('الصندوق') ||
               profileType.contains('المحرك') ||
               profileType.contains('المانيفال')));
+}
+
+int? _catalogInt(Object? value) {
+  if (value is num) return value.toInt();
+  return int.tryParse('${value ?? ''}'.trim());
 }
 
 /// A catalogue item is linked to a series only through [series_id] or
@@ -69,6 +68,18 @@ bool catalogItemHasSeriesScope(Map<String, dynamic> item) {
 bool catalogItemMatchesSeriesOrGlobal(Map<String, dynamic> item, int seriesId) {
   if (!catalogItemHasSeriesScope(item)) return true;
   return catalogItemMatchesSeries(item, seriesId);
+}
+
+bool _roleIgnoresGlassRule(String roleKey) {
+  switch (roleKey.trim().toLowerCase()) {
+    case 'batmo':
+    case 'plant':
+    case 'bouchon_batmo':
+    case 'batmo_screw':
+    case 'bouchon_batmo_screw':
+      return true;
+  }
+  return false;
 }
 
 bool isEspagnoletteAccessory(Map<String, dynamic> accessory) => _containsAny(
@@ -158,197 +169,13 @@ bool isWindowHandleAccessory(Map<String, dynamic> accessory) {
   return !isDoorOrSpecial;
 }
 
-bool _catalogFlag(Map<String, dynamic> item, String key) {
-  final value = item[key];
-  if (value is bool) return value;
-  if (value is num) return value != 0;
-  final text = value?.toString().trim().toLowerCase();
-  return text == '1' || text == 'true' || text == 'yes';
-}
-
-bool _catalogTextHasAny(Map<String, dynamic> item, Iterable<String> terms) {
-  final text = normalizeArabic(_accessorySearchText(item));
-  return terms.any(
-    (term) => text.contains(normalizeArabic(term.toLowerCase())),
-  );
-}
-
-bool accessoryMatchesSelectorType(
-  Map<String, dynamic> accessory,
-  String selectorType, {
-  double? maxAccessoryLength,
-}) {
-  final tLower = normalizeArabic(selectorType.toLowerCase().trim());
-  final name = normalizeArabic(
-    (accessory['name'] ?? '').toString().toLowerCase(),
-  );
-  final type = normalizeArabic(
-    (accessory['type'] ?? '').toString().toLowerCase(),
-  );
-  final text = '$name $type';
-
-  bool hasAny(Iterable<String> terms) =>
-      terms.any((term) => text.contains(normalizeArabic(term.toLowerCase())));
-  bool selectorHasAny(Iterable<String> terms) =>
-      terms.any((term) => tLower.contains(normalizeArabic(term.toLowerCase())));
-
-  bool isScrew() => hasAny(const ['screw', 'vis', 'برغي', 'براغي']);
-  bool isGache() => hasAny(const ['gache', 'gâche', 'gage', 'قاش', 'كاش']);
-  bool isHandle() =>
-      hasAny(const ['poignée', 'poignee', 'handle', 'مقبض', 'بواني']);
-  bool isLock() => hasAny(const ['serrure', 'lock', 'قفل']);
-  bool isKey() => hasAny(const ['clef', 'clé', 'مفتاح']);
-  bool isCondamnation() => hasAny(const ['condamnation', 'حمام', 'بدون مفتاح']);
-  bool isDoor() => hasAny(const ['porte', 'door', 'بورت', 'باب']);
-  bool isDouble() => hasAny(const ['double', 'doub', 'دوبل']);
-  bool isSimple() => hasAny(const ['simple', 'سامبل']);
-  bool isSliding() =>
-      hasAny(const ['couliss', 'sliding', 'منزلق', 'جرار', 'كوليس']);
-
-  if (tLower.startsWith('is_') && _catalogFlag(accessory, selectorType)) {
-    return true;
-  }
-
-  switch (tLower) {
-    case 'is_kit_screw':
-      return isScrew() && hasAny(const ['kit', 'كيت']);
-    case 'is_caisson_screw':
-      return isScrew() && hasAny(const ['caisson', 'box', 'coffre', 'صندوق']);
-    case 'is_moteur_screw':
-      return isScrew() && hasAny(const ['moteur', 'motor', 'محرك']);
-    case 'is_manivelle_screw':
-      return isScrew() && hasAny(const ['manivelle', 'مانيف']);
-    case 'is_batmo_screw':
-      return isScrew() && hasAny(const ['batmo', 'باتمو']);
-    case 'is_bouchon_batmo_screw':
-      return isScrew() &&
-          hasAny(const ['bouchon', 'bochon', 'batment', 'بوشون']);
-    case 'is_renfort_screw':
-      return isScrew() && hasAny(const ['renfort', 'حديد', 'رنفور']);
-    case 'is_assembly_screw':
-      return isScrew() && hasAny(const ['assembl', 'تجميع']);
-    case 'is_installation_screw':
-      return isScrew() && hasAny(const ['install', 'تركيب']);
-    case 'is_accessory_screw':
-      return isScrew();
-    case 'is_gache_simple':
-      return isGache() && !isDouble() && !isDoor();
-    case 'is_gache_double':
-      return isGache() && (isDouble() || selectorHasAny(const ['دوبل']));
-    case 'is_gache_porte':
-      return isGache() && (isDoor() || (!isSimple() && !isDouble()));
-    case 'is_lock_clef':
-      return isLock() &&
-          isKey() &&
-          !isHandle() &&
-          !_catalogTextHasAny(accessory, const ['canon', 'اسطوانة', 'أسطوانة']);
-    case 'is_lock_condamnation':
-      return isLock() && isCondamnation() && !isHandle();
-    case 'is_canon':
-      return hasAny(const [
-        'canon',
-        'cylinder',
-        'barillet',
-        'اسطوانة',
-        'أسطوانة',
-      ]);
-    case 'is_poign_clef':
-      return isHandle() && isKey();
-    case 'is_poign_condamnation':
-      return isHandle() && isCondamnation();
-    case 'is_window_handle':
-      return isWindowHandleAccessory(accessory);
-  }
-
-  if (selectorHasAny(const ['gache couliss', 'gâche couliss', 'كاش كوليسون'])) {
-    return isGache() && isSliding();
-  }
-  if (selectorHasAny(const [
-    'poignee coulissante',
-    'poignée coulissante',
-    'مقبض منزلق',
-  ])) {
-    return isHandle() && isSliding();
-  }
-  if (selectorHasAny(const [
-    'espagnolette',
-    'اسبانيوليت',
-    'إسبانيوليت',
-    'سبانيوليت',
-  ])) {
-    final isEspagnolette = hasAny(const [
-      'espagnol',
-      'اسبانيول',
-      'إسبانيول',
-      'سبانيول',
-    ]);
-    if (!isEspagnolette) return false;
-    if (maxAccessoryLength == null || maxAccessoryLength <= 0) return true;
-    final rawSize = (accessory['measurement'] ?? '').toString();
-    final source = rawSize.isNotEmpty ? rawSize : text;
-    final sizeMatch = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(source);
-    final length = sizeMatch == null
-        ? null
-        : double.tryParse(sizeMatch.group(1)!.replaceAll(',', '.'));
-    return length != null && length <= maxAccessoryLength;
-  }
-  if (selectorHasAny(const ['clamp', 'clam', 'كلامب', 'كلام', 'كلان'])) {
-    return hasAny(const ['clamp', 'clam', 'كلامب', 'كلام', 'كلان']) &&
-        !hasAny(const ['kit', 'كيت']);
-  }
-  if (tLower == 'kit' || selectorHasAny(const ['كيت'])) {
-    return hasAny(const ['kit', 'كيت']) &&
-        !hasAny(const ['clamp', 'clam', 'كلامب', 'كلام', 'كلان']);
-  }
-  if (selectorHasAny(const ['tasso', 'طاسو', 'طاصو'])) {
-    return hasAny(const [
-      'tasso',
-      'tasseau',
-      'equerre',
-      'équerre',
-      'طاسو',
-      'طاصو',
-    ]);
-  }
-  if (selectorHasAny(const ['roulette', 'عجلات'])) {
-    return hasAny(const ['roulette', 'رول', 'عجل']);
-  }
-  if (selectorHasAny(const [
-    'entrematique',
-    'انتراميتيك',
-    'أونتروماتيك',
-    'intra',
-  ])) {
-    return hasAny(const ['entrematique', 'انتراميتيك', 'أونتروماتيك', 'intra']);
-  }
-  if (selectorHasAny(const ['hinges', 'paumelle', 'مفاصل'])) {
-    return isHingeAccessory(accessory);
-  }
-  if (selectorHasAny(const ['verrou', 'فيرو'])) {
-    return hasAny(const ['verrou', 'verro', 'viro', 'فيرو']);
-  }
-  if (selectorHasAny(const ['cremone', 'crémone', 'كريمون'])) {
-    return hasAny(const ['cremone', 'crémone', 'كريمون']);
-  }
-  if (selectorHasAny(const ['مقبض', 'handle', 'poignée', 'poignee'])) {
-    return isHandle();
-  }
-  if (selectorHasAny(const ['serrure', 'lock', 'قفل'])) {
-    return isLock();
-  }
-
-  return name.contains(tLower) ||
-      type.contains(tLower) ||
-      tLower.contains(name) ||
-      tLower.contains(type);
-}
-
 List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   final tLower = normalizeArabic(selectorType.toLowerCase().trim());
   const directRoles = {
     'kit_screw',
     'box_screw',
     'motor_screw',
+    'bouchon_batmo',
     'batmo_screw',
     'bouchon_batmo_screw',
     'renfort_screw',
@@ -365,8 +192,15 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'sliding_lock',
     'verrou',
     'cremone',
+    'espagnolette',
+    'canon',
+    'door_handle_key',
+    'door_handle_condamnation',
     'handle',
     'hinge',
+    'tasso',
+    'roulette',
+    'entrematique',
   };
   if (directRoles.contains(tLower)) return [tLower];
   if (tLower == 'is_kit_screw') return const ['kit_screw'];
@@ -376,6 +210,12 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   if (tLower == 'is_bouchon_batmo_screw') {
     return const ['bouchon_batmo_screw'];
   }
+  final isBouchonBatmo =
+      (tLower.contains('bouchon') ||
+          tLower.contains('bochon') ||
+          tLower.contains('بوشون')) &&
+      (tLower.contains('batmo') || tLower.contains('باتمو'));
+  if (isBouchonBatmo) return const ['bouchon_batmo'];
   if (tLower == 'is_renfort_screw') return const ['renfort_screw'];
   if (tLower == 'is_manivelle_screw') return const ['manivelle_screw'];
   if (tLower == 'is_assembly_screw') return const ['assembly_screw'];
@@ -398,6 +238,16 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
   if (tLower == 'is_gache_porte') return const ['gache_door'];
   if (tLower == 'is_lock_clef') return const ['lock_clef'];
   if (tLower == 'is_lock_condamnation') return const ['lock_condamnation'];
+  if (tLower == 'is_poign_clef') return const ['door_handle_key'];
+  if (tLower == 'is_poign_condamnation') {
+    return const ['door_handle_condamnation'];
+  }
+  if (tLower == 'is_canon') return const ['canon'];
+  if (tLower == 'اسبانيوليت' ||
+      tLower.contains('espagnolette') ||
+      tLower.contains('سبانيول')) {
+    return const ['espagnolette'];
+  }
   if (tLower == 'فيرو' || tLower.contains('verrou')) {
     return const ['verrou'];
   }
@@ -418,30 +268,41 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
       tLower.contains('مفاصل')) {
     return const ['hinge'];
   }
+  if (tLower == 'tasso' || tLower.contains('الطاسو')) {
+    return const ['tasso'];
+  }
+  if (tLower == 'roulette' || tLower.contains('عجلات')) {
+    return const ['roulette'];
+  }
+  if (tLower == 'entrematique' ||
+      tLower.contains('أونتروماتيك') ||
+      tLower.contains('انتراميتيك') ||
+      tLower.contains('intra')) {
+    return const ['entrematique'];
+  }
   return const [];
 }
 
-List<String> catalogFlagColumnsForAccessorySelectorType(String selectorType) {
-  final tLower = normalizeArabic(selectorType.toLowerCase().trim());
-  const columns = {
-    'is_gache_simple',
-    'is_gache_double',
-    'is_gache_porte',
-    'is_lock_clef',
-    'is_lock_condamnation',
-    'is_moteur_screw',
-    'is_caisson_screw',
-    'is_batmo_screw',
-    'is_bouchon_batmo_screw',
-    'is_renfort_screw',
-    'is_manivelle_screw',
-    'is_tandem_screw',
-    'is_kit_screw',
-    'is_assembly_screw',
-    'is_installation_screw',
-    'is_accessory_screw',
-  };
-  return columns.contains(tLower) ? <String>[tLower] : const <String>[];
+bool catalogRuleAllowsGlobalFallback(String roleKey) {
+  switch (roleKey.trim().toLowerCase()) {
+    case 'kit_screw':
+    case 'box_screw':
+    case 'motor_screw':
+    case 'manivelle_screw':
+    case 'shutter_joint_brosse':
+      return true;
+  }
+  return false;
+}
+
+bool catalogRuleMatchesExactScope(Map<String, dynamic> rule, int? seriesId) {
+  final rawSeriesId = rule['series_id'];
+  final ruleSeriesId = rawSeriesId is num
+      ? rawSeriesId.toInt()
+      : int.tryParse('${rawSeriesId ?? ''}'.trim());
+  if (seriesId == null) return ruleSeriesId == null;
+  if (ruleSeriesId == seriesId) return true;
+  return ruleSeriesId == null;
 }
 
 List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
@@ -487,39 +348,6 @@ List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
   return const [];
 }
 
-bool jointCatalogItemMatchesRole(Map<String, dynamic> joint, String roleKey) {
-  final rawType = normalizeArabic(
-    (joint['gasket_type'] ?? '').toString().toLowerCase().trim(),
-  );
-  switch (roleKey) {
-    case 'joint_vitrage':
-      return rawType == 'joint_vitrage' || rawType == 'جوان فيتراج';
-    case 'joint_bourrage':
-      return rawType == 'joint_bourrage' ||
-          rawType == 'جوان بوراج' ||
-          rawType == 'جوان البوراج';
-    case 'joint_frappe':
-      return rawType == 'joint_frappe' ||
-          rawType == 'جوان فراب' ||
-          rawType == 'جوان الضرب';
-    case 'joint_central':
-      return rawType == 'joint_central' ||
-          rawType == 'joint_centrale' ||
-          rawType == 'جوان سنترال' ||
-          rawType == 'جوان الوسط';
-    case 'joint_brosse':
-      return rawType == 'joint_brosse' ||
-          rawType == 'joint_bross' ||
-          rawType == 'جوان بروس';
-    case 'shutter_joint_brosse':
-      return rawType == 'shutter_joint_brosse' ||
-          rawType == 'joint_brosse_shutter' ||
-          rawType == 'جوان بروس ستار' ||
-          rawType == 'جوان بروس للستار';
-  }
-  return false;
-}
-
 List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   final t = normalizeArabic(selectorType.toLowerCase().trim());
   if (t == 'frame' || t == 'cadre' || t == 'إطار') {
@@ -555,8 +383,16 @@ List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
     return const ['reducer'];
   }
   if (t == 'batmo') return const ['batmo'];
-  if (t.contains('bouchon')) return const ['bouchon_batmo'];
+  if (t == 'plant' || t.contains('plinthe') || t.contains('بلانت')) {
+    return const ['plant'];
+  }
   if (t == 'renfort') return const ['renfort'];
+  if (t == 'other_profile' ||
+      t.contains('other profile') ||
+      t.contains('autre profil') ||
+      t.contains('مقطع خاص')) {
+    return const ['other_profile'];
+  }
   return const [];
 }
 
@@ -689,6 +525,434 @@ bool profileHasIntegratedSideCover(Map<String, dynamic> item) {
       type.contains('monobloc');
 }
 
+class CatalogCandidateQuery {
+  const CatalogCandidateQuery({
+    required this.category,
+    required this.selectorType,
+    this.roleKeys = const [],
+    this.seriesId,
+    this.materialType,
+    this.hasShutter = false,
+    this.drawingMode,
+    this.requireDialog = true,
+    this.requireQuantity = true,
+    this.hasSimpleGlassForReducer,
+    this.hasDoubleGlassForRules,
+  });
+
+  final String category;
+  final String selectorType;
+  final List<String> roleKeys;
+  final int? seriesId;
+  final String? materialType;
+  final bool hasShutter;
+  final AccessoryDrawingMode? drawingMode;
+  final bool requireDialog;
+  final bool requireQuantity;
+  final bool? hasSimpleGlassForReducer;
+  final bool? hasDoubleGlassForRules;
+}
+
+class CatalogCandidateResolver {
+  CatalogCandidateResolver({SqlDatabase? database})
+    : _db = database ?? SqlDatabase();
+
+  final SqlDatabase _db;
+
+  Future<List<Map<String, dynamic>>> resolve(CatalogCandidateQuery query) {
+    switch (query.category) {
+      case 'profile':
+        return _resolveProfiles(query);
+      case 'accessory':
+      case 'other':
+        return _resolveCatalogRules(query, 'Accessories');
+      case 'joint':
+        return _resolveCatalogRules(query, 'Joints');
+    }
+    return Future.value(const <Map<String, dynamic>>[]);
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveProfiles(
+    CatalogCandidateQuery query,
+  ) async {
+    final roleKeys = _mergedRoleKeys(
+      query.roleKeys,
+      seriesRoleKeysForProfileSelectorType(query.selectorType),
+    );
+    if (query.seriesId == null || roleKeys.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+    if (roleKeys.contains('reducer') &&
+        (query.hasSimpleGlassForReducer == false ||
+            query.hasDoubleGlassForRules == true)) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final sections = await _db.getDesignSectionsForRoles(
+      query.seriesId!,
+      roleKeys,
+      requireDialog: query.requireDialog,
+      requireQuantity: query.requireQuantity,
+    );
+    final normalizedMaterial = (query.materialType ?? '').toLowerCase().trim();
+    final isAluminium =
+        normalizedMaterial.isEmpty ||
+        normalizedMaterial == 'aluminium' ||
+        normalizedMaterial == 'aluminum' ||
+        normalizedMaterial == 'alu';
+    final isFrameSelector = roleKeys.contains('frame');
+
+    return sections
+        .where((section) {
+          if (!_designRoleMatchesGlass(section, query)) {
+            return false;
+          }
+          if (query.hasShutter &&
+              isAluminium &&
+              isFrameSelector &&
+              profileHasIntegratedSideCover(section)) {
+            return false;
+          }
+          return true;
+        })
+        .map((section) => Map<String, dynamic>.from(section))
+        .toList();
+  }
+
+  bool _designRoleMatchesGlass(
+    Map<String, dynamic> section,
+    CatalogCandidateQuery query,
+  ) {
+    final roleKey = (section['design_role_key'] ?? '').toString();
+    if (_roleIgnoresGlassRule(roleKey)) return true;
+    final glassRule = (section['design_show_when_glass'] ?? 'any')
+        .toString()
+        .toLowerCase()
+        .trim();
+    if (glassRule == 'single' || glassRule == 'simple') {
+      return query.hasSimpleGlassForReducer != false &&
+          query.hasDoubleGlassForRules != true;
+    }
+    if (glassRule == 'double') {
+      return query.hasDoubleGlassForRules == true;
+    }
+    return true;
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveCatalogRules(
+    CatalogCandidateQuery query,
+    String table,
+  ) async {
+    final roleKeys = _mergedRoleKeys(
+      query.roleKeys,
+      table == 'Joints'
+          ? catalogRuleKeysForJointSelectorType(query.selectorType)
+          : catalogRuleKeysForAccessorySelectorType(query.selectorType),
+    );
+    if (roleKeys.isEmpty) return const <Map<String, dynamic>>[];
+    if (table == 'Joints' &&
+        query.seriesId == null &&
+        !roleKeys.contains('shutter_joint_brosse')) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final dbInstance = await _db.db;
+    if (dbInstance == null) return const <Map<String, dynamic>>[];
+    final rules = await _db.getCatalogItemRules(
+      itemTable: table,
+      seriesId: query.seriesId,
+    );
+    final surfaceRules = rules
+        .where((rule) => _ruleVisibleOnSurface(rule, query))
+        .toList();
+    final ruleIds = surfaceRules
+        .map((rule) => _catalogInt(rule['item_id']))
+        .whereType<int>()
+        .toList();
+
+    final typedRows = await _readTypedCatalogRows(
+      dbInstance,
+      table,
+      query,
+      roleKeys,
+    );
+    if (ruleIds.isEmpty) return typedRows;
+
+    final rows = await dbInstance.query(
+      table,
+      where: _activeWhereClause(
+        table,
+        'id IN (${List.filled(ruleIds.length, '?').join(',')})',
+      ),
+      whereArgs: ruleIds,
+    );
+    final byId = {
+      for (final row in rows)
+        if (_catalogInt(row['id']) != null)
+          _catalogInt(row['id'])!: Map<String, dynamic>.from(row),
+    };
+    final result = <Map<String, dynamic>>[];
+    final seen = <int>{};
+    for (final rule in surfaceRules) {
+      final itemId = _catalogInt(rule['item_id']);
+      if (itemId == null || !seen.add(itemId)) continue;
+      final row = byId[itemId];
+      if (row == null) continue;
+      final ruleRole = (rule['role_key'] ?? '').toString().trim();
+      final roleMatches =
+          roleKeys.contains(ruleRole) ||
+          _catalogRowMatchesRole(row, table, roleKeys);
+      if (roleMatches && _catalogRowMatchesMaterial(row, query, roleKeys)) {
+        result.add(row);
+      }
+    }
+    for (final row in typedRows) {
+      final itemId = _catalogInt(row['id']);
+      if (itemId != null && seen.add(itemId)) result.add(row);
+    }
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> _readTypedCatalogRows(
+    Database dbInstance,
+    String table,
+    CatalogCandidateQuery query,
+    List<String> roleKeys,
+  ) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (query.seriesId != null) {
+      where.add(
+        "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?))",
+      );
+      args.add(query.seriesId);
+      args.add('%,${query.seriesId},%');
+    } else {
+      where.add(
+        "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
+      );
+    }
+    final rows = await dbInstance.query(
+      table,
+      where: _activeWhereClause(table, where.join(' AND ')),
+      whereArgs: args,
+      orderBy: 'id ASC',
+    );
+    return rows
+        .map((row) => Map<String, dynamic>.from(row))
+        .where((row) => _catalogRowMatchesRole(row, table, roleKeys))
+        .where((row) => _catalogRowMatchesMaterial(row, query, roleKeys))
+        .toList();
+  }
+
+  String _activeWhereClause(String table, String base) {
+    if (table == 'Joints') return base;
+    return '($base) AND (is_active = 1 OR is_active IS NULL)';
+  }
+
+  bool _ruleVisibleOnSurface(
+    Map<String, dynamic> rule,
+    CatalogCandidateQuery query,
+  ) {
+    if (query.requireDialog && rule['show_in_dialog'] == 0) return false;
+    if (query.requireQuantity && rule['show_in_quantity'] == 0) return false;
+    if (!catalogRuleMatchesExactScope(rule, query.seriesId)) return false;
+    final ruleRole = (rule['role_key'] ?? '').toString();
+    if (_roleIgnoresGlassRule(ruleRole)) return true;
+    final glassRule = (rule['show_when_glass'] ?? 'any')
+        .toString()
+        .toLowerCase()
+        .trim();
+    if (glassRule == 'single' || glassRule == 'simple') {
+      return query.hasSimpleGlassForReducer != false &&
+          query.hasDoubleGlassForRules != true;
+    }
+    if (glassRule == 'double') {
+      return query.hasDoubleGlassForRules == true;
+    }
+    return true;
+  }
+
+  bool _catalogRowMatchesMaterial(
+    Map<String, dynamic> row,
+    CatalogCandidateQuery query,
+    List<String> roleKeys,
+  ) {
+    final isGlobalShutterScrew = roleKeys.any(catalogRuleAllowsGlobalFallback);
+    if (isGlobalShutterScrew) return true;
+    final seriesId = query.seriesId;
+    if (seriesId != null && !catalogItemMatchesSeries(row, seriesId)) {
+      return false;
+    }
+    if (seriesId == null && catalogItemHasSeriesScope(row)) {
+      return false;
+    }
+    if (query.category == 'joint') return true;
+    final requested = (query.materialType ?? '').toLowerCase().trim();
+    if (requested.isEmpty || requested == 'shutter') return true;
+    final rawMaterial = row['material_type'];
+    final material = (rawMaterial ?? '').toString().toLowerCase().trim();
+    if (requested == 'pvc') return material == 'pvc' || material == 'both';
+    return material == 'aluminium' ||
+        material == 'aluminum' ||
+        material == 'both' ||
+        material == 'global' ||
+        material.isEmpty;
+  }
+
+  bool _catalogRowMatchesRole(
+    Map<String, dynamic> row,
+    String table,
+    List<String> roleKeys,
+  ) {
+    if (table == 'Joints') {
+      final role = _jointRoleFromRow(row);
+      return role != null && roleKeys.contains(role);
+    }
+    final roles = _accessoryRolesFromRow(row);
+    return roles.any(roleKeys.contains);
+  }
+
+  String? _jointRoleFromRow(Map<String, dynamic> row) {
+    final gasketType = normalizeArabic(
+      (row['gasket_type'] ?? '').toString().toLowerCase().trim(),
+    );
+    if (gasketType.contains('فيتراج') || gasketType.contains('vitrage')) {
+      return 'joint_vitrage';
+    }
+    if (gasketType.contains('بوراج') || gasketType.contains('bourrage')) {
+      return 'joint_bourrage';
+    }
+    if (gasketType.contains('فراب') || gasketType.contains('frappe')) {
+      return 'joint_frappe';
+    }
+    if (gasketType.contains('سنترال') || gasketType.contains('central')) {
+      return 'joint_central';
+    }
+    if (gasketType.contains('بروس') || gasketType.contains('bross')) {
+      return 'joint_brosse';
+    }
+    return null;
+  }
+
+  Set<String> _accessoryRolesFromRow(Map<String, dynamic> row) {
+    final roles = <String>{};
+    bool flag(String key) {
+      final value = row[key];
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      final text = value?.toString().trim().toLowerCase();
+      return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
+    }
+
+    const flagRoles = {
+      'is_kit_screw': 'kit_screw',
+      'is_caisson_screw': 'box_screw',
+      'is_moteur_screw': 'motor_screw',
+      'is_batmo_screw': 'batmo_screw',
+      'is_bouchon_batmo_screw': 'bouchon_batmo_screw',
+      'is_renfort_screw': 'renfort_screw',
+      'is_manivelle_screw': 'manivelle_screw',
+      'is_assembly_screw': 'assembly_screw',
+      'is_installation_screw': 'installation_screw',
+      'is_accessory_screw': 'accessory_screw',
+      'is_gache_simple': 'gache_simple',
+      'is_gache_double': 'gache_double',
+      'is_gache_porte': 'gache_door',
+      'is_lock_clef': 'lock_clef',
+      'is_lock_condamnation': 'lock_condamnation',
+    };
+    for (final entry in flagRoles.entries) {
+      if (flag(entry.key)) roles.add(entry.value);
+    }
+
+    final type = normalizeArabic(
+      (row['type'] ?? '').toString().toLowerCase().trim(),
+    );
+    final name = normalizeArabic(
+      (row['name'] ?? '').toString().toLowerCase().trim(),
+    );
+    final text = '$name $type';
+    if ((text.contains('bouchon') ||
+            text.contains('bochon') ||
+            text.contains('بوشون')) &&
+        (text.contains('batmo') || text.contains('باتمو'))) {
+      roles.add('bouchon_batmo');
+    }
+    if (type.contains('clam')) roles.add('sliding_clamp');
+    if (type.contains('gache couliss') ||
+        type.contains('gâche couliss') ||
+        type.contains('قاش منزلق')) {
+      roles.add('sliding_lock');
+    } else if (type.contains('gache') || type.contains('gâche')) {
+      if (type.contains('double')) {
+        roles.add('gache_double');
+      } else if (type.contains('porte')) {
+        roles.add('gache_door');
+      } else {
+        roles.add('gache_simple');
+      }
+    }
+    if (type.contains('crémone') || type.contains('cremone')) {
+      roles.add('cremone');
+    }
+    if (type.contains('verrou')) roles.add('verrou');
+    if (type.contains('espagnolette') || type.contains('سبانيول')) {
+      roles.add('espagnolette');
+    }
+    if (type.contains('canon') || type.contains('أسطوانة')) {
+      roles.add('canon');
+    }
+    if (type.contains('poignee porte') || type.contains('poignée porte')) {
+      if (type.contains('condamnation')) {
+        roles.add('door_handle_condamnation');
+      } else {
+        roles.add('door_handle_key');
+      }
+    }
+    if (type.contains('poignee') ||
+        type.contains('poignée') ||
+        type.contains('مقبض')) {
+      roles.add('handle');
+    }
+    if (type.contains('paumelle') || type.contains('مفاصل')) {
+      roles.add('hinge');
+    }
+    if (type.contains('tasso') || type.contains('طاسو')) roles.add('tasso');
+    if (type.contains('roulette') || type.contains('عجلات')) {
+      roles.add('roulette');
+    }
+    if (type.contains('intramatique') ||
+        type.contains('entrematique') ||
+        type.contains('أونتروماتيك') ||
+        type.contains('انتراميتيك')) {
+      roles.add('entrematique');
+    }
+    if (type.contains('serrure')) {
+      if (type.contains('condamnation')) {
+        roles.add('lock_condamnation');
+      } else {
+        roles.add('lock_clef');
+      }
+    }
+    return roles;
+  }
+
+  List<String> _mergedRoleKeys(
+    Iterable<String> explicit,
+    Iterable<String> inferred,
+  ) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final raw in [...explicit, ...inferred]) {
+      final key = raw.trim();
+      if (key.isEmpty || !seen.add(key)) continue;
+      result.add(key);
+    }
+    return result;
+  }
+}
+
 /// Axes created before the dedicated diameter field was available often keep
 /// their diameter in the name (for example: "Axe 60 mm").  Prefer the
 /// structured fields, then use that legacy value as a fallback.
@@ -729,6 +993,9 @@ class ProfileSelectorDialog extends StatefulWidget {
 
   /// A selected motor cannot fit inside an axis with a smaller diameter.
   final double? motorDiameter;
+  final List<String> roleKeys;
+  final bool? hasSimpleGlassForReducer;
+  final bool? hasDoubleGlassForRules;
 
   const ProfileSelectorDialog({
     super.key,
@@ -746,6 +1013,9 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.selectedBladeName,
     this.selectedBladeIsX3d,
     this.motorDiameter,
+    this.roleKeys = const [],
+    this.hasSimpleGlassForReducer,
+    this.hasDoubleGlassForRules,
   });
 
   @override
@@ -790,9 +1060,32 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
       } catch (_) {}
     }
 
+    if (widget.category != 'shutter') {
+      data = await CatalogCandidateResolver(database: db).resolve(
+        CatalogCandidateQuery(
+          category: widget.category,
+          selectorType: widget.profileType,
+          roleKeys: widget.roleKeys,
+          seriesId: widget.seriesId,
+          materialType: widget.materialType,
+          hasShutter: widget.hasShutter,
+          drawingMode: widget.accessoryDrawingMode,
+          requireDialog: true,
+          requireQuantity: true,
+          hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
+          hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
+        ),
+      );
+      setState(() {
+        profiles = data;
+        isLoading = false;
+      });
+      return;
+    }
+
     if (widget.category == 'accessory' || widget.category == 'other') {
       final myDb = myDbInstance;
-      if (myDb != null && widget.seriesId != null) {
+      if (myDb != null) {
         final ruleKeys = catalogRuleKeysForAccessorySelectorType(
           widget.profileType,
         );
@@ -803,8 +1096,12 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             roleKeys: ruleKeys,
           );
           final ruleIds = rules
-              .where((rule) => rule['show_in_dialog'] != 0)
-              .map((rule) => (rule['item_id'] as num?)?.toInt())
+              .where(
+                (rule) =>
+                    rule['show_in_dialog'] != 0 &&
+                    catalogRuleMatchesExactScope(rule, widget.seriesId),
+              )
+              .map((rule) => _catalogInt(rule['item_id']))
               .whereType<int>()
               .toList();
           if (ruleIds.isNotEmpty) {
@@ -832,9 +1129,11 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                   material == 'both' ||
                   material.isEmpty;
             }
+
             final byId = {
               for (final row in rows.where(materialMatches))
-                if (row['id'] is num) (row['id'] as num).toInt(): row,
+                if (_catalogInt(row['id']) != null)
+                  _catalogInt(row['id'])!: row,
             };
             data = [
               for (final itemId in ruleIds)
@@ -843,7 +1142,8 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             ];
           }
         }
-      }    } else if (widget.category == 'joint') {
+      }
+    } else if (widget.category == 'joint') {
       final myDb = await db.db;
       if (myDb != null) {
         // Apply the exact same scope rule used for accessories: a joint that
@@ -871,8 +1171,12 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
               roleKeys: roleKeys,
             );
             final ruleIds = rules
-                .where((rule) => rule['show_in_dialog'] != 0)
-                .map((rule) => (rule['item_id'] as num?)?.toInt())
+                .where(
+                  (rule) =>
+                      rule['show_in_dialog'] != 0 &&
+                      catalogRuleMatchesExactScope(rule, widget.seriesId),
+                )
+                .map((rule) => _catalogInt(rule['item_id']))
                 .whereType<int>()
                 .toSet();
             if (ruleIds.isNotEmpty) {
@@ -901,8 +1205,12 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             roleKeys: roleKeys,
           );
           final ruleIds = rules
-              .where((rule) => rule['show_in_dialog'] != 0)
-              .map((rule) => (rule['item_id'] as num?)?.toInt())
+              .where(
+                (rule) =>
+                    rule['show_in_dialog'] != 0 &&
+                    catalogRuleMatchesExactScope(rule, null),
+              )
+              .map((rule) => _catalogInt(rule['item_id']))
               .whereType<int>()
               .toSet();
           data = allJoints

@@ -4526,6 +4526,7 @@ class SqlDatabase {
     String status, {
     int? clientId,
   }) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -4558,6 +4559,7 @@ class SqlDatabase {
   Future<bool> syncOrdersStatusFromCloud({
     Iterable<Map<String, dynamic>>? changedRows,
   }) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return false;
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
     if (workshopId == null || workshopId.isEmpty) return false;
@@ -4637,6 +4639,7 @@ class SqlDatabase {
     String instancesJson,
     String confirmedJson,
   ) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -4664,6 +4667,7 @@ class SqlDatabase {
   Future<void> syncConfirmedMeasurementsFromCloud({
     Iterable<Map<String, dynamic>>? changedRows,
   }) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
     if (workshopId == null || workshopId.isEmpty) return;
@@ -5186,6 +5190,7 @@ class SqlDatabase {
   }
 
   Future<void> _deleteAllocationFromCloud(int allocationId) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -5375,6 +5380,11 @@ class SqlDatabase {
       await myDb.rawDelete('DELETE FROM WorkerAllocations');
     }
 
+    if (CloudSyncService.supabaseWorkshopDataOnly) {
+      CloudSyncService().notifyChangeImmediate();
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -5506,6 +5516,11 @@ class SqlDatabase {
       } catch (_) {}
     }
 
+    if (CloudSyncService.supabaseWorkshopDataOnly) {
+      CloudSyncService().notifyChangeImmediate();
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -5598,6 +5613,11 @@ class SqlDatabase {
       try {
         await myDb.rawDelete('DELETE FROM WorkerSettlements');
       } catch (_) {}
+    }
+
+    if (CloudSyncService.supabaseWorkshopDataOnly) {
+      CloudSyncService().notifyChangeImmediate();
+      return;
     }
 
     try {
@@ -6033,6 +6053,7 @@ class SqlDatabase {
   }
 
   Future<void> _uploadAllocationStatusToCloud(int allocationId) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -6100,6 +6121,7 @@ class SqlDatabase {
   Future<void> syncWorkerAllocationsStatusFromCloud({
     Iterable<Map<String, dynamic>>? changedRows,
   }) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     final prefs = await SharedPreferences.getInstance();
     final workshopId = prefs.getString('workshop_code');
     if (workshopId == null || workshopId.isEmpty) return;
@@ -7643,6 +7665,7 @@ class SqlDatabase {
   }
 
   Future<void> _writeDeletedOrderTombstoneToCloud(int orderId) async {
+    if (CloudSyncService.supabaseWorkshopDataOnly) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code') ?? '';
@@ -8458,6 +8481,8 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
 
     // ??? ??? Achat ??? Firestore ??????? (???? ??? ???? legacy sync)
+    if (CloudSyncService.supabaseWorkshopDataOnly) return 1;
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -9667,6 +9692,8 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
 
     // ??? tombstone ????? ??? ??? ?????? ???
+    if (CloudSyncService.supabaseWorkshopDataOnly) return res;
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final workshopId = prefs.getString('workshop_code');
@@ -15026,7 +15053,7 @@ class SqlDatabase {
         });
       }
     });
-    CloudSyncService().notifyCatalogChange();
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   Future<List<Map<String, dynamic>>> getSectionJointLinksForSeries(
@@ -15089,7 +15116,7 @@ class SqlDatabase {
         });
       }
     });
-    CloudSyncService().notifyCatalogChange();
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   Future<List<Map<String, dynamic>>> getDefaultJointsForSection({
@@ -15266,7 +15293,7 @@ class SqlDatabase {
       where: where.join(' AND '),
       whereArgs: args,
       orderBy:
-          'CASE WHEN series_id IS NULL THEN 1 ELSE 0 END, sort_order ASC, is_default DESC, id ASC',
+          'CASE WHEN series_id IS NULL THEN 1 ELSE 0 END, is_default DESC, sort_order ASC, id ASC',
     );
   }
 
@@ -15349,7 +15376,7 @@ class SqlDatabase {
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
-    CloudSyncService().notifyCatalogChange();
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   /// Saves an entire definition in one transaction. Replacing the rows keeps
@@ -15466,7 +15493,7 @@ class SqlDatabase {
         });
       }
     });
-    CloudSyncService().notifyCatalogChange();
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   Future<List<Map<String, dynamic>>> getDesignSectionsForRoles(
@@ -15488,14 +15515,24 @@ class SqlDatabase {
     ].join('\n        AND ');
     return myDb.rawQuery(
       '''
-      SELECT s.*
+      SELECT s.*,
+             r.role_key AS design_role_key,
+             r.show_when_glass AS design_show_when_glass,
+             r.usage_scope AS design_usage_scope,
+             r.integrated_side_cover AS design_integrated_side_cover,
+             r.allows_side_cover AS design_allows_side_cover,
+             r.allowed_with_shutter AS design_allowed_with_shutter,
+             r.width_adjust_mm AS design_width_adjust_mm,
+             r.height_adjust_mm AS design_height_adjust_mm,
+             r.formula_note AS design_formula_note,
+             r.is_default AS design_is_default
       FROM Sections s
       INNER JOIN SeriesDesignRoles r ON r.section_id = s.id
       WHERE r.series_id = ?
         AND $surfaceFilters
         AND r.role_key IN ($placeholders)
         AND (s.is_active = 1 OR s.is_active IS NULL)
-      ORDER BY r.sort_order ASC, r.is_default DESC, s.name ASC
+      ORDER BY r.is_default DESC, r.sort_order ASC, s.name ASC
     ''',
       [seriesId, ...keys],
     );

@@ -236,7 +236,11 @@ class OrderPicturePdfService {
       try {
         final model = WindowModel(db: db);
         await applyWindowModelAndLoadCatalog(model, modelMap);
-        return captureWindowImage(model, maxSide: 2600);
+        return captureWindowImage(
+          model,
+          maxSide: 3200,
+          showDrawingDimensions: true,
+        );
       } catch (_) {}
     }
 
@@ -409,8 +413,6 @@ class OrderPicturePdfService {
         '${Localization.translate('اللون', lang)}: ${item.color}',
     ];
     final detailLines = _prioritizedDetails(item.details);
-    final imageFlex = detailLines.length > 12 ? 5 : 6;
-    final detailsFlex = detailLines.length > 12 ? 4 : 3;
 
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 18),
@@ -449,72 +451,47 @@ class OrderPicturePdfService {
           ),
           pw.SizedBox(height: 8),
           pw.Expanded(
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-              children: [
-                pw.Expanded(
-                  flex: imageFlex,
-                  child: pw.Container(
-                    alignment: pw.Alignment.center,
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.white,
-                      border: pw.Border.all(
-                        color: PdfColors.grey300,
-                        width: 0.6,
-                      ),
+            child: pw.Container(
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                color: PdfColors.white,
+                border: pw.Border.all(color: PdfColors.grey300, width: 0.6),
+              ),
+              child: image == null
+                  ? _text('-', lang, style: boldStyle.copyWith(fontSize: 28))
+                  : pw.Padding(
+                      padding: const pw.EdgeInsets.all(6),
+                      child: pw.Image(image, fit: pw.BoxFit.contain),
                     ),
-                    child: image == null
-                        ? _text(
-                            '-',
-                            lang,
-                            style: boldStyle.copyWith(fontSize: 28),
-                          )
-                        : pw.Padding(
-                            padding: const pw.EdgeInsets.all(6),
-                            child: pw.Image(image, fit: pw.BoxFit.contain),
-                          ),
-                  ),
-                ),
-                pw.SizedBox(width: 10),
-                pw.Expanded(
-                  flex: detailsFlex,
-                  child: pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.grey50,
-                      border: pw.Border.all(
-                        color: PdfColors.grey300,
-                        width: 0.5,
-                      ),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: lang == AppLanguage.arabic
-                          ? pw.CrossAxisAlignment.end
-                          : pw.CrossAxisAlignment.start,
-                      children: [
-                        _text(
-                          Localization.translate('التفاصيل والقياسات', lang),
-                          lang,
-                          style: boldStyle.copyWith(fontSize: 11),
-                        ),
-                        pw.SizedBox(height: 5),
-                        ...detailLines.map(
-                          (detail) => pw.Padding(
-                            padding: const pw.EdgeInsets.only(bottom: 2.2),
-                            child: _text(
-                              detail,
-                              lang,
-                              style: baseStyle.copyWith(fontSize: 8.8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
+          if (detailLines.isNotEmpty) ...[
+            pw.SizedBox(height: 7),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(7),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey50,
+                border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+              ),
+              child: pw.Wrap(
+                spacing: 8,
+                runSpacing: 2.5,
+                alignment: lang == AppLanguage.arabic
+                    ? pw.WrapAlignment.end
+                    : pw.WrapAlignment.start,
+                children: detailLines
+                    .map(
+                      (detail) => _text(
+                        detail,
+                        lang,
+                        style: baseStyle.copyWith(fontSize: 8.2),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -1566,6 +1566,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         ? 'TVA'
         : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
     final totalTtcLabel = isOfficial ? 'NET A PAYER' : t('TOTAL TTC');
+    final amountRemaining = (data.totalTTC - data.amountPaid)
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     return Align(
       alignment: Alignment.centerRight,
@@ -1578,7 +1581,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             _totalRow(netHtLabel, data.totalBeforeTax),
             _totalRow(tvaLabel, data.tvaAmount),
             _totalRow(totalTtcLabel, data.totalTTC, highlight: true),
-            _totalRow(t('Montant payé'), data.amountPaid),
+            _totalRow(t('Montant payé'), data.amountPaid, color: Colors.green),
+            _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
           ],
         ),
       ),
@@ -1625,7 +1629,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     );
   }
 
-  Widget _totalRow(String label, double value, {bool highlight = false}) {
+  Widget _totalRow(
+    String label,
+    double value, {
+    bool highlight = false,
+    Color? color,
+  }) {
     if (highlight) {
       return Container(
         width: double.infinity,
@@ -1661,10 +1670,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 12)),
+          Text(label, style: TextStyle(fontSize: 12, color: color)),
           Text(
             '${_formatMoney(value)} D.A',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
           ),
         ],
       ),

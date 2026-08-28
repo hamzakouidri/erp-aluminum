@@ -52,6 +52,10 @@ dependencies:
 
 dependency_overrides:
   mgrs_dart: 2.0.0
+  speech_to_text_windows:
+    path: tool/windows_plugin_stubs/speech_to_text_windows
+  url_launcher_windows:
+    path: tool/windows_plugin_stubs/url_launcher_windows
 
 dev_dependencies:
   flutter_test:

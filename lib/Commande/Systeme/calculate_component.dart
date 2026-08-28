@@ -131,14 +131,18 @@ class BomItem {
   String getLocalizedName(String lang) {
     final original = originalName;
     if (lang == 'fr') {
-      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)')
+      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') {
         return 'Sash Latéral Renforcé';
-      if (original == 'قائم وسطي معزز (Sash Central Renforcé)')
+      }
+      if (original == 'قائم وسطي معزز (Sash Central Renforcé)') {
         return 'Sash Central Renforcé';
-      if (original == 'حديد التقسيم (Renfort Mullion)')
+      }
+      if (original == 'حديد التقسيم (Renfort Mullion)') {
         return 'Renfort Traverse / Montant';
-      if (original == 'حديد الباطمو (Renfort Batmo)')
+      }
+      if (original == 'حديد الباطمو (Renfort Batmo)') {
         return 'Renfort Battement';
+      }
       if (original == 'الزجاج') return 'Vitrage';
       if (original.contains('إطار') ||
           original.contains('Frame') ||
@@ -229,34 +233,44 @@ class BomItem {
       if (original == 'Verrou Central') return 'Verrou Central';
       if (original == 'System OB') return 'Système OB';
       if (original == 'Demi System OB') return 'Demi Système OB';
-      if (original.contains('إسبانيوليت') || original.contains('Espagnolette'))
+      if (original.contains('إسبانيوليت') ||
+          original.contains('Espagnolette')) {
         return 'Espagnolette';
+      }
       if (original == 'المقبض (Handle)') return 'Poignée Fenêtre';
-      if (original == 'مقبض منزلق (Poignée Coulissante)')
+      if (original == 'مقبض منزلق (Poignée Coulissante)') {
         return 'Poignée Coulissante';
-      if (original == 'مقبض الباب (Poignée Porte à Clé)')
+      }
+      if (original == 'مقبض الباب (Poignée Porte à Clé)') {
         return 'Poignée Porte à Clé';
+      }
       if (original == 'قفل الباب (Serrure)') return 'Serrure';
       if (original == 'الأسطوانة (Canon)') return 'Canon';
       if (original == 'قاش بورت (Gache Porte)') return 'Gâche Porte';
       if (original == 'المفاصل (Hinges)') return 'Paumelles';
       if (original == 'عجلات المنزلق (Roulettes)') return 'Roulettes';
-      if (original == 'اسبانيولات المنزلق (Espagnolette)')
+      if (original == 'اسبانيولات المنزلق (Espagnolette)') {
         return 'Espagnolette Coulissant';
-      if (original == 'كاش كوليسون (Gache coulissant)')
+      }
+      if (original == 'كاش كوليسون (Gache coulissant)') {
         return 'Gâche Coulissante';
+      }
       if (original == 'Gâche coulissant TPR') return 'Gâche Coulissante TPR';
       if (original == 'كريمون (Cremone)') return 'Crémone';
-      if (original == 'بوشون بارك لوز (Bouchon Parclose)')
+      if (original == 'بوشون بارك لوز (Bouchon Parclose)') {
         return 'Bouchon Parclose';
+      }
       if (original == 'قفل نقطة') return 'Serrure à point';
     } else if (lang == 'en') {
-      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)')
+      if (original == 'قائم جانبي معزز (Sash Lateral Renforcé)') {
         return 'Sash Lateral Reinforced';
-      if (original == 'قائم وسطي معزز (Sash Central Renforcé)')
+      }
+      if (original == 'قائم وسطي معزز (Sash Central Renforcé)') {
         return 'Sash Central Reinforced';
-      if (original == 'حديد التقسيم (Renfort Mullion)')
+      }
+      if (original == 'حديد التقسيم (Renfort Mullion)') {
         return 'Renfort Mullion';
+      }
       if (original == 'حديد الباطمو (Renfort Batmo)') return 'Renfort Batmo';
       if (original == 'الزجاج') return 'Glass';
       if (original.contains('إطار') ||
@@ -336,24 +350,29 @@ class BomItem {
       if (original == 'Verrou Central') return 'Verrou Central';
       if (original == 'System OB') return 'System OB';
       if (original == 'Demi System OB') return 'Demi System OB';
-      if (original.contains('إسبانيوليت') || original.contains('Espagnolette'))
+      if (original.contains('إسبانيوليت') ||
+          original.contains('Espagnolette')) {
         return 'Espagnolette';
+      }
       if (original == 'المقبض (Handle)') return 'Window Handle';
-      if (original == 'مقبض منزلق (Poignée Coulissante)')
+      if (original == 'مقبض منزلق (Poignée Coulissante)') {
         return 'Sliding Window Handle';
+      }
       if (original == 'مقبض الباب (Poignée Porte à Clé)') return 'Door Handle';
       if (original == 'قفل الباب (Serrure)') return 'Serrure (Lock)';
       if (original == 'الأسطوانة (Canon)') return 'Cylinder (Canon)';
       if (original == 'قاش بورت (Gache Porte)') return 'Door Strike Plate';
       if (original == 'المفاصل (Hinges)') return 'Hinges';
       if (original == 'عجلات المنزلق (Roulettes)') return 'Roulettes';
-      if (original == 'اسبانيولات المنزلق (Espagnolette)')
+      if (original == 'اسبانيولات المنزلق (Espagnolette)') {
         return 'Espagnolette';
+      }
       if (original == 'كاش كوليسون (Gache coulissant)') return 'Strike Plate';
       if (original == 'Gâche coulissant TPR') return 'Strike Plate TPR';
       if (original == 'كريمون (Cremone)') return 'Cremone';
-      if (original == 'بوشون بارك لوز (Bouchon Parclose)')
+      if (original == 'بوشون بارك لوز (Bouchon Parclose)') {
         return 'Bouchon Parclose';
+      }
       if (original == 'قفل نقطة') return 'Point lock';
     }
     return originalName;
@@ -479,11 +498,11 @@ class ComponentCalculator {
     if (_textHasAny(originalName, const ['traverse', 'تقسيم', 'mullion'])) {
       return 'mullion';
     }
-    if (_textHasAny(originalName, const ['bouchon', 'bochon', 'بوشون'])) {
-      return 'bouchon batmo';
-    }
     if (_textHasAny(originalName, const ['batmo', 'باتمو'])) {
       return 'batmo';
+    }
+    if (_textHasAny(originalName, const ['plinthe', 'بلانت'])) {
+      return 'plant';
     }
     if (_textHasAny(originalName, const [
       'reducteur',
@@ -503,23 +522,52 @@ class ComponentCalculator {
   }
 
   static String _selectorTypeForAccessory(String originalName) {
-    if (originalName.contains('براغي حديد الدعم')) return 'is_renfort_screw';
-    if (originalName.contains('براغي بوشون باتمو')) {
+    final lower = originalName.toLowerCase();
+    final isScrew =
+        originalName.contains('براغي') ||
+        originalName.contains('برغي') ||
+        lower.contains('screw') ||
+        lower.contains('vis');
+    if (isScrew && _textHasAny(originalName, const ['حديد الدعم', 'renfort'])) {
+      return 'is_renfort_screw';
+    }
+    if (isScrew &&
+        _textHasAny(originalName, const ['بوشون باتمو', 'bouchon batmo'])) {
       return 'is_bouchon_batmo_screw';
     }
-    if (originalName.contains('براغي الباتمو')) return 'is_batmo_screw';
-    if (originalName.contains('براغي الكيت')) return 'is_kit_screw';
-    if (originalName.contains('براغي المانيفال')) {
+    if (isScrew && _textHasAny(originalName, const ['الباتمو', 'batmo'])) {
+      return 'is_batmo_screw';
+    }
+    if (isScrew && _textHasAny(originalName, const ['الكيت', 'kit'])) {
+      return 'is_kit_screw';
+    }
+    if (isScrew &&
+        _textHasAny(originalName, const ['المانيفال', 'manivelle'])) {
       return 'is_manivelle_screw';
     }
-    if (originalName.contains('براغي المحرك')) return 'is_moteur_screw';
-    if (originalName.contains('براغي الصندوق')) return 'is_caisson_screw';
-    if (originalName.contains('براغي التجميع')) return 'is_assembly_screw';
-    if (originalName.contains('براغي التركيب')) return 'is_installation_screw';
-    if (originalName.contains('براغي الإكسسوارات')) {
+    if (isScrew &&
+        _textHasAny(originalName, const ['المحرك', 'moteur', 'motor'])) {
+      return 'is_moteur_screw';
+    }
+    if (isScrew &&
+        _textHasAny(originalName, const ['الصندوق', 'caisson', 'box'])) {
+      return 'is_caisson_screw';
+    }
+    if (isScrew && _textHasAny(originalName, const ['التجميع', 'assembly'])) {
+      return 'is_assembly_screw';
+    }
+    if (isScrew &&
+        _textHasAny(originalName, const ['التركيب', 'installation'])) {
+      return 'is_installation_screw';
+    }
+    if (isScrew &&
+        _textHasAny(originalName, const ['الإكسسوارات', 'accessory'])) {
       return 'is_accessory_screw';
     }
-    if (originalName.contains('براغي')) return 'is_accessory_screw';
+    if (isScrew) return 'is_accessory_screw';
+    if (_textHasAny(originalName, const ['بوشون باتمو', 'bouchon batmo'])) {
+      return 'bouchon_batmo';
+    }
     if (_textHasAny(originalName, const ['clamp', 'clam', 'كلامب', 'كلام'])) {
       return 'clamp';
     }
@@ -688,10 +736,12 @@ class ComponentCalculator {
         return 'rail';
       case 'batmo':
         return 'batmo';
-      case 'bouchon batmo':
-        return 'bouchon_batmo';
+      case 'plant':
+        return 'plant';
       case 'renfort':
         return 'renfort';
+      case 'other_profile':
+        return 'other_profile';
     }
     return null;
   }
@@ -708,6 +758,9 @@ class ComponentCalculator {
         return 'batmo_screw';
       case 'is_bouchon_batmo_screw':
         return 'bouchon_batmo_screw';
+      case 'bouchon_batmo':
+      case 'bouchon batmo':
+        return 'bouchon_batmo';
       case 'is_renfort_screw':
         return 'renfort_screw';
       case 'is_manivelle_screw':
@@ -737,8 +790,22 @@ class ComponentCalculator {
         return 'lock_clef';
       case 'is_lock_condamnation':
         return 'lock_condamnation';
+      case 'is_poign_clef':
+        return 'door_handle_key';
+      case 'is_poign_condamnation':
+        return 'door_handle_condamnation';
+      case 'is_canon':
+        return 'canon';
+      case 'اسبانيوليت':
+        return 'espagnolette';
       case 'cremone':
         return 'cremone';
+      case 'tasso':
+        return 'tasso';
+      case 'roulette':
+        return 'roulette';
+      case 'entrematique':
+        return 'entrematique';
     }
     return null;
   }
@@ -777,16 +844,44 @@ class ComponentCalculator {
     String selectorType,
   ) {
     final lower = selectorType.toLowerCase().trim();
-    if (lower == 'sash_lateral' ||
-        lower == 'sash_central' ||
-        lower == 'sash_traverse' ||
-        lower == 'rail') {
+
+    // 1. هل يحتوي الرسم على أي منطقة/خلية سحاب (سواء النافذة كاملة سحاب أو جزء منها)؟
+    final bool hasSlidingZones = window.zones.any(
+      (z) => z.content == ZoneContent.slidingSash,
+    );
+    final bool isEntireWindowSliding = window.systemMode == 'sliding';
+
+    // 2. إذا كانت النافذة بالكامل من نوع سحاب، فجميع قطاعاتها الأساسية تتبع سلسلة السحاب
+    if (isEntireWindowSliding) {
       return true;
     }
-    return window.systemMode == 'sliding' &&
-        (lower == 'frame' || lower == 'sash' || lower == 'side_cover');
+
+    // 3. التعرف المرن على أي قطاع سحاب حصري (شامل لكل اللغات والأنظمة: سكة، شيكان، قوائم، مونوراي...)
+    final bool isExplicitSlidingProfile =
+        lower.contains('sliding') ||
+        lower.contains('couliss') ||
+        lower.contains('rail') ||
+        lower.contains('chicane') ||
+        lower.contains('monorail') ||
+        lower == 'sash_lateral' ||
+        lower == 'sash_central' ||
+        lower == 'sash_traverse';
+
+    if (isExplicitSlidingProfile) {
+      return true;
+    }
+
+    // 4. معالجة النوافذ المختلطة (نافذة عادية بها ضلفة سحاب PVC موحدة sash):
+    // إذا كان الرسم يحتوي على منطقة سحاب، والقطاع المطلوب هو ضلفة (sash) أو سكة أو شيكان
+    if (hasSlidingZones && (lower == 'sash' || lower.contains('sash'))) {
+      return true;
+    }
+
+    // في باقي الحالات (إطار النافذة الأساسي المفصلي، القواطع المفصلية، إلخ)
+    return false;
   }
 
+  //دورها هو الإجابة عن سؤال: "ما هو الرقم المعرّف (ID) للسلسلة في قاعدة البيانات التي يجب أن نسحب منها هذا البروفيل بالتحديد؟"
   static int? _sourceSeriesIdForProfile(
     WindowModel window,
     String selectorType,
@@ -796,6 +891,8 @@ class ComponentCalculator {
         : window.activeSeries?.id;
   }
 
+  // هذه الدالة _materialTypeForProfile هي "محدّد مادة تصنيع القطاع" (Material Resolver)،
+  // ودورها هو الإجابة عن سؤال حاسم: "هل هذا القطاع المحدد مصنوع من الألمنيوم
   static String _materialTypeForProfile(
     WindowModel window,
     String selectorType,
@@ -808,6 +905,14 @@ class ComponentCalculator {
   /// Exact clear opening of the selected outer frame. The top caisson and the
   /// current frame width are read afresh instead of trusting a zone boundary
   /// that may still contain dimensions from a formerly selected profile.
+  /// //🎯 ما هو دور هذه الدالة؟
+  // دورها هو حساب الفراغ الداخلي الصافي (عرضاً وارتفاعاً بالميليمتر) المتبقي داخل النافذة بعد خصم سماكة بروفايل الإطار وصندوق الستار وأي عتبة سفلية (Plinthe).
+  //
+  // هذه الفتحة الصافية هي الأساس الهندسي الذي يُبنى عليه:
+  //
+  // قياسات قص الضلف (Sashes).
+  // قياسات قص القواطع والتقسيمات (Mullions).
+  // أبعاد ومساحة ألواح الزجاج (Glass).
   static Map<String, double> outerFrameClearOpening({
     required double finishedWidth,
     required double finishedHeight,
@@ -815,6 +920,12 @@ class ComponentCalculator {
     required double shutterBoxHeight,
     required bool hasBottomFrame,
     double bottomPlintheHeight = 0.0,
+    //finishedWidth: العرض الكلي الخارجي للنافذة (بالـ mm).
+    // finishedHeight: الارتفاع الكلي الخارجي للنافذة (بالـ mm).
+    // frameWidth: سماكة/عرض عود الإطار (البروفيل الخارجي).
+    // shutterBoxHeight: ارتفاع صندوق الستار (الكيسون)، ويكون 0 إذا لم يكن هناك ستار.
+    // hasBottomFrame: هل يوجد إطار سفلي (نعم في النوافذ، ولا في بعض الأبواب والمداخل).
+    // bottomPlintheHeight: ارتفاع البلانط/العتبة السفلية إن وُجدت (خاصة في الأبواب).
   }) {
     return {
       'width': math.max(0.0, finishedWidth - frameWidth * 2),
@@ -833,6 +944,7 @@ class ComponentCalculator {
   /// pair only for a regular caisson installed above the window, combined
   /// with the selected integrated-cover frame. A caisson tunnel (behind the
   /// window), or a shutter without a regular caisson, never adds that pair.
+  /// هذه الدالة tassoQuantity هي "حاسبة عدد قطع التاسو" ، ودورها هو حساب العدد الدقيق لقطع التاسو المطلوبة لكل تقسيم في الستارة.
   static int tassoQuantity({
     required int divisionPieceCount,
     required bool isPvc,
@@ -849,6 +961,7 @@ class ComponentCalculator {
 
   /// Physical weight of the shutter curtain, calculated from the actual
   /// blade count and cut length used by the BOM.
+  /// دورها هو حساب الوزن الإجمالي الحقيقي لشفرات الستار (Lames) بالكيلوغرام بدقة متناهية.
   static double shutterCurtainWeightKg({
     required double windowWidthMm,
     required double windowHeightMm,
@@ -946,12 +1059,13 @@ class ComponentCalculator {
     return bestGroup;
   }
 
+  ///دورها هو تحويل طريقة تشغيل الستار (سواء كُتبت بالعربية أو الفرنسية أو الإنجليزية أو حتى لو حدث خطأ في ترميز الحروف)
+  /// إلى رمز تقني موحد وثابت يفهمه محرك الكيتات وقاعدة البيانات.
   static String shutterMechanismScope(String mechanism) {
     final normalized = mechanism.toLowerCase().trim();
     if (normalized.contains('moteur') ||
         normalized.contains('motor') ||
-        normalized.contains('محرك') ||
-        normalized.contains('Ù…Ø­Ø±Ùƒ')) {
+        normalized.contains('محرك')) {
       return 'motor';
     }
     if (normalized.contains('maniv') ||
@@ -1061,6 +1175,8 @@ class ComponentCalculator {
     return itemScope == 'all' || selectedScopes.contains(itemScope);
   }
 
+  ///هذه الدوال الأربع تُشكّل معاً "نظام التصفية والمطابقة المتقدم لملحقات كيت الستار" (Kit Mechanism Filtering Sub-system) داخل مل
+
   static bool kitItemAppliesToBlade(
     Map<String, dynamic> item,
     String bladeScope,
@@ -1082,6 +1198,7 @@ class ComponentCalculator {
   /// A 45-degree miter adds the cover visible width at every outer corner it
   /// reaches: full-side pieces add it twice, edge pieces once, middle pieces
   /// not at all.
+  ///دور الدالة هو: معرفة ما إذا كانت قطعة الغطاء تصل إلى زوايا النافذة الخارجية أم لا، وإضافة الزيادة الهندسية لقص الزواية
   static double standaloneSideCoverSegmentCutLength({
     required double sideLength,
     required double start,
@@ -1099,6 +1216,8 @@ class ComponentCalculator {
     return safeEnd - safeStart + (visibleWidth * miterEnds) + weldingAllowance;
   }
 
+  ///هذه الدالة optimizeCutting هي "محرك تحسين مخطط القص وتقليل الهدر" (1D Cutting Stock Optimizer) لقطاعات الألمنيوم والـ PVC داخل ملف
+  ///BOM. دورها هو حساب عدد القضبان (Bars) المطلوبة لقص جميع القطع المطلوبة بأقل هدر ممكن، مع مراعاة سمك الشفرة (Blade Waste) لكل عملية قص.
   static Map<String, dynamic> optimizeCutting({
     required List<double> pieces,
     required double barLength,
@@ -1235,8 +1354,9 @@ class ComponentCalculator {
     }
 
     Map<String, dynamic>? getSlidingFrameSection() {
-      if (window.slidingFrameOverride != null)
+      if (window.slidingFrameOverride != null) {
         return window.slidingFrameOverride;
+      }
       final series = window.activeSlidingSeries ?? window.activeSeries;
       if (series == null) return null;
       var slidingFrames = series.sections.where((s) {
@@ -2191,6 +2311,28 @@ class ComponentCalculator {
           selectorTypeForKitChild(value).contains('_screw')
           ? 'accessory'
           : category;
+      String? roleKeyForKitChild(String value) {
+        final selectorType = selectorTypeForKitChild(value);
+        return selectorCategoryForKitChild(value) == 'accessory'
+            ? _roleKeyForAccessorySelector(selectorType)
+            : _roleKeyForShutterSelector(selectorType);
+      }
+
+      int? sourceSeriesIdForKitChild(String value) {
+        return selectorCategoryForKitChild(value) == 'accessory' &&
+                category != 'shutter'
+            ? (window.systemMode == 'sliding'
+                  ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
+                  : window.activeSeries?.id)
+            : null;
+      }
+
+      String materialTypeForKitChild(String value) {
+        return category == 'shutter'
+            ? 'shutter'
+            : (window.isPVC ? 'pvc' : 'aluminium');
+      }
+
       final selectedMechanismScopes =
           mechanismScopes ??
           <String>{normalizeKitMechanismScope(mechanismScope)};
@@ -2220,8 +2362,9 @@ class ComponentCalculator {
         // not auto-selected merely because the family exists in the kit.
         if (family != null && !includeFamilyItems) continue;
         if (!familyApplies(item)) continue;
-        if (!kitItemAppliesToMechanisms(item, selectedMechanismScopes))
+        if (!kitItemAppliesToMechanisms(item, selectedMechanismScopes)) {
           continue;
+        }
         if (!kitItemAppliesToBlade(item, bladeScope)) continue;
         // A family is one small assembly inside its parent Kit.  Its child
         // components are used once by default; it may explicitly opt into
@@ -2252,6 +2395,9 @@ class ComponentCalculator {
               kitGroupName: expandedItemGroupName,
               selectorCategory: selectorCategoryForKitChild(componentName),
               selectorType: selectorTypeForKitChild(componentName),
+              roleKey: roleKeyForKitChild(componentName),
+              sourceSeriesId: sourceSeriesIdForKitChild(componentName),
+              materialType: materialTypeForKitChild(componentName),
             ),
           );
         } else if (mode == 'by_range' && ranges.isNotEmpty) {
@@ -2373,6 +2519,9 @@ class ComponentCalculator {
                   colorId: linkedId == null ? null : catalogueColorId(null),
                   selectorCategory: selectorCategoryForKitChild(displayName),
                   selectorType: selectorTypeForKitChild(displayName),
+                  roleKey: roleKeyForKitChild(displayName),
+                  sourceSeriesId: sourceSeriesIdForKitChild(displayName),
+                  materialType: materialTypeForKitChild(displayName),
                 ),
               );
             }
@@ -2397,6 +2546,15 @@ class ComponentCalculator {
                   item['component_type'] as String? ?? '',
                 ),
                 selectorType: selectorTypeForKitChild(
+                  item['component_type'] as String? ?? '',
+                ),
+                roleKey: roleKeyForKitChild(
+                  item['component_type'] as String? ?? '',
+                ),
+                sourceSeriesId: sourceSeriesIdForKitChild(
+                  item['component_type'] as String? ?? '',
+                ),
+                materialType: materialTypeForKitChild(
                   item['component_type'] as String? ?? '',
                 ),
               ),
@@ -2430,6 +2588,9 @@ class ComponentCalculator {
               kitGroupName: expandedItemGroupName,
               selectorCategory: selectorCategoryForKitChild(productName),
               selectorType: selectorTypeForKitChild(productName),
+              roleKey: roleKeyForKitChild(productName),
+              sourceSeriesId: sourceSeriesIdForKitChild(productName),
+              materialType: materialTypeForKitChild(productName),
             ),
           );
         }
@@ -3431,12 +3592,10 @@ class ComponentCalculator {
         createAccessory('براغي الباتمو', qty: batmoScrews * doubleSashCount),
       );
       items.add(
-        createProfile(
+        createAccessory(
           'بوشون باتمو (Bouchon Batmo)',
-          colorName,
-          unit: 'حبة',
-          defaultPrice: 0,
-          qty: doubleSashCount.toDouble(),
+          color: accessoryColorName,
+          qty: doubleSashCount,
         ),
       );
       items.add(
@@ -4129,8 +4288,9 @@ class ComponentCalculator {
           final legacy =
               kitBundleData.keys.where((name) {
                 final normalized = name.toLowerCase();
-                if (descriptionCode == 'MT')
+                if (descriptionCode == 'MT') {
                   return normalized.contains('moteur');
+                }
                 return normalized.contains('kit volet') &&
                     !normalized.contains('moteur');
               }).toList()..sort((a, b) {
@@ -5504,8 +5664,8 @@ class ComponentCalculator {
           );
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
-          final double cellThick = cellGlass.totalThickness(
-            window.allGlassCache,
+          final double cellThick = window.glassPackThicknessIncludingVitrageJoint(
+            cellGlass,
           );
           final bool isSlidingSystem =
               window.systemMode == 'sliding' ||
@@ -6635,9 +6795,9 @@ class ComponentCalculator {
       String namePart = "";
       if (glass.processingOuter == GlassProcessing.laminated) {
         String lamCol = "شفاف";
-        if (glass.laminatedColorOuter == 'white')
+        if (glass.laminatedColorOuter == 'white') {
           lamCol = "أبيض";
-        else if (glass.laminatedColorOuter == 'blue')
+        } else if (glass.laminatedColorOuter == 'blue')
           lamCol = "أزرق";
         namePart = "مورق ($lamCol)";
       } else {
@@ -6662,15 +6822,19 @@ class ComponentCalculator {
 
       String getArabicSubtypeName(String sub) {
         final s = sub.toLowerCase();
-        if (s.contains('resine') || s.contains('ارزين') || s.contains('أرزين'))
+        if (s.contains('resine') ||
+            s.contains('ارزين') ||
+            s.contains('أرزين')) {
           return 'ارزين';
+        }
         if (s.contains('plexi')) return 'بليكسي';
         if (s.contains('decore') || s.contains('ديكور')) return 'بانو ديكور';
         if (s.contains('sandwitch') ||
             s.contains('sandwich') ||
             s == 'panneau' ||
-            s == 'بانو')
+            s == 'بانو') {
           return 'بانو';
+        }
         if (s.contains('aluco') || s.contains('الوكو')) return 'الوكو';
         if (s.contains('bardage') || s.contains('بارداش')) return 'بارداش';
         return sub;
@@ -6713,9 +6877,9 @@ class ComponentCalculator {
       String outDesc = "";
       if (glass.processingOuter == GlassProcessing.laminated) {
         String lamCol = "شفاف";
-        if (glass.laminatedColorOuter == 'white')
+        if (glass.laminatedColorOuter == 'white') {
           lamCol = "أبيض";
-        else if (glass.laminatedColorOuter == 'blue')
+        } else if (glass.laminatedColorOuter == 'blue')
           lamCol = "أزرق";
         outDesc = "مورق ($lamCol)";
       } else {
@@ -6731,9 +6895,9 @@ class ComponentCalculator {
       String inDesc = "";
       if (glass.processingInner == GlassProcessing.laminated) {
         String lamCol = "شفاف";
-        if (glass.laminatedColorInner == 'white')
+        if (glass.laminatedColorInner == 'white') {
           lamCol = "أبيض";
-        else if (glass.laminatedColorInner == 'blue')
+        } else if (glass.laminatedColorInner == 'blue')
           lamCol = "أزرق";
         inDesc = "مورق ($lamCol)";
       } else {

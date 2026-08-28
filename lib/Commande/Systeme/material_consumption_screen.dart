@@ -62,7 +62,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   bool _isBottomBarExpanded = false; // هل شريط الإعدادات السفلي مفتوح أو مطوي
   bool _isFetchingDefaults = false;
   bool _hasFetchedDefaults = false;
-  final Map<String, List<Map<String, dynamic>>> _accessoryRowsCache = {};
+  List<BomItem> _visibleBomItems = const [];
   final Map<String, double> _accessoryPriceCache = {};
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
   String get _lang =>
@@ -330,6 +330,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             (item.materialType ?? '').toLowerCase().trim() == 'shutter')) {
       return null;
     }
+    if (item.sourceSeriesId != null && item.sourceSeriesId! > 0) {
+      return item.sourceSeriesId;
+    }
     final mode = _accessoryDrawingModeForItem(item);
     if (mode == AccessoryDrawingMode.sliding) {
       return widget.model.activeSlidingSeries?.id ??
@@ -344,6 +347,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   String _materialTypeForItem(BomItem item) {
+    final explicitMaterial = (item.materialType ?? '').toLowerCase().trim();
+    if (explicitMaterial == 'pvc') return 'PVC';
+    if (explicitMaterial == 'aluminium' ||
+        explicitMaterial == 'aluminum' ||
+        explicitMaterial == 'alu') {
+      return 'Aluminium';
+    }
+    if (explicitMaterial == 'shutter') return 'Shutter';
     return _accessoryDrawingModeForItem(item) == AccessoryDrawingMode.sliding
         ? (widget.model.isSlidingPVC ? 'PVC' : 'Aluminium')
         : (widget.model.isPVC ? 'PVC' : 'Aluminium');
@@ -354,27 +365,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return tokens.any((token) => lower.contains(token.toLowerCase()));
   }
 
-  bool _catalogFlagValue(Map<String, dynamic> item, String key) {
-    final value = item[key];
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    final text = value?.toString().trim().toLowerCase();
-    return text == '1' || text == 'true' || text == 'yes';
-  }
-
   bool _isScrewBomName(String name) {
     final lower = name.toLowerCase();
     return name.contains('براغي') ||
         name.contains('برغي') ||
         lower.contains('screw') ||
         lower.contains('vis');
-  }
-
-  bool _isShutterScrewColumn(String dbColumn) {
-    return dbColumn == 'is_kit_screw' ||
-        dbColumn == 'is_caisson_screw' ||
-        dbColumn == 'is_moteur_screw' ||
-        dbColumn == 'is_manivelle_screw';
   }
 
   bool _matchesDisplayedOverride(String text, Map<String, dynamic>? override) {
@@ -429,7 +425,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         isFrame: isExplicitFrame,
         isSash: isExplicitSash,
         isSideCover: isExplicitSideCover,
-        seriesId: category == 'profile' ? _seriesIdForItem(item) : null,
+        seriesId: _seriesIdForItem(item),
         overrideKey: item.overrideKey ?? original,
       );
     }
@@ -922,78 +918,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return price;
   }
 
-  Future<Map<String, dynamic>?> _findAccessoryForSeries({
-    required Database database,
-    required bool Function(Map<String, dynamic> row) matches,
-    int? seriesId,
-    String? materialType,
-    AccessoryDrawingMode? drawingMode,
-    bool allowGlobal = false,
-    bool applyMaterialFilter = true,
-    bool applyDrawingModeFilter = true,
-  }) async {
-    final seriesFilter = _buildSeriesFilterClause(
-      seriesId: seriesId,
-      allowGlobal: allowGlobal,
-    );
-    final normalizedMaterial =
-        (materialType ?? (widget.model.isPVC ? 'pvc' : 'aluminium'))
-            .toLowerCase()
-            .trim();
-    final materialClause = !applyMaterialFilter
-        ? ''
-        : (normalizedMaterial == 'pvc'
-              ? " AND (TRIM(LOWER(material_type)) = 'pvc' OR TRIM(LOWER(material_type)) = 'both')"
-              : " AND (TRIM(LOWER(material_type)) = 'aluminium' OR TRIM(LOWER(material_type)) = 'aluminum' OR TRIM(LOWER(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')");
-
-    final cacheKey =
-        '${seriesId ?? 'auto'}|$allowGlobal|$applyMaterialFilter|$normalizedMaterial';
-    final rows = _accessoryRowsCache[cacheKey] ??= (await database.query(
-      'Accessories',
-      where:
-          '(is_active = 1 OR is_active IS NULL)${seriesFilter['clause']}$materialClause',
-      whereArgs: seriesFilter['args'],
-      orderBy: 'id ASC',
-    )).map((row) => Map<String, dynamic>.from(row)).toList();
-    final candidates = rows
-        .map((row) => Map<String, dynamic>.from(row))
-        .where(matches)
-        .where(
-          (row) =>
-              !applyDrawingModeFilter ||
-              drawingMode == null ||
-              accessoryMatchesDrawingMode(row, drawingMode),
-        )
-        .toList();
-    if (candidates.isEmpty) return null;
-
-    candidates.sort((a, b) {
-      final selectedSeriesId =
-          seriesId ??
-          (widget.model.systemMode == 'sliding'
-              ? widget.model.activeSlidingSeries?.id
-              : widget.model.activeSeries?.id);
-      int priority(Map<String, dynamic> row) {
-        if (selectedSeriesId == null) return 1;
-        if (row['series_id'] == selectedSeriesId) return 0;
-        final ids = row['series_ids']?.toString().replaceAll(' ', '') ?? '';
-        return ids.split(',').contains(selectedSeriesId.toString()) ? 0 : 1;
-      }
-
-      final scoped = priority(a).compareTo(priority(b));
-      if (scoped != 0) return scoped;
-      return ((a['id'] as num?)?.toInt() ?? 0).compareTo(
-        (b['id'] as num?)?.toInt() ?? 0,
-      );
-    });
-    final selected = candidates.first;
-    selected['calculated_price'] = await _resolveSelectedAccessoryPrice(
-      database,
-      selected,
-    );
-    return selected;
-  }
-
   // ------------------ إعدادات التسعير (تُحمَّل من SharedPreferences وقاعدة البيانات) ------------------
   double _profitMargin = 0.0; // نسبة الربح % (طريقة الحساب بالنسبة المئوية)
   double _pricePerSqm = 0.0; // سعر المتر المربع (طريقة الحساب بالمتر المربع)
@@ -1396,8 +1320,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     'سيبور موتور (Support Moteur)': false,
     'أغطية الشفرات (Bouchons Lames)': false,
   };
-  String?
-  _lastAlignedLameKey; // مفتاح تتبع (id+مقاس+subtype) لآخر "شريحة" تمت محاذاة الشريحة النهائية معها، لتفادي إعادة الحساب بلا داعٍ
   // ------------------ ثوابت أبعاد أعمدة الجدول (بالبكسل) ------------------
   static const double _rowMinHeight =
       56; // ارتفاع أدنى فقط — الصف يتمدّد حسب محتواه
@@ -1514,34 +1436,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // حسب الوزن...)، وتضبط activeVariants حسب آلية الستار (محرك/مانيفيل/حزام)
   // وحالة الصندوق (تونيل أو لا).
   // ==========================================================================
-  // ==========================================================================
-  // دالة مساعدة: تبني شرط WHERE وقائمة args لفلترة الإكسسوارات حسب السلسلة النشطة
-  // نفس منطق الفلترة المستخدم في model.dart -> _loadAccessoryDefaults
-  // ==========================================================================
-  Map<String, dynamic> _buildSeriesFilterClause({
-    int? seriesId,
-    bool allowGlobal = false,
-  }) {
-    final selectedSeriesId =
-        seriesId ??
-        (widget.model.systemMode == 'sliding'
-            ? widget.model.activeSlidingSeries?.id
-            : widget.model.activeSeries?.id);
-    if (selectedSeriesId == null) {
-      // لا توجد سلسلة مختارة، إذن لا يوجد إكسسوار صالح للاختيار.
-      return {'clause': ' AND 1 = 0', 'args': <dynamic>[]};
-    }
-    final linkedSeriesConstraint =
-        "series_id = ? OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?)";
-    final seriesConstraint = allowGlobal
-        ? "$linkedSeriesConstraint OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = ''))"
-        : linkedSeriesConstraint;
-    return {
-      'clause': ' AND ($seriesConstraint)',
-      'args': [selectedSeriesId, '%,' + selectedSeriesId.toString() + ',%'],
-    };
-  }
-
   void _refreshStrictActiveVariants() {
     final isTunnel = widget.model.isCaissonTunnel;
     final isMotor = widget.model.shutterMechanism == 'محرك';
@@ -1631,11 +1525,39 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     _kitBundlePrices = prices;
   }
 
+  List<BomItem> _generateRawBomItems() {
+    return ComponentCalculator.generateBom(
+      widget.model,
+      activeVariants,
+      kitBundleData: _kitBundleData,
+      kitPerLeafMap: _kitPerLeafMap,
+      kitBundlePrices: _kitBundlePrices,
+      kitBundleMetadata: _kitBundleMetadata,
+    );
+  }
+
+  Future<List<BomItem>> _generateStrictVisibleBomItems(
+    BomEngineV2 engine,
+  ) async {
+    final rawItems = _generateRawBomItems();
+    return engine.filterItemsByAvailableCandidates(
+      window: widget.model,
+      items: rawItems,
+    );
+  }
+
+  Future<void> _refreshVisibleBomItems() async {
+    final engine = BomEngineV2(database: SqlDatabase());
+    final visibleBomItems = await _generateStrictVisibleBomItems(engine);
+    if (!mounted) return;
+    setState(() => _visibleBomItems = visibleBomItems);
+  }
+
   Future<void> _fetchDefaults() async {
     if (_isFetchingDefaults) return;
     if (mounted) setState(() => _isFetchingDefaults = true);
-    _accessoryRowsCache.clear();
     _accessoryPriceCache.clear();
+    var visibleBomItems = _visibleBomItems;
     try {
       await widget.model.updateShutterDefaultsIfNeeded();
       _refreshStrictActiveVariants();
@@ -1649,30 +1571,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (dbInstance == null) return;
 
       await _loadStrictKitBundles(dbInstance, sqlDb);
-      var bomItems = ComponentCalculator.generateBom(
-        widget.model,
-        activeVariants,
-        kitBundleData: _kitBundleData,
-        kitPerLeafMap: _kitPerLeafMap,
-        kitBundlePrices: _kitBundlePrices,
-        kitBundleMetadata: _kitBundleMetadata,
-      );
+      var bomItems = _generateRawBomItems();
       final engine = BomEngineV2(database: sqlDb);
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
 
-      bomItems = ComponentCalculator.generateBom(
-        widget.model,
-        activeVariants,
-        kitBundleData: _kitBundleData,
-        kitPerLeafMap: _kitPerLeafMap,
-        kitBundlePrices: _kitBundlePrices,
-        kitBundleMetadata: _kitBundleMetadata,
-      );
+      bomItems = _generateRawBomItems();
       await engine.stabilizeSelections(window: widget.model, items: bomItems);
+      visibleBomItems = await _generateStrictVisibleBomItems(engine);
       await _loadPricesFromDb();
     } finally {
       if (mounted) {
         setState(() {
+          _visibleBomItems = visibleBomItems;
           _isFetchingDefaults = false;
           _hasFetchedDefaults = true;
         });
@@ -1739,6 +1649,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   void _onModelChanged() {
     if (mounted) {
       setState(() {});
+    }
+    if (_hasFetchedDefaults) {
+      unawaited(_refreshVisibleBomItems());
     }
   }
 
@@ -2109,117 +2022,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
   }
 
-  // ==========================================================================
-  // دالة: _resolveDynamicProductPrice
-  // تبحث عن سعر منتج بالاسم في جدولي Accessories ثم ShutterComponents،
-  // مع مراعاة السعر الخاص باللون إن وُجد. تُستخدم لتحديث أسعار عناصر الكيت.
-  // ==========================================================================
-  Future<double?> _resolveDynamicProductPrice(
-    Database db,
-    String productName,
-    int? colorId, {
-    int? seriesId,
-    String? materialType,
-  }) async {
-    final normalizedMaterial = materialType?.trim().toLowerCase();
-    final seriesFilter = _buildSeriesFilterClause(seriesId: seriesId);
-
-    // 1. Search matching accessories only within the selected series and
-    // material. Several catalog entries can share a name (such as CACHE OB),
-    // and the old `limit: 1` could select an unrelated zero-price record.
-    final materialClause =
-        normalizedMaterial == null || normalizedMaterial.isEmpty
-        ? ''
-        : " AND (LOWER(TRIM(material_type)) = ? OR LOWER(TRIM(material_type)) = 'both' OR material_type IS NULL OR TRIM(material_type) = '')";
-    final accessoryArgs = <dynamic>[
-      productName,
-      if (normalizedMaterial != null && normalizedMaterial.isNotEmpty)
-        normalizedMaterial,
-      ...(seriesFilter['args'] as List<dynamic>),
-    ];
-    final accRows = await db.query(
-      'Accessories',
-      columns: ['id', 'price', 'series_id', 'series_ids'],
-      where:
-          'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)$materialClause${seriesFilter['clause']}',
-      whereArgs: accessoryArgs,
-    );
-
-    // Prefer an accessory linked directly to the active series over a global
-    // one with the same name. If it has no price, continue looking instead of
-    // returning zero and overwriting the kit's own range/variant price.
-    final sortedAccessories = List<Map<String, dynamic>>.from(accRows);
-    sortedAccessories.sort((a, b) {
-      int priority(Map<String, dynamic> row) {
-        if (seriesId == null) return 1;
-        if (row['series_id'] == seriesId) return 0;
-        final ids = row['series_ids']?.toString().replaceAll(' ', '') ?? '';
-        return ids.split(',').contains(seriesId.toString()) ? 0 : 1;
-      }
-
-      final scoped = priority(a).compareTo(priority(b));
-      if (scoped != 0) return scoped;
-      final priced = (_safeDouble(b['price']) > 0 ? 1 : 0).compareTo(
-        _safeDouble(a['price']) > 0 ? 1 : 0,
-      );
-      if (priced != 0) return priced;
-      return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
-        (a['id'] as num?)?.toInt() ?? 0,
-      );
-    });
-
-    for (final accessory in sortedAccessories) {
-      final accId = (accessory['id'] as num?)?.toInt();
-      if (accId == null) continue;
-      final defaultPrice = _safeDouble(accessory['price']);
-      if (colorId != null) {
-        final colorPriceRes = await db.query(
-          'AccessoryColorPrices',
-          columns: ['price'],
-          where: 'accessory_id = ? AND color_id = ?',
-          whereArgs: [accId, colorId],
-          limit: 1,
-        );
-        if (colorPriceRes.isNotEmpty) {
-          final p = _safeDouble(colorPriceRes.first['price']);
-          if (p > 0) return p;
-        }
-      }
-      if (defaultPrice > 0) return defaultPrice;
-    }
-
-    // 2. If no usable accessory price exists, check shutter components. Do
-    // not return a zero here either: the price saved on the kit range/variant
-    // remains the final fallback.
-    final shutRows = await db.query(
-      'ShutterComponents',
-      columns: ['id', 'price'],
-      where:
-          'LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (is_active = 1 OR is_active IS NULL)',
-      whereArgs: [productName],
-    );
-    for (final shutterComponent in shutRows) {
-      final shutId = (shutterComponent['id'] as num?)?.toInt();
-      if (shutId == null) continue;
-      final defaultPrice = _safeDouble(shutterComponent['price']);
-      if (colorId != null) {
-        final colorPriceRes = await db.query(
-          'ShutterColorPrices',
-          columns: ['price'],
-          where: 'shutter_component_id = ? AND color_id = ?',
-          whereArgs: [shutId, colorId],
-          limit: 1,
-        );
-        if (colorPriceRes.isNotEmpty) {
-          final p = _safeDouble(colorPriceRes.first['price']);
-          if (p > 0) return p;
-        }
-      }
-      if (defaultPrice > 0) return defaultPrice;
-    }
-    return null;
-  }
-
   // حفظ إعداد تسعير رقمي واحد في SharedPreferences (بالمفتاح المعطى)
   Future<void> _saveCostSetting(String key, double value) async {
     final prefs = await SharedPreferences.getInstance();
@@ -2324,6 +2126,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       activeVariants['System OB'] = widget.model.effectiveUseSystemOB;
       activeVariants['Demi System OB'] = widget.model.effectiveUseDemiOB;
     });
+    unawaited(_refreshVisibleBomItems());
   }
 
   // ==========================================================================
@@ -2351,15 +2154,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ),
       );
     }
-    // توليد قائمة المكونات (BOM) الحالية بناءً على النموذج والحالة النشطة
-    final items = ComponentCalculator.generateBom(
-      widget.model,
-      activeVariants,
-      kitBundleData: _kitBundleData,
-      kitPerLeafMap: _kitPerLeafMap,
-      kitBundlePrices: _kitBundlePrices,
-      kitBundleMetadata: _kitBundleMetadata,
-    );
+    // جدول الكمية يستعمل نفس مرشحات القواعد التي يستعملها شو دايلوج.
+    final items = _visibleBomItems;
     return Scaffold(
       appBar: AppBar(
         title: Text(Localization.translate('الالكمية والتكلفة', lang)),
@@ -2922,15 +2718,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       listen: false,
     ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final items = ComponentCalculator.generateBom(
-      // إعادة توليد القائمة للحصول على أحدث المجاميع
-      widget.model,
-      activeVariants,
-      kitBundleData: _kitBundleData,
-      kitPerLeafMap: _kitPerLeafMap,
-      kitBundlePrices: _kitBundlePrices,
-      kitBundleMetadata: _kitBundleMetadata,
-    );
+    final items = _visibleBomItems;
     final totals = _calculateTotals(items);
     final double totalCostNoWaste =
         totals['total']?['cost'] ?? 0.0; // التكلفة الصافية بدون هدر
@@ -5183,6 +4971,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final swapTarget = _resolveBomSwapTarget(item);
     String pType = swapTarget.profileType;
     String pCategory = swapTarget.category;
+    final explicitRoleKey = (item.roleKey ?? '').trim();
+    final explicitSelectorType = (item.selectorType ?? '').trim();
+    final usesExplicitCatalogSelector =
+        pCategory != 'shutter' &&
+        (explicitRoleKey.isNotEmpty || explicitSelectorType.isNotEmpty);
+    final dialogRoleKeys = explicitRoleKey.isEmpty
+        ? const <String>[]
+        : <String>[explicitRoleKey];
     final espagnoletteLengthMatch = RegExp(
       r'(\d+(?:[.,]\d+)?)',
     ).firstMatch(item.originalName);
@@ -5256,6 +5052,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           materialType: _materialTypeForSwapTarget(item, swapTarget),
           hasShutter: widget.model.hasShutter,
           accessoryDrawingMode: swapTarget.drawingMode,
+          roleKeys: dialogRoleKeys,
+          hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
+          hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
         ),
       );
       if (selected != null && mounted) {
@@ -5280,7 +5079,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           widget.model.refreshUI();
         });
         await widget.model.syncFrameReinforcement();
-        _rebuildIfReady();
+        await _refreshVisibleBomItems();
       }
       return; // إنهاء الدالة هنا (لا تكمل باقي منطق التبديل العام)
     }
@@ -5298,6 +5097,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           seriesId: _seriesIdForSwapTarget(item, swapTarget),
           materialType: _materialTypeForSwapTarget(item, swapTarget),
           accessoryDrawingMode: swapTarget.drawingMode,
+          roleKeys: dialogRoleKeys,
+          hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
+          hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
         ),
       );
       if (selected != null && mounted) {
@@ -5369,6 +5171,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           );
           widget.model.refreshUI();
         });
+        await _refreshVisibleBomItems();
       }
       return;
     }
@@ -5382,6 +5185,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           seriesId: _seriesIdForSwapTarget(item, swapTarget),
           materialType: _materialTypeForSwapTarget(item, swapTarget),
           accessoryDrawingMode: swapTarget.drawingMode,
+          roleKeys: dialogRoleKeys,
+          hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
+          hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
         ),
       );
       if (selected != null && mounted) {
@@ -5406,150 +5212,151 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           }
           widget.model.refreshUI();
         });
+        await _refreshVisibleBomItems();
       }
       return;
     }
     // ===================== الحالة العامة: تحويل اسم العنصر إلى "نوع بحث" (pType) مناسب =====================
     // كل الحالات التالية تُغيّر pType/pCategory إلى صيغة يفهمها ProfileSelectorDialog للبحث
     // الجوانات (Joints)
-    if (pType.contains('جوان') || pType.toLowerCase().contains('joint')) {
-      pCategory = 'joint';
-      if (pType.contains('بروس') || pType.toLowerCase().contains('bross')) {
-        pType = ('Joint bross');
-      }
-    } else if (pType.toLowerCase().contains('clamp') ||
-        pType.toLowerCase().contains('clam') ||
-        pType.contains('كلامب') ||
-        pType.contains('كلام') ||
-        pType.contains('كلان')) {
-      pCategory = 'accessory';
-      pType = 'clamp';
-      // البراغي: كل نوع برغي يُحوّل إلى اسم العمود المطابق في قاعدة البيانات
-    } else if (pType.contains('براغي')) {
-      pCategory = 'accessory';
-      if (pType.contains('براغي حديد الدعم')) {
-        pType = 'is_renfort_screw';
-      } else if (pType.contains('براغي بوشون باتمو')) {
-        pType = 'is_bouchon_batmo_screw';
-      } else if (pType.contains('براغي الباتمو')) {
-        pType = 'is_batmo_screw';
-      } else if (pType.contains('براغي الكيت'))
-        pType = 'is_kit_screw';
-      else if (pType.contains('براغي المانيفال'))
-        pType = 'is_manivelle_screw';
-      else if (pType.contains('براغي المحرك'))
-        pType = 'is_moteur_screw';
-      else if (pType.contains('براغي الصندوق')) {
-        pType = 'is_caisson_screw';
-      } else if (pType.contains('براغي التجميع'))
-        pType = 'is_assembly_screw';
-      else if (pType.contains('براغي التركيب'))
-        pType = 'is_installation_screw';
-      else if (pType.contains('براغي الإكسسوارات'))
-        pType = 'is_accessory_screw';
-      // إكسسوارات عامة أخرى (قاش، إسبانيوليت، مفاصل، فيرو، مقبض، طاسو)
-    } else if (pCategory == 'accessory') {
-      if (pType.contains('قاش دوبل') || pType.contains('Gache Double')) {
-        pType = 'is_gache_double';
-      } else if (pType.contains('قاش سامبل') ||
-          pType.contains('Gache Simple')) {
-        pType = 'is_gache_simple';
-      } else if (pType.contains('قاش بورت') ||
-          pType.contains('Gache Porte') ||
-          pType.contains('Gâche Porte')) {
-        pType = 'is_gache_porte';
-      } else if (pType.contains('كاش كوليسون') ||
-          pType.toLowerCase().contains('gache coulisse') ||
-          pType.toLowerCase().contains('gâche coulisse') ||
-          pType.toLowerCase().contains('gache coulissant') ||
-          pType.toLowerCase().contains('gâche coulissant')) {
-        pType = 'كاش كوليسون';
+    if (!usesExplicitCatalogSelector) {
+      if (pType.contains('جوان') || pType.toLowerCase().contains('joint')) {
+        pCategory = 'joint';
+        if (pType.contains('بروس') || pType.toLowerCase().contains('bross')) {
+          pType = ('Joint bross');
+        }
       } else if (pType.toLowerCase().contains('clamp') ||
           pType.toLowerCase().contains('clam') ||
           pType.contains('كلامب') ||
           pType.contains('كلام') ||
           pType.contains('كلان')) {
+        pCategory = 'accessory';
         pType = 'clamp';
-      } else if (pType.contains('مقبض الباب (Poignée Porte à Clé)')) {
-        pType = 'is_poign_clef';
-      } else if (pType.contains('مقبض الباب Condamnation')) {
-        pType = 'is_poign_condamnation';
-      } else if (pType.contains('الأسطوانة') || pType.contains('Canon')) {
-        pType = 'is_canon';
-      } else if (pType.contains('قفل بمفتاح') || pType.contains('Clef')) {
-        pType = 'is_lock_clef';
-      } else if (pType.contains('Serrure Condamnation') ||
-          pType.contains('قفل الباب Condamnation') ||
-          pType.contains('Condamnation')) {
-        pType = 'is_lock_condamnation';
-      } else if (pType.contains('قفل الباب') || pType.contains('Serrure')) {
-        pType = 'is_lock_clef';
-      } else if (pType.contains('اسبانيوليت') || pType.contains('إسبانيوليت')) {
-        pType = 'اسبانيوليت';
-      } else if (pType.contains('مفاصل') || pType.contains('Hinges')) {
-        pType = 'مفاصل';
-      } else if ((pType.contains('فيرو') || pType.contains('Verrou')) &&
-          !pType.contains('Central')) {
-        pType = 'فيرو';
-      } else if (pType.toLowerCase().contains('poignée coulissante') ||
-          pType.toLowerCase().contains('poignee coulissante') ||
-          pType.contains('مقبض منزلق')) {
-        pType = 'poignee coulissante';
-      } else if (pType.contains('المقبض (Handle)') ||
-          pType.contains('مقبض نافذة') ||
-          pType.toLowerCase().contains('poignée fenêtre') ||
-          pType.toLowerCase().contains('poignee fenetre')) {
-        // مقبض النافذة لا يشارك قائمة مقابض الأبواب أو Calimaster أو Rotax.
-        pType = 'is_window_handle';
-      } else if (pType.contains('مقبض') ||
-          pType.contains('Handle') ||
-          pType.contains('Poignée')) {
-        pType = 'مقبض';
-      } else if (pType.contains('الطاسو') ||
-          pType.toLowerCase().contains('tasso')) {
-        pType = 'tasso';
-      } else if (pType.contains('عجلات') ||
-          pType.toLowerCase().contains('roulette')) {
-        pType = 'roulette';
-      } else if (pType.contains('أونتروماتيك') ||
-          pType.contains('Entrematique') ||
-          pType.contains('انتراميتيك') ||
-          pType.toLowerCase().contains('intra')) {
-        pType = 'entrematique';
+      } else if (pType.contains('براغي')) {
+        pCategory = 'accessory';
+        if (pType.contains('براغي حديد الدعم')) {
+          pType = 'is_renfort_screw';
+        } else if (pType.contains('براغي بوشون باتمو')) {
+          pType = 'is_bouchon_batmo_screw';
+        } else if (pType.contains('براغي الباتمو')) {
+          pType = 'is_batmo_screw';
+        } else if (pType.contains('براغي الكيت')) {
+          pType = 'is_kit_screw';
+        } else if (pType.contains('براغي المانيفال')) {
+          pType = 'is_manivelle_screw';
+        } else if (pType.contains('براغي المحرك')) {
+          pType = 'is_moteur_screw';
+        } else if (pType.contains('براغي الصندوق')) {
+          pType = 'is_caisson_screw';
+        } else if (pType.contains('براغي التجميع')) {
+          pType = 'is_assembly_screw';
+        } else if (pType.contains('براغي التركيب')) {
+          pType = 'is_installation_screw';
+        } else if (pType.contains('براغي الإكسسوارات')) {
+          pType = 'is_accessory_screw';
+        }
+      } else if (pCategory == 'accessory') {
+        if (pType.contains('قاش دوبل') || pType.contains('Gache Double')) {
+          pType = 'is_gache_double';
+        } else if (pType.contains('قاش سامبل') ||
+            pType.contains('Gache Simple')) {
+          pType = 'is_gache_simple';
+        } else if (pType.contains('قاش بورت') ||
+            pType.contains('Gache Porte') ||
+            pType.contains('Gâche Porte')) {
+          pType = 'is_gache_porte';
+        } else if (pType.contains('كاش كوليسون') ||
+            pType.toLowerCase().contains('gache coulisse') ||
+            pType.toLowerCase().contains('gâche coulisse') ||
+            pType.toLowerCase().contains('gache coulissant') ||
+            pType.toLowerCase().contains('gâche coulissant')) {
+          pType = 'كاش كوليسون';
+        } else if (pType.toLowerCase().contains('clamp') ||
+            pType.toLowerCase().contains('clam') ||
+            pType.contains('كلامب') ||
+            pType.contains('كلام') ||
+            pType.contains('كلان')) {
+          pType = 'clamp';
+        } else if (pType.contains('مقبض الباب (Poignée Porte à Clé)')) {
+          pType = 'is_poign_clef';
+        } else if (pType.contains('مقبض الباب Condamnation')) {
+          pType = 'is_poign_condamnation';
+        } else if (pType.contains('الأسطوانة') || pType.contains('Canon')) {
+          pType = 'is_canon';
+        } else if (pType.contains('قفل بمفتاح') || pType.contains('Clef')) {
+          pType = 'is_lock_clef';
+        } else if (pType.contains('Serrure Condamnation') ||
+            pType.contains('قفل الباب Condamnation') ||
+            pType.contains('Condamnation')) {
+          pType = 'is_lock_condamnation';
+        } else if (pType.contains('قفل الباب') || pType.contains('Serrure')) {
+          pType = 'is_lock_clef';
+        } else if (pType.contains('اسبانيوليت') ||
+            pType.contains('إسبانيوليت')) {
+          pType = 'اسبانيوليت';
+        } else if (pType.contains('مفاصل') || pType.contains('Hinges')) {
+          pType = 'مفاصل';
+        } else if ((pType.contains('فيرو') || pType.contains('Verrou')) &&
+            !pType.contains('Central')) {
+          pType = 'فيرو';
+        } else if (pType.toLowerCase().contains('poignée coulissante') ||
+            pType.toLowerCase().contains('poignee coulissante') ||
+            pType.contains('مقبض منزلق')) {
+          pType = 'poignee coulissante';
+        } else if (pType.contains('المقبض (Handle)') ||
+            pType.contains('مقبض نافذة') ||
+            pType.toLowerCase().contains('poignée fenêtre') ||
+            pType.toLowerCase().contains('poignee fenetre')) {
+          pType = 'is_window_handle';
+        } else if (pType.contains('مقبض') ||
+            pType.contains('Handle') ||
+            pType.contains('Poignée')) {
+          pType = 'مقبض';
+        } else if (pType.contains('الطاسو') ||
+            pType.toLowerCase().contains('tasso')) {
+          pType = 'tasso';
+        } else if (pType.contains('عجلات') ||
+            pType.toLowerCase().contains('roulette')) {
+          pType = 'roulette';
+        } else if (pType.contains('أونتروماتيك') ||
+            pType.contains('Entrematique') ||
+            pType.contains('انتراميتيك') ||
+            pType.toLowerCase().contains('intra')) {
+          pType = 'entrematique';
+        }
+      } else if (pCategory == 'profile') {
+        if (pType.toLowerCase().contains('renfort') ||
+            pType.contains('renfore') ||
+            pType.contains('الدعم') ||
+            pType.contains('حديد')) {
+          pType = 'renfort';
+        } else if (pType.toLowerCase().contains('traverse') ||
+            pType.contains('التقسيم')) {
+          pType = 'mullion';
+        } else if (pType.toLowerCase().contains('bouchon') ||
+            pType.contains('بوشون') ||
+            pType.toLowerCase().contains('bochon')) {
+          pType = 'bouchon batmo';
+        } else if (pType.toLowerCase().contains('batmo') ||
+            pType.contains('باتمو')) {
+          pType = 'batmo';
+        } else if (pType.toLowerCase().contains('reducteur') ||
+            pType.toLowerCase().contains('réducteur') ||
+            pType.contains('ريديكتور') ||
+            pType.contains('مخفض')) {
+          pType = '67114';
+        } else if (pType.toLowerCase().contains('parclose') ||
+            pType.contains('باكيت') ||
+            pType.contains('بيركلوز')) {
+          pType = 'parclose';
+        } else if (pType.toLowerCase().contains('rail') ||
+            pType.contains('الري') ||
+            pType.contains('سكة')) {
+          pType = 'rail';
+        }
       }
-      // بروفيلات: تحديد النوع الفرعي (حديد/تقسيم/بوشون باتمو/باتمو/باركلوز/راي)
-    } else if (pCategory == 'profile') {
-      if (pType.toLowerCase().contains('renfort') ||
-          pType.contains('renfore') ||
-          pType.contains('الدعم') ||
-          pType.contains('حديد')) {
-        pType = 'renfort';
-      } else if (pType.toLowerCase().contains('traverse') ||
-          pType.contains('التقسيم')) {
-        pType = 'mullion';
-      } else if (pType.toLowerCase().contains('bouchon') ||
-          pType.contains('بوشون') ||
-          pType.toLowerCase().contains('bochon')) {
-        pType = 'bouchon batmo';
-      } else if (pType.toLowerCase().contains('batmo') ||
-          pType.contains('باتمو')) {
-        pType = 'batmo';
-      } else if (pType.toLowerCase().contains('reducteur') ||
-          pType.toLowerCase().contains('réducteur') ||
-          pType.contains('ريديكتور') ||
-          pType.contains('مخفض')) {
-        pType = '67114';
-      } else if (pType.toLowerCase().contains('parclose') ||
-          pType.contains('باكيت') ||
-          pType.contains('بيركلوز')) {
-        pType = 'parclose';
-      } else if (pType.toLowerCase().contains('rail') ||
-          pType.contains('الري') ||
-          pType.contains('سكة')) {
-        pType = 'rail';
-      }
-      // مكونات الستار: تحديد نوعها الدقيق (مانيفال/محرك/صندوق/كيت/سكك/شريحة نهائية/شريحة/محور/أطاش...)
-    } else if (pCategory == 'shutter') {
+    }
+    if (pCategory == 'shutter') {
       if (pType.contains('مانيفال') ||
           pType.toLowerCase().contains('manivelle')) {
         pType = 'مانيفال';
@@ -5614,6 +5421,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         materialType: _materialTypeForSwapTarget(item, swapTarget),
         hasShutter: widget.model.hasShutter,
         accessoryDrawingMode: accessoryDrawingMode,
+        roleKeys: dialogRoleKeys,
         windowHeight: widget.model.height,
         targetSize: widget.model.shutterBoxHeight,
         kitDescriptionCode: pCategory == 'shutter' && pType == 'كيت'
@@ -5626,6 +5434,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         selectedBladeName: selectedBladeName,
         selectedBladeIsX3d: selectedBladeIsX3d,
         motorDiameter: motorDiameter,
+        hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
+        hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
       ),
     );
     if (selected != null && mounted) {
@@ -6039,20 +5849,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     companionBouchonLame;
               }
             }
-            // تحديث مفتاح تتبع آخر محاذاة للشريحة النهائية (لتفادي إعادة الحساب في _fetchDefaults لاحقًا)
-            final lames = widget.model.componentOverrides['الشرائح (Lames)'];
-            if (lames != null) {
-              final targetSubtype =
-                  lames['shutter_subtype']?.toString() ?? 'normal';
-              _lastAlignedLameKey =
-                  "${lames['id']}_${getComponentSize(lames)}_$targetSubtype";
-            }
             widget.model.refreshUI();
           });
           if (_swapSelectionNeedsDefaultRefresh(item, swapTarget)) {
             // Only shutter families need a companion/default refresh. Profile
             // and accessory swaps must remain immediate and user-owned.
             await _fetchDefaults();
+          } else {
+            await _refreshVisibleBomItems();
           }
         }
       } catch (e) {

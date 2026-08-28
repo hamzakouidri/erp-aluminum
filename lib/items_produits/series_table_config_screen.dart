@@ -111,6 +111,28 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       descriptionFr: 'À choisir lorsqu’il doit apparaître pour cette série',
     ),
     _SeriesRole(
+      key: 'batmo',
+      ar: 'الباتمو',
+      fr: 'Battement',
+      descriptionAr: 'مقطع الباتمو الخاص بهذه السلسلة',
+      descriptionFr: 'Profil de battement propre à cette série',
+    ),
+    _SeriesRole(
+      key: 'plant',
+      ar: 'البلانت',
+      fr: 'Plinthe',
+      descriptionAr: 'مقطع البلانت الخاص بأنظمة الفتح عند إلغاء الإطار السفلي',
+      descriptionFr:
+          'Profil de plinthe des systèmes ouvrants quand le dormant bas est supprimé',
+    ),
+    _SeriesRole(
+      key: 'renfort',
+      ar: 'حديد الدعم',
+      fr: 'Renfort',
+      descriptionAr: 'حديد الدعم المرتبط بمقاطع هذه السلسلة',
+      descriptionFr: 'Renforts liés aux profils de cette série',
+    ),
+    _SeriesRole(
       key: 'rail',
       ar: 'السكة',
       fr: 'Rail',
@@ -407,9 +429,29 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     };
   }
 
+  bool _roleUsesGlassRule(String role) {
+    switch (role) {
+      case 'glazing_bead':
+      case 'reducer':
+        return true;
+    }
+    return false;
+  }
+
+  Map<String, dynamic> _normalizedRoleOptions(
+    String role,
+    Map<String, dynamic> options,
+  ) {
+    final normalized = Map<String, dynamic>.from(options);
+    if (!_roleUsesGlassRule(role)) {
+      normalized['show_when_glass'] = 'any';
+    }
+    return normalized;
+  }
+
   Map<String, dynamic> _roleOptionsFromRow(Map<String, dynamic> row) {
     final role = row['role_key']?.toString() ?? '';
-    return {
+    return _normalizedRoleOptions(role, {
       ..._defaultRoleOptions(role),
       'usage_scope': row['usage_scope']?.toString() ?? 'auto',
       'show_when_glass': row['show_when_glass']?.toString() ?? 'any',
@@ -425,7 +467,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'width_adjust_mm': _number(row['width_adjust_mm']),
       'height_adjust_mm': _number(row['height_adjust_mm']),
       'formula_note': row['formula_note']?.toString() ?? '',
-    };
+    });
   }
 
   Map<String, dynamic> _roleOptionsFor(String role, int sectionId) {
@@ -464,6 +506,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final seriesId = _seriesId;
     if (seriesId == null) return;
     if (_sectionIdsByRole['frame']!.isEmpty) {
@@ -476,11 +519,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       );
       return;
     }
+    setState(() => _saving = true);
 
     final roles = <Map<String, dynamic>>[];
     for (final role in _availableRoles) {
       for (final sectionId in _sectionIdsByRole[role.key]!) {
-        final options = _roleOptionsFor(role.key, sectionId);
+        final options = _normalizedRoleOptions(
+          role.key,
+          _roleOptionsFor(role.key, sectionId),
+        );
         roles.add({
           'role_key': role.key,
           'section_id': sectionId,
@@ -512,8 +559,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         }
       }
     }
-
-    setState(() => _saving = true);
     try {
       await widget.db.saveSeriesDesignRoles(seriesId: seriesId, roles: roles);
       await widget.db.saveSectionJointLinksForSeries(
@@ -560,7 +605,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   }
 
   void _showMessage(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
@@ -824,11 +870,15 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
   Widget _selectedRoleRuleTile(_SeriesRole role, Map<String, dynamic> section) {
     final sectionId = (section['id'] as num?)?.toInt();
     if (sectionId == null) return const SizedBox.shrink();
-    final options = _roleOptionsFor(role.key, sectionId);
+    final options = _normalizedRoleOptions(
+      role.key,
+      _roleOptionsFor(role.key, sectionId),
+    );
     final isDefault = _defaultSectionByRole[role.key] == sectionId;
     final badges = <String>[
       _usageScopeLabel(options['usage_scope']?.toString() ?? 'auto'),
-      _glassRuleLabel(options['show_when_glass']?.toString() ?? 'any'),
+      if (_roleUsesGlassRule(role.key))
+        _glassRuleLabel(options['show_when_glass']?.toString() ?? 'any'),
       if (_truthy(options['integrated_side_cover']))
         _t('غطاء مدمج', 'Couvre-joint intégré'),
       if (!_truthy(options['allows_side_cover'], fallback: true))
@@ -887,7 +937,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final sectionId = (section['id'] as num?)?.toInt();
     if (sectionId == null) return;
     final original = Map<String, dynamic>.from(
-      _roleOptionsFor(role.key, sectionId),
+      _normalizedRoleOptions(role.key, _roleOptionsFor(role.key, sectionId)),
     );
     final widthCtrl = TextEditingController(
       text: _number(original['width_adjust_mm']).toString(),
@@ -898,7 +948,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final noteCtrl = TextEditingController(
       text: original['formula_note']?.toString() ?? '',
     );
+    final usesGlassRule = _roleUsesGlassRule(role.key);
     var draft = Map<String, dynamic>.from(original);
+    if (!usesGlassRule) draft['show_when_glass'] = 'any';
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -945,29 +997,45 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                             update('usage_scope', value ?? 'auto'),
                       ),
                       const SizedBox(height: 10),
-                      DropdownButtonFormField<String>(
-                        initialValue:
-                            draft['show_when_glass']?.toString() ?? 'any',
-                        decoration: InputDecoration(
-                          labelText: _t('يظهر مع الزجاج', 'Vitrage'),
+                      if (usesGlassRule)
+                        DropdownButtonFormField<String>(
+                          initialValue:
+                              draft['show_when_glass']?.toString() ?? 'any',
+                          decoration: InputDecoration(
+                            labelText: _t('يظهر مع الزجاج', 'Vitrage'),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: 'any',
+                              child: Text(_glassRuleLabel('any')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'simple',
+                              child: Text(_glassRuleLabel('simple')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'double',
+                              child: Text(_glassRuleLabel('double')),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              update('show_when_glass', value ?? 'any'),
+                        )
+                      else
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.lock_outline_rounded),
+                          title: Text(
+                            _t('غير مرتبط بسماكة الزجاج', 'Indépendant du vitrage'),
+                          ),
+                          subtitle: Text(
+                            _t(
+                              'هذا الدور لا يتغير بين زجاج مفرد ومزدوج.',
+                              'Ce rôle ne change pas entre vitrage simple et double.',
+                            ),
+                          ),
                         ),
-                        items: [
-                          DropdownMenuItem(
-                            value: 'any',
-                            child: Text(_glassRuleLabel('any')),
-                          ),
-                          DropdownMenuItem(
-                            value: 'simple',
-                            child: Text(_glassRuleLabel('simple')),
-                          ),
-                          DropdownMenuItem(
-                            value: 'double',
-                            child: Text(_glassRuleLabel('double')),
-                          ),
-                        ],
-                        onChanged: (value) =>
-                            update('show_when_glass', value ?? 'any'),
-                      ),
                       const SizedBox(height: 10),
                       _dialogSwitch(
                         title: _t('غطاء جانبي مدمج', 'Couvre-joint intégré'),
@@ -1071,6 +1139,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                   onPressed: () {
                     draft = {
                       ...draft,
+                      if (!usesGlassRule) 'show_when_glass': 'any',
                       'width_adjust_mm': _number(widthCtrl.text),
                       'height_adjust_mm': _number(heightCtrl.text),
                       'formula_note': noteCtrl.text.trim(),

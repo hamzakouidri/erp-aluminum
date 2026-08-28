@@ -6,7 +6,7 @@ project(runner LANGUAGES CXX)
 # work.
 #
 # Any new source files that you add to the application should be added here.
-add_executable(${BINARY_NAME} WIN32
+add_executable(${BINARY_NAME}
   "flutter_window.cpp"
   "main.cpp"
   "utils.cpp"
@@ -14,6 +14,12 @@ add_executable(${BINARY_NAME} WIN32
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
+)
+
+# Keep debug builds attached to stdout/stderr so Flutter and Android Studio can
+# discover the VM service. Profile and release builds remain normal GUI apps.
+set_target_properties(${BINARY_NAME} PROPERTIES
+  WIN32_EXECUTABLE "$<NOT:$<CONFIG:Debug>>"
 )
 
 # Apply the standard set of build settings. This can be removed for applications

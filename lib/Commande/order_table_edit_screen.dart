@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:database_data/Commande/capture_image.dart';
@@ -153,23 +154,15 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       tempModel.activeSeries = p.activeSeries;
       tempModel.activeSlidingSeries = p.activeSlidingSeries;
       tempModel.availableColors = List.from(p.availableColors);
+      tempModel.persistedDrawingImagePath = p.persistedDrawingImagePath;
+      tempModel.persistedDrawingImageBase64 = p.persistedDrawingImageBase64;
 
       // نطبّق إعادة التحجيم على النموذج المؤقت فقط
       if ((newW - p.width).abs() > 0.5 || (newH - p.height).abs() > 0.5) {
         tempModel.rescaleZones(p.width, p.height, newW, newH);
       }
 
-      captureWindowImage(tempModel, maxSide: 400)
-          .then((img) {
-            if (mounted) {
-              setState(() {
-                _images[index] = img;
-              });
-            }
-          })
-          .catchError((e) {
-            debugPrint('Error capturing window image in _onFieldChanged: $e');
-          });
+      _loadProductPreviewImage(index, tempModel);
     });
   }
 
@@ -281,16 +274,45 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       String initialDesc = invoiceLine.details.join('\n');
       _descControllers[i] = TextEditingController(text: initialDesc);
 
-      captureWindowImage(p, maxSide: 400)
-          .then((img) {
-            if (mounted) setState(() => _images[i] = img);
-          })
-          .catchError((e) {
-            debugPrint('Error capturing window image in initState: $e');
-          });
+      _loadProductPreviewImage(i, p);
     }
 
     _extractGlobalValues();
+  }
+
+  Future<void> _loadProductPreviewImage(int index, WindowModel product) async {
+    Uint8List? imageBytes;
+    try {
+      imageBytes = await captureWindowImage(product, maxSide: 400);
+    } catch (error) {
+      debugPrint('Error capturing window image in pricing table: $error');
+    }
+
+    imageBytes ??= await _readPersistedPreviewImage(product);
+    if (!mounted) return;
+    setState(() => _images[index] = imageBytes);
+  }
+
+  Future<Uint8List?> _readPersistedPreviewImage(WindowModel product) async {
+    final path = product.persistedDrawingImagePath?.trim() ?? '';
+    if (path.isNotEmpty) {
+      try {
+        final file = File(path);
+        if (await file.exists()) return file.readAsBytes();
+      } catch (_) {}
+    }
+
+    final raw = product.persistedDrawingImageBase64?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    try {
+      final separator = raw.indexOf(',');
+      final encoded = raw.startsWith('data:image') && separator >= 0
+          ? raw.substring(separator + 1)
+          : raw;
+      return base64Decode(encoded);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _extractGlobalValues() {

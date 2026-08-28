@@ -124,6 +124,135 @@ class _CommandeState extends State<Commande> {
   String _displayOrderLabel(Map<String, dynamic> order) =>
       '#${_displayOrderNumber(order)}';
 
+  double _readMoney(dynamic value) {
+    if (value is num) return value.toDouble();
+    final normalized = value?.toString().trim().replaceAll(',', '.') ?? '';
+    return double.tryParse(normalized) ?? 0.0;
+  }
+
+  int? _readId(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '');
+  }
+
+  String _orderClientName(Map<String, dynamic> order) {
+    final direct =
+        order['client_name']?.toString().trim() ??
+        order['client_display']?.toString().trim() ??
+        '';
+    if (direct.isNotEmpty) return direct;
+    final first = order['firstname']?.toString().trim() ?? '';
+    final last = order['lastname']?.toString().trim() ?? '';
+    final full = '$first $last'.trim();
+    return full.isEmpty ? 'Client' : full;
+  }
+
+  void _showAddOrderPaymentDialog(
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) {
+    final orderId = _readId(orderData['id']);
+    final clientId = _readId(orderData['client_id']);
+    if (orderId == null || clientId == null) return;
+
+    final total = _readMoney(orderData['net_payable'] ?? orderData['total']);
+    final paid = _readMoney(orderData['advance_payment']);
+    final remaining = (total - paid).clamp(0.0, double.infinity).toDouble();
+    final clientName = _orderClientName(orderData);
+    final amountCtrl = TextEditingController();
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    var isSavingPayment = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: Text(
+            '${Localization.translate('Add payment to order', lang)} ${_displayOrderLabel(orderData)}',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          content: TextField(
+            controller: amountCtrl,
+            autofocus: true,
+            enabled: !isSavingPayment,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: Localization.translate('Amount paid', lang),
+              hintText:
+                  '${Localization.translate('Remaining:', lang)} ${remaining.toStringAsFixed(2)} د.ج',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              prefixIcon: const Icon(Icons.payments_outlined),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSavingPayment
+                  ? null
+                  : () => Navigator.pop(dialogContext),
+              child: Text(Localization.translate('Cancel', lang)),
+            ),
+            ElevatedButton(
+              onPressed: isSavingPayment
+                  ? null
+                  : () async {
+                      final amount = _readMoney(amountCtrl.text);
+                      if (amount <= 0) return;
+
+                      final navigator = Navigator.of(dialogContext);
+                      setDialogState(() => isSavingPayment = true);
+                      try {
+                        await db.insertTreasury(
+                          'Encaissement',
+                          amount,
+                          'دفعة لطلبية رقم $orderId من الزبون: $clientName',
+                          referenceId: orderId,
+                          entityType: 'Client',
+                          entityId: clientId,
+                          recordedBy: settings.userDisplayName,
+                        );
+                        if (navigator.mounted && navigator.canPop()) {
+                          navigator.pop();
+                        }
+                        if (mounted) _fetchCommandes();
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => isSavingPayment = false);
+                        }
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${Localization.translate('فشل حفظ الدفعة', lang)}: $error',
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isSavingPayment
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(Localization.translate('Save payment', lang)),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(amountCtrl.dispose);
+  }
+
   TextSpan highlightText(String text, String query) {
     if (query.isEmpty) {
       return TextSpan(text: text);
@@ -1249,6 +1378,25 @@ class _CommandeState extends State<Commande> {
                     onTap: () {
                       Navigator.pop(ctx);
                       _exportOrderPicturePdf(context, orderData, lang);
+                    },
+                  ),
+
+                if (isConfirmedOrBeyond &&
+                    (settings.canEditPayments() ||
+                        settings.canAccessTreasury()))
+                  ListTile(
+                    leading: const Icon(
+                      Icons.payments_outlined,
+                      color: Colors.green,
+                    ),
+                    title: Text(Localization.translate('Add payment', lang)),
+                    subtitle: Text(
+                      '${Localization.translate('Remaining:', lang)} ${(_readMoney(orderData['net_payable'] ?? orderData['total']) - _readMoney(orderData['advance_payment'])).clamp(0.0, double.infinity).toStringAsFixed(2)} د.ج',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showAddOrderPaymentDialog(orderData, lang);
                     },
                   ),
 
@@ -3999,6 +4147,22 @@ class _OrderPicturePdfPreviewPageState
   }
 
   Future<Uint8List?> _readPreviewImageBytes(Map<String, dynamic> item) async {
+    final jsonRaw = item['partitions_json'];
+    if (jsonRaw != null) {
+      try {
+        final decoded = jsonRaw is Map
+            ? Map<String, dynamic>.from(jsonRaw)
+            : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
+        final model = WindowModel(db: widget.db);
+        await applyWindowModelAndLoadCatalog(model, decoded);
+        return captureWindowImage(
+          model,
+          maxSide: 3200,
+          showDrawingDimensions: true,
+        );
+      } catch (_) {}
+    }
+
     final path = item['drawing_image_path']?.toString().trim() ?? '';
     if (path.isNotEmpty) {
       try {
@@ -4017,19 +4181,7 @@ class _OrderPicturePdfPreviewPageState
         return base64Decode(encoded);
       } catch (_) {}
     }
-
-    final jsonRaw = item['partitions_json'];
-    if (jsonRaw == null) return null;
-    try {
-      final decoded = jsonRaw is Map
-          ? Map<String, dynamic>.from(jsonRaw)
-          : Map<String, dynamic>.from(jsonDecode(jsonRaw.toString()));
-      final model = WindowModel(db: widget.db);
-      applyWindowModelFromMap(model, decoded);
-      return captureWindowImage(model, maxSide: 2200);
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   @override
@@ -4160,7 +4312,6 @@ class _OrderPicturePdfPreviewPageState
     final details = item.details
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
-        .take(10)
         .toList(growable: false);
     final meta = <String>[
       if (item.width > 0 || item.height > 0)
@@ -4201,7 +4352,7 @@ class _OrderPicturePdfPreviewPageState
             ],
             const SizedBox(height: 10),
             SizedBox(
-              height: MediaQuery.sizeOf(context).height * 0.62,
+              height: MediaQuery.sizeOf(context).height * 0.74,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: Colors.white,

@@ -331,7 +331,6 @@ class WindowPainter extends CustomPainter {
           }
         }
         canvas.restore();
-        _drawFixedBottomFrameSegments(canvas, w, h, t);
         _drawMainZoneHinges(canvas, h, t);
         // Draw Octo handles OUTSIDE the clip so the keeper (on frame side) is visible
         for (final zone in model.zones) {
@@ -421,7 +420,6 @@ class WindowPainter extends CustomPainter {
           }
         }
         canvas.restore();
-        _drawFixedBottomFrameSegments(canvas, w, h, t);
         _drawMainZoneHinges(canvas, h, t);
         // Draw Octo handles OUTSIDE the clip so the keeper (on frame side) is visible
         for (final zone in model.zones) {
@@ -1376,7 +1374,7 @@ class WindowPainter extends CustomPainter {
   }
 
   Rect _getEffectiveZoneRect(Rect original, double h, double t) {
-    if (!_hasEffectiveBottomFrame && (original.bottom - (h - t)).abs() < 1.0) {
+    if (!_hasEffectiveBottomFrame && (original.bottom - (h - t)).abs() < 5.0) {
       final matchingZone = model.zones.firstWhere(
         (z) =>
             (z.boundary.left - original.left).abs() < 2.0 &&
@@ -1392,7 +1390,7 @@ class WindowPainter extends CustomPainter {
           matchingZone.content == ZoneContent.fixedGlass ||
           matchingZone.content == ZoneContent.empty;
       if (isFixed) {
-        return original; // الثابت يبقى دائماً بإطاره السفلي ولا يمتد إلى الأرض
+        return original; // الثابت يستقر على الإطار السفلي عند (h - t)
       }
       return Rect.fromLTRB(original.left, original.top, original.right, h);
     }
@@ -1738,7 +1736,85 @@ class WindowPainter extends CustomPainter {
         bp..strokeWidth = isWholeDrawingFrameSelected ? 1.5 : 0.8,
       );
 
-      _drawFixedBottomFrameSegments(canvas, w, h, t);
+      // ── رسم الإطار السفلي النظيف تحت الثوابت الجانبية ──
+      bool leftHasFixed = false;
+      bool rightHasFixed = false;
+      final mullionT = model.mullionThickness;
+
+      bool hasVerticalJoinAt(double x) {
+        if (x <= t + 2.0 || x >= w - t - 2.0) return false;
+        var hasLeftZone = false;
+        var hasRightZone = false;
+        for (final zone in model.zones) {
+          final r = zone.boundary;
+          if (r.bottom < h - t - 2.0) continue;
+          if ((r.right - x).abs() <= mullionT + 3.0) {
+            hasLeftZone = true;
+          }
+          if ((r.left - x).abs() <= mullionT + 3.0) {
+            hasRightZone = true;
+          }
+        }
+        return hasLeftZone && hasRightZone;
+      }
+
+      for (final zone in model.zones) {
+        final r = zone.boundary;
+        final isBottomBound =
+            (r.bottom - (h - t)).abs() < 5.0 || r.bottom >= h - t - 2.0;
+        final isFixed =
+            zone.content == ZoneContent.fixedGlass ||
+            zone.content == ZoneContent.empty;
+        if (!isBottomBound || !isFixed) continue;
+
+        final touchesLeft = (r.left - t).abs() < 5.0 || r.left <= t;
+        final touchesRight =
+            (r.right - (w - t)).abs() < 5.0 || r.right >= w - t;
+
+        if (touchesLeft) leftHasFixed = true;
+        if (touchesRight) rightHasFixed = true;
+
+        final joinsLeftMullion = !touchesLeft && hasVerticalJoinAt(r.left);
+        final joinsRightMullion = !touchesRight && hasVerticalJoinAt(r.right);
+        final double segLeft = touchesLeft
+            ? 0.0
+            : r.left - (joinsLeftMullion ? mullionT / 2 : 0.0);
+        final double segRight = touchesRight
+            ? w
+            : r.right + (joinsRightMullion ? mullionT / 2 : 0.0);
+        final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
+
+        // رسم قطاع الإطار الكامل بتعبئته المصمتة وتجويفه العلوي فقط للزجاج (وبدون تجويف سفلي)
+        _drawGroovedMullionProfile(
+          canvas,
+          segRect,
+          isHorizontal: true,
+          fill: _buildPaint(outerRect),
+          border: bp,
+          cavityOnPositiveSide:
+              false, // تجويف علوي فقط للزجاج، والأسفل مستوٍ على الأرض
+        );
+
+        // وصلة 45° في الزاوية الخارجية أو 90° عند التقسيم الداخلي
+        if (touchesLeft) {
+          canvas.drawLine(Offset(0, h), Offset(t, h - t), bp);
+        } else if (!joinsLeftMullion) {
+          canvas.drawLine(Offset(r.left, h - t), Offset(r.left, h), bp);
+        }
+        if (touchesRight) {
+          canvas.drawLine(Offset(w, h), Offset(w - t, h - t), bp);
+        } else if (!joinsRightMullion) {
+          canvas.drawLine(Offset(r.right, h - t), Offset(r.right, h), bp);
+        }
+      }
+
+      // إغلاق مستقيم 90° للقائم فقط إذا لم يكن متصلاً بإطار ثابت سفلي
+      if (!leftHasFixed) {
+        canvas.drawLine(Offset(0, h), Offset(t, h), bp);
+      }
+      if (!rightHasFixed) {
+        canvas.drawLine(Offset(w - t, h), Offset(w, h), bp);
+      }
     }
 
     _drawMiterCorners(
@@ -1761,69 +1837,6 @@ class WindowPainter extends CustomPainter {
     if (_hasEffectiveBottomFrame) {
       canvas.drawLine(outer.bottomLeft, inner.bottomLeft, p);
       canvas.drawLine(outer.bottomRight, inner.bottomRight, p);
-    }
-  }
-
-  void _drawFixedBottomFrameSegments(
-    Canvas canvas,
-    double w,
-    double h,
-    double t,
-  ) {
-    if (_hasEffectiveBottomFrame) return;
-
-    final outerRect = Rect.fromLTRB(0, 0, w, h);
-    final fill = _buildPaint(outerRect);
-    final border = Paint()
-      ..color = _fb
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    for (final zone in model.zones) {
-      final r = zone.boundary;
-      final isBottomBound =
-          (r.bottom - (h - t)).abs() < 2.0 || r.bottom >= h - t;
-      final isFixed =
-          zone.content == ZoneContent.fixedGlass ||
-          zone.content == ZoneContent.empty;
-      if (!isBottomBound || !isFixed) continue;
-
-      final touchesLeftFrame = (r.left - t).abs() < 2.0 || r.left <= t;
-      final touchesRightFrame =
-          (r.right - (w - t)).abs() < 2.0 || r.right >= w - t;
-      final segLeft = touchesLeftFrame ? t : r.left;
-      final segRight = touchesRightFrame ? w - t : r.right;
-      if (segRight <= segLeft) continue;
-
-      final segRect = Rect.fromLTRB(segLeft, h - t, segRight, h);
-      _drawGroovedMullionProfile(
-        canvas,
-        segRect,
-        isHorizontal: true,
-        fill: fill,
-        border: border,
-        cavityOnPositiveSide: false,
-      );
-      canvas.drawLine(Offset(segLeft, h - t), Offset(segRight, h - t), border);
-      final innerLipY = h - math.min(t * 0.34, math.max(4.0, t * 0.24));
-      canvas.drawLine(
-        Offset(segLeft, innerLipY),
-        Offset(segRight, innerLipY),
-        Paint()
-          ..color = _fb.withValues(alpha: 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.9,
-      );
-      if (touchesLeftFrame) {
-        canvas.drawLine(Offset(0, h), Offset(t, h - t), border);
-      } else if (segLeft > 0.1) {
-        canvas.drawLine(Offset(segLeft, h - t), Offset(segLeft, h), border);
-      }
-      if (touchesRightFrame) {
-        canvas.drawLine(Offset(w, h), Offset(w - t, h - t), border);
-      } else if (segRight < w - 0.1) {
-        canvas.drawLine(Offset(segRight, h - t), Offset(segRight, h), border);
-      }
     }
   }
 
@@ -2181,6 +2194,20 @@ class WindowPainter extends CustomPainter {
     final List<_MullionSegment> horizontalSegments = [];
     final List<_MullionSegment> verticalSegments = [];
 
+    bool verticalMullionShouldReachFloor(double x, double bottom) {
+      if (_hasEffectiveBottomFrame) return false;
+      if ((bottom - (h - t)).abs() > math.max(15.0, mullionT + 4.0)) {
+        return false;
+      }
+      return model.zones.any((z) {
+        final r = z.boundary;
+        final isAdjacent =
+            (r.right - x).abs() <= mullionT + 4.0 ||
+            (r.left - x).abs() <= mullionT + 4.0;
+        return isAdjacent && r.bottom >= h - t - 2.0;
+      });
+    }
+
     for (int i = 0; i < model.zones.length; i++) {
       final z1 = model.zones[i];
       for (int j = i + 1; j < model.zones.length; j++) {
@@ -2294,6 +2321,11 @@ class WindowPainter extends CustomPainter {
           bottom += mullionT / 2;
         }
 
+        // ── تمديد القائم الرأسي حتى يلامس الأرض/الإطار السفلي الجزئي ──
+        if (verticalMullionShouldReachFloor(x, bottom)) {
+          bottom = h;
+        }
+
         mullions.add(
           _MullionVisual(
             rect: Rect.fromLTRB(
@@ -2324,6 +2356,11 @@ class WindowPainter extends CustomPainter {
           top -= mullionT / 2;
         }
         bottom += mullionT / 2;
+
+        // ── تمديد القائم الرأسي حتى يلامس الأرض/الإطار السفلي الجزئي ──
+        if (verticalMullionShouldReachFloor(x, bottom)) {
+          bottom = h;
+        }
 
         mullions.add(
           _MullionVisual(

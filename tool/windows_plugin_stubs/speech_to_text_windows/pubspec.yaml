@@ -1,0 +1,19 @@
+name: speech_to_text_windows
+description: Local Windows stub used during development when Smart App Control blocks unsigned plugin DLLs.
+version: 1.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  speech_to_text_platform_interface: ^2.3.0
+
+flutter:
+  plugin:
+    implements: speech_to_text
+    platforms:
+      windows:
+        dartPluginClass: SpeechToTextWindows

@@ -218,33 +218,35 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       double? lat;
       double? lng;
 
-      // The workshop point belongs to the workshop, not to one device.  Read
-      // Firebase first so workers and managers start from the same location.
-      final workshopId =
-          CloudSyncService().workshopId ??
-          prefs.getString('workshop_code') ??
-          FirebaseAuth.instance.currentUser?.uid;
-      if (workshopId != null && workshopId.isNotEmpty) {
-        try {
-          final snapshot = await FirebaseFirestore.instance
-              .collection('workshops')
-              .doc(workshopId)
-              .get();
-          final data = snapshot.data();
-          final cloudLat = data?['distribution_workshop_latitude'];
-          final cloudLng = data?['distribution_workshop_longitude'];
-          lat = cloudLat is num
-              ? cloudLat.toDouble()
-              : double.tryParse(cloudLat?.toString() ?? '');
-          lng = cloudLng is num
-              ? cloudLng.toDouble()
-              : double.tryParse(cloudLng?.toString() ?? '');
-          if (lat != null && lng != null) {
-            await prefs.setDouble('workshop_latitude', lat);
-            await prefs.setDouble('workshop_longitude', lng);
+      // Firebase workshop data sync is disabled; keep this local until the
+      // workshop settings table carries the shared distribution location.
+      if (!CloudSyncService.supabaseWorkshopDataOnly) {
+        final workshopId =
+            CloudSyncService().workshopId ??
+            prefs.getString('workshop_code') ??
+            FirebaseAuth.instance.currentUser?.uid;
+        if (workshopId != null && workshopId.isNotEmpty) {
+          try {
+            final snapshot = await FirebaseFirestore.instance
+                .collection('workshops')
+                .doc(workshopId)
+                .get();
+            final data = snapshot.data();
+            final cloudLat = data?['distribution_workshop_latitude'];
+            final cloudLng = data?['distribution_workshop_longitude'];
+            lat = cloudLat is num
+                ? cloudLat.toDouble()
+                : double.tryParse(cloudLat?.toString() ?? '');
+            lng = cloudLng is num
+                ? cloudLng.toDouble()
+                : double.tryParse(cloudLng?.toString() ?? '');
+            if (lat != null && lng != null) {
+              await prefs.setDouble('workshop_latitude', lat);
+              await prefs.setDouble('workshop_longitude', lng);
+            }
+          } catch (error) {
+            debugPrint('Could not load workshop location from Firebase: $error');
           }
-        } catch (error) {
-          debugPrint('Could not load workshop location from Firebase: $error');
         }
       }
 
@@ -267,25 +269,27 @@ class _DistributionTrackingScreenState extends State<DistributionTrackingScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('workshop_latitude', point.latitude);
       await prefs.setDouble('workshop_longitude', point.longitude);
-      final workshopId =
-          CloudSyncService().workshopId ??
-          prefs.getString('workshop_code') ??
-          FirebaseAuth.instance.currentUser?.uid;
-      if (workshopId != null && workshopId.isNotEmpty) {
-        try {
-          await FirebaseFirestore.instance
-              .collection('workshops')
-              .doc(workshopId)
-              .set({
-                'distribution_workshop_latitude': point.latitude,
-                'distribution_workshop_longitude': point.longitude,
-                'distribution_workshop_location_updated_at':
-                    FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-        } catch (error) {
-          // Local save remains available offline; it will be read on this
-          // device until Firebase is reachable again.
-          debugPrint('Could not save workshop location to Firebase: $error');
+      if (!CloudSyncService.supabaseWorkshopDataOnly) {
+        final workshopId =
+            CloudSyncService().workshopId ??
+            prefs.getString('workshop_code') ??
+            FirebaseAuth.instance.currentUser?.uid;
+        if (workshopId != null && workshopId.isNotEmpty) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('workshops')
+                .doc(workshopId)
+                .set({
+                  'distribution_workshop_latitude': point.latitude,
+                  'distribution_workshop_longitude': point.longitude,
+                  'distribution_workshop_location_updated_at':
+                      FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+          } catch (error) {
+            // Local save remains available offline; Supabase workshop settings
+            // will carry this shared value after that table is added.
+            debugPrint('Could not save workshop location to Firebase: $error');
+          }
         }
       }
       if (!mounted) return;

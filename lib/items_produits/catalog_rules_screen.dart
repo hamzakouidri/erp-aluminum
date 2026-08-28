@@ -24,6 +24,7 @@ class _RuleRole {
 class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  late final Map<String, TextEditingController> _searchControllers;
 
   final _tables = const ['ShutterComponents', 'Accessories', 'Joints'];
   final Map<String, List<Map<String, dynamic>>> _itemsByTable = {};
@@ -39,12 +40,18 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: _tables.length, vsync: this);
+    _searchControllers = {
+      for (final table in _tables) table: TextEditingController(),
+    };
     _load();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    for (final controller in _searchControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -106,6 +113,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('box_screw', 'براغي الصندوق', 'Vis caisson'),
           _RuleRole('motor_screw', 'براغي المحرك', 'Vis moteur'),
           _RuleRole('batmo_screw', 'براغي الباتمو', 'Vis batmo'),
+          _RuleRole('bouchon_batmo', 'بوشون باتمو', 'Bouchon battement'),
           _RuleRole(
             'bouchon_batmo_screw',
             'براغي بوشون باتمو',
@@ -129,8 +137,23 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('sliding_lock', 'قفل/قاش منزلق', 'Gâche coulissant'),
           _RuleRole('verrou', 'فيرو', 'Verrou'),
           _RuleRole('cremone', 'كريمون', 'Crémone'),
+          _RuleRole('espagnolette', 'إسبانيوليت', 'Espagnolette'),
+          _RuleRole('canon', 'أسطوانة الباب', 'Canon'),
+          _RuleRole(
+            'door_handle_key',
+            'مقبض باب بمفتاح',
+            'Poignée porte à clé',
+          ),
+          _RuleRole(
+            'door_handle_condamnation',
+            'مقبض باب كونداناسيون',
+            'Poignée porte condamnation',
+          ),
           _RuleRole('handle', 'مقبض', 'Poignée'),
           _RuleRole('hinge', 'مفاصل', 'Paumelles'),
+          _RuleRole('tasso', 'طاسو', 'Tasso'),
+          _RuleRole('roulette', 'عجلات', 'Roulettes'),
+          _RuleRole('entrematique', 'أونتروماتيك', 'Entrematique'),
           _RuleRole('other', 'أخرى', 'Autre'),
         ];
       case 'Joints':
@@ -177,6 +200,56 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       if (value.isNotEmpty) parts.add(value);
     }
     return parts.join(' • ');
+  }
+
+  String _foldSearchText(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll('é', 'e')
+        .replaceAll('è', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('à', 'a')
+        .replaceAll('ç', 'c');
+  }
+
+  bool _matchesSearch(
+    String table,
+    Map<String, dynamic> item,
+    String rawQuery,
+  ) {
+    final query = _foldSearchText(rawQuery).trim();
+    if (query.isEmpty) return true;
+    final itemId = _itemId(item);
+    final rule = itemId == null ? null : _rulesByItem[_itemKey(table, itemId)];
+    final roleKey = rule?['role_key']?.toString() ?? '';
+    final roleLabel = _rolesForTable(table)
+        .where((role) => role.key == roleKey)
+        .map((role) => '${role.ar} ${role.fr}')
+        .join(' ');
+    final haystack = _foldSearchText(
+      [
+        _itemTitle(item),
+        _itemSubtitle(item),
+        item['code'],
+        item['name'],
+        item['type'],
+        item['component_type'],
+        item['shutter_subtype'],
+        item['gasket_type'],
+        roleKey,
+        roleLabel,
+      ].whereType<Object>().join(' '),
+    );
+    return query
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .every((part) => haystack.contains(part));
   }
 
   Map<String, dynamic> _defaultRule(String table, int itemId) {
@@ -240,6 +313,15 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       return 'shutter_blade';
     }
     if (table == 'Accessories') {
+      final isBouchonBatmo =
+          (text.contains('bouchon') ||
+              text.contains('bochon') ||
+              text.contains('بوشون')) &&
+          (text.contains('batmo') || text.contains('باتمو'));
+      final isScrew =
+          text.contains('vis') ||
+          text.contains('screw') ||
+          text.contains('براغ');
       if (flag('is_kit_screw')) return 'kit_screw';
       if (flag('is_caisson_screw')) return 'box_screw';
       if (flag('is_moteur_screw')) return 'motor_screw';
@@ -259,6 +341,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           (text.contains('vis') || text.contains('براغ'))) {
         return 'kit_screw';
       }
+      if (isBouchonBatmo && isScrew) return 'bouchon_batmo_screw';
+      if (isBouchonBatmo) return 'bouchon_batmo';
       if ((text.contains('caisson') || text.contains('صندوق')) &&
           (text.contains('vis') || text.contains('براغ'))) {
         return 'box_screw';
@@ -280,8 +364,30 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           text.contains('كريمون')) {
         return 'cremone';
       }
+      if (text.contains('espagnolette') ||
+          text.contains('اسبانيوليت') ||
+          text.contains('إسبانيوليت')) {
+        return 'espagnolette';
+      }
+      if (text.contains('canon') || text.contains('أسطوانة')) return 'canon';
+      if (text.contains('poignée porte') || text.contains('poignee porte')) {
+        if (text.contains('condamnation')) {
+          return 'door_handle_condamnation';
+        }
+        return 'door_handle_key';
+      }
       if (text.contains('poign') || text.contains('مقبض')) return 'handle';
       if (text.contains('paum') || text.contains('مفصل')) return 'hinge';
+      if (text.contains('tasso') || text.contains('طاسو')) return 'tasso';
+      if (text.contains('roulette') || text.contains('عجلات')) {
+        return 'roulette';
+      }
+      if (text.contains('entrematique') ||
+          text.contains('أونتروماتيك') ||
+          text.contains('انتراميتيك') ||
+          text.contains('intra')) {
+        return 'entrematique';
+      }
       return 'other';
     }
     if (table == 'Joints') {
@@ -318,6 +424,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
       for (final table in _tables) {
@@ -329,11 +436,22 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         await widget.db.saveCatalogItemRules(itemTable: table, rules: rules);
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text(
               _t('تم حفظ قواعد الكتالوج العامة.', 'Règles enregistrées.'),
             ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_t('تعذر حفظ قواعد الكتالوج', 'Enregistrement impossible')}: $error',
+            ),
+            backgroundColor: Colors.red.shade700,
           ),
         );
       }
@@ -385,12 +503,49 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
     if (items.isEmpty) {
       return Center(child: Text(_t('لا توجد عناصر.', 'Aucun élément.')));
     }
+    final searchController = _searchControllers[table]!;
+    final filteredItems = items
+        .where((item) => _matchesSearch(table, item, searchController.text))
+        .toList(growable: false);
     return ListView.separated(
       padding: const EdgeInsets.all(14),
-      itemCount: items.length,
+      itemCount: filteredItems.isEmpty ? 2 : filteredItems.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
-        final item = items[index];
+        if (index == 0) {
+          return TextField(
+            controller: searchController,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: _t('مسح البحث', 'Effacer la recherche'),
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() {});
+                      },
+                    ),
+              hintText: _t(
+                'بحث بالكود، الاسم، النوع أو الدور...',
+                'Rechercher code, nom, type ou rôle...',
+              ),
+              border: const OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+          );
+        }
+        if (filteredItems.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_t('لا توجد نتائج.', 'Aucun résultat.')),
+            ),
+          );
+        }
+        final item = filteredItems[index - 1];
         final itemId = _itemId(item);
         if (itemId == null) return const SizedBox.shrink();
         final rule = _ruleFor(table, itemId);

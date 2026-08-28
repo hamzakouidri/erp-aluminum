@@ -1365,6 +1365,9 @@ class PdfInvoiceApi {
         ? 'TVA'
         : 'TVA (${data.tvaPercent.toStringAsFixed(0)}%)';
     final totalTtcLabel = isOfficial ? 'NET A PAYER' : t('TOTAL TTC');
+    final amountRemaining = (data.totalTTC - data.amountPaid)
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     return pw.Align(
       alignment: pw.Alignment.centerRight,
@@ -1407,14 +1410,19 @@ class PdfInvoiceApi {
                 ],
               ),
             ),
-            _totalRow(t('Montant payé'), data.amountPaid),
+            _totalRow(
+              t('Montant payé'),
+              data.amountPaid,
+              color: PdfColors.green,
+            ),
+            _totalRow(t('Remaining:'), amountRemaining, color: PdfColors.red),
           ],
         ),
       ),
     );
   }
 
-  static pw.Widget _totalRow(String label, double value) {
+  static pw.Widget _totalRow(String label, double value, {PdfColor? color}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
@@ -1423,11 +1431,15 @@ class PdfInvoiceApi {
           pw.Text(
             _ar(label),
             textDirection: _dir(label),
-            style: const pw.TextStyle(fontSize: 9),
+            style: pw.TextStyle(fontSize: 9, color: color),
           ),
           pw.Text(
             '${_formatMoney(value)} D.A',
-            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: color,
+            ),
           ),
         ],
       ),

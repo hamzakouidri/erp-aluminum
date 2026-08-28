@@ -2,17 +2,18 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart';
 import 'package:database_data/sql_database.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_sqlcipher/sqflite.dart';
 
 /// Rule-first resolver for the material table.
 ///
 /// This engine deliberately does not search catalogue names. It resolves an
 /// item through its explicit selector type, then through the administrator's
-/// rules or typed database columns.
+/// Catalog Item Rules.
 class BomEngineV2 {
   BomEngineV2({SqlDatabase? database}) : _db = database ?? SqlDatabase();
 
   final SqlDatabase _db;
+  final Map<String, Future<List<Map<String, dynamic>>>> _candidatesCache = {};
 
   Future<void> stabilizeSelections({
     required WindowModel window,
@@ -20,15 +21,7 @@ class BomEngineV2 {
   }) async {
     final database = await _db.db;
     if (database == null) return;
-
     for (final item in items) {
-      if (!item.isMissing) continue;
-      final overrideKey = item.overrideKey ?? item.originalName;
-      if (window.componentOverrides.containsKey(overrideKey) ||
-          window.componentOverrides.containsKey(item.originalName)) {
-        continue;
-      }
-
       switch (item.selectorCategory ?? item.category) {
         case 'profile':
           await _resolveProfile(window, item);
@@ -44,6 +37,112 @@ class BomEngineV2 {
     }
   }
 
+  Future<List<BomItem>> filterItemsByAvailableCandidates({
+    required WindowModel window,
+    required List<BomItem> items,
+  }) async {
+    final kept = <BomItem>[];
+    for (final item in items) {
+      if (await _itemHasRuleCandidate(window, item)) {
+        kept.add(item);
+      }
+    }
+    return kept;
+  }
+
+  Future<bool> _itemHasRuleCandidate(WindowModel window, BomItem item) async {
+    final category = item.selectorCategory ?? item.category;
+    switch (category) {
+      case 'profile':
+        final selectorType = item.selectorType?.trim() ?? '';
+        final roleKeys = <String>{
+          if ((item.roleKey ?? '').trim().isNotEmpty) item.roleKey!.trim(),
+          ...seriesRoleKeysForProfileSelectorType(selectorType),
+        }.toList();
+        if (roleKeys.isEmpty) return false;
+        if (roleKeys.contains('reducer') &&
+            (!window.hasSimpleGlassForReducer ||
+                window.hasDoubleGlassForRules)) {
+          return false;
+        }
+        if (_requiresDoubleSash(roleKeys) && !_hasDoubleSash(window)) {
+          return false;
+        }
+        final seriesId = _seriesIdForItem(window, item);
+        if (seriesId == null) return false;
+        final candidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'profile',
+            selectorType: selectorType,
+            roleKeys: roleKeys,
+            seriesId: seriesId,
+            materialType: _materialTypeForItem(window, item),
+            hasShutter: window.hasShutter,
+            drawingMode: _drawingModeForItem(window, item),
+            requireDialog: true,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+            hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+          ),
+        );
+        return candidates.isNotEmpty;
+      case 'accessory':
+      case 'other':
+        final selectorType = item.selectorType?.trim() ?? '';
+        final roleKeys = <String>{
+          if ((item.roleKey ?? '').trim().isNotEmpty) item.roleKey!.trim(),
+          ...catalogRuleKeysForAccessorySelectorType(selectorType),
+        }.toList();
+        if (roleKeys.isEmpty) return false;
+        if (_requiresDoubleSash(roleKeys) && !_hasDoubleSash(window)) {
+          return false;
+        }
+        final candidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'accessory',
+            selectorType: selectorType,
+            roleKeys: roleKeys,
+            seriesId: _seriesIdForItem(window, item),
+            materialType: _materialTypeForItem(window, item),
+            drawingMode: _drawingModeForItem(window, item),
+            requireDialog: true,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+            hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+          ),
+        );
+        return candidates.isNotEmpty;
+      case 'joint':
+        final selectorType = item.selectorType?.trim() ?? '';
+        final roleKeys = <String>{
+          if ((item.roleKey ?? '').trim().isNotEmpty) item.roleKey!.trim(),
+          ...catalogRuleKeysForJointSelectorType(selectorType),
+        }.toList();
+        if (roleKeys.isEmpty) return false;
+        final seriesId = _seriesIdForItem(window, item);
+        if (seriesId == null && !roleKeys.contains('shutter_joint_brosse')) {
+          return false;
+        }
+        final candidates = await _resolveCandidates(
+          CatalogCandidateQuery(
+            category: 'joint',
+            selectorType: selectorType,
+            roleKeys: roleKeys,
+            seriesId: seriesId,
+            materialType: _materialTypeForItem(window, item),
+            drawingMode: _drawingModeForItem(window, item),
+            requireDialog: true,
+            requireQuantity: true,
+            hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+            hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+          ),
+        );
+        return candidates.isNotEmpty;
+    }
+
+    return true;
+  }
+
   Future<void> _resolveProfile(WindowModel window, BomItem item) async {
     final selectorType = item.selectorType?.trim() ?? '';
     final roleKeys = <String>{
@@ -56,16 +155,38 @@ class BomEngineV2 {
       window.clearReducerOverride();
       return;
     }
+    if (_requiresDoubleSash(roleKeys) && !_hasDoubleSash(window)) {
+      _clearInvalidProfileSelection(window, item, roleKeys);
+      return;
+    }
 
     final seriesId = _seriesIdForItem(window, item);
     if (seriesId == null) return;
-    final sections = await _db.getDesignSectionsForRoles(
-      seriesId,
-      roleKeys,
-      requireDialog: true,
-      requireQuantity: true,
+    final sections = await _resolveCandidates(
+      CatalogCandidateQuery(
+        category: 'profile',
+        selectorType: selectorType,
+        roleKeys: roleKeys,
+        seriesId: seriesId,
+        materialType: _materialTypeForItem(window, item),
+        hasShutter: window.hasShutter,
+        drawingMode: _drawingModeForItem(window, item),
+        requireDialog: true,
+        requireQuantity: true,
+        hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+        hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+      ),
     );
-    if (sections.isEmpty) return;
+    if (sections.isEmpty) {
+      _clearInvalidProfileSelection(window, item, roleKeys);
+      return;
+    }
+    if (_candidateContainsCurrent(
+      sections,
+      _currentProfileSelection(window, item, roleKeys, selectorType),
+    )) {
+      return;
+    }
 
     final selected = Map<String, dynamic>.from(sections.first);
     final colorId = _catalogInt(window.selectedDbColor?['id']);
@@ -111,39 +232,44 @@ class BomEngineV2 {
       ...catalogRuleKeysForAccessorySelectorType(selectorType),
     }.toList();
     if (ruleKeys.isEmpty) return;
+    if (_requiresDoubleSash(ruleKeys) && !_hasDoubleSash(window)) {
+      _clearComponentSelection(window, item);
+      return;
+    }
 
     final seriesId = _seriesIdForItem(window, item);
     final materialType = _materialTypeForItem(window, item);
-    final isShutterScrew = _isShutterScrewSelectorType(selectorType);
-    Map<String, dynamic>? selected;
-
-    final rules = await _db.getCatalogItemRules(
-      itemTable: 'Accessories',
-      seriesId: seriesId,
-      roleKeys: ruleKeys,
-    );
-    for (final rule in rules) {
-      if (rule['show_in_quantity'] == 0 || rule['show_in_dialog'] == 0) {
-        continue;
-      }
-      final itemId = _catalogInt(rule['item_id']);
-      if (itemId == null) continue;
-      selected = await _firstAccessory(
-        database: database,
+    final candidates = await _resolveCandidates(
+      CatalogCandidateQuery(
+        category: 'accessory',
+        selectorType: selectorType,
+        roleKeys: ruleKeys,
         seriesId: seriesId,
         materialType: materialType,
-        applyMaterialFilter: !isShutterScrew,
-        predicate: (row) => _catalogInt(row['id']) == itemId,
-      );
-      if (selected != null) break;
+        drawingMode: _drawingModeForItem(window, item),
+        requireDialog: true,
+        requireQuantity: true,
+        hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+        hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+      ),
+    );
+    if (candidates.isEmpty) {
+      _clearComponentSelection(window, item);
+      return;
     }
-
-    if (selected == null) return;
+    if (_candidateContainsCurrent(
+      candidates,
+      _currentComponentSelection(window, item),
+    )) {
+      return;
+    }
+    final selected = Map<String, dynamic>.from(candidates.first);
     selected['calculated_price'] = await _accessoryPrice(database, selected);
     final key = item.overrideKey ?? item.originalName;
     window.componentOverrides[key] = selected;
-    if (key != item.originalName)
+    if (key != item.originalName) {
       window.componentOverrides[item.originalName] = selected;
+    }
   }
 
   Future<void> _resolveJoint(
@@ -163,114 +289,64 @@ class BomEngineV2 {
       return;
     }
 
-    Map<String, dynamic>? selected;
-    final rules = await _db.getCatalogItemRules(
-      itemTable: 'Joints',
-      seriesId: seriesId,
-      roleKeys: roleKeys,
-    );
-    for (final rule in rules) {
-      if (rule['show_in_quantity'] == 0 || rule['show_in_dialog'] == 0) {
-        continue;
-      }
-      final itemId = _catalogInt(rule['item_id']);
-      if (itemId == null) continue;
-      selected = await _firstJoint(
-        database: database,
+    final candidates = await _resolveCandidates(
+      CatalogCandidateQuery(
+        category: 'joint',
+        selectorType: selectorType,
+        roleKeys: roleKeys,
         seriesId: seriesId,
-        predicate: (row) => _catalogInt(row['id']) == itemId,
-      );
-      if (selected != null) break;
+        materialType: _materialTypeForItem(window, item),
+        drawingMode: _drawingModeForItem(window, item),
+        requireDialog: true,
+        requireQuantity: true,
+        hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
+        hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+      ),
+    );
+    if (candidates.isEmpty) {
+      _clearComponentSelection(window, item);
+      return;
     }
-
-    if (selected == null) return;
+    if (_candidateContainsCurrent(
+      candidates,
+      _currentComponentSelection(window, item),
+    )) {
+      return;
+    }
+    final selected = Map<String, dynamic>.from(candidates.first);
     selected['calculated_price'] = _safeDouble(
       selected['price_per_meter'] ?? selected['price_dzd'] ?? selected['price'],
     );
     final key = item.overrideKey ?? item.originalName;
     window.componentOverrides[key] = selected;
-    if (key != item.originalName)
+    if (key != item.originalName) {
       window.componentOverrides[item.originalName] = selected;
+    }
   }
 
-  Future<Map<String, dynamic>?> _firstAccessory({
-    required Database database,
-    required int? seriesId,
-    required String materialType,
-    required bool applyMaterialFilter,
-    required bool Function(Map<String, dynamic> row) predicate,
-  }) async {
-    final where = <String>['is_active = 1 OR is_active IS NULL'];
-    final args = <Object?>[];
-    if (seriesId != null) {
-      where.add(
-        "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')))",
-      );
-      args.add(seriesId);
-      args.add('%,$seriesId,%');
-    }
-    if (applyMaterialFilter) {
-      if (materialType == 'pvc') {
-        where.add("TRIM(LOWER(material_type)) IN ('pvc', 'both')");
-      } else {
-        where.add(
-          "(TRIM(LOWER(material_type)) IN ('aluminium', 'aluminum', 'both') OR material_type IS NULL OR TRIM(material_type) = '')",
-        );
-      }
-    }
-
-    final rows = (await database.query(
-      'Accessories',
-      where: where.map((part) => '($part)').join(' AND '),
-      whereArgs: args,
-      orderBy: 'id ASC',
-    )).map((row) => Map<String, dynamic>.from(row)).where(predicate).toList();
-    if (rows.isEmpty) return null;
-    rows.sort((a, b) {
-      final scoped = _seriesPriority(
-        a,
-        seriesId,
-      ).compareTo(_seriesPriority(b, seriesId));
-      if (scoped != 0) return scoped;
-      return (_catalogInt(a['id']) ?? 0).compareTo(_catalogInt(b['id']) ?? 0);
-    });
-    return Map<String, dynamic>.from(rows.first);
-  }
-
-  Future<Map<String, dynamic>?> _firstJoint({
-    required Database database,
-    required int? seriesId,
-    required bool Function(Map<String, dynamic> row) predicate,
-  }) async {
-    final where = <String>['is_active = 1 OR is_active IS NULL'];
-    final args = <Object?>[];
-    if (seriesId != null) {
-      where.add(
-        "((series_id = ?) OR (series_ids IS NOT NULL AND TRIM(series_ids) != '' AND ',' || REPLACE(series_ids, ' ', '') || ',' LIKE ?) OR ((series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')))",
-      );
-      args.add(seriesId);
-      args.add('%,$seriesId,%');
-    } else {
-      where.add(
-        "(series_id IS NULL OR series_id = 0) AND (series_ids IS NULL OR TRIM(series_ids) = '')",
-      );
-    }
-    final rows = (await database.query(
-      'Joints',
-      where: where.map((part) => '($part)').join(' AND '),
-      whereArgs: args,
-      orderBy: 'id ASC',
-    )).map((row) => Map<String, dynamic>.from(row)).where(predicate).toList();
-    if (rows.isEmpty) return null;
-    rows.sort((a, b) {
-      final scoped = _seriesPriority(
-        a,
-        seriesId,
-      ).compareTo(_seriesPriority(b, seriesId));
-      if (scoped != 0) return scoped;
-      return (_catalogInt(a['id']) ?? 0).compareTo(_catalogInt(b['id']) ?? 0);
-    });
-    return Map<String, dynamic>.from(rows.first);
+  Future<List<Map<String, dynamic>>> _resolveCandidates(
+    CatalogCandidateQuery query,
+  ) {
+    final key = [
+      query.category,
+      query.selectorType.toLowerCase().trim(),
+      query.roleKeys
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .join(','),
+      query.seriesId ?? '',
+      (query.materialType ?? '').toLowerCase().trim(),
+      query.hasShutter ? '1' : '0',
+      query.drawingMode?.name ?? '',
+      query.requireDialog ? '1' : '0',
+      query.requireQuantity ? '1' : '0',
+      query.hasSimpleGlassForReducer == true ? '1' : '0',
+      query.hasDoubleGlassForRules == true ? '1' : '0',
+    ].join('|');
+    return _candidatesCache.putIfAbsent(
+      key,
+      () => CatalogCandidateResolver(database: _db).resolve(query),
+    );
   }
 
   Future<double> _accessoryPrice(
@@ -342,30 +418,95 @@ class BomEngineV2 {
     return null;
   }
 
-  int _seriesPriority(Map<String, dynamic> row, int? seriesId) {
-    if (seriesId == null) return 1;
-    if (_catalogInt(row['series_id']) == seriesId) return 0;
-    final ids = (row['series_ids'] ?? '').toString().replaceAll(' ', '');
-    return ids.split(',').contains(seriesId.toString()) ? 0 : 1;
+  bool _hasDoubleSash(WindowModel window) =>
+      window.zones.any((zone) => zone.content == ZoneContent.doubleSash);
+
+  bool _requiresDoubleSash(Iterable<String> roleKeys) {
+    return roleKeys.any(
+      (role) =>
+          role == 'batmo' ||
+          role == 'bouchon_batmo' ||
+          role == 'batmo_screw' ||
+          role == 'bouchon_batmo_screw',
+    );
   }
 
-  bool _isShutterScrewSelectorType(String selectorType) {
-    final lower = selectorType.toLowerCase();
-    return lower == 'is_kit_screw' ||
-        lower == 'kit_screw' ||
-        lower == 'is_caisson_screw' ||
-        lower == 'box_screw' ||
-        lower == 'is_moteur_screw' ||
-        lower == 'motor_screw' ||
-        lower == 'is_manivelle_screw';
-        lower == 'manivelle_screw';
+  Map<String, dynamic>? _currentProfileSelection(
+    WindowModel window,
+    BomItem item,
+    List<String> roleKeys,
+    String selectorType,
+  ) {
+    final lowerType = selectorType.toLowerCase().trim();
+    final mode = _drawingModeForItem(window, item);
+    if (roleKeys.contains('frame') || lowerType == 'frame') {
+      if (mode == AccessoryDrawingMode.sliding) {
+        return _asMap(window.slidingFrameOverride);
+      }
+      if (mode == AccessoryDrawingMode.opening) {
+        return _asMap(window.frameOverride);
+      }
+      return _asMap(window.frameOverride) ??
+          _asMap(window.slidingFrameOverride);
+    }
+    if (roleKeys.contains('sash') || lowerType == 'sash') {
+      if (mode == AccessoryDrawingMode.sliding) {
+        return _asMap(window.slidingSashOverride);
+      }
+      if (mode == AccessoryDrawingMode.opening) {
+        return _asMap(window.sashOverride);
+      }
+      return _asMap(window.sashOverride) ?? _asMap(window.slidingSashOverride);
+    }
+    if (roleKeys.contains('side_cover') || lowerType == 'side_cover') {
+      return _asMap(window.sideCoverOverride);
+    }
+    return _currentComponentSelection(window, item);
   }
 
-  bool _flag(Object? value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    final text = value?.toString().trim().toLowerCase();
-    return text == '1' || text == 'true' || text == 'yes';
+  Map<String, dynamic>? _currentComponentSelection(
+    WindowModel window,
+    BomItem item,
+  ) {
+    final overrideKey = item.overrideKey ?? item.originalName;
+    return _asMap(window.componentOverrides[overrideKey]) ??
+        _asMap(window.componentOverrides[item.originalName]);
+  }
+
+  Map<String, dynamic>? _asMap(Object? value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  bool _candidateContainsCurrent(
+    List<Map<String, dynamic>> candidates,
+    Map<String, dynamic>? current,
+  ) {
+    final currentId = _catalogInt(current?['id']);
+    if (currentId == null) return false;
+    return candidates.any((row) => _catalogInt(row['id']) == currentId);
+  }
+
+  void _clearInvalidProfileSelection(
+    WindowModel window,
+    BomItem item,
+    List<String> roleKeys,
+  ) {
+    if (roleKeys.contains('side_cover')) {
+      window.sideCoverOverride = null;
+      window.selectedSideCover = null;
+    }
+    if (roleKeys.contains('reducer')) {
+      window.clearReducerOverride();
+    }
+    _clearComponentSelection(window, item);
+  }
+
+  void _clearComponentSelection(WindowModel window, BomItem item) {
+    final overrideKey = item.overrideKey ?? item.originalName;
+    window.componentOverrides.remove(overrideKey);
+    window.componentOverrides.remove(item.originalName);
   }
 
   int? _catalogInt(Object? value) {

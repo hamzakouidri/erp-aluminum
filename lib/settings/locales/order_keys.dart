@@ -534,6 +534,11 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Enregistrer le paiement',
     AppLanguage.english: 'Save payment',
   },
+  'فشل حفظ الدفعة': {
+    AppLanguage.arabic: 'فشل حفظ الدفعة',
+    AppLanguage.french: 'Échec de l’enregistrement du paiement',
+    AppLanguage.english: 'Failed to save payment',
+  },
   'CLIENT': {
     AppLanguage.arabic: 'العميل',
     AppLanguage.french: 'CLIENT',

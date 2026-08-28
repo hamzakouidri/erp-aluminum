@@ -27,6 +27,7 @@ class SupabaseWorkshopSyncService {
   Timer? _pollTimer;
   Timer? _uploadTimer;
   RealtimeChannel? _permissionsChannel;
+  Future<void>? _startTask;
   Future<void>? _activeUpload;
   Future<void>? _activeDownload;
   bool _uploadQueued = false;
@@ -51,7 +52,22 @@ class SupabaseWorkshopSyncService {
 
   void start({void Function()? onDataChanged}) {
     _onDataChanged = onDataChanged ?? _onDataChanged;
-    unawaited(_startAsync());
+    _startTask ??= _startAsync().whenComplete(() {
+      _startTask = null;
+    });
+  }
+
+  Future<bool> ensureStarted({
+    void Function()? onDataChanged,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    start(onDataChanged: onDataChanged);
+    try {
+      await _startTask?.timeout(timeout);
+    } catch (error) {
+      print('Supabase workshop sync start timeout/error: $error');
+    }
+    return isReady;
   }
 
   void stop() {
@@ -114,6 +130,46 @@ class SupabaseWorkshopSyncService {
         '${_countRows(data, 'Commandes_details')} تفاصيل.';
   }
 
+  Future<void> uploadLocalWorkshopDataMerge() async {
+    await _ensureReady();
+    final workshopUuid = _workshopUuid!;
+    final user = _client.auth.currentUser!;
+    final pendingBeforeUpload = await _db.exportPendingCloudChanges();
+    final data = await _db.exportWorkshopData();
+    final rows = _flattenDataForUpload(
+      data,
+      workshopUuid: workshopUuid,
+      userId: user.id,
+      fullUpload: true,
+    );
+
+    if (rows.isEmpty) return;
+
+    final remoteKeys = await _fetchRemoteLiveRowKeys(workshopUuid);
+    final missingRows = rows.where((row) {
+      final table = row['table_name']?.toString() ?? '';
+      final rowId = row['row_id']?.toString() ?? '';
+      return table.isNotEmpty &&
+          rowId.isNotEmpty &&
+          !remoteKeys.contains(_rowKey(table, rowId));
+    }).toList(growable: false);
+
+    if (missingRows.isEmpty) {
+      lastUploadSummary =
+          'لا توجد سجلات محلية ناقصة في Supabase؛ لم يتم رفع أي نسخة قديمة فوق السيرفر.';
+      return;
+    }
+
+    await _upsertRows(missingRows);
+    await _acknowledgeSyncedChanges(pendingBeforeUpload);
+
+    lastUploadSummary =
+        'تم رفع ${missingRows.length} سجل محلي ناقص إلى Supabase بدون تعديل السجلات الموجودة: '
+        '${_countRows(data, 'Client')} زبون، '
+        '${_countRows(data, 'Commandes')} طلبية، '
+        '${_countRows(data, 'Commandes_details')} تفاصيل.';
+  }
+
   Future<void> uploadPendingChanges() {
     final activeUpload = _activeUpload;
     if (activeUpload != null) {
@@ -145,7 +201,12 @@ class SupabaseWorkshopSyncService {
       _subscribeToPermissionChanges();
       await refreshCurrentPermissions();
       final needsFullBootstrap = await _needsFullBootstrapDownload();
-      await downloadWorkshopData(full: needsFullBootstrap);
+      final hasLocalBusinessData = await _hasLocalBusinessData();
+      if (needsFullBootstrap && !hasLocalBusinessData) {
+        await downloadWorkshopData(full: true);
+      } else {
+        await downloadWorkshopData();
+      }
       if (needsFullBootstrap) {
         await _markFullBootstrapComplete();
       }
@@ -434,7 +495,8 @@ class SupabaseWorkshopSyncService {
     }
     _deviceId = deviceId;
 
-    final code = (prefs.getString('workshop_code') ?? user.id).trim();
+    final storedCode = (prefs.getString('workshop_code') ?? '').trim();
+    final code = storedCode.isNotEmpty ? storedCode : user.id;
     if (_workshopUuid != null && _workshopCode == code) return;
 
     final cachedUuid = prefs.getString('supabase_workshop_uuid_$code');
@@ -534,6 +596,35 @@ class SupabaseWorkshopSyncService {
           );
     }
   }
+
+  Future<Set<String>> _fetchRemoteLiveRowKeys(String workshopUuid) async {
+    final keys = <String>{};
+    var start = 0;
+    while (true) {
+      final rows = await _client
+          .from('workshop_sync_rows')
+          .select('table_name,row_id,deleted_at')
+          .eq('workshop_id', workshopUuid)
+          .order('table_name', ascending: true)
+          .order('row_id', ascending: true)
+          .range(start, start + _downloadPageSize - 1);
+      if (rows.isEmpty) break;
+      for (final rawRow in rows) {
+        final row = Map<String, dynamic>.from(rawRow);
+        final table = row['table_name']?.toString() ?? '';
+        final rowId = row['row_id']?.toString() ?? '';
+        final deletedAt = row['deleted_at']?.toString() ?? '';
+        if (table.isNotEmpty && rowId.isNotEmpty && deletedAt.isEmpty) {
+          keys.add(_rowKey(table, rowId));
+        }
+      }
+      if (rows.length < _downloadPageSize) break;
+      start += _downloadPageSize;
+    }
+    return keys;
+  }
+
+  String _rowKey(String table, String rowId) => '$table\x1f$rowId';
 
   List<Map<String, dynamic>> _flattenDataForUpload(
     Map<String, dynamic> data, {
@@ -659,6 +750,18 @@ class SupabaseWorkshopSyncService {
 
   bool _isWorkshopTable(String table) {
     return SqlDatabase.workshopTables.contains(table);
+  }
+
+  Future<bool> _hasLocalBusinessData() async {
+    final myDb = await _db.db;
+    if (myDb == null) return false;
+    try {
+      final clients = await myDb.query('Client', limit: 1);
+      final orders = await myDb.query('Commandes', limit: 1);
+      return clients.isNotEmpty || orders.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   int _countRows(Map<String, dynamic> data, String table) {

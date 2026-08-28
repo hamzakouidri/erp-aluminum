@@ -53,6 +53,7 @@ class _CloudChunkWrite {
 class CloudSyncService {
   // Singleton pattern so we only have one listener and one deviceId
   static final CloudSyncService _instance = CloudSyncService._internal();
+  static const bool supabaseWorkshopDataOnly = true;
   static const int _maxChunkCharacters = 150000;
   static const int _maxUploadBatchWrites = 25;
   static const int _maxUploadBatchBytes = 3000000;
@@ -430,15 +431,15 @@ class CloudSyncService {
     return role == 'admin';
   }
 
-  void _markCatalogDirty() {
+  Future<void> _markCatalogDirty() async {
     _hasPendingLocalCatalogChanges = true;
     _catalogChangeGeneration++;
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setBool('has_pending_catalog_changes', true))
-        .catchError((error) {
-          print('Failed to persist pending catalog change: $error');
-          return false;
-        });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('has_pending_catalog_changes', true);
+    } catch (error) {
+      print('Failed to persist pending catalog change: $error');
+    }
   }
 
   Future<bool> _hasUnpublishedCatalogChanges() async {
@@ -1142,6 +1143,51 @@ class CloudSyncService {
           onError: _scheduleRealtimeListenerRetry,
           onDone: _scheduleRealtimeListenerRetry,
         );
+
+    if (supabaseWorkshopDataOnly) {
+      _listener?.cancel();
+      _catalogListener?.cancel();
+      _deltaListener?.cancel();
+      _liveEventListener?.cancel();
+      _statusListener?.cancel();
+      _orderStatusListener?.cancel();
+      _measurementsListener?.cancel();
+      _deletionsListener?.cancel();
+      _orderDeletionsListener?.cancel();
+      _listener = null;
+      _catalogListener = null;
+      _deltaListener = null;
+      _liveEventListener = null;
+      _statusListener = null;
+      _orderStatusListener = null;
+      _measurementsListener = null;
+      _deletionsListener = null;
+      _orderDeletionsListener = null;
+      unawaited(
+        supabaseWorkshopSync
+            .ensureStarted(onDataChanged: onUpdateCallback)
+            .then((ready) {
+              if (!ready) {
+                _sendSyncFeedback(
+                  CloudSyncFeedbackType.downloadFailed,
+                  'تعذر تشغيل مزامنة Supabase.',
+                  details:
+                      'جلسة Supabase أو معرّف الورشة غير جاهز. سجّل الدخول ثم أعد المحاولة.',
+                );
+                return;
+              }
+              if (_lastAnnouncedListenerWorkshopId != 'supabase:$_workshopId') {
+                _lastAnnouncedListenerWorkshopId = 'supabase:$_workshopId';
+                _sendSyncFeedback(
+                  CloudSyncFeedbackType.syncReady,
+                  'تم تفعيل مزامنة الورشة عبر Supabase.',
+                  details: 'مصدر بيانات الورشة أصبح Supabase فقط.',
+                );
+              }
+            }),
+      );
+      return;
+    }
 
     if (_workshopId == null || _workshopId!.isEmpty) {
       _sendSyncFeedback(
@@ -2445,6 +2491,15 @@ class CloudSyncService {
       return;
     }
 
+    if (supabaseWorkshopDataOnly) {
+      _sendSyncFeedback(
+        CloudSyncFeedbackType.uploadSkipped,
+        'لم يتم رفع التغيير لأن جلسة Supabase غير مفتوحة.',
+        details: 'تم إيقاف مسار Firebase لبيانات الورشة نهائياً.',
+      );
+      return;
+    }
+
     _queueImmediateLiveEventUpload();
 
     try {
@@ -2503,6 +2558,15 @@ class CloudSyncService {
       return;
     }
 
+    if (supabaseWorkshopDataOnly) {
+      _sendSyncFeedback(
+        CloudSyncFeedbackType.uploadSkipped,
+        'لم يتم رفع التغيير لأن جلسة Supabase غير مفتوحة.',
+        details: 'تم إيقاف مسار Firebase لبيانات الورشة نهائياً.',
+      );
+      return;
+    }
+
     _queueImmediateLiveEventUpload();
 
     try {
@@ -2532,7 +2596,7 @@ class CloudSyncService {
 
   /// Saves every local catalogue edit to the workshop backup. Publishing to
   /// the central catalogue is an additional, admin-only operation.
-  void notifyCatalogChange() async {
+  Future<void> notifyCatalogChange({bool uploadImmediately = false}) async {
     // Catalogue tables are database tables too, so every editor's changes
     // belong in their workshop backup, regardless of role.
     notifyChange();
@@ -2553,7 +2617,18 @@ class CloudSyncService {
     }
 
     // Mark the local edit before the listener can import an older catalogue.
-    _markCatalogDirty();
+    await _markCatalogDirty();
+
+    if (uploadImmediately) {
+      _catalogDebounceTimer?.cancel();
+      unawaited(
+        backupGlobalCatalog().catchError((e) {
+          print('Immediate catalog sync failed: $e');
+          _scheduleCatalogUploadRetry();
+        }),
+      );
+      return;
+    }
 
     _catalogDebounceTimer?.cancel();
     _catalogDebounceTimer = Timer(const Duration(seconds: 2), () async {
@@ -2620,6 +2695,7 @@ class CloudSyncService {
       }
       return;
     }
+    if (supabaseWorkshopDataOnly) return;
     if (_isSilentBackupRunning) {
       // Preserve only one follow-up upload. It contains the newest local
       // state and prevents older, overlapping snapshots from winning.
@@ -2665,6 +2741,7 @@ class CloudSyncService {
       _clearFirebaseTransactionalPendingFlag();
       return;
     }
+    if (supabaseWorkshopDataOnly) return;
     if (_isRestoring || _isLocalWriteInProgress) {
       _liveEventUploadQueued = true;
       return;
@@ -2979,6 +3056,21 @@ class CloudSyncService {
     bool forceFullSnapshot = false,
     bool verifyOnServer = false,
   }) {
+    if (supabaseWorkshopDataOnly) {
+      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+      if (supabaseWorkshopSync.isSignedIn) {
+        return supabaseWorkshopSync.uploadFullWorkshopData().then((_) {
+          lastBackupUploadSummary = supabaseWorkshopSync.lastUploadSummary;
+        });
+      }
+      return Future.error(
+        Exception(
+          'مزامنة بيانات الورشة أصبحت عبر Supabase فقط. '
+          'سجّل الدخول إلى Supabase ثم أعد المحاولة.',
+        ),
+      );
+    }
+
     final activeBackup = _activeBackup;
     if (activeBackup != null) {
       // A recovery preflight needs a confirmed full snapshot.  Waiting for an
@@ -3614,27 +3706,80 @@ class CloudSyncService {
       Object? restoreError;
       StackTrace? restoreStackTrace;
       bool isNoBackup = false;
-      // 1. استرجاع النسخة الاحتياطية الخاصة بالورشة (تمسح الجداول وتعيدها)
-      try {
-        await restoreFromCloud(
-          keepPendingChanges: hasPendingLocalChanges,
-          publishPendingChangesFirst: false,
+
+      // 1. Supabase هو المصدر الأساسي الآن لبيانات الورشة.
+      // في تثبيت جديد لا توجد بيانات محلية، لذلك يجب تنزيل النسخة كاملة من
+      // السيرفر مباشرة بدل المرور أولاً على نسخة Firebase القديمة.
+      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+      if (supabaseWorkshopSync.isSignedIn) {
+        try {
+          if (initialRestore) {
+            await supabaseWorkshopSync.downloadWorkshopData(full: true);
+          } else {
+            await supabaseWorkshopSync.downloadWorkshopData();
+            await supabaseWorkshopSync.uploadPendingChanges();
+          }
+          try {
+            await supabaseWorkshopSync.refreshCurrentPermissions();
+          } catch (permissionError) {
+            print(
+              'Supabase permission refresh after restore failed: '
+              '$permissionError',
+            );
+          }
+          restoreSuccess = true;
+          lastRestoreSummary =
+              supabaseWorkshopSync.lastDownloadSummary.isNotEmpty
+              ? supabaseWorkshopSync.lastDownloadSummary
+              : 'تم تنزيل بيانات الورشة من Supabase.';
+          if (hasPendingLocalChanges) {
+            _localSyncQueuedAfterRestore = true;
+          }
+        } catch (e, stackTrace) {
+          print('Supabase workshop restore failed: $e');
+          restoreError = e;
+          restoreStackTrace = stackTrace;
+          if (initialRestore) {
+            Error.throwWithStackTrace(e, stackTrace);
+          }
+        }
+      } else if (initialRestore) {
+        throw Exception(
+          'لم يتم فتح جلسة Supabase لهذا الحساب. '
+          'سجّل الدخول بالبريد وكلمة المرور حتى يتم تنزيل بيانات الورشة من Supabase.',
         );
-        restoreSuccess = true;
-        if (hasPendingLocalChanges) {
-          _localSyncQueuedAfterRestore = true;
-        }
-      } catch (e, stackTrace) {
-        print('New chunk sync failed: $e');
-        if (e is NoWorkshopBackupException ||
-            e.toString().contains('لم يتم العثور على نسخة احتياطية سابقة')) {
-          isNoBackup = true;
-        }
-        restoreError = e;
-        restoreStackTrace = stackTrace;
+      } else if (supabaseWorkshopDataOnly) {
+        throw Exception(
+          'تم إيقاف Firebase لبيانات الورشة. '
+          'لا يمكن التحديث إلا بعد فتح جلسة Supabase.',
+        );
       }
 
-      // 2. جلب البيانات من المجلد العام (Global Catalog) فقط إذا كانت قاعدة البيانات فارغة تماماً من الكتالوج
+      // 2. احتياط قديم فقط عند عدم وجود جلسة Supabase.
+      if (!restoreSuccess &&
+          !supabaseWorkshopSync.isSignedIn &&
+          !supabaseWorkshopDataOnly) {
+        try {
+          await restoreFromCloud(
+            keepPendingChanges: hasPendingLocalChanges,
+            publishPendingChangesFirst: false,
+          );
+          restoreSuccess = true;
+          if (hasPendingLocalChanges) {
+            _localSyncQueuedAfterRestore = true;
+          }
+        } catch (e, stackTrace) {
+          print('New chunk sync failed: $e');
+          if (e is NoWorkshopBackupException ||
+              e.toString().contains('لم يتم العثور على نسخة احتياطية سابقة')) {
+            isNoBackup = true;
+          }
+          restoreError = e;
+          restoreStackTrace = stackTrace;
+        }
+      }
+
+      // 3. جلب البيانات من المجلد العام (Global Catalog) فقط إذا كانت قاعدة البيانات فارغة تماماً من الكتالوج
       if (!restoreSuccess) {
         try {
           final myDb = await _db.db;
@@ -3650,8 +3795,10 @@ class CloudSyncService {
         }
       }
 
-      // 3. استرجاع البيانات القديمة (الزبائن والطلبيات) فقط كإجراء احتياطي عند عدم نجاح الاسترجاع الرئيسي
-      if (!restoreSuccess) {
+      // 4. استرجاع البيانات القديمة فقط عند عدم توفر Supabase.
+      if (!restoreSuccess &&
+          !supabaseWorkshopSync.isSignedIn &&
+          !supabaseWorkshopDataOnly) {
         final restoredFromLegacy = await _legacySync();
         if (restoredFromLegacy) {
           restoreSuccess = true;
@@ -3664,6 +3811,9 @@ class CloudSyncService {
         } else if (restoreError != null) {
           Error.throwWithStackTrace(restoreError, restoreStackTrace!);
         }
+      }
+      if (!restoreSuccess && restoreError != null) {
+        Error.throwWithStackTrace(restoreError, restoreStackTrace!);
       }
       _dbUpdateController.add('');
     } finally {
@@ -3884,6 +4034,21 @@ class CloudSyncService {
     bool keepPendingChanges = false,
     bool publishPendingChangesFirst = true,
   }) {
+    if (supabaseWorkshopDataOnly) {
+      final supabaseWorkshopSync = SupabaseWorkshopSyncService();
+      if (supabaseWorkshopSync.isSignedIn) {
+        return supabaseWorkshopSync.downloadWorkshopData(full: true).then((_) {
+          lastRestoreSummary = supabaseWorkshopSync.lastDownloadSummary;
+        });
+      }
+      return Future.error(
+        Exception(
+          'استرجاع بيانات الورشة أصبح عبر Supabase فقط. '
+          'سجّل الدخول إلى Supabase ثم أعد المحاولة.',
+        ),
+      );
+    }
+
     final activeRestore = _activeRestore;
     if (activeRestore != null) return activeRestore;
 

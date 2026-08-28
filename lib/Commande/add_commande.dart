@@ -170,6 +170,7 @@ class _CommandePageState extends State<CommandePage> {
   bool _isBulkSelectionMode = false;
   String _editOrderStatus = 'Pending';
   bool _editOrderStatusLoaded = false;
+  double _editAdvancePayment = 0.0;
 
   String _normalizedOrderStatus(String value) => value
       .trim()
@@ -178,6 +179,27 @@ class _CommandePageState extends State<CommandePage> {
       .replaceAll('إ', 'ا')
       .replaceAll('آ', 'ا')
       .replaceAll(RegExp(r'\s+'), ' ');
+
+  double _readMoney(dynamic value) {
+    if (value is num) return value.toDouble();
+    final normalized = value?.toString().trim().replaceAll(',', '.') ?? '';
+    return double.tryParse(normalized) ?? 0.0;
+  }
+
+  bool _isPendingOrderStatus(String value) {
+    final status = _normalizedOrderStatus(value);
+    return status == 'pending' ||
+        status == 'draft' ||
+        status == 'new' ||
+        status == 'en attente' ||
+        status == 'en_attente' ||
+        status == 'في الانتظار';
+  }
+
+  bool get _showEditPaymentSummary =>
+      widget.editCommandeId != null &&
+      _editOrderStatusLoaded &&
+      !_isPendingOrderStatus(_editOrderStatus);
 
   bool get _bulkChangesAllowed {
     if (widget.editCommandeId == null) return true;
@@ -596,6 +618,7 @@ class _CommandePageState extends State<CommandePage> {
             ? cmd['status'].toString()
             : 'Pending';
         _editOrderStatusLoaded = true;
+        _editAdvancePayment = _readMoney(cmd['advance_payment']);
         selectedClient = {
           'id': cmd['client_id'],
           'firstname': firstName,
@@ -714,6 +737,10 @@ class _CommandePageState extends State<CommandePage> {
         if (desc.isNotEmpty) {
           model.description = desc;
         }
+        model.persistedDrawingImagePath =
+            row['drawing_image_path']?.toString();
+        model.persistedDrawingImageBase64 =
+            row['drawing_image_base64']?.toString();
         final detailId = readInt(row['id']);
         if (!mounted) return;
         setState(() {
@@ -1223,6 +1250,19 @@ class _CommandePageState extends State<CommandePage> {
         details: preparedDetails,
       );
 
+      if (widget.editCommandeId != null && mounted) {
+        final fresh = await widget.db.readCommandeWithClientById(
+          widget.editCommandeId!,
+        );
+        if (fresh != null && mounted) {
+          setState(() {
+            _editOrderStatus = fresh['status']?.toString() ?? _editOrderStatus;
+            _editOrderStatusLoaded = true;
+            _editAdvancePayment = _readMoney(fresh['advance_payment']);
+          });
+        }
+      }
+
       if (!mounted) return;
       if (dialogShown) {
         Navigator.of(
@@ -1303,6 +1343,7 @@ class _CommandePageState extends State<CommandePage> {
         setState(() {
           _editOrderStatus = fresh['status']?.toString() ?? _editOrderStatus;
           _editOrderStatusLoaded = true;
+          _editAdvancePayment = _readMoney(fresh['advance_payment']);
         });
       }
     }
@@ -2228,6 +2269,39 @@ class _CommandePageState extends State<CommandePage> {
     );
   }
 
+  Widget _buildPaymentSummaryRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
   // ==============================================================================
 
   Widget _buildBulkActionsPanel({required bool isDark}) {
@@ -2320,6 +2394,12 @@ class _CommandePageState extends State<CommandePage> {
     final double taxVal = double.tryParse(taxController.text) ?? 0.0;
     final double calculatedTax = (finalTotal * taxVal) / 100;
     final double totalWithRemiseTax = finalTotal - remise + calculatedTax;
+    final bool showPaymentSummary = _showEditPaymentSummary;
+    final double remainingPayment = showPaymentSummary
+        ? (totalWithRemiseTax - _editAdvancePayment)
+              .clamp(0.0, double.infinity)
+              .toDouble()
+        : 0.0;
     final int totalQuantity = addedProducts
         .where((p) => !p.isReplaced)
         .fold(0, (sum, p) => sum + p.quantity);
@@ -2946,6 +3026,57 @@ class _CommandePageState extends State<CommandePage> {
                       ),
                     ],
                   ),
+                  if (showPaymentSummary) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.teal.shade900.withValues(alpha: 0.18)
+                            : Colors.teal.shade50,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.teal.shade700
+                              : Colors.teal.shade100,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          _buildPaymentSummaryRow(
+                            icon: Icons.payments_outlined,
+                            label: Localization.translate(
+                              'Amount paid',
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                              ).language,
+                            ),
+                            value:
+                                '${_editAdvancePayment.toStringAsFixed(2)} DZD',
+                            color: Colors.green,
+                            isDark: isDark,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildPaymentSummaryRow(
+                            icon: Icons.account_balance_wallet_outlined,
+                            label: Localization.translate(
+                              'Remaining:',
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                              ).language,
+                            ),
+                            value: '${remainingPayment.toStringAsFixed(2)} DZD',
+                            color: Colors.red,
+                            isDark: isDark,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
