@@ -92,14 +92,35 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
-    if (!settings.isManager && !settings.canViewMyAccreditations()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-      });
-    }
+    final bool isAllowed =
+        settings.isManager || settings.canViewMyAccreditations();
     final AppLanguage lang = settings.language;
+
+    if (!isAllowed) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(Localization.translate("المنتجات", lang)),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).appBarTheme.backgroundColor
+              : Colors.blue,
+          centerTitle: true,
+          elevation: 0,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Text(
+              Localization.translate(
+                'عذراً، ليس لديك صلاحية للوصول إلى هذه الشاشة.',
+                lang,
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 16),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -172,12 +173,20 @@ class AppSettingsProvider extends ChangeNotifier {
   }
 
   Future<void> reloadPermissions() async {
+    final oldWorkshopCode = _workshopCode;
+    final oldUserDisplayName = _userDisplayName;
+    final oldRole = _userRole;
+    final oldPermissions = Map<String, dynamic>.from(_workerPermissions);
+
     final prefs = await SharedPreferences.getInstance();
     _workshopCode = prefs.getString('workshop_code') ?? '';
     _userDisplayName = prefs.getString('user_display_name') ?? 'مدير الورشة';
-    _workerPermissions = _decodeCachedPermissions(
+    final cached = _decodeCachedPermissions(
       prefs.getString('permissions_json'),
     );
+    if (cached.isNotEmpty || _workerPermissions.isEmpty) {
+      _workerPermissions = cached;
+    }
 
     User? user;
     try {
@@ -205,7 +214,16 @@ class AppSettingsProvider extends ChangeNotifier {
       } catch (_) {}
       _startSupabasePermissionListener();
     }
-    notifyListeners();
+
+    final hasChanged =
+        _workshopCode != oldWorkshopCode ||
+        _userDisplayName != oldUserDisplayName ||
+        _userRole != oldRole ||
+        !mapEquals(_workerPermissions, oldPermissions);
+
+    if (hasChanged) {
+      notifyListeners();
+    }
   }
 
   Map<String, dynamic> _decodeCachedPermissions(String? rawJson) {

@@ -117,18 +117,34 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
-    if (!settings.isManager && !settings.canAccessSettings()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-      });
-    }
+    final isAllowed = settings.isManager || settings.canAccessSettings();
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final showLegacyFirebaseCloudSync = bool.fromEnvironment(
       'SHOW_LEGACY_FIREBASE_SYNC',
     );
+
+    if (!isAllowed) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(Localization.translate('settings', lang)),
+          centerTitle: true,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Text(
+              Localization.translate(
+                'عذراً، ليس لديك صلاحية للوصول إلى هذه الشاشة.',
+                lang,
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 16),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

@@ -2648,7 +2648,8 @@ class WindowModel extends ChangeNotifier {
   int? _nearestIntercallThickness(double target) {
     if (target <= 0) return null;
     final choices = _availableIntercallThicknesses();
-    int best = target.round();
+    if (choices.isEmpty) return null;
+    int best = choices.first;
     double bestDiff = double.infinity;
     for (final thickness in choices) {
       final diff = (thickness.toDouble() - target).abs();
@@ -2657,13 +2658,7 @@ class WindowModel extends ChangeNotifier {
         bestDiff = diff;
       }
     }
-    final rounded = target.round();
-    final roundedDiff = (rounded.toDouble() - target).abs();
-    if (rounded > 0 && roundedDiff < bestDiff) {
-      best = rounded;
-      bestDiff = roundedDiff;
-    }
-    return bestDiff <= 1.0 ? best : null;
+    return bestDiff <= 2.5 ? best : null;
   }
 
   double width;
@@ -8322,6 +8317,83 @@ class WindowModel extends ChangeNotifier {
       } catch (_) {}
     }
     return null;
+  }
+
+  double? parcloseCapacityForStructure(GlassStructure structure) {
+    double? capacityOf(dynamic parclose) {
+      if (parclose is! Map) return null;
+      final rawValue = parclose['max_glass_thickness'];
+      final maximum = rawValue is num
+          ? rawValue.toDouble()
+          : double.tryParse(rawValue?.toString() ?? '');
+      return maximum != null && maximum > 0 ? maximum : null;
+    }
+
+    final series = activeFrameSeries ?? activeSeries;
+
+    if (structure == GlassStructure.simple) {
+      final specificSimple =
+          componentOverrides['باكيت زجاج مفرد (Parclose Simple)'];
+      final cap = capacityOf(specificSimple);
+      if (cap != null && cap <= 14.0) return cap;
+
+      final generic = componentOverrides['باكيت الزجاج (Parclose)'];
+      final genericCap = capacityOf(generic);
+      if (genericCap != null && genericCap <= 14.0) return genericCap;
+
+      if (series != null) {
+        for (final s in series.sections) {
+          final isParclose = s.code.trim() == '514' ||
+              s.type.toLowerCase().contains('parclose') ||
+              s.name.toLowerCase().contains('parclose') ||
+              s.type.contains('باكيت') ||
+              s.name.contains('باكيت');
+          if (isParclose &&
+              s.maxGlassThickness > 0 &&
+              s.maxGlassThickness <= 14.0) {
+            return s.maxGlassThickness;
+          }
+        }
+      }
+      return 12.0;
+    } else if (structure == GlassStructure.double) {
+      final specificDouble =
+          componentOverrides['باكيت زجاج مزدوج (Parclose Double)'];
+      final cap = capacityOf(specificDouble);
+      if (cap != null && cap > 16.0) return cap;
+
+      final generic = componentOverrides['باكيت الزجاج (Parclose)'];
+      final genericCap = capacityOf(generic);
+      if (genericCap != null && genericCap > 16.0) return genericCap;
+
+      if (series != null) {
+        if (generic is Map) {
+          final rawLinkedId = generic['linked_parclose_double_id'];
+          final linkedId = rawLinkedId is num
+              ? rawLinkedId.toInt()
+              : int.tryParse(rawLinkedId?.toString() ?? '');
+          if (linkedId != null && linkedId > 0) {
+            for (final s in series.sections) {
+              if (s.id == linkedId && s.maxGlassThickness > 16.0) {
+                return s.maxGlassThickness;
+              }
+            }
+          }
+        }
+
+        for (final s in series.sections) {
+          final isParclose = s.type.toLowerCase().contains('parclose') ||
+              s.name.toLowerCase().contains('parclose') ||
+              s.type.contains('باكيت') ||
+              s.name.contains('باكيت');
+          if (isParclose && s.maxGlassThickness > 16.0) {
+            return s.maxGlassThickness;
+          }
+        }
+      }
+      return 24.0;
+    }
+    return selectedParcloseMaxGlassThickness;
   }
 
   /// The selected parclose defines the usable thickness of the glazing pack.
@@ -14723,6 +14795,62 @@ class WindowModel extends ChangeNotifier {
 
     await assignBrosseDefault('جوان بروس للظلفة (Joint Brosse Sash)');
     await assignBrosseDefault('جوان بروس للستار (Joint Brosse Shutter)');
+
+    // Dynamic Joint Bourrage matching based on closest real thickness in DB
+    try {
+      final rawBourrageRows = await d.query(
+        'Joints',
+        where: 'type LIKE ? OR name LIKE ? OR gasket_type LIKE ?',
+        whereArgs: ['%bourrage%', '%bourrage%', '%bourrage%'],
+      );
+      if (rawBourrageRows.isNotEmpty) {
+        final bourrageRows = rawBourrageRows.map((r) {
+          final m = Map<String, dynamic>.from(r);
+          m['calculated_price'] = (m['price_per_meter'] ?? 0.0).toDouble();
+          return m;
+        }).toList();
+
+        Map<String, dynamic>? findClosest(double target) {
+          if (bourrageRows.isEmpty) return null;
+          Map<String, dynamic>? best;
+          double minDiff = double.infinity;
+          for (final row in bourrageRows) {
+            double thick = _readPositiveDouble(row['thickness']);
+            if (thick <= 0) {
+              final code = (row['code'] ?? '').toString().trim();
+              if (code.contains('52034')) thick = 2.0;
+              else if (code.contains('52035')) thick = 4.0;
+              else if (code.contains('52036')) thick = 6.0;
+            }
+            if (thick <= 0) continue;
+            final diff = (thick - target).abs();
+            if (diff < minDiff) {
+              minDiff = diff;
+              best = row;
+            }
+          }
+          return best ?? bourrageRows.first;
+        }
+
+        final bestForDouble = findClosest(2.0);
+        if (bestForDouble != null &&
+            !componentOverrides.containsKey('جوان البوراج للزجاج المزدوج (Joint Bourrage Double)')) {
+          componentOverrides['جوان البوراج للزجاج المزدوج (Joint Bourrage Double)'] = bestForDouble;
+        }
+
+        final bestForSimple = findClosest(4.0);
+        if (bestForSimple != null &&
+            !componentOverrides.containsKey('جوان البوراج للزجاج المفرد (Joint Bourrage Simple)')) {
+          componentOverrides['جوان البوراج للزجاج المفرد (Joint Bourrage Simple)'] = bestForSimple;
+        }
+
+        final bestGeneral = findClosest(6.0);
+        if (bestGeneral != null &&
+            !componentOverrides.containsKey('جوان البوراج (Joint Bourrage)')) {
+          componentOverrides['جوان البوراج (Joint Bourrage)'] = bestGeneral;
+        }
+      }
+    } catch (_) {}
   }
 
   void updateSelectedZoneGlassDecor({

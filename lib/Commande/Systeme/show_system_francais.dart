@@ -4220,26 +4220,53 @@ class _WindowViewState extends State<WindowView> {
           }
 
           Widget? buildParcloseThicknessInfo() {
-            final maximum = widget.model.selectedParcloseMaxGlassThickness;
+            final maximum = widget.model.parcloseCapacityForStructure(spec.structure) ??
+                widget.model.selectedParcloseMaxGlassThickness;
             if (maximum == null || spec.structure == GlassStructure.closed) {
               return null;
             }
 
-            final total = spec.totalThickness(widget.model.allGlassCache);
-            final difference = total - maximum;
-            final isExact = difference.abs() < 0.01;
-            final isAbove = difference > 0;
-            final color = isExact
+            final glassTotal = spec.totalThickness(widget.model.allGlassCache);
+            final jointVitrage = widget.model.isPVC
+                ? 0.0
+                : widget.model.selectedVitrageJointThickness(fallback: 3.0);
+            final totalPack = glassTotal + jointVitrage;
+            final remainingGap = maximum - totalPack;
+
+            final isExact = remainingGap.abs() < 0.01;
+            final isAbove = totalPack > maximum;
+            final color = isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
                 ? Colors.green.shade700
                 : (isAbove ? Colors.red.shade700 : Colors.orange.shade800);
-            final icon = isExact
+            final icon = isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
                 ? Icons.check_circle_outline_rounded
                 : Icons.warning_amber_rounded;
-            final message = isExact
-                ? 'سُمك الزجاج مطابق لسعة البيركلوز: ${total.toStringAsFixed(0)} مم'
-                : isAbove
-                ? 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
-                : 'تنبيه: سُمك الزجاج ${total.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
+
+            String message;
+            if (widget.model.isPVC || jointVitrage <= 0) {
+              message = isExact
+                  ? 'سُمك الزجاج مطابق لسعة البيركلوز: ${glassTotal.toStringAsFixed(0)} مم'
+                  : isAbove
+                  ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم'
+                  : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من سعة البيركلوز ${maximum.toStringAsFixed(0)} مم';
+            } else {
+              final glassStr = glassTotal.toStringAsFixed(0);
+              final jointStr = jointVitrage.toStringAsFixed(0);
+              final packStr = totalPack.toStringAsFixed(0);
+              final maxStr = maximum.toStringAsFixed(0);
+              final gapStr = remainingGap.abs().toStringAsFixed(0);
+
+              if (isAbove) {
+                message =
+                    'تنبيه: سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم يتجاوز سعة البيركلوز ($maxStr مم) بـ $gapStr مم.';
+              } else if (remainingGap < 2.0) {
+                message =
+                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم (سعة البيركلوز: $maxStr مم). الفراغ المتبقي لـ Joint Bourrage ضيق جداً ($gapStr مم).';
+              } else {
+                message =
+                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | سعة البيركلوز: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
+              }
+            }
 
             return Container(
               margin: const EdgeInsets.only(top: 8),
@@ -4250,8 +4277,12 @@ class _WindowViewState extends State<WindowView> {
                 border: Border.all(color: color.withValues(alpha: 0.35)),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(icon, color: color, size: 18),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(icon, color: color, size: 18),
+                  ),
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
@@ -4260,6 +4291,7 @@ class _WindowViewState extends State<WindowView> {
                         color: color,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
+                        height: 1.35,
                       ),
                     ),
                   ),
@@ -4291,23 +4323,7 @@ class _WindowViewState extends State<WindowView> {
                   jointTwoSides: spec.jointTwoSides,
                 )
               : null;
-          // Keep every spacer from the catalogue visible. The suggested
-          // spacer is selected automatically, but a deliberate manual
-          // selection remains possible after a compatibility warning.
-          if (requiredIntercall != null &&
-              !intercallChoices.any(
-                (item) =>
-                    (item['thickness'] as num?)?.toInt() == requiredIntercall,
-              )) {
-            // A valid spacer may be absent from the catalogue list (for
-            // example 9 mm for a 19 mm parclose). Keep the compatible size
-            // visible, while the price warning still tells the user to price
-            // it in the catalogue before confirming the order.
-            intercallChoices.add({
-              'thickness': requiredIntercall,
-              'name': '$requiredIntercall مم',
-            });
-          }
+
 
           Widget buildProcessingChip(
             String label,

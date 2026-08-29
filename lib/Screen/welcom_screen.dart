@@ -381,9 +381,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Future<void> _loadStats() async {
     final loadToken = ++_statsLoadToken;
     try {
-      // The mobile dashboard must paint from the local SQLite database first.
-      // Loading tables, employees, treasury and stock before the first paint
-      // made a cold process restart look frozen even though the data was local.
       final coreData = await Future.wait<dynamic>([
         db.getDashboardStats(),
         db.getOrderStatusStats(),
@@ -399,25 +396,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
           : math.max(0, allCmds.length - lastCmdCount);
 
       if (!mounted || loadToken != _statsLoadToken) return;
-      setState(() {
-        _newOrdersCount = unreadOrders;
-        _commandesCount = stats['cmdCount'] ?? '0';
-        _cmdTrend = stats['cmdTrend'] ?? '—';
-        _ordersByStatus = Map<String, int>.from(
-          (chartData['byStatus'] as Map<String, int>?) ?? {},
-        );
-        _ordersByMonth = Map<String, int>.from(
-          (chartData['monthly'] as Map<String, int>?) ?? {},
-        );
-      });
 
       if (lastCmdCount == null) {
         await prefs.setInt('last_seen_orders_count', allCmds.length);
       }
 
-      // Secondary dashboard sections are intentionally independent of the
-      // first paint. They still refresh normally, but a slow stock query or a
-      // large client table can no longer delay entry into the app.
       final secondaryData = await Future.wait<dynamic>([
         db.readProfile(),
         db.readCommandesWithClients(),
@@ -438,8 +421,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final assignedWorkersMap = Map<int, String>.from(
         secondaryData[5] as Map<int, String>,
       );
+
       if (mounted && loadToken == _statsLoadToken) {
         setState(() {
+          _newOrdersCount = unreadOrders;
+          _commandesCount = stats['cmdCount'] ?? '0';
+          _cmdTrend = stats['cmdTrend'] ?? '—';
+          _ordersByStatus = Map<String, int>.from(
+            (chartData['byStatus'] as Map<String, int>?) ?? {},
+          );
+          _ordersByMonth = Map<String, int>.from(
+            (chartData['monthly'] as Map<String, int>?) ?? {},
+          );
           _clientsCount = stats['cliCount'] ?? '0';
           _cliTrend = stats['cliTrend'] ?? '—';
           _produitsCount = profiles.length.toString();
@@ -454,8 +447,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
         });
       }
 
-      // Stock is the heaviest dashboard query on a phone. It is deliberately
-      // last and may update only its own cards when it finishes.
       if (loadToken == _statsLoadToken) await _checkLowStock();
     } catch (e) {
       debugPrint("Error loading stats: $e");
@@ -558,19 +549,29 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     (data['workshopLogoUrl'] as String?)?.isNotEmpty == true
                     ? data['workshopLogoUrl']
                     : savedLogo;
-                setState(() {
-                  _workshopName =
-                      (data['workshopName'] as String?)?.isNotEmpty == true
-                      ? data['workshopName']
-                      : (savedName?.isNotEmpty == true
-                            ? savedName!
-                            : 'ورشة النجارة');
-                  _workshopPhone = data['phone'] ?? data['phoneNumber'] ?? '';
-                  if (data['email'] != null) {
-                    _userEmail = data['email'];
-                  }
-                  _updateLogo(newLogoUrl); // تحديث مخبأ فقط عند تغيير فعلي
-                });
+                final nextName =
+                    (data['workshopName'] as String?)?.isNotEmpty == true
+                    ? data['workshopName'] as String
+                    : (savedName?.isNotEmpty == true
+                          ? savedName!
+                          : 'ورشة النجارة');
+                final nextPhone =
+                    (data['phone'] ?? data['phoneNumber'] ?? '').toString();
+                final nextEmail = data['email']?.toString() ?? _userEmail;
+
+                final hasChanged = _workshopName != nextName ||
+                    _workshopPhone != nextPhone ||
+                    _userEmail != nextEmail ||
+                    _logoUrl != newLogoUrl;
+
+                if (hasChanged) {
+                  setState(() {
+                    _workshopName = nextName;
+                    _workshopPhone = nextPhone;
+                    _userEmail = nextEmail;
+                    _updateLogo(newLogoUrl);
+                  });
+                }
               });
             }
           });

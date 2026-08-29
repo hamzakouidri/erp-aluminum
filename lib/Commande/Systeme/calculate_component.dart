@@ -1774,6 +1774,7 @@ class ComponentCalculator {
       double qty = 0,
       String unit = 'بارة',
       double? targetThicknessMm,
+      String? overrideKey,
     }) {
       final selectorType = _selectorTypeForJoint(originalName);
       final isShutterJoint = _textHasAny(originalName, const [
@@ -1790,6 +1791,7 @@ class ComponentCalculator {
               normalizedUnit == 'ml')
           ? (exactQty <= 0 ? 0.0 : exactQty.ceilToDouble())
           : exactQty;
+      final effectiveKey = overrideKey ?? originalName;
       return _createJoint(
         window.componentOverrides,
         originalName,
@@ -1797,8 +1799,8 @@ class ComponentCalculator {
         qty: purchaseQty,
         unit: unit,
         exactQuantity: exactQty,
-        catalogItemId: catalogueId(window.componentOverrides[originalName]),
-        overrideKey: originalName,
+        catalogItemId: catalogueId(window.componentOverrides[effectiveKey]),
+        overrideKey: effectiveKey,
         selectorCategory: 'joint',
         selectorType: selectorType,
         roleKey: isShutterJoint
@@ -6610,7 +6612,8 @@ class ComponentCalculator {
       final targetOverride =
           selectedParcloseSimple ??
           parcloseSimple ??
-          (genericParcloseMatches(doubleGlass: false) ? chosenParclose : null);
+          (genericParcloseMatches(doubleGlass: false) ? chosenParclose : null) ??
+          (parcloseDouble != null ? parcloseDouble : chosenParclose);
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6629,7 +6632,8 @@ class ComponentCalculator {
       final targetOverride =
           selectedParcloseDouble ??
           parcloseDouble ??
-          (genericParcloseMatches(doubleGlass: true) ? chosenParclose : null);
+          (genericParcloseMatches(doubleGlass: true) ? chosenParclose : null) ??
+          (parcloseSimple != null ? parcloseSimple : chosenParclose);
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6648,10 +6652,10 @@ class ComponentCalculator {
       final targetOverride =
           selectedSlidingParcloseSimple ??
           slidingParcloseSimple ??
-          (window.activeSlidingSeries == null &&
-                  genericParcloseMatches(doubleGlass: false)
-              ? chosenParclose
-              : null);
+          (genericParcloseMatches(doubleGlass: false) ? chosenParclose : null) ??
+          selectedParcloseSimple ??
+          parcloseSimple ??
+          chosenParclose;
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6670,10 +6674,10 @@ class ComponentCalculator {
       final targetOverride =
           selectedSlidingParcloseDouble ??
           slidingParcloseDouble ??
-          (window.activeSlidingSeries == null &&
-                  genericParcloseMatches(doubleGlass: true)
-              ? chosenParclose
-              : null);
+          (genericParcloseMatches(doubleGlass: true) ? chosenParclose : null) ??
+          selectedParcloseDouble ??
+          parcloseDouble ??
+          chosenParclose;
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6692,24 +6696,28 @@ class ComponentCalculator {
       return (profile?['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
     }
 
+    final double vitrageJointThick = window.isPVC
+        ? 0.0
+        : window.selectedVitrageJointThickness(fallback: 3.0);
+
     double bourrageThicknessNeed({
       required Map<String, dynamic>? parclose,
       required double glassPackThickness,
     }) {
       final capacity = maxGlassCapacity(parclose);
       if (capacity <= 0 || glassPackThickness <= 0) return 0.0;
-      return math.max(0.0, capacity - glassPackThickness);
+      final totalPack = glassPackThickness + vitrageJointThick;
+      return math.max(0.0, capacity - totalPack);
     }
 
-    final double openingBourrageTargetThickness = math.max(
-      bourrageThicknessNeed(
-        parclose: selectedParcloseSimple ?? parcloseSimple,
-        glassPackThickness: maxOpeningSimpleGlassPackThickness,
-      ),
-      bourrageThicknessNeed(
-        parclose: selectedParcloseDouble ?? parcloseDouble,
-        glassPackThickness: maxOpeningDoubleGlassPackThickness,
-      ),
+    final double simpleBourrageTargetThickness = bourrageThicknessNeed(
+      parclose: selectedParcloseSimple ?? parcloseSimple ?? chosenParclose,
+      glassPackThickness: maxOpeningSimpleGlassPackThickness,
+    );
+
+    final double doubleBourrageTargetThickness = bourrageThicknessNeed(
+      parclose: selectedParcloseDouble ?? parcloseDouble ?? chosenParclose,
+      glassPackThickness: maxOpeningDoubleGlassPackThickness,
     );
 
     // ===== جوانات نظام الفتح (ألمنيوم فقط) =====
@@ -6733,14 +6741,54 @@ class ComponentCalculator {
             unit: 'متر',
           ),
         );
-        items.add(
-          createJoint(
-            'جوان البوراج (Joint Bourrage)',
-            qty: vitrageQty,
-            unit: 'متر',
-            targetThicknessMm: openingBourrageTargetThickness,
-          ),
-        );
+
+        // إذا كان في النافذة زجاج مفرد وزجاج مزدوج بفراغات مختلفة، يُفصل كل سمك في بند مستقل:
+        final bool haveBothDistinct = simplePerim > 0 &&
+            doublePerim > 0 &&
+            (simpleBourrageTargetThickness - doubleBourrageTargetThickness).abs() > 0.5;
+
+        if (haveBothDistinct) {
+          items.add(
+            createJoint(
+              'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
+              qty: simplePerim,
+              unit: 'متر',
+              targetThicknessMm: simpleBourrageTargetThickness,
+              overrideKey: 'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
+            ),
+          );
+          items.add(
+            createJoint(
+              'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
+              qty: doublePerim,
+              unit: 'متر',
+              targetThicknessMm: doubleBourrageTargetThickness,
+              overrideKey: 'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
+            ),
+          );
+        } else {
+          final double targetThick = simplePerim > 0 && doublePerim <= 0
+              ? simpleBourrageTargetThickness
+              : (doublePerim > 0 && simplePerim <= 0
+                  ? doubleBourrageTargetThickness
+                  : math.max(simpleBourrageTargetThickness, doubleBourrageTargetThickness));
+
+          final String originalName = targetThick <= 2.5
+              ? 'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)'
+              : (targetThick <= 4.5
+                  ? 'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)'
+                  : 'جوان البوراج (Joint Bourrage)');
+
+          items.add(
+            createJoint(
+              originalName,
+              qty: vitrageQty,
+              unit: 'متر',
+              targetThicknessMm: targetThick,
+              overrideKey: originalName,
+            ),
+          );
+        }
       }
 
       // Joint Frappe = محيط الظلفة + محيط الإطار
@@ -7606,13 +7654,14 @@ class ComponentCalculator {
     String? materialType,
     double? targetThicknessMm,
   }) {
-    bool isLinked = overrides.containsKey(originalName);
+    final keyToUse = overrideKey ?? originalName;
+    final ov = overrides[keyToUse] ?? overrides[originalName];
+    bool isLinked = ov is Map;
     String name = originalName;
     double price = 0.0;
     String? profileCode;
     String? imagePath;
     if (isLinked) {
-      final ov = overrides[originalName];
       profileCode = ov['code']?.toString();
       imagePath = ov['image_path']?.toString();
       final code = ov['code'] ?? '';
