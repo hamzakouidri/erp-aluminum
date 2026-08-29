@@ -2059,23 +2059,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final columns = [
       ResizableTableColumn(
         id: 'id',
-        label: _desktopTableCell('#', 1, mutedColor, true),
+        label: _desktopTableHeaderLabel('#', mutedColor),
         initialWidth: 60,
         minWidth: 45,
         maxWidth: 100,
       ),
       ResizableTableColumn(
         id: 'client_project',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(
             lang,
             'الزبون والمشروع',
             'Client & Projet',
             'Client & Project',
           ),
-          3,
           mutedColor,
-          true,
         ),
         initialWidth: 200,
         minWidth: 120,
@@ -2083,11 +2081,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'date',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'تاريخ الإنشاء', 'Date création', 'Order Date'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 110,
         minWidth: 90,
@@ -2095,11 +2091,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'total',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المجموع (د.ج)', 'Total (DA)', 'Total (DA)'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 120,
         minWidth: 90,
@@ -2107,11 +2101,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'advance',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 110,
         minWidth: 85,
@@ -2119,11 +2111,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'remaining',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المتبقي', 'Reste', 'Balance'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 110,
         minWidth: 85,
@@ -2131,11 +2121,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'status',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'حالة الورشة', 'Statut', 'Status'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 120,
         minWidth: 90,
@@ -2143,11 +2131,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'creator',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المُدخل', 'Inscrit par', 'Recorded By'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 130,
         minWidth: 90,
@@ -2155,11 +2141,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'workers',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'فريق التنفيذ', 'Assignés', 'Assigned Workers'),
-          3,
           mutedColor,
-          true,
         ),
         initialWidth: 160,
         minWidth: 110,
@@ -2461,18 +2445,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final columns = [
       ResizableTableColumn(
         id: 'id',
-        label: _desktopTableCell('#', 1, mutedColor, true),
+        label: _desktopTableHeaderLabel('#', mutedColor),
         initialWidth: 60,
         minWidth: 45,
         maxWidth: 100,
       ),
       ResizableTableColumn(
         id: 'name',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'اسم الزبون', 'Nom client', 'Client Name'),
-          3,
           mutedColor,
-          true,
         ),
         initialWidth: 180,
         minWidth: 120,
@@ -2480,11 +2462,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'phone',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'رقم الهاتف', 'Téléphone', 'Phone'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 130,
         minWidth: 95,
@@ -2492,11 +2472,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'address',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'العنوان', 'Adresse', 'Address'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 140,
         minWidth: 95,
@@ -2504,11 +2482,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'email',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'البريد الإلكتروني', 'E-mail', 'Email'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 140,
         minWidth: 95,
@@ -2516,16 +2492,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'fiscal',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(
             lang,
             'البيانات الجبائية (NIF/RC)',
             'Fiscaux',
             'Tax & Com',
           ),
-          3,
           mutedColor,
-          true,
         ),
         initialWidth: 150,
         minWidth: 100,
@@ -2533,11 +2507,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'date',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'تاريخ الإضافة', 'Date d\'ajout', 'Added Date'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 110,
         minWidth: 85,
@@ -2545,11 +2517,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'total',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'مجموع الحسابات', 'Total', 'Total'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 120,
         minWidth: 90,
@@ -2557,11 +2527,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'paid',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المدفوع', 'Payé', 'Paid'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 110,
         minWidth: 85,
@@ -2569,11 +2537,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'remaining',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المتبقي', 'Reste', 'Remaining'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 110,
         minWidth: 85,
@@ -2581,11 +2547,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'orders_count',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'عدد الطلبيات', 'Cmds', 'Orders'),
-          1,
           mutedColor,
-          true,
         ),
         initialWidth: 80,
         minWidth: 60,
@@ -2593,11 +2557,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       ResizableTableColumn(
         id: 'creator',
-        label: _desktopTableCell(
+        label: _desktopTableHeaderLabel(
           _desktopText(lang, 'المُضيف', 'Ajouté par', 'Added By'),
-          2,
           mutedColor,
-          true,
         ),
         initialWidth: 120,
         minWidth: 90,
@@ -3212,6 +3174,24 @@ class _WelcomScreenState extends State<WelcomScreen> {
           fontWeight:
               fontWeight ?? (isHeader ? FontWeight.w700 : FontWeight.w600),
         ),
+      ),
+    );
+  }
+
+  Widget _desktopTableHeaderLabel(
+    String text,
+    Color color, {
+    Color? colorOverride,
+    FontWeight? fontWeight,
+  }) {
+    return Text(
+      text,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: colorOverride ?? color,
+        fontFamily: 'Cairo',
+        fontSize: 10,
+        fontWeight: fontWeight ?? FontWeight.w700,
       ),
     );
   }

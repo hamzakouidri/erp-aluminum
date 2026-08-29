@@ -68,20 +68,28 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   String? _hoveredHandleColumnId;
   String? _draggingHandleColumnId;
   late final ScrollController _ownHorizontalController;
+  late final ScrollController _ownVerticalController;
 
   ScrollController get _horizontalController =>
       widget.horizontalController ?? _ownHorizontalController;
+
+  ScrollController get _verticalController =>
+      widget.verticalController ?? _ownVerticalController;
 
   @override
   void initState() {
     super.initState();
     _ownHorizontalController = ScrollController();
+    _ownVerticalController = ScrollController();
   }
 
   @override
   void dispose() {
     if (widget.horizontalController == null) {
       _ownHorizontalController.dispose();
+    }
+    if (widget.verticalController == null) {
+      _ownVerticalController.dispose();
     }
     super.dispose();
   }
@@ -118,44 +126,83 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     final rowColor =
         widget.rowColor ?? (isDark ? const Color(0xFF171721) : Colors.white);
 
-    return ScrollConfiguration(
-      behavior: const MaterialScrollBehavior().copyWith(
-        dragDevices: {
-          PointerDeviceKind.touch,
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.trackpad,
-          PointerDeviceKind.stylus,
-        },
-      ),
-      child: Scrollbar(
-        controller: _horizontalController,
-        thumbVisibility: true,
-        interactive: true,
-        child: SingleChildScrollView(
-          controller: _horizontalController,
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: _tableWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 1. Header Row
-                _buildHeader(headerColor, borderColor),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isBoundedHeight = constraints.maxHeight.isFinite;
 
-                // 2. Filter Sub-Row (under column headers)
-                if (_hasAnyFilter)
-                  _buildFilterRow(filterRowColor, borderColor),
+        Widget bodyContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final row in widget.rows)
+              _buildRow(row, rowColor, borderColor),
+          ],
+        );
 
-                // 3. Table Rows inside vertical scrollable expanded or list
-                ...widget.rows.map(
-                  (row) => _buildRow(row, rowColor, borderColor),
-                ),
-              ],
+        Widget tableBody;
+        if (isBoundedHeight) {
+          tableBody = Expanded(
+            child: Scrollbar(
+              controller: _verticalController,
+              thumbVisibility: true,
+              interactive: true,
+              child: SingleChildScrollView(
+                controller: _verticalController,
+                scrollDirection: Axis.vertical,
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: bodyContent,
+              ),
+            ),
+          );
+        } else {
+          tableBody = bodyContent;
+        }
+
+        final tableContent = SizedBox(
+          width: _tableWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: isBoundedHeight ? MainAxisSize.max : MainAxisSize.min,
+            children: [
+              // 1. Header Row
+              _buildHeader(headerColor, borderColor),
+
+              // 2. Filter Sub-Row (under column headers)
+              if (_hasAnyFilter)
+                _buildFilterRow(filterRowColor, borderColor),
+
+              // 3. Table Rows
+              tableBody,
+            ],
+          ),
+        );
+
+        return ScrollConfiguration(
+          behavior: const MaterialScrollBehavior().copyWith(
+            dragDevices: {
+              PointerDeviceKind.touch,
+              PointerDeviceKind.mouse,
+              PointerDeviceKind.trackpad,
+              PointerDeviceKind.stylus,
+            },
+          ),
+          child: Scrollbar(
+            controller: _horizontalController,
+            thumbVisibility: true,
+            interactive: true,
+            child: SingleChildScrollView(
+              controller: _horizontalController,
+              scrollDirection: Axis.horizontal,
+              child: isBoundedHeight
+                  ? SizedBox(
+                      height: constraints.maxHeight,
+                      child: tableContent,
+                    )
+                  : tableContent,
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

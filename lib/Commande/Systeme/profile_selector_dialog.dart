@@ -37,6 +37,11 @@ int? _catalogInt(Object? value) {
   return int.tryParse('${value ?? ''}'.trim());
 }
 
+double _catalogDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse('${value ?? ''}'.replaceAll(',', '.').trim()) ?? 0.0;
+}
+
 /// A catalogue item is linked to a series only through [series_id] or
 /// [series_ids]. Text in its name/type must never make it appear in another
 /// series.
@@ -74,6 +79,8 @@ bool _roleIgnoresGlassRule(String roleKey) {
   switch (roleKey.trim().toLowerCase()) {
     case 'batmo':
     case 'plant':
+    case 'porte_joint':
+    case 'joint_bronze':
     case 'bouchon_batmo':
     case 'batmo_screw':
     case 'bouchon_batmo_screw':
@@ -188,6 +195,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'gache_door',
     'lock_clef',
     'lock_condamnation',
+    'sliding_kit',
     'sliding_clamp',
     'sliding_lock',
     'verrou',
@@ -223,6 +231,16 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     return const ['installation_screw'];
   }
   if (tLower == 'is_accessory_screw') return const ['accessory_screw'];
+  if (tLower == 'sliding_kit' ||
+      ((tLower.contains('kit') || tLower.contains('كيت')) &&
+          (tLower.contains('sliding') ||
+              tLower.contains('coulissant') ||
+              tLower.contains('منزلق') ||
+              tLower.contains('67000') ||
+              tLower.contains('76000') ||
+              tLower.contains('40000')))) {
+    return const ['sliding_kit'];
+  }
   if (tLower.contains('clamp') ||
       tLower.contains('clam') ||
       tLower.contains('كلام')) {
@@ -313,6 +331,7 @@ List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
     'joint_frappe',
     'joint_central',
     'joint_brosse',
+    'joint_bronze',
     'shutter_joint_brosse',
   };
   if (directRoles.contains(tLower)) return [tLower];
@@ -340,6 +359,9 @@ List<String> catalogRuleKeysForJointSelectorType(String selectorType) {
       tLower.contains('وسط')) {
     return const ['joint_central'];
   }
+  if (tLower.contains('bronze') || tLower.contains('برونز')) {
+    return const ['joint_bronze'];
+  }
   if (tLower.contains('bross') ||
       tLower.contains('brosse') ||
       tLower.contains('بروس')) {
@@ -356,7 +378,12 @@ List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   if (t == 'sash' || t == 'ouvrant' || t == 'ضلفة') {
     return const ['sash', 'sash_extension'];
   }
-  if (t == 'parclose') return const ['glazing_bead'];
+  if (t == 'parclose' ||
+      t.contains('parclose_simple') ||
+      t.contains('parclose_double') ||
+      t.contains('parclose')) {
+    return const ['glazing_bead'];
+  }
   if (t.contains('sash_traverse') || t.contains('sash traverse')) {
     return const ['sash_traverse', 'traverse'];
   }
@@ -385,6 +412,18 @@ List<String> seriesRoleKeysForProfileSelectorType(String selectorType) {
   if (t == 'batmo') return const ['batmo'];
   if (t == 'plant' || t.contains('plinthe') || t.contains('بلانت')) {
     return const ['plant'];
+  }
+  if (t == 'porte_joint' ||
+      t.contains('porte joint') ||
+      t.contains('porte-joint') ||
+      t.contains('حامل الجوان')) {
+    return const ['porte_joint'];
+  }
+  if (t == 'triangle' ||
+      t.contains('تراينغل') ||
+      t.contains('تريانغل') ||
+      t.contains('مثلث')) {
+    return const ['triangle'];
   }
   if (t == 'renfort') return const ['renfort'];
   if (t == 'other_profile' ||
@@ -538,6 +577,7 @@ class CatalogCandidateQuery {
     this.requireQuantity = true,
     this.hasSimpleGlassForReducer,
     this.hasDoubleGlassForRules,
+    this.targetThicknessMm,
   });
 
   final String category;
@@ -551,6 +591,7 @@ class CatalogCandidateQuery {
   final bool requireQuantity;
   final bool? hasSimpleGlassForReducer;
   final bool? hasDoubleGlassForRules;
+  final double? targetThicknessMm;
 }
 
 class CatalogCandidateResolver {
@@ -629,11 +670,17 @@ class CatalogCandidateResolver {
         .toString()
         .toLowerCase()
         .trim();
+    final selector = query.selectorType.toLowerCase().trim();
+    final wantsSimple =
+        selector.contains('simple') || selector.contains('مفرد');
+    final wantsDouble =
+        selector.contains('double') || selector.contains('مزدوج');
     if (glassRule == 'single' || glassRule == 'simple') {
-      return query.hasSimpleGlassForReducer != false &&
-          query.hasDoubleGlassForRules != true;
+      if (wantsDouble) return false;
+      return query.hasSimpleGlassForReducer != false;
     }
     if (glassRule == 'double') {
+      if (wantsSimple) return false;
       return query.hasDoubleGlassForRules == true;
     }
     return true;
@@ -702,7 +749,7 @@ class CatalogCandidateResolver {
       final roleMatches =
           roleKeys.contains(ruleRole) ||
           _catalogRowMatchesRole(row, table, roleKeys);
-      if (roleMatches && _catalogRowMatchesMaterial(row, query, roleKeys)) {
+      if (roleMatches && _catalogRuleRowMatchesMaterial(row, query)) {
         result.add(row);
       }
     }
@@ -710,7 +757,25 @@ class CatalogCandidateResolver {
       final itemId = _catalogInt(row['id']);
       if (itemId != null && seen.add(itemId)) result.add(row);
     }
+    _sortByTargetThicknessIfNeeded(result, query);
     return result;
+  }
+
+  void _sortByTargetThicknessIfNeeded(
+    List<Map<String, dynamic>> rows,
+    CatalogCandidateQuery query,
+  ) {
+    final target = query.targetThicknessMm;
+    if (target == null || target <= 0 || rows.length < 2) return;
+    rows.sort((a, b) {
+      final aThickness = _catalogDouble(a['thickness']);
+      final bThickness = _catalogDouble(b['thickness']);
+      final aFits = aThickness >= target - 0.001;
+      final bFits = bThickness >= target - 0.001;
+      if (aFits != bFits) return aFits ? -1 : 1;
+      if (aFits) return aThickness.compareTo(bThickness);
+      return bThickness.compareTo(aThickness);
+    });
   }
 
   Future<List<Map<String, dynamic>>> _readTypedCatalogRows(
@@ -763,11 +828,17 @@ class CatalogCandidateResolver {
         .toString()
         .toLowerCase()
         .trim();
+    final selector = query.selectorType.toLowerCase().trim();
+    final wantsSimple =
+        selector.contains('simple') || selector.contains('مفرد');
+    final wantsDouble =
+        selector.contains('double') || selector.contains('مزدوج');
     if (glassRule == 'single' || glassRule == 'simple') {
-      return query.hasSimpleGlassForReducer != false &&
-          query.hasDoubleGlassForRules != true;
+      if (wantsDouble) return false;
+      return query.hasSimpleGlassForReducer != false;
     }
     if (glassRule == 'double') {
+      if (wantsSimple) return false;
       return query.hasDoubleGlassForRules == true;
     }
     return true;
@@ -787,6 +858,23 @@ class CatalogCandidateResolver {
     if (seriesId == null && catalogItemHasSeriesScope(row)) {
       return false;
     }
+    if (query.category == 'joint') return true;
+    final requested = (query.materialType ?? '').toLowerCase().trim();
+    if (requested.isEmpty || requested == 'shutter') return true;
+    final rawMaterial = row['material_type'];
+    final material = (rawMaterial ?? '').toString().toLowerCase().trim();
+    if (requested == 'pvc') return material == 'pvc' || material == 'both';
+    return material == 'aluminium' ||
+        material == 'aluminum' ||
+        material == 'both' ||
+        material == 'global' ||
+        material.isEmpty;
+  }
+
+  bool _catalogRuleRowMatchesMaterial(
+    Map<String, dynamic> row,
+    CatalogCandidateQuery query,
+  ) {
     if (query.category == 'joint') return true;
     final requested = (query.materialType ?? '').toLowerCase().trim();
     if (requested.isEmpty || requested == 'shutter') return true;
@@ -828,6 +916,9 @@ class CatalogCandidateResolver {
     }
     if (gasketType.contains('سنترال') || gasketType.contains('central')) {
       return 'joint_central';
+    }
+    if (gasketType.contains('برونز') || gasketType.contains('bronze')) {
+      return 'joint_bronze';
     }
     if (gasketType.contains('بروس') || gasketType.contains('bross')) {
       return 'joint_brosse';
@@ -880,6 +971,9 @@ class CatalogCandidateResolver {
       roles.add('bouchon_batmo');
     }
     if (type.contains('clam')) roles.add('sliding_clamp');
+    if (type.contains('kit') || type.contains('كيت')) {
+      roles.add('sliding_kit');
+    }
     if (type.contains('gache couliss') ||
         type.contains('gâche couliss') ||
         type.contains('قاش منزلق')) {
@@ -996,6 +1090,7 @@ class ProfileSelectorDialog extends StatefulWidget {
   final List<String> roleKeys;
   final bool? hasSimpleGlassForReducer;
   final bool? hasDoubleGlassForRules;
+  final double? targetThicknessMm;
 
   const ProfileSelectorDialog({
     super.key,
@@ -1016,6 +1111,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.roleKeys = const [],
     this.hasSimpleGlassForReducer,
     this.hasDoubleGlassForRules,
+    this.targetThicknessMm,
   });
 
   @override
@@ -1074,6 +1170,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
           requireQuantity: true,
           hasSimpleGlassForReducer: widget.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.hasDoubleGlassForRules,
+          targetThicknessMm: widget.targetThicknessMm,
         ),
       );
       setState(() {

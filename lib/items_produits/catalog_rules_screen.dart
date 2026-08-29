@@ -124,6 +124,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('assembly_screw', 'براغي التجميع', 'Vis assemblage'),
           _RuleRole('installation_screw', 'براغي التركيب', 'Vis pose'),
           _RuleRole('accessory_screw', 'براغي الإكسسوارات', 'Vis accessoires'),
+          _RuleRole('sliding_kit', 'كيت المنزلق', 'Kit coulissant'),
           _RuleRole('gache_simple', 'قاش بسيط', 'Gâche simple'),
           _RuleRole('gache_double', 'قاش مزدوج', 'Gâche double'),
           _RuleRole('gache_door', 'قاش باب', 'Gâche porte'),
@@ -163,6 +164,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('joint_frappe', 'جوان فراب', 'Joint frappe'),
           _RuleRole('joint_central', 'جوان سنترال', 'Joint central'),
           _RuleRole('joint_brosse', 'جوان بروس', 'Joint brosse'),
+          _RuleRole('joint_bronze', 'جوان برونز', 'Joint bronze'),
           _RuleRole(
             'shutter_joint_brosse',
             'جوان بروس الستار',
@@ -402,6 +404,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       }
       if (text.contains('central') || text.contains('سنترال')) {
         return 'joint_central';
+      }
+      if (text.contains('bronze') || text.contains('برونز')) {
+        return 'joint_bronze';
       }
       if ((text.contains('bross') || text.contains('بروس')) &&
           (text.contains('shutter') ||

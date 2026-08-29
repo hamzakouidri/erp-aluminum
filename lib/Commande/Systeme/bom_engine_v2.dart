@@ -83,6 +83,7 @@ class BomEngineV2 {
             requireQuantity: true,
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
             hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+            targetThicknessMm: item.targetThicknessMm,
           ),
         );
         return candidates.isNotEmpty;
@@ -109,6 +110,7 @@ class BomEngineV2 {
             requireQuantity: true,
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
             hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+            targetThicknessMm: item.targetThicknessMm,
           ),
         );
         return candidates.isNotEmpty;
@@ -135,6 +137,7 @@ class BomEngineV2 {
             requireQuantity: true,
             hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
             hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+            targetThicknessMm: item.targetThicknessMm,
           ),
         );
         return candidates.isNotEmpty;
@@ -175,20 +178,27 @@ class BomEngineV2 {
         requireQuantity: true,
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+        targetThicknessMm: item.targetThicknessMm,
       ),
     );
     if (sections.isEmpty) {
       _clearInvalidProfileSelection(window, item, roleKeys);
       return;
     }
-    if (_candidateContainsCurrent(
-      sections,
-      _currentProfileSelection(window, item, roleKeys, selectorType),
-    )) {
+    final currentProfile = _currentProfileSelection(
+      window,
+      item,
+      roleKeys,
+      selectorType,
+    );
+    final matchingCurrent = _matchingCandidate(sections, currentProfile);
+    if (matchingCurrent != null && _hasDesignMetadata(currentProfile)) {
       return;
     }
 
-    final selected = Map<String, dynamic>.from(sections.first);
+    final selected = Map<String, dynamic>.from(
+      matchingCurrent ?? sections.first,
+    );
     final colorId = _catalogInt(window.selectedDbColor?['id']);
     selected['calculated_price'] = colorId == null
         ? _safeDouble(selected['price_dzd'] ?? selected['price'])
@@ -251,6 +261,7 @@ class BomEngineV2 {
         requireQuantity: true,
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+        targetThicknessMm: item.targetThicknessMm,
       ),
     );
     if (candidates.isEmpty) {
@@ -301,16 +312,23 @@ class BomEngineV2 {
         requireQuantity: true,
         hasSimpleGlassForReducer: window.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: window.hasDoubleGlassForRules,
+        targetThicknessMm: item.targetThicknessMm,
       ),
     );
     if (candidates.isEmpty) {
       _clearComponentSelection(window, item);
       return;
     }
-    if (_candidateContainsCurrent(
+    final matchingCurrent = _matchingCandidate(
       candidates,
       _currentComponentSelection(window, item),
-    )) {
+    );
+    final sortedFirstId = _catalogInt(candidates.first['id']);
+    final matchingCurrentId = _catalogInt(matchingCurrent?['id']);
+    if (matchingCurrent != null &&
+        (item.targetThicknessMm == null ||
+            item.targetThicknessMm! <= 0 ||
+            sortedFirstId == matchingCurrentId)) {
       return;
     }
     final selected = Map<String, dynamic>.from(candidates.first);
@@ -342,6 +360,7 @@ class BomEngineV2 {
       query.requireQuantity ? '1' : '0',
       query.hasSimpleGlassForReducer == true ? '1' : '0',
       query.hasDoubleGlassForRules == true ? '1' : '0',
+      query.targetThicknessMm?.toStringAsFixed(3) ?? '',
     ].join('|');
     return _candidatesCache.putIfAbsent(
       key,
@@ -402,6 +421,7 @@ class BomEngineV2 {
     if (selectorType.contains('lateral') ||
         selectorType.contains('central') ||
         selectorType.contains('sash_traverse') ||
+        selectorType.contains('sliding_parclose') ||
         selectorType == 'rail') {
       return AccessoryDrawingMode.sliding;
     }
@@ -483,9 +503,24 @@ class BomEngineV2 {
     List<Map<String, dynamic>> candidates,
     Map<String, dynamic>? current,
   ) {
+    return _matchingCandidate(candidates, current) != null;
+  }
+
+  Map<String, dynamic>? _matchingCandidate(
+    List<Map<String, dynamic>> candidates,
+    Map<String, dynamic>? current,
+  ) {
     final currentId = _catalogInt(current?['id']);
-    if (currentId == null) return false;
-    return candidates.any((row) => _catalogInt(row['id']) == currentId);
+    if (currentId == null) return null;
+    for (final row in candidates) {
+      if (_catalogInt(row['id']) == currentId) return row;
+    }
+    return null;
+  }
+
+  bool _hasDesignMetadata(Map<String, dynamic>? current) {
+    if (current == null) return false;
+    return current.keys.any((key) => key.toString().startsWith('design_'));
   }
 
   void _clearInvalidProfileSelection(

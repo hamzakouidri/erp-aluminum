@@ -121,9 +121,25 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       key: 'plant',
       ar: 'البلانت',
       fr: 'Plinthe',
-      descriptionAr: 'مقطع البلانت الخاص بأنظمة الفتح عند إلغاء الإطار السفلي',
+      descriptionAr:
+          'مقطع سفلي للظلفات والثوابت لتقوية الباب أو تعويض الإطار السفلي',
       descriptionFr:
-          'Profil de plinthe des systèmes ouvrants quand le dormant bas est supprimé',
+          'Profil bas pour ouvrants et fixes, utilisé pour renforcer ou remplacer le dormant bas',
+    ),
+    _SeriesRole(
+      key: 'porte_joint',
+      ar: 'حامل الجوان',
+      fr: 'Porte-joint',
+      descriptionAr: 'يستعمل تلقائياً مع البلانت ويحمل جوان البرونز في الأسفل',
+      descriptionFr:
+          'Utilisé automatiquement avec la plinthe et son joint bronze inférieur',
+    ),
+    _SeriesRole(
+      key: 'triangle',
+      ar: 'التراينغل',
+      fr: 'Triangle',
+      descriptionAr: 'مقطع التراينغل المرتبط بغلق الكريمون',
+      descriptionFr: 'Profil triangle lié à la fermeture par crémone',
     ),
     _SeriesRole(
       key: 'renfort',
@@ -426,6 +442,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'width_adjust_mm': 0.0,
       'height_adjust_mm': 0.0,
       'formula_note': '',
+      'skip_glazing_bead': false,
+      'requires_plant': role == 'porte_joint',
+      'joint_length_multiplier': role == 'porte_joint' ? 2.0 : 1.0,
     };
   }
 
@@ -445,6 +464,13 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     final normalized = Map<String, dynamic>.from(options);
     if (!_roleUsesGlassRule(role)) {
       normalized['show_when_glass'] = 'any';
+    }
+    if (role != 'sash' && role != 'sash_extension') {
+      normalized['skip_glazing_bead'] = false;
+    }
+    if (role != 'porte_joint') {
+      normalized['requires_plant'] = false;
+      normalized['joint_length_multiplier'] = 1.0;
     }
     return normalized;
   }
@@ -467,6 +493,12 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       'width_adjust_mm': _number(row['width_adjust_mm']),
       'height_adjust_mm': _number(row['height_adjust_mm']),
       'formula_note': row['formula_note']?.toString() ?? '',
+      'skip_glazing_bead': _truthy(row['skip_glazing_bead']),
+      'requires_plant': _truthy(row['requires_plant']),
+      'joint_length_multiplier': _number(
+        row['joint_length_multiplier'],
+        fallback: role == 'porte_joint' ? 2.0 : 1.0,
+      ),
     });
   }
 
@@ -487,7 +519,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       } else {
         selectedIds.remove(sectionId);
         _roleOptionsByRoleSection.remove(_roleOptionKey(role, sectionId));
-        if (role == 'frame' || role == 'sash' || role == 'glazing_bead') {
+        if (role == 'frame' ||
+            role == 'sash' ||
+            role == 'glazing_bead' ||
+            role == 'porte_joint') {
           _gasketTypeBySectionPosition.remove(sectionId);
         }
         if (_defaultSectionByRole[role] == sectionId) {
@@ -543,6 +578,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       if (!_isSlidingSeries) 'frame': const ['frame_inner', 'frame_outer'],
       'sash': const ['sash_inner', 'sash_outer'],
       'glazing_bead': const ['parclose_gasket'],
+      'porte_joint': const ['porte_joint_bronze'],
     };
     for (final entry in jointPositionsByRole.entries) {
       for (final sectionId in _sectionIdsByRole[entry.key] ?? const <int>{}) {
@@ -1027,7 +1063,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.lock_outline_rounded),
                           title: Text(
-                            _t('غير مرتبط بسماكة الزجاج', 'Indépendant du vitrage'),
+                            _t(
+                              'غير مرتبط بسماكة الزجاج',
+                              'Indépendant du vitrage',
+                            ),
                           ),
                           subtitle: Text(
                             _t(
@@ -1065,6 +1104,38 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                             update('allowed_with_shutter', value),
                       ),
                       const Divider(height: 20),
+                      if (role.key == 'sash' || role.key == 'sash_extension')
+                        _dialogSwitch(
+                          title: _t(
+                            'هذه الضلفة بدون بيركلوز',
+                            'Cet ouvrant est sans parclose',
+                          ),
+                          value: _truthy(draft['skip_glazing_bead']),
+                          onChanged: (value) =>
+                              update('skip_glazing_bead', value),
+                        ),
+                      if (role.key == 'porte_joint')
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.link_rounded),
+                          title: Text(
+                            _t(
+                              'يستعمل تلقائياً مع البلانت',
+                              'Utilisé automatiquement avec la plinthe',
+                            ),
+                          ),
+                          subtitle: Text(
+                            _t(
+                              'جوان البرونز يحسب بطول ضعفي حامل الجوان.',
+                              'Le joint bronze est calculé à deux fois la longueur du porte-joint.',
+                            ),
+                          ),
+                        ),
+                      if (role.key == 'sash' ||
+                          role.key == 'sash_extension' ||
+                          role.key == 'porte_joint')
+                        const Divider(height: 20),
                       _dialogSwitch(
                         title: _t('يظهر في الرسم', 'Visible au dessin'),
                         value: _truthy(
@@ -1362,9 +1433,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
         : _selectedSectionsForRole('frame');
     final sashSections = _selectedSectionsForRole('sash');
     final parcloseSections = _selectedSectionsForRole('glazing_bead');
+    final porteJointSections = _selectedSectionsForRole('porte_joint');
     if (frameSections.isEmpty &&
         sashSections.isEmpty &&
-        parcloseSections.isEmpty) {
+        parcloseSections.isEmpty &&
+        porteJointSections.isEmpty) {
       return const SizedBox.shrink();
     }
     final gasketTypes = _availableGasketTypes();
@@ -1406,6 +1479,18 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               _t('الباكلوز', 'Parclose'),
               parcloseSections,
               const [('parclose_gasket', 'جوان الباكلوز', 'Joint parclose')],
+              gasketTypes,
+            ),
+            _jointRoleSection(
+              _t('حامل الجوان', 'Porte-joint'),
+              porteJointSections,
+              const [
+                (
+                  'porte_joint_bronze',
+                  'جوان برونز حامل الجوان',
+                  'Joint bronze porte-joint',
+                ),
+              ],
               gasketTypes,
             ),
           ],

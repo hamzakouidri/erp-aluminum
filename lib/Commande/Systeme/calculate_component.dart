@@ -32,6 +32,7 @@ class BomItem {
   final String? roleKey;
   final int? sourceSeriesId;
   final String? materialType;
+  final double? targetThicknessMm;
 
   /// Quantity actually required for pricing. For profiles this can be a
   /// fractional number of bars, unlike the rounded purchase quantity.
@@ -94,6 +95,7 @@ class BomItem {
     this.roleKey,
     this.sourceSeriesId,
     this.materialType,
+    this.targetThicknessMm,
   }) : this.name = name.replaceAll(RegExp(r'\s*\(\s*جودة[^)]*\)'), '').trim();
 
   double get exactTotal {
@@ -424,6 +426,7 @@ class BomItem {
       roleKey: roleKey ?? this.roleKey,
       sourceSeriesId: sourceSeriesId ?? this.sourceSeriesId,
       materialType: materialType ?? this.materialType,
+      targetThicknessMm: targetThicknessMm ?? this.targetThicknessMm,
     );
   }
 }
@@ -505,6 +508,21 @@ class ComponentCalculator {
       return 'plant';
     }
     if (_textHasAny(originalName, const [
+      'porte-joint',
+      'porte joint',
+      'حامل الجوان',
+    ])) {
+      return 'porte_joint';
+    }
+    if (_textHasAny(originalName, const [
+      'triangle',
+      'تراينغل',
+      'تريانغل',
+      'مثلث',
+    ])) {
+      return 'triangle';
+    }
+    if (_textHasAny(originalName, const [
       'reducteur',
       'réducteur',
       'ريديكتور',
@@ -513,6 +531,20 @@ class ComponentCalculator {
       return '67114';
     }
     if (_textHasAny(originalName, const ['parclose', 'باكيت', 'بيركلوز'])) {
+      if (_textHasAny(originalName, const ['منزلق', 'coulissant', 'sliding'])) {
+        if (_textHasAny(originalName, const ['مزدوج', 'double'])) {
+          return 'sliding_parclose_double';
+        }
+        if (_textHasAny(originalName, const ['مفرد', 'simple'])) {
+          return 'sliding_parclose_simple';
+        }
+      }
+      if (_textHasAny(originalName, const ['مزدوج', 'double'])) {
+        return 'parclose_double';
+      }
+      if (_textHasAny(originalName, const ['مفرد', 'simple'])) {
+        return 'parclose_simple';
+      }
       return 'parclose';
     }
     if (_textHasAny(originalName, const ['rail', 'الري'])) {
@@ -567,6 +599,16 @@ class ComponentCalculator {
     if (isScrew) return 'is_accessory_screw';
     if (_textHasAny(originalName, const ['بوشون باتمو', 'bouchon batmo'])) {
       return 'bouchon_batmo';
+    }
+    if (_textHasAny(originalName, const [
+      'kit 67000',
+      'kit 76000',
+      'kit 40000',
+      'كيت 67000',
+      'كيت 76000',
+      'كيت 40000',
+    ])) {
+      return 'sliding_kit';
     }
     if (_textHasAny(originalName, const ['clamp', 'clam', 'كلامب', 'كلام'])) {
       return 'clamp';
@@ -697,6 +739,9 @@ class ComponentCalculator {
     if (_textHasAny(originalName, const ['بروس', 'bross', 'brosse'])) {
       return 'Joint bross';
     }
+    if (_textHasAny(originalName, const ['bronze', 'برونز'])) {
+      return 'joint bronze';
+    }
     if (_textHasAny(originalName, const ['vitrage', 'فيتراج'])) {
       return 'joint de vitrage';
     }
@@ -727,7 +772,11 @@ class ComponentCalculator {
       case 'mullion':
         return 'mullion';
       case 'parclose':
-        return 'parclose';
+      case 'parclose_simple':
+      case 'parclose_double':
+      case 'sliding_parclose_simple':
+      case 'sliding_parclose_double':
+        return 'glazing_bead';
       case '67114':
         return 'reducer';
       case 'side_cover':
@@ -738,6 +787,10 @@ class ComponentCalculator {
         return 'batmo';
       case 'plant':
         return 'plant';
+      case 'porte_joint':
+        return 'porte_joint';
+      case 'triangle':
+        return 'triangle';
       case 'renfort':
         return 'renfort';
       case 'other_profile':
@@ -771,6 +824,8 @@ class ComponentCalculator {
         return 'accessory_screw';
       case 'is_installation_screw':
         return 'installation_screw';
+      case 'sliding_kit':
+        return 'sliding_kit';
       case 'clamp':
         return 'sliding_clamp';
       case 'is_gache_simple':
@@ -822,6 +877,8 @@ class ComponentCalculator {
         return 'joint_central';
       case 'joint bross':
         return 'joint_brosse';
+      case 'joint bronze':
+        return 'joint_bronze';
     }
     return null;
   }
@@ -1716,6 +1773,7 @@ class ComponentCalculator {
       String? color,
       double qty = 0,
       String unit = 'بارة',
+      double? targetThicknessMm,
     }) {
       final selectorType = _selectorTypeForJoint(originalName);
       final isShutterJoint = _textHasAny(originalName, const [
@@ -1746,6 +1804,7 @@ class ComponentCalculator {
         roleKey: isShutterJoint
             ? 'shutter_joint_brosse'
             : _roleKeyForJointSelector(selectorType),
+        targetThicknessMm: targetThicknessMm,
         sourceSeriesId: isShutterJoint
             ? null
             : window.systemMode == 'sliding'
@@ -3237,6 +3296,29 @@ class ComponentCalculator {
                 window.sashOverride,
           ),
         );
+        items.add(
+          createProfile(
+            'حامل الجوان (Porte-joint)',
+            colorName,
+            pieces: sashPlinthePieces,
+            unit: 'متر',
+            overrideMap: window.componentOverrides['حامل الجوان (Porte-joint)'],
+            selectorType: 'porte_joint',
+          ),
+        );
+        final porteJointLength = sashPlinthePieces.fold<double>(
+          0.0,
+          (sum, piece) => sum + piece,
+        );
+        if (porteJointLength > 0) {
+          items.add(
+            createJoint(
+              'جوان برونز (Joint Bronze)',
+              qty: porteJointLength * 2.0,
+              unit: 'متر',
+            ),
+          );
+        }
       }
 
       if (slidingSashPieces.isNotEmpty) {
@@ -3818,6 +3900,15 @@ class ComponentCalculator {
             'كريمون (Cremone)',
             color: accessoryColorName,
             qty: cremoneQty,
+          ),
+        );
+        items.add(
+          createProfile(
+            'تراينغل الكريمون (Triangle)',
+            colorName,
+            qty: cremoneQty.toDouble(),
+            unit: 'قطعة',
+            selectorType: 'triangle',
           ),
         );
       }
@@ -5293,6 +5384,8 @@ class ComponentCalculator {
     List<double> parcloseSimplePieces = [];
     List<double> parcloseDoublePieces = [];
     double requiredOpeningParcloseDoubleThickness = 0.0;
+    double maxOpeningSimpleGlassPackThickness = 0.0;
+    double maxOpeningDoubleGlassPackThickness = 0.0;
     // Sliding and opening systems may use different parclose profiles even
     // when they share the same drawing. Keep their cutting lists separate so
     // each one is resolved from its own active series.
@@ -5301,6 +5394,22 @@ class ComponentCalculator {
     double requiredSlidingParcloseDoubleThickness = 0.0;
     List<double> reducteurPieces = [];
     bool hasSimpleGlassReducerPieces = false;
+    bool truthyOption(Object? value) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      final text = value?.toString().trim().toLowerCase() ?? '';
+      return text == '1' || text == 'true' || text == 'yes' || text == 'oui';
+    }
+
+    bool profileSkipsGlazingBead(Map<String, dynamic>? profile) {
+      if (profile == null) return false;
+      return truthyOption(profile['design_skip_glazing_bead']) ||
+          truthyOption(profile['skip_glazing_bead']);
+    }
+
+    final bool openingSashSkipsGlazingBead = profileSkipsGlazingBead(
+      window.sashOverride,
+    );
 
     // ===== متغيرات جوانات نظام الفتح (ألمنيوم فقط) =====
     // Vitrage and Bourrage can be linked to different physical gasket types.
@@ -5576,14 +5685,19 @@ class ComponentCalculator {
         if (zone.content == ZoneContent.doubleSash && !isRightSash) {
           sidePrefix = 'left';
         }
+        final bool parentUsesOpeningSashProfile =
+            window.systemMode != 'sliding' &&
+            (zone.content == ZoneContent.singleSash ||
+                zone.content == ZoneContent.doubleSash);
 
         // دالة مساعدة داخلية لإنشاء عنصر الزجاج وإضافته
         void addSingleGlassPiece(
           double cellGw,
           double cellGh,
           int pieceMultiplier,
-          String cellKey,
-        ) {
+          String cellKey, {
+          bool usesOpeningSashProfile = false,
+        }) {
           if (cellGw <= 0 || cellGh <= 0) return;
 
           // استخدم مواصفات الزجاج الخاصة بالخلية إن وجدت
@@ -5625,20 +5739,22 @@ class ComponentCalculator {
 
             // The bardage profile's own thickness determines its parclose;
             // it must not inherit a sandwich/decor panel thickness.
-            final targetParclosePieces = getBardageThickness() > 10.0
-                ? parcloseDoublePieces
-                : parcloseSimplePieces;
-            if (getBardageThickness() > 10.0) {
-              requiredOpeningParcloseDoubleThickness = math.max(
-                requiredOpeningParcloseDoubleThickness,
-                getBardageThickness(),
-              );
-            }
-            for (int q = 0; q < pieceMultiplier; q++) {
-              targetParclosePieces.add(cellGw / 1000.0);
-              targetParclosePieces.add(cellGw / 1000.0);
-              targetParclosePieces.add(cellGh / 1000.0);
-              targetParclosePieces.add(cellGh / 1000.0);
+            if (!(usesOpeningSashProfile && openingSashSkipsGlazingBead)) {
+              final targetParclosePieces = getBardageThickness() > 10.0
+                  ? parcloseDoublePieces
+                  : parcloseSimplePieces;
+              if (getBardageThickness() > 10.0) {
+                requiredOpeningParcloseDoubleThickness = math.max(
+                  requiredOpeningParcloseDoubleThickness,
+                  getBardageThickness(),
+                );
+              }
+              for (int q = 0; q < pieceMultiplier; q++) {
+                targetParclosePieces.add(cellGw / 1000.0);
+                targetParclosePieces.add(cellGw / 1000.0);
+                targetParclosePieces.add(cellGh / 1000.0);
+                targetParclosePieces.add(cellGh / 1000.0);
+              }
             }
             return;
           }
@@ -5664,9 +5780,10 @@ class ComponentCalculator {
           );
 
           // 🟢 تحديد نوع الباكيت المطلوب بناءً على سمك الزجاج الفعلي لهذه الخلية
-          final double cellThick = window.glassPackThicknessIncludingVitrageJoint(
-            cellGlass,
-          );
+          final double cellThick = window
+              .glassPackThicknessIncludingVitrageJoint(cellGlass);
+          final bool needsDoubleParclose =
+              cellGlass.structure == GlassStructure.double;
           final bool isSlidingSystem =
               window.systemMode == 'sliding' ||
               window.systemMode == 'coulissant' ||
@@ -5727,10 +5844,10 @@ class ComponentCalculator {
               // PVC sliding systems always retain glass with a parclose.
               // A reducteur is an aluminium-only profile and must never be
               // injected into their bill of materials.
-              final targetParclosePieces = cellThick > 10.0
+              final targetParclosePieces = needsDoubleParclose
                   ? slidingParcloseDoublePieces
                   : slidingParcloseSimplePieces;
-              if (cellThick > 10.0) {
+              if (needsDoubleParclose) {
                 requiredSlidingParcloseDoubleThickness = math.max(
                   requiredSlidingParcloseDoubleThickness,
                   cellThick,
@@ -5749,10 +5866,10 @@ class ComponentCalculator {
               // TPR parclose is cut in the catalogue's order: two pieces are
               // the inner sash length, while the other two are the inner sash
               // width minus 2 x 20 mm parclose overlap.
-              final targetParclosePieces = cellThick > 10.0
+              final targetParclosePieces = needsDoubleParclose
                   ? slidingParcloseDoublePieces
                   : slidingParcloseSimplePieces;
-              if (cellThick > 10.0) {
+              if (needsDoubleParclose) {
                 requiredSlidingParcloseDoubleThickness = math.max(
                   requiredSlidingParcloseDoubleThickness,
                   cellThick,
@@ -5811,7 +5928,13 @@ class ComponentCalculator {
               slidingGlassJoints[gName] =
                   (slidingGlassJoints[gName] ?? 0.0) + gasketQty;
             }
-            if (cellThick > 10.0) {
+            if (usesOpeningSashProfile && openingSashSkipsGlazingBead) {
+              // This sash profile is explicitly configured without parclose.
+            } else if (needsDoubleParclose) {
+              maxOpeningDoubleGlassPackThickness = math.max(
+                maxOpeningDoubleGlassPackThickness,
+                cellThick,
+              );
               requiredOpeningParcloseDoubleThickness = math.max(
                 requiredOpeningParcloseDoubleThickness,
                 cellThick,
@@ -5823,6 +5946,10 @@ class ComponentCalculator {
                 parcloseDoublePieces.add(cellGh / 1000.0);
               }
             } else {
+              maxOpeningSimpleGlassPackThickness = math.max(
+                maxOpeningSimpleGlassPackThickness,
+                cellThick,
+              );
               for (int q = 0; q < pieceMultiplier; q++) {
                 parcloseSimplePieces.add(cellGw / 1000.0);
                 parcloseSimplePieces.add(cellGw / 1000.0);
@@ -6162,7 +6289,13 @@ class ComponentCalculator {
               // خصم عرض مقطع الظلفة الداخلية والتخليص (videVerre أو rebate)
               double glassW = cellW - (cellSw * 2.0) + cellDeductionW;
               double glassH = cellH - (cellSw * 2.0) + cellDeductionH;
-              addSingleGlassPiece(glassW, glassH, multiplier, cellKey);
+              addSingleGlassPiece(
+                glassW,
+                glassH,
+                multiplier,
+                cellKey,
+                usesOpeningSashProfile: true,
+              );
             } else if (hasNestedDoubleSash) {
               double cellSw = sw;
               double cellGd = glassDeduction;
@@ -6189,12 +6322,24 @@ class ComponentCalculator {
               double glassW =
                   ((cellW - sep) / 2.0) - (cellSw * 2.0) + cellDeductionW;
               double glassH = cellH - (cellSw * 2.0) + cellDeductionH;
-              addSingleGlassPiece(glassW, glassH, multiplier * 2, cellKey);
+              addSingleGlassPiece(
+                glassW,
+                glassH,
+                multiplier * 2,
+                cellKey,
+                usesOpeningSashProfile: true,
+              );
             } else {
               // زجاج ثابت أو لوح بدون ظلفة داخلية
               double glassW = cellW;
               double glassH = cellH;
-              addSingleGlassPiece(glassW, glassH, multiplier, cellKey);
+              addSingleGlassPiece(
+                glassW,
+                glassH,
+                multiplier,
+                cellKey,
+                usesOpeningSashProfile: parentUsesOpeningSashProfile,
+              );
             }
           }
         }
@@ -6434,9 +6579,38 @@ class ComponentCalculator {
         slidingParclose?['simple'] as Map<String, dynamic>?;
     final slidingParcloseDouble =
         slidingParclose?['double'] as Map<String, dynamic>?;
+    Map<String, dynamic>? overrideMap(String key) {
+      final value = window.componentOverrides[key];
+      if (value is Map<String, dynamic>) return value;
+      if (value is Map) return Map<String, dynamic>.from(value);
+      return null;
+    }
+
+    final selectedParcloseSimple = overrideMap(
+      'باكيت زجاج مفرد (Parclose Simple)',
+    );
+    final selectedParcloseDouble = overrideMap(
+      'باكيت زجاج مزدوج (Parclose Double)',
+    );
+    final selectedSlidingParcloseSimple = overrideMap(
+      'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)',
+    );
+    final selectedSlidingParcloseDouble = overrideMap(
+      'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)',
+    );
+
+    bool genericParcloseMatches({required bool doubleGlass}) {
+      final maxGlass =
+          (chosenParclose?['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+      return chosenParclose != null &&
+          (doubleGlass ? maxGlass > 10.0 : maxGlass <= 10.0);
+    }
 
     if (parcloseSimplePieces.isNotEmpty) {
-      final targetOverride = parcloseSimple ?? chosenParclose;
+      final targetOverride =
+          selectedParcloseSimple ??
+          parcloseSimple ??
+          (genericParcloseMatches(doubleGlass: false) ? chosenParclose : null);
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6445,13 +6619,17 @@ class ComponentCalculator {
             pieces: parcloseSimplePieces,
             unit: 'قطاع',
             overrideMap: targetOverride,
+            selectorType: 'parclose_simple',
           ),
         );
       }
     }
 
     if (parcloseDoublePieces.isNotEmpty) {
-      final targetOverride = parcloseDouble ?? chosenParclose;
+      final targetOverride =
+          selectedParcloseDouble ??
+          parcloseDouble ??
+          (genericParcloseMatches(doubleGlass: true) ? chosenParclose : null);
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6460,6 +6638,7 @@ class ComponentCalculator {
             pieces: parcloseDoublePieces,
             unit: 'قطاع',
             overrideMap: targetOverride,
+            selectorType: 'parclose_double',
           ),
         );
       }
@@ -6467,8 +6646,12 @@ class ComponentCalculator {
 
     if (slidingParcloseSimplePieces.isNotEmpty) {
       final targetOverride =
+          selectedSlidingParcloseSimple ??
           slidingParcloseSimple ??
-          (window.activeSlidingSeries == null ? chosenParclose : null);
+          (window.activeSlidingSeries == null &&
+                  genericParcloseMatches(doubleGlass: false)
+              ? chosenParclose
+              : null);
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6477,6 +6660,7 @@ class ComponentCalculator {
             pieces: slidingParcloseSimplePieces,
             unit: 'قطاع',
             overrideMap: targetOverride,
+            selectorType: 'sliding_parclose_simple',
           ),
         );
       }
@@ -6484,8 +6668,12 @@ class ComponentCalculator {
 
     if (slidingParcloseDoublePieces.isNotEmpty) {
       final targetOverride =
+          selectedSlidingParcloseDouble ??
           slidingParcloseDouble ??
-          (window.activeSlidingSeries == null ? chosenParclose : null);
+          (window.activeSlidingSeries == null &&
+                  genericParcloseMatches(doubleGlass: true)
+              ? chosenParclose
+              : null);
       if (targetOverride != null) {
         items.add(
           createProfile(
@@ -6494,10 +6682,35 @@ class ComponentCalculator {
             pieces: slidingParcloseDoublePieces,
             unit: 'قطاع',
             overrideMap: targetOverride,
+            selectorType: 'sliding_parclose_double',
           ),
         );
       }
     }
+
+    double maxGlassCapacity(Map<String, dynamic>? profile) {
+      return (profile?['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
+    }
+
+    double bourrageThicknessNeed({
+      required Map<String, dynamic>? parclose,
+      required double glassPackThickness,
+    }) {
+      final capacity = maxGlassCapacity(parclose);
+      if (capacity <= 0 || glassPackThickness <= 0) return 0.0;
+      return math.max(0.0, capacity - glassPackThickness);
+    }
+
+    final double openingBourrageTargetThickness = math.max(
+      bourrageThicknessNeed(
+        parclose: selectedParcloseSimple ?? parcloseSimple,
+        glassPackThickness: maxOpeningSimpleGlassPackThickness,
+      ),
+      bourrageThicknessNeed(
+        parclose: selectedParcloseDouble ?? parcloseDouble,
+        glassPackThickness: maxOpeningDoubleGlassPackThickness,
+      ),
+    );
 
     // ===== جوانات نظام الفتح (ألمنيوم فقط) =====
     if (!window.isPVC) {
@@ -6525,6 +6738,7 @@ class ComponentCalculator {
             'جوان البوراج (Joint Bourrage)',
             qty: vitrageQty,
             unit: 'متر',
+            targetThicknessMm: openingBourrageTargetThickness,
           ),
         );
       }
@@ -7390,6 +7604,7 @@ class ComponentCalculator {
     String? roleKey,
     int? sourceSeriesId,
     String? materialType,
+    double? targetThicknessMm,
   }) {
     bool isLinked = overrides.containsKey(originalName);
     String name = originalName;
@@ -7444,6 +7659,7 @@ class ComponentCalculator {
       roleKey: roleKey,
       sourceSeriesId: sourceSeriesId,
       materialType: materialType,
+      targetThicknessMm: targetThicknessMm,
     );
   }
 

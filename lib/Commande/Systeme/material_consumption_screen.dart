@@ -5055,6 +5055,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           roleKeys: dialogRoleKeys,
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
+          targetThicknessMm: item.targetThicknessMm,
         ),
       );
       if (selected != null && mounted) {
@@ -5100,6 +5101,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           roleKeys: dialogRoleKeys,
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
+          targetThicknessMm: item.targetThicknessMm,
         ),
       );
       if (selected != null && mounted) {
@@ -5188,6 +5190,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           roleKeys: dialogRoleKeys,
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
           hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
+          targetThicknessMm: item.targetThicknessMm,
         ),
       );
       if (selected != null && mounted) {
@@ -5436,6 +5439,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         motorDiameter: motorDiameter,
         hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
         hasDoubleGlassForRules: widget.model.hasDoubleGlassForRules,
+        targetThicknessMm: item.targetThicknessMm,
       ),
     );
     if (selected != null && mounted) {
@@ -5772,8 +5776,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       normalizedPType.contains('parclose') ||
                       normalizedPType.contains('باكيت') ||
                       normalizedPType.contains('بيركلوز'))) {
-                widget.model.componentOverrides['باكيت الزجاج (Parclose)'] =
-                    mutableSelected;
+                final isSpecificParclose =
+                    item.originalName.contains('مفرد') ||
+                    item.originalName.toLowerCase().contains('simple') ||
+                    item.originalName.contains('مزدوج') ||
+                    item.originalName.toLowerCase().contains('double') ||
+                    item.originalName.toLowerCase().contains('coulissant') ||
+                    item.originalName.contains('منزلق');
+                if (!isSpecificParclose) {
+                  widget.model.componentOverrides['باكيت الزجاج (Parclose)'] =
+                      mutableSelected;
+                }
               }
             }
             widget.model

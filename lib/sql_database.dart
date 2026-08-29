@@ -1605,6 +1605,9 @@ class SqlDatabase {
         width_adjust_mm REAL NOT NULL DEFAULT 0.0,
         height_adjust_mm REAL NOT NULL DEFAULT 0.0,
         formula_note TEXT NOT NULL DEFAULT '',
+        skip_glazing_bead INTEGER NOT NULL DEFAULT 0,
+        requires_plant INTEGER NOT NULL DEFAULT 0,
+        joint_length_multiplier REAL NOT NULL DEFAULT 1.0,
         is_required INTEGER NOT NULL DEFAULT 0,
         is_default INTEGER NOT NULL DEFAULT 0,
         is_visible INTEGER NOT NULL DEFAULT 1,
@@ -1688,6 +1691,9 @@ class SqlDatabase {
       'ALTER TABLE SeriesDesignRoles ADD COLUMN width_adjust_mm REAL NOT NULL DEFAULT 0.0;',
       'ALTER TABLE SeriesDesignRoles ADD COLUMN height_adjust_mm REAL NOT NULL DEFAULT 0.0;',
       "ALTER TABLE SeriesDesignRoles ADD COLUMN formula_note TEXT NOT NULL DEFAULT '';",
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN skip_glazing_bead INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN requires_plant INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE SeriesDesignRoles ADD COLUMN joint_length_multiplier REAL NOT NULL DEFAULT 1.0;',
     ]) {
       try {
         await db.execute(statement);
@@ -15039,6 +15045,16 @@ class SqlDatabase {
           'width_adjust_mm': role['width_adjust_mm'] ?? 0.0,
           'height_adjust_mm': role['height_adjust_mm'] ?? 0.0,
           'formula_note': role['formula_note']?.toString() ?? '',
+          'skip_glazing_bead':
+              role['skip_glazing_bead'] == true ||
+                  role['skip_glazing_bead'] == 1
+              ? 1
+              : 0,
+          'requires_plant':
+              role['requires_plant'] == true || role['requires_plant'] == 1
+              ? 1
+              : 0,
+          'joint_length_multiplier': role['joint_length_multiplier'] ?? 1.0,
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -15449,6 +15465,16 @@ class SqlDatabase {
           'width_adjust_mm': role['width_adjust_mm'] ?? 0.0,
           'height_adjust_mm': role['height_adjust_mm'] ?? 0.0,
           'formula_note': role['formula_note']?.toString() ?? '',
+          'skip_glazing_bead':
+              role['skip_glazing_bead'] == true ||
+                  role['skip_glazing_bead'] == 1
+              ? 1
+              : 0,
+          'requires_plant':
+              role['requires_plant'] == true || role['requires_plant'] == 1
+              ? 1
+              : 0,
+          'joint_length_multiplier': role['joint_length_multiplier'] ?? 1.0,
           'is_required': role['is_required'] == true || role['is_required'] == 1
               ? 1
               : 0,
@@ -15525,6 +15551,9 @@ class SqlDatabase {
              r.width_adjust_mm AS design_width_adjust_mm,
              r.height_adjust_mm AS design_height_adjust_mm,
              r.formula_note AS design_formula_note,
+             r.skip_glazing_bead AS design_skip_glazing_bead,
+             r.requires_plant AS design_requires_plant,
+             r.joint_length_multiplier AS design_joint_length_multiplier,
              r.is_default AS design_is_default
       FROM Sections s
       INNER JOIN SeriesDesignRoles r ON r.section_id = s.id
