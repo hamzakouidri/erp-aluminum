@@ -6458,7 +6458,7 @@ class ComponentCalculator {
         }
         for (final section in candidates) {
           if (section.maxGlassThickness > 0 &&
-              section.maxGlassThickness <= 10) {
+              section.maxGlassThickness <= 14) {
             return section;
           }
         }
@@ -6742,10 +6742,8 @@ class ComponentCalculator {
           ),
         );
 
-        // إذا كان في النافذة زجاج مفرد وزجاج مزدوج بفراغات مختلفة، يُفصل كل سمك في بند مستقل:
-        final bool haveBothDistinct = simplePerim > 0 &&
-            doublePerim > 0 &&
-            (simpleBourrageTargetThickness - doubleBourrageTargetThickness).abs() > 0.5;
+        // إذا كان في النافذة زجاج مفرد وزجاج مزدوج معاً، يُفصل كل نوع في بند مستقل:
+        final bool haveBothDistinct = simplePerim > 0 && doublePerim > 0;
 
         if (haveBothDistinct) {
           items.add(
@@ -6753,7 +6751,7 @@ class ComponentCalculator {
               'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
               qty: simplePerim,
               unit: 'متر',
-              targetThicknessMm: simpleBourrageTargetThickness,
+              targetThicknessMm: simpleBourrageTargetThickness > 0 ? simpleBourrageTargetThickness : 4.0,
               overrideKey: 'جوان البوراج للزجاج المفرد (Joint Bourrage Simple)',
             ),
           );
@@ -6762,15 +6760,15 @@ class ComponentCalculator {
               'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
               qty: doublePerim,
               unit: 'متر',
-              targetThicknessMm: doubleBourrageTargetThickness,
+              targetThicknessMm: doubleBourrageTargetThickness > 0 ? doubleBourrageTargetThickness : 2.0,
               overrideKey: 'جوان البوراج للزجاج المزدوج (Joint Bourrage Double)',
             ),
           );
         } else {
           final double targetThick = simplePerim > 0 && doublePerim <= 0
-              ? simpleBourrageTargetThickness
+              ? (simpleBourrageTargetThickness > 0 ? simpleBourrageTargetThickness : 4.0)
               : (doublePerim > 0 && simplePerim <= 0
-                  ? doubleBourrageTargetThickness
+                  ? (doubleBourrageTargetThickness > 0 ? doubleBourrageTargetThickness : 2.0)
                   : math.max(simpleBourrageTargetThickness, doubleBourrageTargetThickness));
 
           final String originalName = targetThick <= 2.5
